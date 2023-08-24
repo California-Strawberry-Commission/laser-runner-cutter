@@ -1,1 +1,1 @@
-#Overview of software for 
+#Overview of software for the California Strawberry Commission Laser Runner Removal project
