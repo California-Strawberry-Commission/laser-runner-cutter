@@ -1,6 +1,0 @@
-ultralytics
-opencv-contrib-python
-matplotlib
-pyrealsense2
-shapely
-PySimpleGUI
