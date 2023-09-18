@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Exec=~/src/LaserRunnerRemoval/run_usda_util.sh
+Name=USDA Laser Test
+GenericName=Laser Test
+Comment=Test an ILDA laser based on webcam feedback
+Encoding=UTF-8
+Terminal=true
+Type=Application
+Icon=~/src/LaserRunnerRemoval/LaserIcon.jpg
