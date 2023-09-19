@@ -16,7 +16,7 @@ from laser_runner_removal.cv_utils import find_laser_point
 from laser_runner_removal.ts_queue import TsQueue
 from laser_runner_removal.Tracker import Tracker
 from lrr_interfaces.srv import RetrieveFrame
-from lrr_interfaces.msg import LaserOn, PosData
+from lrr_interfaces.msg import LaserOn, PosData, Point
 import cv2
 import time 
 
@@ -48,8 +48,9 @@ class Calibrate(State):
     def execute(self, blackboard): 
         blackboard.main_node.logger.info("Entering State Calibrate")
         lsr_pts = blackboard.laser.scale_frame_corners(.15)
-        lsr_pts += blackboard.laser.scale_frame_corners(.4)
+        lsr_pts += blackboard.laser.scale_frame_corners(.25)
         found_lsr_pts = []
+        found_img_pts = []
         pos_wrt_cam = []
  
         laser_msg = LaserOn()
@@ -72,7 +73,7 @@ class Calibrate(State):
                 
                 #Add offset to make sure correct laser pos is detected
                 blackboard.main_node.logger.debug(f"Found laser Ts:{last_ts}")
-                if last_ts and last_ts > laser_send_ts+.01: 
+                if last_ts and last_ts > laser_send_ts+.05: 
                     found_pos, found_point = laser_data
                     found_pos = found_pos[0]
                     found_point = found_point[0]
@@ -83,10 +84,12 @@ class Calibrate(State):
                 blackboard.main_node.logger.debug(f"Send Laser Point:{point}")
                 blackboard.main_node.logger.debug(f"Found Laser Pos:{found_pos}")
                 found_lsr_pts.append(point)
+                found_img_pts.append([found_point.x, found_point.y])
                 pos_wrt_cam.append([found_pos.x, found_pos.y, found_pos.z])
 
         blackboard.laser.sendEmpty()
         laser_msg.laser_state = False
+        blackboard.main_node.logger.info("Setting Laser Off")
         blackboard.main_node.laser_state_pub.publish(laser_msg)
  
         if len(found_lsr_pts) >= 3:
@@ -99,6 +102,7 @@ class Calibrate(State):
             blackboard.laser.transform_to_laser = res[0]
             blackboard.main_node.logger.debug("----------Calibration Test----------")
             blackboard.main_node.logger.debug(f"Sent points: \n{found_lsr_pts}")
+            blackboard.main_node.logger.debug(f"Found img points: \n{found_img_pts}")
             blackboard.main_node.logger.debug(f"Calculated points: \n{np.dot(pos_wrt_cam,res[0])}")
             return "calibrated"
         else:  
@@ -119,6 +123,11 @@ class Acquire(State):
         if blackboard.main_node.runner_tracker.has_active_tracks: 
             #currently only do one runner at at time
             blackboard.curr_track = blackboard.main_node.runner_tracker.active_tracks[0]
+            runner_msg = Point()
+            runner_point = blackboard.curr_track.point
+            runner_msg.x = runner_point[0]
+            runner_msg.y = runner_point[1]
+            blackboard.main_node.runner_point_pub.publish(runner_msg)
             return "target_acquired"
                 
         else: 
@@ -140,7 +149,18 @@ class Correct(State):
         #Turn on tracking laser    
         laser_msg = LaserOn()
         laser_msg.laser_state = True
+        blackboard.main_node.laser_pos_queue.empty()
+        blackboard.main_node.logger.info("Setting Laser On")
         blackboard.main_node.laser_state_pub.publish(laser_msg)
+        if np.linalg.norm(blackboard.curr_track.pos_wrt_cam) < 5:
+            laser_msg = LaserOn()
+            laser_msg.laser_state = False
+            blackboard.main_node.logger.info("Setting Laser Off")
+            blackboard.main_node.laser_state_pub.publish(laser_msg)
+            blackboard.main_node.runner_tracker.deactivate(blackboard.curr_track)
+            #from remote_pdb import RemotePdb
+            #RemotePdb('127.0.0.1', 4444).set_trace()
+            return "target_not_reached"
         laser_send_point = blackboard.laser.add_pos(blackboard.curr_track.pos_wrt_cam, pad=False, color = (10, 0, 0), intensity=255)
         blackboard.laser.sendFrame()
         
@@ -153,6 +173,7 @@ class Correct(State):
 
             laser_msg = LaserOn()
             laser_msg.laser_state = False
+            blackboard.main_node.logger.info("Setting Laser Off")
             blackboard.main_node.laser_state_pub.publish(laser_msg)
             
             blackboard.main_node.runner_tracker.deactivate(blackboard.curr_track)
@@ -168,10 +189,15 @@ class Correct(State):
         ts = time.time()
         timestamp, laser_data = blackboard.main_node.laser_pos_queue.get_ts(ts)
         
-        try: 
+        #try: 
+        if laser_data is not None: 
             laser_point = np.array([laser_data[1][0].x, laser_data[1][0].y])
-        except: 
-            blackboard.main_node.logger.warning(f"No data for ts: {ts} in {blackboard.main_node.laser_pos_queue.datums}")
+            blackboard.main_node.laser_pos_queue.empty()
+        else: 
+        #except: 
+            #from remote_pdb import RemotePdb
+            #RemotePdb('127.0.0.1', 4444).set_trace()
+            #blackboard.main_node.logger.warning(f"No data for ts: {ts} in {blackboard.main_node.laser_pos_queue.datums}")
             time.sleep(.01)
             return self._correct_laser(laser_send_point, blackboard)
         
@@ -183,7 +209,7 @@ class Correct(State):
             correction[1] = correction[1]*-1
             new_point = laser_send_point + correction
             blackboard.main_node.logger.debug(f"Dist:{dist}, Correction{correction}, Old Point:{laser_send_point}, New Point{new_point}")
-            if new_point[0] > 4095 or new_point[1] > 4095: 
+            if new_point[0] > 4095 or new_point[1] > 4095 or new_point[0] < 0 or new_point[1]<0: 
                 blackboard.main_node.logger.info("Failed to reach pos, outside of laser window")
                 return False
 
@@ -208,7 +234,8 @@ class Burn(State):
         laser_msg = LaserOn()
         laser_msg.laser_state = True
         blackboard.main_node.laser_state_pub.publish(laser_msg)
-        laser_send_point = blackboard.laser.add_point(blackboard.curr_track.corrected_point, pad=False, color = (0, 0, 255), intensity=255)
+        blackboard.main_node.logger.info("Setting Laser On")
+        laser_send_point = blackboard.laser.add_point(blackboard.curr_track.corrected_point, pad=False, color = (0, 0, 15), intensity=255)
         blackboard.laser.sendFrame()
         
         while(burn_start + burn_time > time.time()): 
@@ -219,6 +246,7 @@ class Burn(State):
         laser_msg = LaserOn()
         laser_msg.laser_state = False
         blackboard.main_node.laser_state_pub.publish(laser_msg)
+        blackboard.main_node.logger.info("Setting Laser Off")
 
         #Set inactive instead of removing 
         blackboard.main_node.runner_tracker.deactivate(blackboard.curr_track)
@@ -231,14 +259,15 @@ class MainNode(Node):
         Node.__init__(self, 'main_node')
         
         self.laser_state_pub = self.create_publisher(LaserOn, 'laser_on', 1)
+        self.runner_point_pub = self.create_publisher(Point, 'runner_point', 1)
         self.retrieve_laser_pos = self.create_subscription(PosData, 'laser_pos_data', self.laser_pos_callback, 5)
         self.retrieve_runner_pos = self.create_subscription(PosData, 'runner_pos_data', self.runner_pos_callback, 5)
 
+        self.logger = self.get_logger()
+
         #move to a tracker implementation
         self.laser_pos_queue = TsQueue(10)
-        self.runner_tracker = Tracker()
-       
-        self.logger = self.get_logger()
+        self.runner_tracker = Tracker(logger = self.logger)
 
         main_sm = StateMachine(outcomes=["Finished"])
 
