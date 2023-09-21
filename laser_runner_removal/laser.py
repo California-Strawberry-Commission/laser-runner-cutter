@@ -96,6 +96,12 @@ class IldaLaser:
         if point[1]> 4095: 
             self.logger.warning("WARNING laser Y > 4095")
             point[1] = 4095  
+        if point[0] < 0:
+            self.logger.warning("WARNING laser X < 0")
+            point[0] = 0
+        if point[1]< 0: 
+            self.logger.warning("WARNING laser Y > 0")
+            point[1] = 0  
         if pad: 
             for x in range(pad): 
                 self.point_list.append(HeliosPoint(int(point[0]), int(point[1]), 0, 0, 0, 0))

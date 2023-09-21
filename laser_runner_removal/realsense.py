@@ -30,6 +30,8 @@ class RealSense(Node):
         self.runner_pos_publisher = self.create_publisher(PosData, "runner_pos_data", 5)
 
         self.laser_on_sub = self.create_subscription(LaserOn, "laser_on", self.laser_on_cb, 1)
+        self.runner_point = None
+        self.runner_point_sub = self.create_subscription(Point, "runner_point", self.runner_point_cb, 1)
         self.laser_on = False
 
         #Add to config 
@@ -42,6 +44,10 @@ class RealSense(Node):
 
         self.background_frame = None 
         self.initialize()
+
+    def runner_point_cb(self, msg):
+        self.logger.info(f"Runner Point: [{msg.x}, {msg.y}]")
+        self.runner_point = [int(msg.x), int(msg.y)]
 
     def laser_on_cb(self, msg):
         self.logger.info(f"Laser State: {msg.laser_state}")
@@ -121,6 +127,8 @@ class RealSense(Node):
             debug_frame = np.copy(curr_image)
             debug_frame = self.draw_laser(debug_frame, laser_point_list)
             debug_frame = self.draw_runners(debug_frame, runner_point_list)
+            if self.laser_on and self.runner_point is not None: 
+                debug_frame = cv2.drawMarker(debug_frame, self.runner_point, (0, 0, 255), cv2.MARKER_CROSS, thickness=5, markerSize=20)
             self.rec_debug.write(debug_frame)
 
     def draw_laser(self, debug_frame, laser_list):
