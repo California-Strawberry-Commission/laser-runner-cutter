@@ -39,6 +39,18 @@ class Initialize(State):
 
         return "init_complete"
 
+class ServiceWait(State): 
+    """State to wait for other services that need to come up"""
+    def __init__(self): 
+        State.__init__(self, outcomes=["services_up"])
+
+    def execute(self, blackboard): 
+        while not blackboard.main_node.cam_info_received: 
+            time.sleep(.005)
+        
+        return "services_up"
+
+
 class Calibrate(State): 
     """Calibrate the laser to camera, creating a 3D pos to laser frame transform."""
 
@@ -271,7 +283,8 @@ class MainNode(Node):
 
         main_sm = StateMachine(outcomes=["Finished"])
 
-        main_sm.add_state("INIT", Initialize(), transitions={"init_complete": "ACQ"})
+        main_sm.add_state("INIT", Initialize(), transitions={"init_complete": "WAIT"})
+        main_sm.add_state("WAIT", ServiceWait(), transitions={"services_up": "ACQ"})
         main_sm.add_state("CALIB", Calibrate(), transitions={"failed_to_calibrate":"Finished", "calibrated": "ACQ"})
         main_sm.add_state("ACQ", Acquire(), transitions={"calibration_needed": "CALIB", "target_acquired":"CORRECT", "no_target_found":"ACQ"})
         main_sm.add_state("CORRECT", Correct(), transitions={"on_target": "BURN", "target_not_reached":"ACQ"} )
@@ -282,11 +295,15 @@ class MainNode(Node):
         outcome = main_sm(blackboard)
         self.logger.info(outcome)
 
+        self.cam_info_received = False
+
     def laser_pos_callback(self, msg): 
+        self.cam_info_received = True
         ts = msg.timestamp
         self.laser_pos_queue.add(ts, [msg.pos_list, msg.point_list])
     
     def runner_pos_callback(self, msg): 
+        self.cam_info_received = True
         ts = msg.timestamp
         for pos, point in zip(msg.pos_list, msg.point_list): 
             self.runner_tracker.add_track([pos.x, pos.y, pos.z], [point.x, point.y])
