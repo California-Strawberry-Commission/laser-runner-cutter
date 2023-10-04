@@ -307,7 +307,8 @@ class MainNode(Node):
     def laser_pos_callback(self, msg): 
         self.cam_info_received = True
         ts = msg.timestamp
-        self.laser_pos_queue.add(ts, [msg.pos_list, msg.point_list])
+        if not msg.point_list == [] and not msg.pos_list == []: 
+            self.laser_pos_queue.add(ts, [msg.pos_list, msg.point_list])
     
     def runner_pos_callback(self, msg): 
         self.cam_info_received = True
