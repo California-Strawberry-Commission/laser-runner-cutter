@@ -174,6 +174,8 @@ class Correct(State):
             #RemotePdb('127.0.0.1', 4444).set_trace()
             return "target_not_reached"
         laser_send_point = blackboard.laser.add_pos(blackboard.curr_track.pos_wrt_cam, pad=False, color = (10, 0, 0), intensity=255)
+        self.send_frame_ts = time.time()
+        self.missing_laser_count = 0
         blackboard.laser.sendFrame()
         
         targ_reached =  self._correct_laser(laser_send_point, blackboard)
@@ -202,14 +204,16 @@ class Correct(State):
         timestamp, laser_data = blackboard.main_node.laser_pos_queue.get_ts(ts)
         
         #try: 
-        if laser_data is not None: 
+        if laser_data is not None and self.send_frame_ts < timestamp: 
             laser_point = np.array([laser_data[1][0].x, laser_data[1][0].y])
             blackboard.main_node.laser_pos_queue.empty()
         else: 
         #except: 
-            #from remote_pdb import RemotePdb
-            #RemotePdb('127.0.0.1', 4444).set_trace()
             #blackboard.main_node.logger.warning(f"No data for ts: {ts} in {blackboard.main_node.laser_pos_queue.datums}")
+            self.missing_laser_count += 1
+            if self.missing_laser_count > 20: 
+                blackboard.main_node.logger.info("Laser missing during state correct")
+                return False 
             time.sleep(.01)
             return self._correct_laser(laser_send_point, blackboard)
         
@@ -227,6 +231,8 @@ class Correct(State):
 
             blackboard.laser.add_point(new_point, pad=False, color = (10, 0, 0), intensity=255)
             blackboard.laser.sendFrame()
+            self.send_frame_ts = time.time()
+            self.missing_laser_count = 0
             return self._correct_laser(new_point, blackboard)
 
         return True 
@@ -292,15 +298,17 @@ class MainNode(Node):
 
         blackboard = Blackboard()
         blackboard.main_node = self
-        outcome = main_sm(blackboard)
-        self.logger.info(outcome)
 
         self.cam_info_received = False
+
+        outcome = main_sm(blackboard)
+        self.logger.info(outcome)
 
     def laser_pos_callback(self, msg): 
         self.cam_info_received = True
         ts = msg.timestamp
-        self.laser_pos_queue.add(ts, [msg.pos_list, msg.point_list])
+        if not msg.point_list == [] and not msg.pos_list == []: 
+            self.laser_pos_queue.add(ts, [msg.pos_list, msg.point_list])
     
     def runner_pos_callback(self, msg): 
         self.cam_info_received = True
