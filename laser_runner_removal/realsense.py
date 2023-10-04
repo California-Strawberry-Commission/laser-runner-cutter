@@ -113,15 +113,13 @@ class RealSense(Node):
 
         if self.laser_on:
             laser_point_list = self.detect_laser(frames)
-            if laser_point_list: 
-                laser_msg = self.create_pos_data_msg(frame_ts, laser_point_list, frames)
-                self.laser_pos_publisher.publish(laser_msg)
+            laser_msg = self.create_pos_data_msg(frame_ts, laser_point_list, frames)
+            self.laser_pos_publisher.publish(laser_msg)
         else: 
             self.background_image = curr_image 
             runner_point_list = self.detect_runners(frames)
-            if runner_point_list: 
-                runner_msg = self.create_pos_data_msg(frame_ts, runner_point_list, frames)
-                self.runner_pos_publisher.publish(runner_msg)
+            runner_msg = self.create_pos_data_msg(frame_ts, runner_point_list, frames)
+            self.runner_pos_publisher.publish(runner_msg)
 
         if self.rec_debug_frame: 
             debug_frame = np.copy(curr_image)
@@ -146,7 +144,8 @@ class RealSense(Node):
     def create_pos_data_msg(self, timestamp, point_list, frames): 
         msg = PosData()
         msg.pos_list = []
-        msg.point_list = []
+        msg.point_list = [] 
+        msg.invalid_point_list = []
         msg.timestamp = timestamp
         for point in point_list:
             point_msg = Point() 
