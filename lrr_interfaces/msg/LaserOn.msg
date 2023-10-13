@@ -1,0 +1,1 @@
+bool laser_state
