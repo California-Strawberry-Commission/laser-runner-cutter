@@ -79,7 +79,7 @@ class IldaLaser:
         # Load and initialize library
         # TODO: figure out how to use relative paths with ROS 2
         self.HeliosLib = ctypes.cdll.LoadLibrary(
-            "./src/LaserRunnerRemoval/laser_runner_removal/include/libHeliosDacAPI.so"
+            "./src/LaserRunnerRemoval/laser_runner_removal/include/helios_dac/linux-x86_64/libHeliosDacAPI.so"
         )
         numDevices = self.HeliosLib.OpenDevices()
         self.logger.info(f"Found {numDevices} Helios DACs")
