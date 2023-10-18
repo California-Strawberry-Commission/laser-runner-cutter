@@ -52,21 +52,12 @@ class EtherDreamDAC(LaserDAC):
       dac.close()
     """
 
-    def __init__(self):
+    def __init__(self, lib_file):
         self.points = []
         self.points_lock = threading.Lock()
         self.color = (1, 1, 1, 1)  # (r, g, b, i)
         self.playing = False
         self.connected_dac_id = 0
-
-        # Load library
-        # TODO: use environment variables or rospy params
-        deps_dir = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "..", "..", "include"
-        )
-        lib_file = os.path.join(
-            deps_dir, "ether_dream", "linux-x86_64", "libHeliosDacAPI.so"
-        )
         self.lib = ctypes.cdll.LoadLibrary(lib_file)
 
     def initialize(self):
@@ -82,6 +73,7 @@ class EtherDreamDAC(LaserDAC):
 
         dac_count = self.lib.etherdream_dac_count()
         print(f"Found {dac_count} Ether Dream DACs")
+        return dac_count
 
     def connect(self, dac_idx):
         print("Connecting to DAC...")

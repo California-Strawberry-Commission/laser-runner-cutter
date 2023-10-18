@@ -43,21 +43,12 @@ class HeliosDAC(LaserDAC):
       dac.close()
     """
 
-    def __init__(self):
+    def __init__(self, lib_file):
         self.points = []
         self.points_lock = threading.Lock()
         self.color = (1, 1, 1, 1)  # (r, g, b, i)
         self.playing = False
         self.dac_idx = 0
-
-        # Load library
-        # TODO: use environment variables or rospy params
-        deps_dir = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "..", "..", "include"
-        )
-        lib_file = os.path.join(
-            deps_dir, "helios_dac", "linux-x86_64", "libHeliosDacAPI.so"
-        )
         self.lib = ctypes.cdll.LoadLibrary(lib_file)
 
     def initialize(self):

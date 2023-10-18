@@ -17,6 +17,8 @@ import ctypes
 import os
 import logging
 
+from ament_index_python.packages import get_package_share_directory
+
 
 # Define point structure for HeliosDac
 class HeliosPoint(ctypes.Structure):
@@ -77,14 +79,12 @@ class IldaLaser:
     def initialize(self):
         """Create connection to a ILDA camera"""
         # Load and initialize library
-        # TODO: use environment variables or rospy params
-        deps_dir = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "..", "include"
+        include_dir = os.path.join(
+            get_package_share_directory("laser_control"), "include"
         )
-        lib_file = os.path.join(
-            deps_dir, "helios_dac", "linux-x86_64", "libHeliosDacAPI.so"
+        self.HeliosLib = ctypes.cdll.LoadLibrary(
+            os.path.join(include_dir, "libHeliosDacAPI.so")
         )
-        self.HeliosLib = ctypes.cdll.LoadLibrary(lib_file)
         numDevices = self.HeliosLib.OpenDevices()
         self.logger.info(f"Found {numDevices} Helios DACs")
 
