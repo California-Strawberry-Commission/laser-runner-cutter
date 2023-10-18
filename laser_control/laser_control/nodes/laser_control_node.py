@@ -33,7 +33,7 @@ class LaserControlNode(Node):
             AddPoint, "laser_control/add_point", self.add_point_callback
         )
         self.remove_point_srv = self.create_service(
-            Empty, "laser_control/remote_point", self.remove_point_callback
+            Empty, "laser_control/remove_point", self.remove_point_callback
         )
         self.clear_points_srv = self.create_service(
             Empty, "laser_control/clear_points", self.clear_points_callback
