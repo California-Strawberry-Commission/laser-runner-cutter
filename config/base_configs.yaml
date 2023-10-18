@@ -1,0 +1,3 @@
+main_node: 
+  ros__parameters: 
+    tracking_laser: [10, 0, 0]
