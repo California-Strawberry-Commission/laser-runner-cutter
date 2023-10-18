@@ -284,23 +284,20 @@ class Burn(State):
         blackboard.main_node.logger.info("Entering State Burn")
         burn_start = time.time()
 
-        # add config to control burn time
-        burn_time = 5
-
         # Turn on burn laser
         laser_msg = LaserOn()
         laser_msg.laser_state = True
         blackboard.main_node.laser_state_pub.publish(laser_msg)
         blackboard.main_node.logger.info("Setting Laser On")
-        laser_send_point = blackboard.laser.add_point(
+        blackboard.laser.add_point(
             blackboard.curr_track.corrected_point,
             pad=False,
-            color=(0, 0, 15),
+            color=blackboard.main_node.burn_color,
             intensity=255,
         )
         blackboard.laser.sendFrame()
 
-        while burn_start + burn_time > time.time():
+        while burn_start + blackboard.main_node.burn_time > time.time():
             time.sleep(0.1)
 
         blackboard.laser.sendEmpty()
@@ -323,13 +320,23 @@ class MainNode(Node):
         # declare parameters from a ros config file, if no parameter is found, the default is used
         self.declare_parameters(
             namespace="",
-            parameters=[("tracking_laser", [10, 0, 0])],
+            parameters=[
+                ("tracking_laser", [10, 0, 0]),
+                ("burn_color", [0, 0, 255]),
+                ("burn_time", 5),
+            ],
         )
 
         self.tracking_laser = (
-            blackboard.main_node.get_parameter("tracking_laser")
+            self.get_parameter("tracking_laser")
             .get_parameter_value()
             .integer_array_value
+        )
+        self.burn_color = (
+            self.get_parameter("burn_color").get_parameter_value().integer_array_value
+        )
+        self.burn_time = (
+            self.get_parameter("burn_time").get_parameter_value().integer_value
         )
 
         self.laser_state_pub = self.create_publisher(LaserOn, "laser_on", 1)
