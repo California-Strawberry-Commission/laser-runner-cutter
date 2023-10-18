@@ -1,11 +1,12 @@
 import heapq
 
+
 class TsQueue:
     def __init__(self, max_length):
         self.datums = []
         self.max_length = max_length
 
-    def empty(self): 
+    def empty(self):
         self.datums = []
 
     def add(self, timestamp, data):
@@ -16,7 +17,7 @@ class TsQueue:
     def get_ts(self, ts):
         closest_datum = None
         closest_ts = None
-        closest_diff = float('inf')
+        closest_diff = float("inf")
 
         for timestamp, datum in self.datums:
             time_diff = abs(ts - timestamp)
@@ -24,5 +25,5 @@ class TsQueue:
                 closest_diff = time_diff
                 closest_datum = datum
                 closest_ts = timestamp
-        
+
         return closest_ts, closest_datum
