@@ -84,7 +84,8 @@ class LaserControlNode(Node):
     def connect_to_dac_callback(self, request, response):
         dac_idx = request.idx
         if dac_idx < 0 or dac_idx >= len(self.dac_list):
-            return False
+            response.success = False
+            return response
 
         dac = self.dac_list[dac_idx]
         if dac.type == "helios":
@@ -94,37 +95,45 @@ class LaserControlNode(Node):
             self.connected_dac = self.ether_dream
             self.connected_dac.connect(dac_idx - self.num_helios_dacs)
 
-        return True
+        response.success = True
+        return response
 
     def set_color_callback(self, request, response):
         if self.connected_dac is not None:
             self.connected_dac.set_color(request.r, request.g, request.b, request.i)
+        return response
 
     def add_point_callback(self, request, response):
         if self.connected_dac is not None:
             self.connected_dac.add_point(request.x, request.y)
+        return response
 
     def remove_point_callback(self, request, response):
         if self.connected_dac is not None:
             self.connected_dac.remove_point()
+        return response
 
     def clear_points_callback(self, request, response):
         if self.connected_dac is not None:
             self.connected_dac.clear_points()
+        return response
 
     def play_callback(self, request, response):
         if self.connected_dac is not None:
             self.connected_dac.play(
                 request.fps, request.pps, request.transition_duration_ms
             )
+        return response
 
     def stop_callback(self, request, response):
         if self.connected_dac is not None:
             self.connected_dac.stop()
+        return response
 
     def close_callback(self, request, response):
         if self.connected_dac is not None:
             self.connected_dac.close()
+        return response
 
 
 def main(args=None):
