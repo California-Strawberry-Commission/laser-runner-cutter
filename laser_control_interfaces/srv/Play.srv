@@ -1,0 +1,4 @@
+uint32 fps
+uint32 pps
+float32 transition_duration_ms
+---

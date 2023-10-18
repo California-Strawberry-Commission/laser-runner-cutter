@@ -25,7 +25,11 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Dac.msg"
-  "srv/ListConnectedDacs.srv"
+  "srv/AddPoint.srv"
+  "srv/ConnectToDac.srv"
+  "srv/ListDacs.srv"
+  "srv/Play.srv"
+  "srv/SetColor.srv"
 )
 
 if(BUILD_TESTING)
