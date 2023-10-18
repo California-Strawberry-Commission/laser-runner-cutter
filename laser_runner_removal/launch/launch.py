@@ -1,14 +1,14 @@
-import launch
-import launch_ros.actions
+from launch import LaunchDescription
+from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    return launch.LaunchDescription(
+    return LaunchDescription(
         [
-            launch_ros.actions.Node(
+            Node(
                 package="laser_runner_removal", executable="realsense", name="realsense"
             ),
-            launch_ros.actions.Node(
+            Node(
                 package="laser_runner_removal", executable="main_node", name="main_node"
             ),
         ]

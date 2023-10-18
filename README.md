@@ -54,4 +54,4 @@ Laser Runner Removal is a project by the California Strawberry Commission for au
 
 ## Run LRR
 
-    $ ros2 launch laser_runner_removal lrr_launch.py
+    $ ros2 launch laser_runner_removal launch.py
