@@ -49,6 +49,7 @@ class ServiceWait(State):
         State.__init__(self, outcomes=["services_up"])
 
     def execute(self, blackboard):
+        blackboard.main_node.logger.info("Entering State ServiceWait")
         while not blackboard.main_node.cam_info_received:
             time.sleep(0.005)
 

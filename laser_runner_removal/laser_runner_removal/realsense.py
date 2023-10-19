@@ -65,7 +65,7 @@ class RealSense(Node):
     def initialize(self):
         # Setup yolo model
         include_dir = os.path.join(
-            get_package_share_directory("laser_control"), "include"
+            get_package_share_directory("laser_runner_removal"), "include"
         )
         self.model = YOLO(os.path.join(include_dir, "RunnerSegModel.pt"))
 
