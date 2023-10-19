@@ -11,13 +11,9 @@ import numpy as np
 
 from simple_node import Node
 from laser_runner_removal.laser import IldaLaser
-from laser_runner_removal.realsense import RealSense
-from laser_runner_removal.cv_utils import find_laser_point
 from laser_runner_removal.ts_queue import TsQueue
 from laser_runner_removal.Tracker import Tracker
-from lrr_interfaces.srv import RetrieveFrame
 from lrr_interfaces.msg import LaserOn, PosData, Point
-import cv2
 import time
 
 from yasmin import State, StateMachine, Blackboard

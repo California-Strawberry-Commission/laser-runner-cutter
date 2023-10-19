@@ -14,7 +14,6 @@ from lrr_interfaces.msg import FrameData, LaserOn, PosData, Pos, Point
 from lrr_interfaces.srv import RetrieveFrame
 
 from laser_runner_removal.cv_utils import find_laser_point
-from collections import deque
 from ultralytics import YOLO
 
 import pyrealsense2 as rs
