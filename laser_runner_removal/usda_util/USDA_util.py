@@ -4,7 +4,7 @@ Utility for controlling a laser based on the feedback from a webcamera.
 """
 import cv2
 import PySimpleGUI as sg
-from laser import IldaLaser
+from laser_runner_removal.laser import IldaLaser
 import numpy as np
 from enum import Enum
 import time
