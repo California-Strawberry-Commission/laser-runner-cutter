@@ -19,7 +19,9 @@ from ultralytics import YOLO
 
 import pyrealsense2 as rs
 import numpy as np
-import heapq
+import os
+
+from ament_index_python.packages import get_package_share_directory
 
 
 class RealSense(Node):
@@ -62,10 +64,10 @@ class RealSense(Node):
 
     def initialize(self):
         # Setup yolo model
-        # TODO: figure out how to use relative paths with ROS 2
-        self.model = YOLO(
-            "./src/LaserRunnerRemoval/laser_runner_removal/include/RunnerSegModel.pt"
+        include_dir = os.path.join(
+            get_package_share_directory("laser_control"), "include"
         )
+        self.model = YOLO(os.path.join(include_dir, "RunnerSegModel.pt"))
 
         # Setup code based on https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/align-depth2color.py
         self.pipeline = rs.pipeline()

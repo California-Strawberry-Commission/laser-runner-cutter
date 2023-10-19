@@ -14,8 +14,10 @@ Utilizes the HeliosDac code from https://github.com/Grix/helios_dac
 import numpy as np
 
 import ctypes
-import time
+import os
 import logging
+
+from ament_index_python.packages import get_package_share_directory
 
 
 # Define point structure for HeliosDac
@@ -77,9 +79,11 @@ class IldaLaser:
     def initialize(self):
         """Create connection to a ILDA camera"""
         # Load and initialize library
-        # TODO: figure out how to use relative paths with ROS 2
+        include_dir = os.path.join(
+            get_package_share_directory("laser_control"), "include"
+        )
         self.HeliosLib = ctypes.cdll.LoadLibrary(
-            "./src/LaserRunnerRemoval/laser_runner_removal/include/libHeliosDacAPI.so"
+            os.path.join(include_dir, "libHeliosDacAPI.so")
         )
         numDevices = self.HeliosLib.OpenDevices()
         self.logger.info(f"Found {numDevices} Helios DACs")

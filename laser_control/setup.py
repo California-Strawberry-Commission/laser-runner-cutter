@@ -1,8 +1,8 @@
 import os
-from glob import glob
 from setuptools import setup, find_packages
+from glob import glob
 
-package_name = "laser_runner_removal"
+package_name = "laser_control"
 
 setup(
     name=package_name,
@@ -15,23 +15,17 @@ setup(
             os.path.join("share", package_name, "include"),
             glob("include/**/*", recursive=True),
         ),
-        # Include all launch files.
-        (
-            os.path.join("share", package_name, "launch"),
-            glob(os.path.join("launch", "*launch.[pxy][yma]*")),
-        ),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
-    maintainer="bobby",
-    maintainer_email="rvinson@calstrawberry.org",
+    maintainer="genki",
+    maintainer_email="kondo.genki@gmail.com",
     description="TODO: Package description",
     license="TODO: License declaration",
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "realsense = laser_runner_removal.realsense:main",
-            "main_node = laser_runner_removal.main_node:main",
+            "laser_control_node = laser_control.nodes.laser_control_node:main"
         ],
     },
 )
