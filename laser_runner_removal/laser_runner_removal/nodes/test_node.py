@@ -16,7 +16,7 @@ from laser_control_interfaces.srv import (
     SetColor,
 )
 from laser_runner_removal.ts_queue import TsQueue
-from lrr_interfaces.msg import PosData
+from lrr_interfaces.msg import LaserOn, PosData
 
 
 class InitializationState(State):
@@ -108,6 +108,7 @@ class CalibrationState(State):
             Play.Request(fps=30, pps=30000, transition_duration_ms=0.5)
         )
         laser_send_ts = time.time()
+        self.node.laser_state_pub.publish(LaserOn(laser_state=True))
         time.sleep(0.5)
 
         # TODO: with a service on the camera node to get the laser pos ad-hoc, we
@@ -118,6 +119,7 @@ class CalibrationState(State):
             found_pos, found_point = laser_data
             found_pos = found_pos[0]
             found_point = found_point[0]
+        self.node.laser_state_pub.publish(LaserOn(laser_state=False))
 
         future = self.node.laser_stop_cli.call_async(Empty.Request())
         rclpy.spin_until_future_complete(self.node, future)
@@ -219,8 +221,9 @@ class TestNode(Node):
         # TODO: add service to get laser pos and runner pos on demand so camera
         # node isn't doing unnecessary work, and we don't need to maintain a
         # TSQueue in this node
+        self.laser_state_pub = self.create_publisher(LaserOn, "laser_on", 1)
         self.laser_pos_queue = TsQueue(10)
-        self.retrieve_laser_pos = self.create_subscription(
+        self.retrieve_laser_pos_sub = self.create_subscription(
             PosData, "laser_pos_data", self.laser_pos_callback, 5
         )
 
@@ -248,7 +251,6 @@ class TestNode(Node):
         self.get_logger().info(outcome)
 
     def laser_pos_callback(self, msg):
-        self.get_logger().info("LASER DETECTED")
         if not msg.point_list == [] and not msg.pos_list == []:
             self.laser_pos_queue.add(msg.timestamp, [msg.pos_list, msg.point_list])
 
