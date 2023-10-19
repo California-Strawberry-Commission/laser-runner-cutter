@@ -67,13 +67,13 @@ class LaserControlNode(Node):
         self.dac_list = []
         for i in range(0, self.num_helios_dacs):
             dac = Dac()
-            dac.type = "helios"
+            dac.type = dac.DAC_TYPE_HELIOS
             dac.name = f"Helios {i}"
             self.dac_list.append(dac)
 
         for i in range(0, self.num_ether_dream_dacs):
             dac = Dac()
-            dac.type = "ether_dream"
+            dac.type = dac.DAC_TYPE_ETHER_DREAM
             dac.name = f"Ether Dream {i}"
             self.dac_list.append(dac)
 
@@ -92,10 +92,10 @@ class LaserControlNode(Node):
             return response
 
         dac = self.dac_list[dac_idx]
-        if dac.type == "helios":
+        if dac.type == dac.DAC_TYPE_HELIOS:
             self.connected_dac = self.helios
             self.connected_dac.connect(dac_idx)
-        elif dac.type == "ether_dream":
+        elif dac.type == dac.DAC_TYPE_ETHER_DREAM:
             self.connected_dac = self.ether_dream
             self.connected_dac.connect(dac_idx - self.num_helios_dacs)
 
