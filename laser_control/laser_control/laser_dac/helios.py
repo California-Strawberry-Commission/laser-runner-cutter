@@ -4,7 +4,8 @@ import threading
 
 
 # Helios DAC uses 12 bits (unsigned) for x and y
-XY_BOUNDS = (4095, 4095)
+X_BOUNDS = (0, 4095)
+Y_BOUNDS = (0, 4095)
 
 # Helios DAC uses 8 bits (unsigned) for r, g, b, i
 MAX_COLOR = 255
@@ -59,21 +60,28 @@ class HeliosDAC(LaserDAC):
     def connect(self, dac_idx):
         self.dac_idx = dac_idx
 
-    def set_color(self, r=1, g=1, b=1, i=1):
+    def set_color(self, r=1.0, g=1.0, b=1.0, i=1.0):
         self.color = (r, g, b, i)
 
-    def get_bounds(self, offset=0):
+    def get_bounds(self, scale=1.0):
         """Return an array of points representing the corners of the outer bounds"""
         # Helios DAC uses 12 bits (unsigned) for x and y
+        x_offset = round((X_BOUNDS[1] - X_BOUNDS[0]) / 2 * (1.0 - scale))
+        y_offset = round((Y_BOUNDS[1] - Y_BOUNDS[0]) / 2 * (1.0 - scale))
         return [
-            (offset, offset),
-            (offset, XY_BOUNDS[1] - offset),
-            (XY_BOUNDS[0] - offset, XY_BOUNDS[1] - offset),
-            (XY_BOUNDS[0] - offset, offset),
+            (X_BOUNDS[0] + x_offset, Y_BOUNDS[0] + y_offset),
+            (X_BOUNDS[0] + x_offset, Y_BOUNDS[1] - y_offset),
+            (X_BOUNDS[1] - x_offset, Y_BOUNDS[1] - y_offset),
+            (X_BOUNDS[1] - x_offset, Y_BOUNDS[0] + y_offset),
         ]
 
     def in_bounds(self, x, y):
-        return x >= 0 and x <= XY_BOUNDS[0] and y >= 0 and y <= XY_BOUNDS[1]
+        return (
+            x >= X_BOUNDS[0]
+            and x <= X_BOUNDS[1]
+            and y >= Y_BOUNDS[0]
+            and y <= Y_BOUNDS[1]
+        )
 
     def add_point(self, x, y):
         if self.in_bounds(x, y):

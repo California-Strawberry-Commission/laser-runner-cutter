@@ -9,17 +9,18 @@ from laser_control_interfaces.msg import Dac
 from laser_control_interfaces.srv import (
     AddPoint,
     ConnectToDac,
+    GetBounds,
     ListDacs,
     Play,
     SetColor,
 )
 from std_srvs.srv import Empty
+from laser_control_interfaces.msg import Point
 
 
 class LaserControlNode(Node):
     def __init__(self):
         super().__init__("laser_control_node")
-        self.logger = self.get_logger()
         self.list_dacs_srv = self.create_service(
             ListDacs, "laser_control/list_dacs", self.list_dacs_callback
         )
@@ -28,6 +29,9 @@ class LaserControlNode(Node):
         )
         self.set_color_srv = self.create_service(
             SetColor, "laser_control/set_color", self.set_color_callback
+        )
+        self.get_bounds_srv = self.create_service(
+            GetBounds, "laser_control/get_bounds", self.get_bounds_callback
         )
         self.add_point_srv = self.create_service(
             AddPoint, "laser_control/add_point", self.add_point_callback
@@ -73,7 +77,7 @@ class LaserControlNode(Node):
             dac.name = f"Ether Dream {i}"
             self.dac_list.append(dac)
 
-        self.logger.info(
+        self.get_logger().info(
             f"Found {self.num_ether_dream_dacs} Ether Dream and {self.num_helios_dacs} Helios DACs"
         )
 
@@ -103,9 +107,15 @@ class LaserControlNode(Node):
             self.connected_dac.set_color(request.r, request.g, request.b, request.i)
         return response
 
+    def get_bounds_callback(self, request, response):
+        if self.connected_dac is not None:
+            points = self.connected_dac.get_bounds(request.scale)
+            response.points = [Point(x=point[0], y=point[1]) for point in points]
+        return response
+
     def add_point_callback(self, request, response):
         if self.connected_dac is not None:
-            self.connected_dac.add_point(request.x, request.y)
+            self.connected_dac.add_point(request.point.x, request.point.y)
         return response
 
     def remove_point_callback(self, request, response):
