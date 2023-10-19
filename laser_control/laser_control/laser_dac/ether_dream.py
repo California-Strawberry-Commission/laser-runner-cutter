@@ -85,9 +85,10 @@ class EtherDreamDAC(LaserDAC):
     def set_color(self, r=1, g=1, b=1, i=1):
         self.color = (r, g, b, i)
 
-    def get_bounds(self, offset=0):
+    def get_bounds(self, scale=1.0):
         """Return an array of points representing the corners of the outer bounds"""
         # Ether Dream DAC uses 16 bits (signed) for x and y
+        offset = round((XY_BOUNDS[1] - XY_BOUNDS[0]) / 2 * (1.0 - scale))
         return [
             (XY_BOUNDS[0] + offset, XY_BOUNDS[0] + offset),
             (XY_BOUNDS[0] + offset, XY_BOUNDS[1] - offset),

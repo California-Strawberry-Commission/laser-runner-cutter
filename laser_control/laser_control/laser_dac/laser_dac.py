@@ -15,6 +15,10 @@ class LaserDAC(ABC):
         pass
 
     @abstractmethod
+    def get_bounds(self, scale):
+        pass
+
+    @abstractmethod
     def add_point(self, x, y):
         pass
 

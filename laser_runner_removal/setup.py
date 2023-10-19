@@ -32,6 +32,7 @@ setup(
         "console_scripts": [
             "realsense = laser_runner_removal.realsense:main",
             "main_node = laser_runner_removal.main_node:main",
+            "test_node = laser_runner_removal.nodes.test_node:main",
         ],
     },
 )
