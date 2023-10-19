@@ -18,6 +18,7 @@ def generate_launch_description():
                 executable="realsense",
                 name="realsense",
                 arguments=["--ros-args", "--log-level", "info"],
+                parameters=[config],
             ),
             launch_ros.actions.Node(
                 package="laser_runner_removal",
