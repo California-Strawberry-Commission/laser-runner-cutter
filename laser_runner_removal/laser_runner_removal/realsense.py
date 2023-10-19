@@ -65,6 +65,12 @@ class RealSense(Node):
             self.get_parameter("depth_size").get_parameter_value().integer_array_value
         )
 
+        # This is currently not functioning correctly because of permission errors
+        if not os.path.isdir(self.video_dir) and self.rec_video_frame:
+            os.makedirs(self.video_dir)
+        if not os.path.isdir(self.debug_video_dir) and self.rec_debug_frame:
+            os.makedirs(self.debug_video_dir)
+
         self.ts_publisher = self.create_publisher(FrameData, "frame_data", 5)
         self.laser_pos_publisher = self.create_publisher(PosData, "laser_pos_data", 5)
         self.runner_pos_publisher = self.create_publisher(PosData, "runner_pos_data", 5)

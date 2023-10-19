@@ -69,6 +69,13 @@ Linux systems require udev rules to allow access to USB devices without root pri
         $ colcon build
         $ source ~/ros2_ws/install/local_setup.zsh
 
+## Optional video stream folder
+
+1. If recording the video files locally create a video_stream and debug_video_stream directory 
+        
+        $ sudo mkdir /opt/video_stream
+        $ sudo mkdir /opt/debug_video_stream
+
 ## Run
 
     $ ros2 launch laser_runner_removal launch.py
