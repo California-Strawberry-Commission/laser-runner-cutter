@@ -1,6 +1,5 @@
 import ctypes
 from .laser_dac import LaserDAC
-import os
 import threading
 
 
