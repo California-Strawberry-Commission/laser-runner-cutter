@@ -20,13 +20,13 @@ API_key = ""
 client = lb.Client(API_key)
 
 # Add a directory path for where images are stored
-img_dir = ""
+img_dir = "../data_store/segmentation_data/raw/"
 # Add directory path for where existing mask labels are
-mask_dir = ""
+mask_dir = "../data_store/segmentation_data/mask/"
 # Add directory path for where yolo labels are
-label_dir = ""
+label_dir = "../data_store/segmentation_data/yolo_labels/"
 
-project_name = ""
+project_name = "Runner Segmentation"
 project = client.get_projects(where=lb.Project.name == project_name).get_one()
 class_map = {"Runner": 0}
 
