@@ -30,8 +30,9 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ConnectToDac.srv"
   "srv/GetBounds.srv"
   "srv/ListDacs.srv"
-  "srv/Play.srv"
   "srv/SetColor.srv"
+  "srv/SetPlaybackParams.srv"
+  "srv/SetPoints.srv"
 )
 
 if(BUILD_TESTING)

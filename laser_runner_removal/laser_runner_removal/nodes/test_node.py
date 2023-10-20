@@ -8,12 +8,11 @@ from yasmin import State, StateMachine
 
 from laser_control_interfaces.msg import Point
 from laser_control_interfaces.srv import (
-    AddPoint,
     ConnectToDac,
     GetBounds,
     ListDacs,
-    Play,
     SetColor,
+    SetPoints,
 )
 from laser_runner_removal.ts_queue import TsQueue
 from lrr_interfaces.msg import LaserOn, PosData
@@ -98,15 +97,11 @@ class CalibrationState(State):
         return "calibration_success"
 
     def get_camera_point_for_laser_point(self, laser_point):
-        future = self.node.laser_clear_points_cli.call_async(Empty.Request())
-        rclpy.spin_until_future_complete(self.node, future)
-        future = self.node.laser_add_point_cli.call_async(
-            AddPoint.Request(point=Point(x=laser_point[0], y=laser_point[1]))
+        future = self.node.laser_set_points_cli.call_async(
+            SetPoints.Request(points=[Point(x=laser_point[0], y=laser_point[1])])
         )
         rclpy.spin_until_future_complete(self.node, future)
-        self.node.laser_play_cli.call_async(
-            Play.Request(fps=30, pps=30000, transition_duration_ms=0.5)
-        )
+        self.node.laser_play_cli.call_async(Empty.Request())
         laser_send_ts = time.time()
         self.node.laser_state_pub.publish(LaserOn(laser_state=True))
         time.sleep(0.5)
@@ -207,13 +202,13 @@ class TestNode(Node):
         self.laser_get_bounds_cli = self.create_client(
             GetBounds, "laser_control/get_bounds"
         )
-        self.laser_add_point_cli = self.create_client(
-            AddPoint, "laser_control/add_point"
+        self.laser_set_points_cli = self.create_client(
+            SetPoints, "laser_control/set_points"
         )
         self.laser_clear_points_cli = self.create_client(
             Empty, "laser_control/clear_points"
         )
-        self.laser_play_cli = self.create_client(Play, "laser_control/play")
+        self.laser_play_cli = self.create_client(Empty, "laser_control/play")
         self.laser_stop_cli = self.create_client(Empty, "laser_control/stop")
 
         # Set up camera subscriptions

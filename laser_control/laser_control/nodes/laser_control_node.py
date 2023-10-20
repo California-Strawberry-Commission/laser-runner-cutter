@@ -11,8 +11,9 @@ from laser_control_interfaces.srv import (
     ConnectToDac,
     GetBounds,
     ListDacs,
-    Play,
     SetColor,
+    SetPlaybackParams,
+    SetPoints,
 )
 from std_srvs.srv import Empty
 from laser_control_interfaces.msg import Point
@@ -21,6 +22,15 @@ from laser_control_interfaces.msg import Point
 class LaserControlNode(Node):
     def __init__(self):
         super().__init__("laser_control_node")
+
+        # Playback params
+
+        self.fps = 30
+        self.pps = 30000
+        self.transition_duration_ms = 0.5
+
+        # Services
+
         self.list_dacs_srv = self.create_service(
             ListDacs, "laser_control/list_dacs", self.list_dacs_callback
         )
@@ -36,14 +46,22 @@ class LaserControlNode(Node):
         self.add_point_srv = self.create_service(
             AddPoint, "laser_control/add_point", self.add_point_callback
         )
+        self.set_points_srv = self.create_service(
+            SetPoints, "laser_control/set_points", self.set_points_callback
+        )
         self.remove_point_srv = self.create_service(
             Empty, "laser_control/remove_point", self.remove_point_callback
         )
         self.clear_points_srv = self.create_service(
             Empty, "laser_control/clear_points", self.clear_points_callback
         )
+        self.set_playback_params_srv = self.create_service(
+            SetPlaybackParams,
+            "laser_control/set_playback_params",
+            self.set_playback_params_callback,
+        )
         self.play_srv = self.create_service(
-            Play, "laser_control/play", self.play_callback
+            Empty, "laser_control/play", self.play_callback
         )
         self.stop_srv = self.create_service(
             Empty, "laser_control/stop", self.stop_callback
@@ -51,6 +69,8 @@ class LaserControlNode(Node):
         self.close_srv = self.create_service(
             Empty, "laser_control/close", self.close_callback
         )
+
+        # Initialize DACs
 
         include_dir = os.path.join(
             get_package_share_directory("laser_control"), "include"
@@ -118,6 +138,13 @@ class LaserControlNode(Node):
             self.connected_dac.add_point(request.point.x, request.point.y)
         return response
 
+    def set_points_callback(self, request, response):
+        if self.connected_dac is not None:
+            self.connected_dac.clear_points()
+            for point in request.points:
+                self.connected_dac.add_point(point.x, point.y)
+        return response
+
     def remove_point_callback(self, request, response):
         if self.connected_dac is not None:
             self.connected_dac.remove_point()
@@ -128,11 +155,15 @@ class LaserControlNode(Node):
             self.connected_dac.clear_points()
         return response
 
+    def set_playback_params_callback(self, request, response):
+        self.fps = request.fps
+        self.pps = request.pps
+        self.transition_duration_ms = request.transition_duration_ms
+        return response
+
     def play_callback(self, request, response):
         if self.connected_dac is not None:
-            self.connected_dac.play(
-                request.fps, request.pps, request.transition_duration_ms
-            )
+            self.connected_dac.play(self.fps, self.pps, self.transition_duration_ms)
         return response
 
     def stop_callback(self, request, response):
