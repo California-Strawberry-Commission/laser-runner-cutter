@@ -11,13 +11,9 @@ import numpy as np
 
 from simple_node import Node
 from laser_runner_removal.laser import IldaLaser
-from laser_runner_removal.realsense import RealSense
-from laser_runner_removal.cv_utils import find_laser_point
 from laser_runner_removal.ts_queue import TsQueue
 from laser_runner_removal.Tracker import Tracker
-from lrr_interfaces.srv import RetrieveFrame
 from lrr_interfaces.msg import LaserOn, PosData, Point
-import cv2
 import time
 
 from yasmin import State, StateMachine, Blackboard
@@ -85,7 +81,10 @@ class Calibrate(State):
             )
             while not found_pos and attempts < 50:
                 blackboard.laser.add_point(
-                    point, pad=False, color=(10, 0, 0), intensity=1
+                    point,
+                    pad=False,
+                    color=blackboard.main_node.tracking_laser,
+                    intensity=1,
                 )
                 blackboard.laser.sendFrame()
 
@@ -187,13 +186,12 @@ class Correct(State):
             blackboard.main_node.logger.info("Setting Laser Off")
             blackboard.main_node.laser_state_pub.publish(laser_msg)
             blackboard.main_node.runner_tracker.deactivate(blackboard.curr_track)
-            # from remote_pdb import RemotePdb
-            # RemotePdb('127.0.0.1', 4444).set_trace()
             return "target_not_reached"
+
         laser_send_point = blackboard.laser.add_pos(
             blackboard.curr_track.pos_wrt_cam,
             pad=False,
-            color=(10, 0, 0),
+            color=blackboard.main_node.tracking_laser,
             intensity=255,
         )
         self.send_frame_ts = time.time()
@@ -261,7 +259,10 @@ class Correct(State):
                 return False
 
             blackboard.laser.add_point(
-                new_point, pad=False, color=(10, 0, 0), intensity=255
+                new_point,
+                pad=False,
+                color=blackboard.main_node.tracking_laser,
+                intensity=255,
             )
             blackboard.laser.sendFrame()
             self.send_frame_ts = time.time()
@@ -279,23 +280,20 @@ class Burn(State):
         blackboard.main_node.logger.info("Entering State Burn")
         burn_start = time.time()
 
-        # add config to control burn time
-        burn_time = 5
-
         # Turn on burn laser
         laser_msg = LaserOn()
         laser_msg.laser_state = True
         blackboard.main_node.laser_state_pub.publish(laser_msg)
         blackboard.main_node.logger.info("Setting Laser On")
-        laser_send_point = blackboard.laser.add_point(
+        blackboard.laser.add_point(
             blackboard.curr_track.corrected_point,
             pad=False,
-            color=(0, 0, 15),
+            color=blackboard.main_node.burn_color,
             intensity=255,
         )
         blackboard.laser.sendFrame()
 
-        while burn_start + burn_time > time.time():
+        while burn_start + blackboard.main_node.burn_time > time.time():
             time.sleep(0.1)
 
         blackboard.laser.sendEmpty()
@@ -314,6 +312,28 @@ class MainNode(Node):
     def __init__(self):
         """State Machine that controls what the system is currently doing"""
         Node.__init__(self, "main_node")
+
+        # declare parameters from a ros config file, if no parameter is found, the default is used
+        self.declare_parameters(
+            namespace="",
+            parameters=[
+                ("tracking_laser", [10, 0, 0]),
+                ("burn_color", [0, 0, 255]),
+                ("burn_time", 5),
+            ],
+        )
+
+        self.tracking_laser = (
+            self.get_parameter("tracking_laser")
+            .get_parameter_value()
+            .integer_array_value
+        )
+        self.burn_color = (
+            self.get_parameter("burn_color").get_parameter_value().integer_array_value
+        )
+        self.burn_time = (
+            self.get_parameter("burn_time").get_parameter_value().integer_value
+        )
 
         self.laser_state_pub = self.create_publisher(LaserOn, "laser_on", 1)
         self.runner_point_pub = self.create_publisher(Point, "runner_point", 1)

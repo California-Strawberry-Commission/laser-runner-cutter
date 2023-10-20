@@ -14,7 +14,6 @@ from lrr_interfaces.msg import FrameData, LaserOn, PosData, Pos, Point
 from lrr_interfaces.srv import RetrieveFrame
 
 from laser_runner_removal.cv_utils import find_laser_point
-from collections import deque
 from ultralytics import YOLO
 
 import pyrealsense2 as rs
@@ -28,6 +27,50 @@ class RealSense(Node):
     def __init__(self):
         Node.__init__(self, "RealsensePublisher")
         self.logger = self.get_logger()
+
+        # declare parameters from a ros config file, if no parameter is found, the default is used
+        self.declare_parameters(
+            namespace="",
+            parameters=[
+                ("video_dir", "/opt/video_stream"),
+                ("debug_video_dir", "/opt/debug_video_stream"),
+                ("save_video", True),
+                ("save_debug", False),
+                ("frame_period", 0.1),
+                ("rgb_size", [1920, 1080]),
+                ("depth_size", [1280, 720]),
+            ],
+        )
+
+        # get class attributes from passed in parameters
+        self.video_dir = (
+            self.get_parameter("video_dir").get_parameter_value().string_value
+        )
+        self.debug_video_dir = (
+            self.get_parameter("debug_video_dir").get_parameter_value().string_value
+        )
+        self.rec_video_frame = (
+            self.get_parameter("save_video").get_parameter_value().bool_value
+        )
+        self.rec_debug_frame = (
+            self.get_parameter("save_debug").get_parameter_value().bool_value
+        )
+        self.frame_period = (
+            self.get_parameter("frame_period").get_parameter_value().double_value
+        )
+        self.rgb_size = (
+            self.get_parameter("rgb_size").get_parameter_value().integer_array_value
+        )
+        self.depth_size = (
+            self.get_parameter("depth_size").get_parameter_value().integer_array_value
+        )
+
+        # This is currently not functioning correctly because of permission errors
+        if not os.path.isdir(self.video_dir) and self.rec_video_frame:
+            os.makedirs(self.video_dir)
+        if not os.path.isdir(self.debug_video_dir) and self.rec_debug_frame:
+            os.makedirs(self.debug_video_dir)
+
         self.ts_publisher = self.create_publisher(FrameData, "frame_data", 5)
         self.laser_pos_publisher = self.create_publisher(PosData, "laser_pos_data", 5)
         self.runner_pos_publisher = self.create_publisher(PosData, "runner_pos_data", 5)
@@ -40,12 +83,7 @@ class RealSense(Node):
             Point, "runner_point", self.runner_point_cb, 1
         )
         self.laser_on = False
-
-        # Add to config
-        self.frame_period = 0.1  # s
         self.frame_callback = self.create_timer(self.frame_period, self.frame_callback)
-
-        self.rec_debug_frame = True
 
         self.frame_srv = self.create_service(
             RetrieveFrame, "retrieve_frame", self.retrieve_frame
@@ -72,8 +110,12 @@ class RealSense(Node):
         # Setup code based on https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/align-depth2color.py
         self.pipeline = rs.pipeline()
         self.config = rs.config()
-        self.config.enable_stream(rs.stream.depth, 1280, 720, rs.format.z16, 30)
-        self.config.enable_stream(rs.stream.color, 1920, 1080, rs.format.bgr8, 30)
+        self.config.enable_stream(
+            rs.stream.depth, self.depth_size[0], self.depth_size[1], rs.format.z16, 30
+        )
+        self.config.enable_stream(
+            rs.stream.color, self.rgb_size[0], self.rgb_size[1], rs.format.bgr8, 30
+        )
         self.profile = self.pipeline.start(self.config)
         self.setup_inten_extrins()
 
@@ -87,12 +129,20 @@ class RealSense(Node):
         ts = time.time()
         datetime_obj = datetime.fromtimestamp(ts)
         datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
-        rec_name = f"/home/bobby/video_stream/{datetime_string}.avi"
-        self.rec = cv2.VideoWriter(rec_name, 0, 1 / self.frame_period, (1920, 1080))
+        if self.rec_video_frame:
+            video_name = f"{datetime_string}.avi"
+            rec_name = os.path.join(self.video_dir, video_name)
+            self.rec = cv2.VideoWriter(
+                rec_name, 0, 1 / self.frame_period, (self.rgb_size[0], self.rgb_size[1])
+            )
         if self.rec_debug_frame:
-            rec_name_debug = f"/home/bobby/video_stream/{datetime_string}_debug.avi"
+            debug_video_name = f"{datetime_string}_debug.avi"
+            debug_rec_name = os.path.join(self.debug_video_dir, debug_video_name)
             self.rec_debug = cv2.VideoWriter(
-                rec_name_debug, 0, 1 / self.frame_period, (1920, 1080)
+                debug_rec_name,
+                0,
+                1 / self.frame_period,
+                (self.rgb_size[0], self.rgb_size[1]),
             )
 
     def frame_callback(self):
