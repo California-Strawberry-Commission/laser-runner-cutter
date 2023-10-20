@@ -1,0 +1,6 @@
+path: data_store/segmentation_data/
+train: images/train
+val: images/val
+
+names: 
+  0: runner
