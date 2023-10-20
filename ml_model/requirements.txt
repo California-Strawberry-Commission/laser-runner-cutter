@@ -1,0 +1,5 @@
+numpy
+opencv-python
+dvc[s3]
+labelbox
+scaleapi
