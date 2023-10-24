@@ -11,6 +11,9 @@ def generate_launch_description():
                 name="laser_control_node",
             ),
             Node(
+                package="laser_runner_removal", executable="realsense", name="realsense"
+            ),
+            Node(
                 package="laser_runner_removal", executable="test_node", name="test_node"
             ),
         ]
