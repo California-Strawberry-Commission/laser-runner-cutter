@@ -9,6 +9,7 @@ import time
 from datetime import datetime
 from rclpy.node import Node
 
+from camera_control.camera.realsense import RealSense
 from shapely import Polygon
 from lrr_interfaces.msg import FrameData, LaserOn, PosData, Pos, Point
 from lrr_interfaces.srv import RetrieveFrame
@@ -16,7 +17,6 @@ from lrr_interfaces.srv import RetrieveFrame
 from laser_runner_removal.cv_utils import find_laser_point
 from ultralytics import YOLO
 
-import pyrealsense2 as rs
 import numpy as np
 import os
 
@@ -71,7 +71,7 @@ class CameraControlNode(Node):
         if not os.path.isdir(self.debug_video_dir) and self.rec_debug_frame:
             os.makedirs(self.debug_video_dir)
 
-        #Create publishers and subscribers 
+        # Create publishers and subscribers
         self.ts_publisher = self.create_publisher(FrameData, "frame_data", 5)
         self.laser_pos_publisher = self.create_publisher(PosData, "laser_pos_data", 5)
         self.runner_pos_publisher = self.create_publisher(PosData, "runner_pos_data", 5)
@@ -86,12 +86,12 @@ class CameraControlNode(Node):
         self.laser_on = False
         self.frame_callback = self.create_timer(self.frame_period, self.frame_callback)
 
-
-        #Create services 
+        # Create services
         self.frame_srv = self.create_service(
             RetrieveFrame, "retrieve_frame", self.retrieve_frame
         )
 
+        self.camera = RealSense(self.logger, self.rgb_size, self.depth_size)
         self.background_frame = None
         self.initialize()
 
@@ -110,24 +110,10 @@ class CameraControlNode(Node):
         )
         self.model = YOLO(os.path.join(include_dir, "RunnerSegModel.pt"))
 
-        # Setup code based on https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/align-depth2color.py
-        self.pipeline = rs.pipeline()
-        self.config = rs.config()
-        self.config.enable_stream(
-            rs.stream.depth, self.depth_size[0], self.depth_size[1], rs.format.z16, 30
-        )
-        self.config.enable_stream(
-            rs.stream.color, self.rgb_size[0], self.rgb_size[1], rs.format.bgr8, 30
-        )
-        self.profile = self.pipeline.start(self.config)
-        self.setup_inten_extrins()
+        self.camera.initialize()
+        self.initialize_recording()
 
-        depth_sensor = self.profile.get_device().first_depth_sensor()
-        self.depth_scale = depth_sensor.get_depth_scale()
-
-        self.depthMinMeters = 0.1
-        self.depthMaxMeters = 10
-
+    def initialize_recording(self):
         # handle default log location
         ts = time.time()
         datetime_obj = datetime.fromtimestamp(ts)
@@ -149,10 +135,13 @@ class CameraControlNode(Node):
             )
 
     def frame_callback(self):
-        frames = self.get_frames()
+        frames = self.camera.get_frames()
         if not frames:
             return
 
+        # This is still using a realsense frame concept, for better multicamera
+        # probability, all realsense based frame controls should move into the
+        # realsense module.
         frame_ts = frames["color"].get_timestamp()
         # convert from ms to seconds
         frame_ts = frame_ts / 1000
@@ -231,7 +220,7 @@ class CameraControlNode(Node):
             point_msg = Point()
             point_msg.x = point[0]
             point_msg.y = point[1]
-            pos = self.get_pos_location(point[0], point[1], frames)
+            pos = self.camera.get_pos_location(point[0], point[1], frames)
             if pos is not None:
                 pos_msg = Pos()
                 pos_msg.x = pos[0]
@@ -263,75 +252,6 @@ class CameraControlNode(Node):
             self.logger.debug(f"Found Laser Point: {point}")
             found_pos_list.append(self.get_pos_location(point[0], point[1], frames))
         return found_point_list
-
-    def get_clipping_distance(self):
-        # Getting the depth sensor's depth scale (see rs-align example for explanation)
-        depth_sensor = self.profile.get_device().first_depth_sensor()
-        depth_scale = depth_sensor.get_depth_scale()
-
-        # We will be removing the background of objects more than
-        #  clipping_distance_in_meters meters away
-        clipping_distance_in_meters = 1  # 1 meter
-        self.clipping_distance = clipping_distance_in_meters / depth_scale
-
-    def get_frames(self):
-        frames = self.pipeline.poll_for_frames()
-        if frames:
-            depth_frame = frames.get_depth_frame()
-            color_frame = frames.get_color_frame()
-            if not depth_frame or not color_frame:
-                return None
-
-            return {"color": color_frame, "depth": depth_frame}
-
-    def setup_inten_extrins(self):
-        color_prof = self.profile.get_stream(rs.stream.color)
-        depth_prof = self.profile.get_stream(rs.stream.depth)
-
-        self.depth_intrins = depth_prof.as_video_stream_profile().get_intrinsics()
-        self.color_intrins = color_prof.as_video_stream_profile().get_intrinsics()
-        self.logger.info(f"Color Frame intrinsics:{self.color_intrins}")
-        self.depth_to_color_extrinsic = depth_prof.get_extrinsics_to(color_prof)
-        self.color_to_depth_extrinsic = color_prof.get_extrinsics_to(depth_prof)
-
-    def color_pixel_to_depth(self, x, y, frame):
-        """Given the location of a x-y point in the color frame, return the corresponding x-y point in the depth frame."""
-        # Based of a number of realsense github issues including
-        # https://github.com/IntelRealSense/librealsense/issues/5440#issuecomment-566593866
-        depth_pixel = rs.rs2_project_color_pixel_to_depth_pixel(
-            frame["depth"].get_data(),
-            self.depth_scale,
-            self.depthMinMeters,
-            self.depthMaxMeters,
-            self.depth_intrins,
-            self.color_intrins,
-            self.depth_to_color_extrinsic,
-            self.color_to_depth_extrinsic,
-            (x, y),
-        )
-        self.logger.debug(
-            f"Color point:[{x} {y}] corresponding Depth point{depth_pixel}"
-        )
-        if depth_pixel[0] < 0 or depth_pixel[1] < 0:
-            return None
-        return depth_pixel
-
-    def get_pos_location(self, x, y, frame):
-        """Given an x-y point in the color frame, return the x-y-z point with respect to the camera"""
-        depth_point = self.color_pixel_to_depth(x, y, frame)
-        if not depth_point:
-            return None
-        depth = frame["depth"].get_distance(
-            round(depth_point[0]), round(depth_point[1])
-        )
-        pos_wrt_color = rs.rs2_deproject_pixel_to_point(
-            self.color_intrins, [x, y], depth
-        )
-        pos_wrt_color = np.array(pos_wrt_color) * 1000
-        self.logger.debug(
-            f"color point:[{x}, {y}] corresponding color_pos: {pos_wrt_color}"
-        )
-        return pos_wrt_color
 
     def retrieve_frame(self, timestamp):
         raise NotImplementedError
