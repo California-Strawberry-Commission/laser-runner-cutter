@@ -11,7 +11,8 @@ from rclpy.node import Node
 
 from camera_control.camera.realsense import RealSense
 from lrr_interfaces.msg import FrameData, LaserOn, PosData, Pos, Point
-from lrr_interfaces.srv import RetrieveFrame
+from camera_control_interfaces.msg import UInt8NumpyArray, Int16NumpyArray
+from camera_control_interfaces.srv import GetFrame
 
 import camera_control.utils.cv_utils as cv_utils
 from ultralytics import YOLO
@@ -87,7 +88,7 @@ class CameraControlNode(Node):
 
         # Create services
         self.frame_srv = self.create_service(
-            RetrieveFrame, "retrieve_frame", self.retrieve_frame
+            GetFrame, "camara_control/get_frame", self.get_frame
         )
 
         self.camera = RealSense(self.logger, self.rgb_size, self.depth_size)
@@ -135,6 +136,7 @@ class CameraControlNode(Node):
 
     def frame_callback(self):
         frames = self.camera.get_frames()
+        self.curr_frames = frames
         if not frames:
             return
 
@@ -205,8 +207,15 @@ class CameraControlNode(Node):
                 msg.invalid_point_list.append(point_msg)
         return msg
 
-    def retrieve_frame(self, timestamp):
-        raise NotImplementedError
+    def get_frame(self, request, response):
+        response.timestamp = self.curr_frames["color"].get_timestamp()
+        color_array = np.asanyarray(self.curr_frames["color"].get_data())
+        depth_array = np.asanyarray(self.curr_frames["depth"].get_data())
+        color_data = list(color_array.flatten())
+        depth_data = list(depth_array.flatten())
+        response.color_frame = UInt8NumpyArray(data=color_data, shape=color_array.shape)
+        response.depth_frame = Int16NumpyArray(data=depth_data, shape=depth_array.shape)
+        return response
 
 
 def main(args=None):

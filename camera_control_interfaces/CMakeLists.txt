@@ -26,7 +26,10 @@ find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Point.msg"
   "msg/Pos.msg"
-  "msg/PosData.msg"
+  "msg/PosData.msg"  
+  "msg/UInt8NumpyArray.msg"
+  "msg/Int16NumpyArray.msg"
+  "srv/GetFrame.srv"
 )
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
