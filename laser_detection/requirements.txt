@@ -1,0 +1,9 @@
+pyrealsense2
+numpy
+Pillow
+ultralytics
+dvc[s3]
+python-dotenv
+labelbox
+ndjson
+../laser_control
