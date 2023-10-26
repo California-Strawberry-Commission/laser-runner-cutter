@@ -46,16 +46,6 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
         $ cd laser_detection
         $ echo "LABELBOX_API_KEY=<api key>" > .env
 
-## Update Ultralytics directory files
-
-The ultralytics repo uses a config file to read in some directory locations, changing those to point to the project directory makes things a bit cleaner and easier.
-
-1.  Update the directory paths in `~/.config/Ultralytics/settings.yml` to:
-
-        datasets_dir: /home/<user_name>/ros_ws/src/LaserRunnerRemoval/laser_detection/
-        weights_dir: /home/<user_name>/ros_ws/src/LaserRunnerRemoval/laser_detection/ultralytics/weights
-        runs_dir: /home/<user_name>/ros_ws/src/LaserRunnerRemoval/laser_detection/ultralytics/runs
-
 ## Train the model
 
 1.  The local train script uses the ultalytics repo to train a laser detection model on the dataset:
