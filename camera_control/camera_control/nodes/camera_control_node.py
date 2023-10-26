@@ -10,11 +10,10 @@ from datetime import datetime
 from rclpy.node import Node
 
 from camera_control.camera.realsense import RealSense
-from shapely import Polygon
 from lrr_interfaces.msg import FrameData, LaserOn, PosData, Pos, Point
 from lrr_interfaces.srv import RetrieveFrame
 
-from laser_runner_removal.cv_utils import find_laser_point
+import camera_control.utils.cv_utils as cv_utils
 from ultralytics import YOLO
 
 import numpy as np
@@ -106,7 +105,7 @@ class CameraControlNode(Node):
     def initialize(self):
         # Setup yolo model
         include_dir = os.path.join(
-            get_package_share_directory("laser_runner_removal"), "include"
+            get_package_share_directory("camera_control"), "include"
         )
         self.model = YOLO(os.path.join(include_dir, "RunnerSegModel.pt"))
 
@@ -160,19 +159,19 @@ class CameraControlNode(Node):
         runner_point_list = []
 
         if self.laser_on:
-            laser_point_list = self.detect_laser(frames)
+            laser_point_list = cv_utils.detect_laser(frames)
             laser_msg = self.create_pos_data_msg(frame_ts, laser_point_list, frames)
             self.laser_pos_publisher.publish(laser_msg)
         else:
             self.background_image = curr_image
-            runner_point_list = self.detect_runners(frames)
+            runner_point_list = cv_utils.detect_runners(frames, self.background_image)
             runner_msg = self.create_pos_data_msg(frame_ts, runner_point_list, frames)
             self.runner_pos_publisher.publish(runner_msg)
 
         if self.rec_debug_frame:
             debug_frame = np.copy(curr_image)
-            debug_frame = self.draw_laser(debug_frame, laser_point_list)
-            debug_frame = self.draw_runners(debug_frame, runner_point_list)
+            debug_frame = cv_utils.draw_laser(debug_frame, laser_point_list)
+            debug_frame = cv_utils.draw_runners(debug_frame, runner_point_list)
             if self.laser_on and self.runner_point is not None:
                 debug_frame = cv2.drawMarker(
                     debug_frame,
@@ -183,32 +182,6 @@ class CameraControlNode(Node):
                     markerSize=20,
                 )
             self.rec_debug.write(debug_frame)
-
-    def draw_laser(self, debug_frame, laser_list):
-        for laser in laser_list:
-            pos = [int(laser[0]), int(laser[1])]
-            debug_frame = cv2.drawMarker(
-                debug_frame,
-                pos,
-                (0, 0, 0),
-                cv2.MARKER_CROSS,
-                thickness=1,
-                markerSize=20,
-            )
-        return debug_frame
-
-    def draw_runners(self, debug_frame, runner_list):
-        for runner in runner_list:
-            pos = [int(runner[0]), int(runner[1])]
-            debug_frame = cv2.drawMarker(
-                debug_frame,
-                pos,
-                (255, 0, 0),
-                cv2.MARKER_STAR,
-                thickness=1,
-                markerSize=20,
-            )
-        return debug_frame
 
     def create_pos_data_msg(self, timestamp, point_list, frames):
         msg = PosData()
@@ -231,27 +204,6 @@ class CameraControlNode(Node):
             else:
                 msg.invalid_point_list.append(point_msg)
         return msg
-
-    def detect_runners(self, frames):
-        image = np.asanyarray(frames["color"].get_data())
-        res = self.model(image)
-
-        point_list = []
-        if res[0].masks:
-            for cords in res[0].masks.xy:
-                polygon = Polygon(cords)
-                point_list.append((polygon.centroid.x, polygon.centroid.y))
-        return point_list
-
-    def detect_laser(self, frames):
-        curr_image = np.asanyarray(frames["color"].get_data())
-        image = cv2.absdiff(curr_image, self.background_image)
-        found_point_list = find_laser_point(image)
-        found_pos_list = []
-        for point in found_point_list:
-            self.logger.debug(f"Found Laser Point: {point}")
-            found_pos_list.append(self.get_pos_location(point[0], point[1], frames))
-        return found_point_list
 
     def retrieve_frame(self, timestamp):
         raise NotImplementedError
