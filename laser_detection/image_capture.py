@@ -1,3 +1,8 @@
+"""File: image_capture.py
+
+Description: Script to capture laser images using Helios DAC and RealSense D435
+"""
+
 from laser_control.laser_dac import HeliosDAC
 import pyrealsense2 as rs
 from PIL import Image

@@ -1,3 +1,9 @@
+""" File: labelbox_api.py
+
+Description: Functions for using the Labelbox API and creating yolo model labels from
+Labelbox exports. 
+"""
+
 from glob import glob
 import os
 import labelbox as lb
