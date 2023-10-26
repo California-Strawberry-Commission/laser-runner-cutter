@@ -162,12 +162,12 @@ class CameraControlNode(Node):
 
         if self.laser_on:
             laser_point_list = cv_utils.detect_laser(frames)
-            laser_msg = self.create_pos_data_msg(frame_ts, laser_point_list, frames)
+            laser_msg = self.create_pos_data_msg(laser_point_list, frames)
             self.laser_pos_publisher.publish(laser_msg)
         else:
             self.background_image = curr_image
             runner_point_list = cv_utils.detect_runners(frames, self.background_image)
-            runner_msg = self.create_pos_data_msg(frame_ts, runner_point_list, frames)
+            runner_msg = self.create_pos_data_msg(runner_point_list, frames)
             self.runner_pos_publisher.publish(runner_msg)
 
         if self.rec_debug_frame:
@@ -185,7 +185,9 @@ class CameraControlNode(Node):
                 )
             self.rec_debug.write(debug_frame)
 
-    def create_pos_data_msg(self, timestamp, point_list, frames):
+    def create_pos_data_msg(self, point_list, frames, timestamp=None):
+        if timestamp is None:
+            timestamp = frames["color"].get_timestamp() / 1000
         msg = PosData()
         msg.pos_list = []
         msg.point_list = []
