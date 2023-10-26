@@ -41,7 +41,6 @@ if (
     ]
     num_val = math.ceil(len(img_files) * val_ratio)
     val_files = img_files[:: math.floor(len(img_files) / num_val)][:num_val]
-    print(val_files)
     for img_filename in img_files:
         img_filepath = os.path.join(in_img_dir, img_filename)
         label_filename = os.path.splitext(img_filename)[0] + ".txt"

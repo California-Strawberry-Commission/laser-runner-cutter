@@ -63,8 +63,8 @@ def create_yolo_labels_from_export_ndjson(filepath):
             if annotation is not None:
                 point = annotation["point"]
                 class_id = class_map[annotation["name"]]
+                # Keypoint format: (class id, center_x, center_y, width, height, keypoint1_x, keypoint1_y, keypoint1_visibility, ..., keypointn_x, keypointn_y, keypointn_visibility)
+                # visibility: 0 = not labeled, 1 = labeled but not visible, and 2 = labeled and visible
                 yolo_label_file.write(
-                    f"{class_id} {point['x'] / width} {point['y'] / height} 1\n"
+                    f"{class_id} {point['x'] / width} {point['y'] / height} 0 0 {point['x'] / width} {point['y'] / height} 2\n"
                 )
-            else:
-                yolo_label_file.write(f"{class_id} 0 0 1\n")
