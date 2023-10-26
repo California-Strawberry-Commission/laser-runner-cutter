@@ -12,7 +12,7 @@ from rclpy.node import Node
 from camera_control.camera.realsense import RealSense
 from lrr_interfaces.msg import FrameData, LaserOn, PosData, Pos, Point
 from camera_control_interfaces.msg import UInt8NumpyArray, Int16NumpyArray
-from camera_control_interfaces.srv import GetFrame
+from camera_control_interfaces.srv import GetFrame, GetPosData
 
 import camera_control.utils.cv_utils as cv_utils
 from ultralytics import YOLO
@@ -89,6 +89,16 @@ class CameraControlNode(Node):
         # Create services
         self.frame_srv = self.create_service(
             GetFrame, "camara_control/get_frame", self.get_frame
+        )
+        self.single_runner_srv = self.create_service(
+            GetPosData,
+            "camera_control/get_runner_detection",
+            self.single_runner_detection,
+        )
+        self.single_laser_srv = self.create_service(
+            GetPosData,
+            "camera_control/get_laser_detection",
+            self.single_laser_detection,
         )
 
         self.camera = RealSense(self.logger, self.rgb_size, self.depth_size)
@@ -209,6 +219,7 @@ class CameraControlNode(Node):
                 msg.invalid_point_list.append(point_msg)
         return msg
 
+    ###Service Calls
     def get_frame(self, request, response):
         response.timestamp = self.curr_frames["color"].get_timestamp()
         color_array = np.asanyarray(self.curr_frames["color"].get_data())
@@ -217,6 +228,20 @@ class CameraControlNode(Node):
         depth_data = list(depth_array.flatten())
         response.color_frame = UInt8NumpyArray(data=color_data, shape=color_array.shape)
         response.depth_frame = Int16NumpyArray(data=depth_data, shape=depth_array.shape)
+        return response
+
+    def single_runner_detection(self, request, response):
+        runner_point_list = cv_utils.detect_runner(self.curr_frames)
+        response.runner_data = self.create_pos_data_msg(
+            runner_point_list, self.curr_frames
+        )
+        return response
+
+    def single_laser_detection(self, request, response):
+        laser_point_list = cv_utils.detect_laser(self.curr_frames)
+        response.laser_data = self.create_pos_data_msg(
+            laser_point_list, self.curr_frames
+        )
         return response
 
 
