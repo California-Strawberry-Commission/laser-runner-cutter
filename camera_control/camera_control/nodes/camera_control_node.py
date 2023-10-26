@@ -10,9 +10,14 @@ from datetime import datetime
 from rclpy.node import Node
 
 from camera_control.camera.realsense import RealSense
-from lrr_interfaces.msg import FrameData, LaserOn, PosData, Pos, Point
-from camera_control_interfaces.msg import UInt8NumpyArray, Int16NumpyArray
-from camera_control_interfaces.srv import GetFrame, GetPosData
+from camera_control_interfaces.msg import (
+    PosData,
+    Pos,
+    Point,
+    UInt8NumpyArray,
+    Int16NumpyArray,
+)
+from camera_control_interfaces.srv import GetFrame, GetPosData, SendEnable
 
 import camera_control.utils.cv_utils as cv_utils
 from ultralytics import YOLO
@@ -72,18 +77,9 @@ class CameraControlNode(Node):
             os.makedirs(self.debug_video_dir)
 
         # Create publishers and subscribers
-        self.ts_publisher = self.create_publisher(FrameData, "frame_data", 5)
         self.laser_pos_publisher = self.create_publisher(PosData, "laser_pos_data", 5)
         self.runner_pos_publisher = self.create_publisher(PosData, "runner_pos_data", 5)
 
-        self.laser_on_sub = self.create_subscription(
-            LaserOn, "laser_on", self.laser_on_cb, 1
-        )
-        self.runner_point = None
-        self.runner_point_sub = self.create_subscription(
-            Point, "runner_point", self.runner_point_cb, 1
-        )
-        self.laser_on = False
         self.frame_callback = self.create_timer(self.frame_period, self.frame_callback)
 
         # Create services
@@ -100,18 +96,23 @@ class CameraControlNode(Node):
             "camera_control/get_laser_detection",
             self.single_laser_detection,
         )
+        self.control_laser_pub_srv = self.create_service(
+            SendEnable,
+            "camera_control/control_laser_pub",
+            self.control_laser_pub,
+        )
+        self.laser_pub_bool = False
+
+        self.control_runner_pub_srv = self.create_service(
+            SendEnable,
+            "camera_control/control_runner_pub",
+            self.control_runner_pub,
+        )
+        self.runner_pub_control = False
 
         self.camera = RealSense(self.logger, self.rgb_size, self.depth_size)
         self.background_frame = None
         self.initialize()
-
-    def runner_point_cb(self, msg):
-        self.logger.info(f"Runner Point: [{msg.x}, {msg.y}]")
-        self.runner_point = [int(msg.x), int(msg.y)]
-
-    def laser_on_cb(self, msg):
-        self.logger.info(f"Laser State: {msg.laser_state}")
-        self.laser_on = msg.laser_state
 
     def initialize(self):
         # Setup yolo model
@@ -156,13 +157,9 @@ class CameraControlNode(Node):
         frame_ts = frames["color"].get_timestamp()
         # convert from ms to seconds
         frame_ts = frame_ts / 1000
-
-        ts_msg = FrameData()
-        ts_msg.timestamp = frame_ts
         self.logger.debug(
             f"Publishing frame ts: {frame_ts}, current time:{time.time()}"
         )
-        self.ts_publisher.publish(ts_msg)
 
         curr_image = np.asanyarray(frames["color"].get_data())
         self.rec.write(curr_image)
@@ -170,12 +167,14 @@ class CameraControlNode(Node):
         laser_point_list = []
         runner_point_list = []
 
-        if self.laser_on:
+        if self.laser_pub_control:
             laser_point_list = cv_utils.detect_laser(frames)
             laser_msg = self.create_pos_data_msg(laser_point_list, frames)
             self.laser_pos_publisher.publish(laser_msg)
         else:
+            # If not publishing laser information save the background image
             self.background_image = curr_image
+        if self.runner_pub_control:
             runner_point_list = cv_utils.detect_runners(frames, self.background_image)
             runner_msg = self.create_pos_data_msg(runner_point_list, frames)
             self.runner_pos_publisher.publish(runner_msg)
@@ -243,6 +242,12 @@ class CameraControlNode(Node):
             laser_point_list, self.curr_frames
         )
         return response
+
+    def control_laser_pub(self, request, response):
+        self.laser_pub_control = request.enable
+
+    def control_runner_pub(self, request, response):
+        self.runner_pub_control = request.enable
 
 
 def main(args=None):

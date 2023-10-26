@@ -31,6 +31,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Int16NumpyArray.msg"
   "srv/GetFrame.srv"
   "srv/GetPosData.srv"
+  "srv/SendEnable.srv"
 )
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
