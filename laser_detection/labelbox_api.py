@@ -47,10 +47,9 @@ def create_yolo_labels_from_export_ndjson(filepath):
         image_filename = row["data_row"]["global_key"]
         label = row["projects"][project.uid]["labels"][0]
         annotations = label["annotations"]["objects"]
-        annotation = next(
-            (annotation for annotation in annotations if annotation["name"] == "laser"),
-            None,
-        )
+        objects = [
+            annotation for annotation in annotations if annotation["name"] == "laser"
+        ]
 
         media_attributes = row["media_attributes"]
         height = media_attributes["height"]
@@ -60,11 +59,12 @@ def create_yolo_labels_from_export_ndjson(filepath):
         yolo_label_path = os.path.join(label_dir, yolo_label_name)
 
         with open(yolo_label_path, "w") as yolo_label_file:
-            if annotation is not None:
-                point = annotation["point"]
-                class_id = class_map[annotation["name"]]
-                # Keypoint format: (class id, center_x, center_y, width, height, keypoint1_x, keypoint1_y, keypoint1_visibility, ..., keypointn_x, keypointn_y, keypointn_visibility)
-                # visibility: 0 = not labeled, 1 = labeled but not visible, and 2 = labeled and visible
+            for object in objects:
+                point = object["point"]
+                class_id = class_map[object["name"]]
+                # YOLO format: (class_id, x_center, y_center, width, height)
+                # Set arbitrarily small bounding box size
+                bb_size = (10, 10)
                 yolo_label_file.write(
-                    f"{class_id} {point['x'] / width} {point['y'] / height} 0 0 {point['x'] / width} {point['y'] / height} 2\n"
+                    f"{class_id} {point['x'] / width} {point['y'] / height} {bb_size[0] / width} {bb_size[1] / height}\n"
                 )

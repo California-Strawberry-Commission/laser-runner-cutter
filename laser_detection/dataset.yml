@@ -4,9 +4,6 @@ train: images/train
 val: images/val
 test:
 
-# Keypoints
-kpt_shape: [1, 3] # number of keypoints, number of dims (2 for x,y or 3 for x,y,visible)
-
 # Classes dictionary
 names:
   0: laser
