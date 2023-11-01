@@ -26,7 +26,7 @@ img_dir = os.path.join(data_dir, "raw")
 label_dir = os.path.join(data_dir, "raw_labels")
 
 
-def import_images(dataset_name):
+def import_images(dataset_name, img_dir):
     dataset = client.get_datasets(where=lb.Dataset.name == dataset_name).get_one()
     if not dataset:
         dataset = client.create_dataset(name=dataset_name)
