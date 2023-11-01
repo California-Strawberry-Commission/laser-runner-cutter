@@ -26,7 +26,7 @@ img_dir = os.path.join(data_dir, "raw")
 label_dir = os.path.join(data_dir, "raw_labels")
 
 
-def import_images(dataset_name, img_dir):
+def import_images(dataset_name, img_dir=img_dir):
     dataset = client.get_datasets(where=lb.Dataset.name == dataset_name).get_one()
     if not dataset:
         dataset = client.create_dataset(name=dataset_name)
@@ -38,9 +38,9 @@ def import_images(dataset_name, img_dir):
         global_keys.append(img_name)
 
 
-def create_yolo_labels_from_export_ndjson(filepath):
+def create_yolo_labels_from_export_ndjson(export_filepath, label_outdir=label_dir):
     """Given a labelbox export, create yolo model label files"""
-    with open(filepath, "r") as f:
+    with open(export_filepath, "r") as f:
         rows = ndjson.load(f)
 
     for row in rows:
@@ -56,7 +56,7 @@ def create_yolo_labels_from_export_ndjson(filepath):
         width = media_attributes["width"]
 
         yolo_label_name = os.path.splitext(image_filename)[0] + ".txt"
-        yolo_label_path = os.path.join(label_dir, yolo_label_name)
+        yolo_label_path = os.path.join(label_outdir, yolo_label_name)
 
         with open(yolo_label_path, "w") as yolo_label_file:
             for object in objects:
