@@ -29,6 +29,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PosData.msg"  
   "msg/UInt8NumpyArray.msg"
   "msg/Int16NumpyArray.msg"
+  "srv/GetBool.srv"
   "srv/GetFrame.srv"
   "srv/GetPosData.srv"
   "srv/SendEnable.srv"

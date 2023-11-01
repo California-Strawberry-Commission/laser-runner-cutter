@@ -19,15 +19,16 @@ class RealSense:
             rs.stream.color, self.rgb_size[0], self.rgb_size[1], rs.format.bgr8, 30
         )
         self.profile = self.pipeline.start(self.config)
-        self.setup_inten_extrins()
+        self._setup_inten_extrins()
 
         depth_sensor = self.profile.get_device().first_depth_sensor()
         self.depth_scale = depth_sensor.get_depth_scale()
 
+        # General min and max possible depths pulled from realsense examples
         self.depthMinMeters = 0.1
         self.depthMaxMeters = 10
 
-    def setup_inten_extrins(self):
+    def _setup_inten_extrins(self):
         color_prof = self.profile.get_stream(rs.stream.color)
         depth_prof = self.profile.get_stream(rs.stream.depth)
 

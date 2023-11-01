@@ -17,7 +17,7 @@ from camera_control_interfaces.msg import (
     UInt8NumpyArray,
     Int16NumpyArray,
 )
-from camera_control_interfaces.srv import GetFrame, GetPosData, SendEnable
+from camera_control_interfaces.srv import GetBool, GetFrame, GetPosData, SendEnable
 
 import camera_control.utils.cv_utils as cv_utils
 from ultralytics import YOLO
@@ -79,12 +79,16 @@ class CameraControlNode(Node):
         # Create publishers and subscribers
         self.laser_pos_publisher = self.create_publisher(PosData, "laser_pos_data", 5)
         self.runner_pos_publisher = self.create_publisher(PosData, "runner_pos_data", 5)
+        self.runner_point_sub = self.create_subscription(
+            Point, "runner_point", self.runner_point_cb, 1
+        )
+        self.runner_point = None
 
-        self.frame_callback = self.create_timer(self.frame_period, self.frame_callback)
+        self.frame_call = self.create_timer(self.frame_period, self.frame_callback)
 
         # Create services
         self.frame_srv = self.create_service(
-            GetFrame, "camara_control/get_frame", self.get_frame
+            GetFrame, "camera_control/get_frame", self.get_frame
         )
         self.single_runner_srv = self.create_service(
             GetPosData,
@@ -96,12 +100,16 @@ class CameraControlNode(Node):
             "camera_control/get_laser_detection",
             self.single_laser_detection,
         )
+        self.has_frames_srv = self.create_service(
+            GetBool, "camera_control/has_frames", self.has_frames
+        )
+
         self.control_laser_pub_srv = self.create_service(
             SendEnable,
             "camera_control/control_laser_pub",
             self.control_laser_pub,
         )
-        self.laser_pub_bool = False
+        self.laser_pub_control = False
 
         self.control_runner_pub_srv = self.create_service(
             SendEnable,
@@ -110,8 +118,9 @@ class CameraControlNode(Node):
         )
         self.runner_pub_control = False
 
+        self.curr_frames = None
         self.camera = RealSense(self.logger, self.rgb_size, self.depth_size)
-        self.background_frame = None
+        self.background_image = None
         self.initialize()
 
     def initialize(self):
@@ -145,11 +154,15 @@ class CameraControlNode(Node):
                 (self.rgb_size[0], self.rgb_size[1]),
             )
 
+    def runner_point_cb(self, msg):
+        self.runner_point = [int(msg.x), int(msg.y)]
+
     def frame_callback(self):
         frames = self.camera.get_frames()
-        self.curr_frames = frames
         if not frames:
             return
+
+        self.curr_frames = frames
 
         # This is still using a realsense frame concept, for better multicamera
         # probability, all realsense based frame controls should move into the
@@ -163,19 +176,19 @@ class CameraControlNode(Node):
 
         curr_image = np.asanyarray(frames["color"].get_data())
         self.rec.write(curr_image)
+        if self.background_image is None:
+            self.background_image = curr_image
 
         laser_point_list = []
         runner_point_list = []
 
         if self.laser_pub_control:
-            laser_point_list = cv_utils.detect_laser(frames)
+            laser_point_list = cv_utils.detect_lasers(frames, self.background_image)
             laser_msg = self.create_pos_data_msg(laser_point_list, frames)
             self.laser_pos_publisher.publish(laser_msg)
-        else:
-            # If not publishing laser information save the background image
-            self.background_image = curr_image
+
         if self.runner_pub_control:
-            runner_point_list = cv_utils.detect_runners(frames, self.background_image)
+            runner_point_list = cv_utils.detect_runners(self.model, frames)
             runner_msg = self.create_pos_data_msg(runner_point_list, frames)
             self.runner_pos_publisher.publish(runner_msg)
 
@@ -229,18 +242,22 @@ class CameraControlNode(Node):
         response.depth_frame = Int16NumpyArray(data=depth_data, shape=depth_array.shape)
         return response
 
+    def has_frames(self, request, response):
+        response.data = self.curr_frames is not None
+        return response
+
     def single_runner_detection(self, request, response):
-        runner_point_list = cv_utils.detect_runner(self.curr_frames)
-        response.runner_data = self.create_pos_data_msg(
+        runner_point_list = cv_utils.detect_runners(self.model, self.curr_frames)
+        response.pos_data = self.create_pos_data_msg(
             runner_point_list, self.curr_frames
         )
         return response
 
     def single_laser_detection(self, request, response):
-        laser_point_list = cv_utils.detect_laser(self.curr_frames)
-        response.laser_data = self.create_pos_data_msg(
-            laser_point_list, self.curr_frames
+        laser_point_list = cv_utils.detect_lasers(
+            self.curr_frames, self.background_image
         )
+        response.pos_data = self.create_pos_data_msg(laser_point_list, self.curr_frames)
         return response
 
     def control_laser_pub(self, request, response):
@@ -257,7 +274,6 @@ def main(args=None):
     rclpy.spin(camera_node)
     rclpy.shutdown()
     camera_node.destroy_node()
-    rclpy.shutdown()
 
 
 if __name__ == "__main__":

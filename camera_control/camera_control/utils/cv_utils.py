@@ -42,7 +42,7 @@ def detect_runners(model, frames):
     return point_list
 
 
-def detect_laser(frames, background_image):
+def detect_lasers(frames, background_image):
     curr_image = np.asanyarray(frames["color"].get_data())
     image = cv2.absdiff(curr_image, background_image)
     found_point_list = find_laser_point(image)
