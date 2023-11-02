@@ -1,0 +1,4 @@
+[core]
+    remote = laser_detection
+['remote "laser_detection"']
+    url = s3://laser-detection-dvc

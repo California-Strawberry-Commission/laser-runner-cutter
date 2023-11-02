@@ -1,0 +1,9 @@
+# Datasets
+path: data_store/laser_detection
+train: images/train
+val: images/val
+test:
+
+# Classes dictionary
+names:
+  0: laser
