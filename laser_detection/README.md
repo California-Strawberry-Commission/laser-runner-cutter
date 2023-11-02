@@ -28,7 +28,7 @@
 
         $ pip install -r requirements.txt
 
-## DVC setup
+### DVC setup
 
 DVC abstracts cloud storage and versioning of data for machine learning. It allows a directory structure to be pushed and pulled from an S3 bucket, so all developers can expect everyone to have the same project structure. DVC also has functionality for tracking results from different model runs, and building out experiments and pipelines.
 
@@ -37,7 +37,7 @@ DVC abstracts cloud storage and versioning of data for machine learning. It allo
         $ dvc remote modify --local laser_detection access_key_id <access key>
         $ dvc remote modify --local laser_detection secret_access_key <secret access key>
 
-## Labelbox integration
+### Labelbox integration
 
 Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience methods to upload images and extract annotations from Labelbox.
 
@@ -46,8 +46,23 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
         $ cd laser_detection
         $ echo "LABELBOX_API_KEY=<api key>" > .env
 
-## Train the model
+## Workflow
 
-1.  The local train script uses the ultalytics repo to train a laser detection model on the dataset:
+1.  Obtain new training images
+1.  Use `import_images` from `labelbox_api.py` to upload new images to the existing Labelbox dataset
+1.  Annotate the images in Labelbox
+1.  Obtain labels from Labelbox
+    1. Go to Annotate -> Laser Detection
+    1. Click the "Data Rows" tab
+    1. Click the "All (X data rows)" dropdown, then click "Export data v2"
+    1. Select all fields, then click the "Export JSON" button
+1.  Use `create_yolo_labels_from_export_ndjson` in `labelbox_api.py` to create YOLO label txt files from the Labelbox ndjson export file
+1.  Run `split_data.py` to split the raw image and label data into training and validation datasets. Be sure to remove the existing train/val images and labels beforehand.
+
+        $ rm -rf data_store/laser_detection/images
+        $ rm -rf data_store/laser_detection/labels
+        $ python split_data.py
+
+1.  The local train script uses the Ultralytics repo to train a laser detection model on the dataset:
 
         $ python local_train.py
