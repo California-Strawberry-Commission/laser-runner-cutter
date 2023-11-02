@@ -7,9 +7,11 @@ Labelbox exports.
 from glob import glob
 import os
 import labelbox as lb
+import labelbox.types as lb_types
 import ndjson
 from PIL import Image
 from dotenv import load_dotenv
+import uuid
 
 load_dotenv()
 client = lb.Client(os.getenv("LABELBOX_API_KEY"))
@@ -30,12 +32,10 @@ def import_images(dataset_name, img_dir=img_dir):
     dataset = client.get_datasets(where=lb.Dataset.name == dataset_name).get_one()
     if not dataset:
         dataset = client.create_dataset(name=dataset_name)
-    global_keys = []
     img_paths = glob(os.path.join(img_dir, "*.jpg"))
     for img_path in img_paths:
         _, img_name = os.path.split(img_path)
         dataset.create_data_row({"row_data": img_path, "global_key": img_name})
-        global_keys.append(img_name)
 
 
 def create_yolo_labels_from_export_ndjson(export_filepath, label_outdir=label_dir):
@@ -68,3 +68,57 @@ def create_yolo_labels_from_export_ndjson(export_filepath, label_outdir=label_di
                 yolo_label_file.write(
                     f"{class_id} {point['x'] / width} {point['y'] / height} {bb_size[0] / width} {bb_size[1] / height}\n"
                 )
+
+
+def upload_labels_from_yolo_labels(label_dir=label_dir, img_dir=img_dir):
+    """Given YOLO labels, create labelbox point annotations."""
+    label_paths = glob(os.path.join(label_dir, "*.txt"))
+    for label_path in label_paths:
+        _, label_name = os.path.split(label_path)
+        img_filename = label_name.split(".")[0] + ".jpg"
+        img_path = os.path.join(img_dir, img_filename)
+        width, height = _get_image_size(img_path)
+
+        labels = []
+        with open(label_path, "r") as f:
+            lines = f.readlines()
+            annotations = []
+            for line in lines:
+                tokens = line.strip().split()
+                x = float(tokens[1]) * width
+                y = float(tokens[2]) * height
+                annotations.append(
+                    lb_types.ObjectAnnotation(
+                        name="laser",
+                        value=lb_types.Point(x=x, y=y),
+                    )
+                )
+            if len(annotations) > 0:
+                labels.append(
+                    lb_types.Label(
+                        data=lb_types.ImageData(global_key=img_filename),
+                        annotations=annotations,
+                    )
+                )
+
+        try:
+            upload_job = lb.LabelImport.create_from_objects(
+                client=client,
+                project_id=project.uid,
+                name="label_import_job" + str(uuid.uuid4()),
+                labels=labels,
+            )
+            upload_job.wait_until_done()
+            print(f"Successfully uploaded labels for {img_filename}")
+        except Exception as ex:
+            print(f"Failed to upload labels for {img_filename}: {ex}")
+
+
+def _get_image_size(img_path):
+    try:
+        with Image.open(img_path) as img:
+            width, height = img.size
+            return width, height
+    except IOError:
+        print(f"Failed to open the image at {img_path}")
+        return None, None
