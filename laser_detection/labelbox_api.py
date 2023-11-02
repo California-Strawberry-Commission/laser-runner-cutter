@@ -74,8 +74,8 @@ def upload_labels_from_yolo_labels(label_dir=label_dir, img_dir=img_dir):
     """Given YOLO labels, create labelbox point annotations."""
     label_paths = glob(os.path.join(label_dir, "*.txt"))
     for label_path in label_paths:
-        _, label_name = os.path.split(label_path)
-        img_filename = label_name.split(".")[0] + ".jpg"
+        _, label_filename = os.path.split(label_path)
+        img_filename = os.path.splitext(label_filename)[0] + ".jpg"
         img_path = os.path.join(img_dir, img_filename)
         width, height = _get_image_size(img_path)
 

@@ -6,6 +6,8 @@ Description: Script to split dataset between training and validation datasets
 import os
 import math
 import shutil
+import random
+from glob import glob
 
 data_dir = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -34,29 +36,27 @@ if (
     if not os.path.exists(val_label_dir):
         os.makedirs(val_label_dir)
 
-    img_files = [
-        f
-        for f in sorted(os.listdir(in_img_dir), key=lambda x: x.lower())
-        if os.path.isfile(os.path.join(in_img_dir, f))
-    ]
-    num_val = math.ceil(len(img_files) * val_ratio)
-    val_files = img_files[:: math.floor(len(img_files) / num_val)][:num_val]
-    for img_filename in img_files:
-        img_filepath = os.path.join(in_img_dir, img_filename)
+    img_paths = glob(os.path.join(in_img_dir, "*.jpg")) + glob(
+        os.path.join(in_img_dir, "*.png")
+    )
+    random.shuffle(img_paths)
+    num_val = math.ceil(len(img_paths) * val_ratio)
+    for index, img_path in enumerate(img_paths):
+        _, img_filename = os.path.split(img_path)
         label_filename = os.path.splitext(img_filename)[0] + ".txt"
-        label_filepath = os.path.join(in_label_dir, label_filename)
-        if not os.path.exists(label_filepath):
+        label_path = os.path.join(in_label_dir, label_filename)
+        if not os.path.exists(label_path):
             continue
 
-        if img_filename in val_files:
-            shutil.copy(img_filepath, os.path.join(val_img_dir, img_filename))
-            shutil.copy(label_filepath, os.path.join(val_label_dir, label_filename))
+        if index < num_val:
+            shutil.copy(img_path, os.path.join(val_img_dir, img_filename))
+            shutil.copy(label_path, os.path.join(val_label_dir, label_filename))
         else:
             shutil.copy(
-                img_filepath,
+                img_path,
                 os.path.join(train_img_dir, img_filename),
             )
             shutil.copy(
-                label_filepath,
+                label_path,
                 os.path.join(train_label_dir, label_filename),
             )
