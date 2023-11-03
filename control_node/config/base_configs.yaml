@@ -1,0 +1,13 @@
+main_node: 
+  ros__parameters: 
+    tracking_laser: [0.2, 0.0, 0.0]
+    burn_color: [0.0, 0.0, 1.0]
+    burn_time: 5
+camera_node:
+  ros_parameters: 
+    video_dir: '/opt/video_stream'
+    debug_video_dir: '/opt/debug_video_stream'
+    save_debug: True
+    frame_period: .1
+    rgb_size: [1920, 1080]
+    depth_size: [1280, 720]
