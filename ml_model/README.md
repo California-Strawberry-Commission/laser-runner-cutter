@@ -1,6 +1,6 @@
-# Machine Learning 
+# Machine Learning
 
-Directory withing the laser runner removal project for preparing data and training ML models 
+Directory withing the laser runner removal project for preparing data and training ML models
 
 ## Environment setup
 
@@ -14,59 +14,70 @@ Directory withing the laser runner removal project for preparing data and traini
         $sudo apt-get update
         $sudo apt-get -y install cuda
 
-1.  Make sure you are in the ml_model repo 
-
 1.  Create and source into a venv
 
+        $ cd ml_model
         $ python3 -m venv venv
         $ source venv/bin/activate
 
 1.  Install a specific version of pytorch to match cuda versions and detect GPUs
 
         $ pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-    
-    NOTE: If you have any existing installs of touch torchvision or torchaudio in the venv, this will cause errors and they should be uninstalled 
 
-1.  Install necessary requirements 
+    NOTE: If you have any existing installs of touch torchvision or torchaudio in the venv, this will cause errors and they should be uninstalled
+
+1.  Install necessary requirements
 
         $ pip install -r requirements.txt
 
-## DVC setup 
+## DVC setup
 
-DVC is a project that abstracts cloud storage of large data for machine learning. It allows a directory structure to be push and pull from a s3 bucket, so all developers can expect everyone to have the same folder structure. DVC also has functionality for tracking results from different model runs, and building out experiments and pipelines. 
+DVC is a project that abstracts cloud storage of large data for machine learning. It allows a directory structure to be push and pull from a s3 bucket, so all developers can expect everyone to have the same folder structure. DVC also has functionality for tracking results from different model runs, and building out experiments and pipelines.
 
-1.  Setup a dvc repo, 
+1.  Get an AWS access key for the S3 bucket, and set it for use by DVC:
 
-        $ dvc init 
+        $ dvc remote modify --local laser_detection access_key_id <access key>
+        $ dvc remote modify --local laser_detection secret_access_key <secret access key>
 
-1.  Setup aws s3 permission this will require an aws account key and secret ID. NOTE: We should move to a more secure method over time. 
+1.  Pull data from the S3 bucket
 
-        $ dvc config 
+        $ dvc pull -r segmentation_data
 
-1.  Add the laser-runner-removal-dvc s3 bucket as a remote repository and pull data from it
+### Labelbox integration
 
-        $ dvc remote add segmentation_data s3://laser-runner-removal-dvc
-        $ dvc pull -r segmentation_data 
+Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience methods to upload images and extract annotations from Labelbox.
 
-## Update Ultralytics directory files 
+1.  Get an API key from the Labelbox workspace, and add it to the `.env` file.
 
-The ultralytics repo uses a config file to read in some directory locations, changing those to point to the ml_models folder makes things a bit cleaner and easier. 
+        $ cd ml_model
+        $ echo "LABELBOX_API_KEY=<api key>" > .env
 
-1. Update the directory paths, use `/home/{user_name}/` instead of `~`. 
+## Update Ultralytics directory files
 
-        $ nano ~/.config/Ultralytics/settings.yml
+The Ultralytics repo uses a global config file to read in some directory locations. Changing those to point to the ml_model directory makes things a bit cleaner and easier.
 
-        $ datasets_dir: ~/ros_ws/src/laser_runner_removal/ml_model/    
-        $ weights_dir: ~/ros_ws/src/laser_runner_removal/ml_model/ultralytics/weights
-        $ runs_dir: ~/ros_ws/src/laser_runner_removal/ml_model/ultralytics/runs
+```
+$ nano ~/.config/Ultralytics/settings.yml
+```
 
+```
+datasets_dir: /home/{user_name}/ros_ws/src/laser_runner_removal/ml_model/
+weights_dir: /home/{user_name}/ros_ws/src/laser_runner_removal/ml_model/ultralytics/weights
+runs_dir: /home/{user_name}/ros_ws/src/laser_runner_removal/ml_model/ultralytics/runs
+```
 
-##  Train the model 
+## Workflow
 
-1.  The local train script uses the ultalytics repo to train a segmentation model on the runner data 
+1.  Obtain new training images
+1.  Use `import_images` from `labelbox_api.py` to upload new images to the existing Labelbox dataset
+1.  Annotate the images in Labelbox
+1.  Obtain labels from Labelbox
+    1. Go to Annotate -> Laser Detection
+    1. Click the "Data Rows" tab
+    1. Click the "All (X data rows)" dropdown, then click "Export data v2"
+    1. Select all fields, then click the "Export JSON" button
+1.  Use `create_yolo_labels_from_segment_ndjson` in `labelbox_api.py` to create YOLO label txt files from the Labelbox ndjson export file
+1.  Split the raw image and label data into training and validation datasets in `data_store/laser_detection/images` and `data_store/laser_detection/labels`. Be sure to remove the existing train/val images and labels beforehand.
+1.  The local train script uses the Ultralytics repo to train a laser detection model on the dataset:
 
-        $ python local_train.py 
-
-
-
-
+        $ python local_train.py

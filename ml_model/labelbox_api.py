@@ -14,10 +14,10 @@ import numpy as np
 import ndjson
 import urllib.request
 from PIL import Image
+from dotenv import load_dotenv
 
-# Use API key from a .env file, currently pip install dotenv causes an error
-API_key = ""
-client = lb.Client(API_key)
+load_dotenv()
+client = lb.Client(os.getenv("LABELBOX_API_KEY"))
 
 # Add a directory path for where images are stored
 img_dir = "../data_store/segmentation_data/raw/"

@@ -1,2 +1,4 @@
+[core]
+    remote = segmentation_data
 ['remote "segmentation_data"']
     url = s3://laser-runner-removal-dvc
