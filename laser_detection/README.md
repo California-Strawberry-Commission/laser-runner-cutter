@@ -50,31 +50,29 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
         $ cd laser_detection
         $ echo "LABELBOX_API_KEY=<api key>" > .env
 
-## Update Ultralytics directory files
-
-The Ultralytics repo uses a global config file to read in some directory locations. Changing those to point to the laser_detection directory makes things a bit cleaner and easier.
-
-```
-$ nano ~/.config/Ultralytics/settings.yml
-```
-
-```
-datasets_dir: /home/{user_name}/ros_ws/src/LaserRunnerRemoval/laser_detection/
-weights_dir: /home/{user_name}/ros_ws/src/LaserRunnerRemoval/laser_detection/ultralytics/weights
-runs_dir: /home/{user_name}/ros_ws/src/LaserRunnerRemoval/laser_detection/ultralytics/runs
-```
-
 ## Workflow
 
-1.  Obtain new training images
-1.  Use `import_images` from `labelbox_api.py` to upload new images to the existing Labelbox dataset
+1.  Obtain new training images. See `image_capture.py` for an example.
+
+        $ python image_capture --output_directory <directory>
+
+1.  Upload new images to the existing Labelbox dataset:
+
+        $ python labelbox_api import_images --images_dir <directory>
+
 1.  Annotate the images in Labelbox
+
 1.  Obtain labels from Labelbox
+
     1. Go to Annotate -> Laser Detection
     1. Click the "Data Rows" tab
     1. Click the "All (X data rows)" dropdown, then click "Export data v2"
     1. Select all fields, then click the "Export JSON" button
-1.  Use `create_yolo_labels_from_export_ndjson` in `labelbox_api.py` to create YOLO label txt files from the Labelbox ndjson export file
+
+1.  Create YOLO label txt files from the Labelbox ndjson export file:
+
+        $ python labelbox_api create_labels --labelbox_export_file <ndjson export file path>
+
 1.  Run `split_data.py` to split the raw image and label data into training and validation datasets. Be sure to remove the existing train/val images and labels beforehand.
 
         $ rm -rf data_store/laser_detection/images
@@ -84,3 +82,7 @@ runs_dir: /home/{user_name}/ros_ws/src/LaserRunnerRemoval/laser_detection/ultral
 1.  The local train script uses the Ultralytics repo to train a laser detection model on the dataset:
 
         $ python local_train.py
+
+1.  Test the trained model
+
+        $ python test_model.py <path to model>
