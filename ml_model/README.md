@@ -52,20 +52,6 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
         $ cd ml_model
         $ echo "LABELBOX_API_KEY=<api key>" > .env
 
-## Update Ultralytics directory files
-
-The Ultralytics repo uses a global config file to read in some directory locations. Changing those to point to the ml_model directory makes things a bit cleaner and easier.
-
-```
-$ nano ~/.config/Ultralytics/settings.yml
-```
-
-```
-datasets_dir: /home/{user_name}/ros_ws/src/laser_runner_removal/ml_model/
-weights_dir: /home/{user_name}/ros_ws/src/laser_runner_removal/ml_model/ultralytics/weights
-runs_dir: /home/{user_name}/ros_ws/src/laser_runner_removal/ml_model/ultralytics/runs
-```
-
 ## Workflow
 
 1.  Obtain new training images

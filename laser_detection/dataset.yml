@@ -2,7 +2,7 @@
 path: data_store/laser_detection
 train: images/train
 val: images/val
-test:
+test: images/test
 
 # Classes dictionary
 names:
