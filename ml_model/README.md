@@ -75,10 +75,10 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
         $ rm -rf data_store/segmentation_data/labels
         $ python split_data.py
 
-1.  The local train script uses the Ultralytics repo to train a laser detection model on the dataset:
+1.  Train the model locally:
 
-        $ python local_train.py
+        $ python yolov8_train.py
 
-1.  Test the trained model
+1.  Evaluate the trained model on the test dataset:
 
-        $ python test_model.py <path to model>
+        $ python yolov8_eval.py <path to model>
