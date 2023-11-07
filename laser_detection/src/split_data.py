@@ -10,18 +10,22 @@ import shutil
 import random
 from glob import glob
 
-DATA_DIR = os.path.join(
+RAW_DATA_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
-    "data_store/laser_detection",
+    "../data/raw",
 )
-IMAGES_DIR = os.path.join(DATA_DIR, "raw")
-LABELS_DIR = os.path.join(DATA_DIR, "raw_labels")
-TRAIN_IMAGES_DIR = os.path.join(DATA_DIR, "images/train")
-TRAIN_LABELS_DIR = os.path.join(DATA_DIR, "labels/train")
-VAL_IMAGES_DIR = os.path.join(DATA_DIR, "images/val")
-VAL_LABELS_DIR = os.path.join(DATA_DIR, "labels/val")
-TEST_IMAGES_DIR = os.path.join(DATA_DIR, "images/test")
-TEST_LABELS_DIR = os.path.join(DATA_DIR, "labels/test")
+IMAGES_DIR = os.path.join(RAW_DATA_DIR, "images")
+LABELS_DIR = os.path.join(RAW_DATA_DIR, "labels")
+PREPARED_DATA_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "../data/prepared",
+)
+TRAIN_IMAGES_DIR = os.path.join(PREPARED_DATA_DIR, "images/train")
+TRAIN_LABELS_DIR = os.path.join(PREPARED_DATA_DIR, "labels/train")
+VAL_IMAGES_DIR = os.path.join(PREPARED_DATA_DIR, "images/val")
+VAL_LABELS_DIR = os.path.join(PREPARED_DATA_DIR, "labels/val")
+TEST_IMAGES_DIR = os.path.join(PREPARED_DATA_DIR, "images/test")
+TEST_LABELS_DIR = os.path.join(PREPARED_DATA_DIR, "labels/test")
 VAL_RATIO = 0.15
 TEST_RATIO = 0.15
 

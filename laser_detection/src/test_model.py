@@ -10,7 +10,7 @@ from ultralytics import YOLO
 def main(model_path):
     model = YOLO(model_path)
     metrics = model.val(data="dataset.yml")
-    print(f"mAP: {metrics.box.map}")
+    print(f"mAP@50: {metrics.box.map50}")
 
 
 if __name__ == "__main__":

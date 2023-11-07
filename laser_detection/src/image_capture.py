@@ -19,7 +19,7 @@ def main(image_outdir, file_prefix="laser", file_start_index=0):
     # Initialize Helios laser DAC
     helios_libfile = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
-        "../laser_control/include/libHeliosDacAPI.so",
+        "../../laser_control/include/libHeliosDacAPI.so",
     )
     helios_dac = HeliosDAC(helios_libfile)
     num_helios_dacs = helios_dac.initialize()

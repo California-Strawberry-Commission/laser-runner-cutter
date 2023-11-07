@@ -23,10 +23,10 @@ CLASS_MAP = {"laser": 0}
 
 DATA_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
-    "data_store/laser_detection",
+    "../data/raw",
 )
-IMAGES_DIR = os.path.join(DATA_DIR, "raw")
-LABELS_DIR = os.path.join(DATA_DIR, "raw_labels")
+IMAGES_DIR = os.path.join(DATA_DIR, "images")
+LABELS_DIR = os.path.join(DATA_DIR, "labels")
 
 
 def import_images(dataset_name=DATASET_NAME, images_dir=IMAGES_DIR):
