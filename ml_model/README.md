@@ -36,8 +36,8 @@ DVC is a project that abstracts cloud storage of large data for machine learning
 
 1.  Get an AWS access key for the S3 bucket, and set it for use by DVC:
 
-        $ dvc remote modify --local laser_detection access_key_id <access key>
-        $ dvc remote modify --local laser_detection secret_access_key <secret access key>
+        $ dvc remote modify --local segmentation_data access_key_id <access key>
+        $ dvc remote modify --local segmentation_data secret_access_key <secret access key>
 
 1.  Pull data from the S3 bucket
 
@@ -71,8 +71,8 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
 
 1.  Run `split_data.py` to split the raw image and label data into training and validation datasets. Be sure to remove the existing train/val images and labels beforehand.
 
-        $ rm -rf data_store/laser_detection/images
-        $ rm -rf data_store/laser_detection/labels
+        $ rm -rf data_store/segmentation_data/images
+        $ rm -rf data_store/segmentation_data/labels
         $ python split_data.py
 
 1.  The local train script uses the Ultralytics repo to train a laser detection model on the dataset:
