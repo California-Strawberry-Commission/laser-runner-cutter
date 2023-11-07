@@ -1,5 +1,5 @@
 # Datasets
-path: data_store/laser_detection
+path: data/prepared
 train: images/train
 val: images/val
 test: images/test

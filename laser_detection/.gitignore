@@ -1,3 +1,5 @@
-/data_store
 /ultralytics
 yolov8n.pt
+/data
+/models
+/metrics

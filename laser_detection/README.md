@@ -52,13 +52,13 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
 
 ## Workflow
 
-1.  Obtain new training images. See `image_capture.py` for an example.
+1.  Obtain new training images. See `src/image_capture.py` for an example.
 
-        $ python image_capture --output_directory <directory>
+        $ python src/image_capture --output_directory <directory>
 
 1.  Upload new images to the existing Labelbox dataset:
 
-        $ python labelbox_api import_images --images_dir <directory>
+        $ python src/labelbox_api import_images --images_dir <directory>
 
 1.  Annotate the images in Labelbox
 
@@ -71,18 +71,18 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
 
 1.  Create YOLO label txt files from the Labelbox ndjson export file:
 
-        $ python labelbox_api create_labels --labelbox_export_file <ndjson export file path>
+        $ python src/labelbox_api create_labels --labelbox_export_file <ndjson export file path>
 
 1.  Run `split_data.py` to split the raw image and label data into training and validation datasets. Be sure to remove the existing train/val images and labels beforehand.
 
-        $ rm -rf data_store/laser_detection/images
-        $ rm -rf data_store/laser_detection/labels
-        $ python split_data.py
+        $ rm -rf data/prepared/images
+        $ rm -rf data/prepared/labels
+        $ python src/split_data.py
 
 1.  The local train script uses the Ultralytics repo to train a laser detection model on the dataset:
 
-        $ python local_train.py
+        $ python src/local_train.py
 
 1.  Test the trained model
 
-        $ python test_model.py <path to model>
+        $ python src/test_model.py <path to model>
