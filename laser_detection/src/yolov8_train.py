@@ -1,7 +1,12 @@
+"""File: yolov8_train.py
+
+Description: Script to train a YOLOv8 model
+"""
+
 import os
 from ultralytics import settings, YOLO
 
-project_path = os.path.dirname(os.path.abspath(__file__))
+project_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 settings.update(
     {
         "datasets_dir": project_path,
@@ -12,7 +17,7 @@ settings.update(
 
 model = YOLO("yolov8n.yaml")
 results = model.train(
-    data="dataset.yml",
+    data=os.path.join(project_path, "dataset.yml"),
     imgsz=(640, 480),
     device=0,
     batch=-1,

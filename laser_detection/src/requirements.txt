@@ -7,4 +7,4 @@ python-dotenv
 labelbox
 labelbox[data]
 ndjson
-../laser_control
+../../laser_control
