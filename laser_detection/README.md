@@ -37,6 +37,10 @@ DVC abstracts cloud storage and versioning of data for machine learning. It allo
         $ dvc remote modify --local laser_detection access_key_id <access key>
         $ dvc remote modify --local laser_detection secret_access_key <secret access key>
 
+1.  Pull data from the S3 bucket
+
+        $ dvc pull -r laser_detection
+
 ### Labelbox integration
 
 Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience methods to upload images and extract annotations from Labelbox.
@@ -45,6 +49,20 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
 
         $ cd laser_detection
         $ echo "LABELBOX_API_KEY=<api key>" > .env
+
+## Update Ultralytics directory files
+
+The Ultralytics repo uses a global config file to read in some directory locations. Changing those to point to the laser_detection directory makes things a bit cleaner and easier.
+
+```
+$ nano ~/.config/Ultralytics/settings.yml
+```
+
+```
+datasets_dir: /home/{user_name}/ros_ws/src/LaserRunnerRemoval/laser_detection/
+weights_dir: /home/{user_name}/ros_ws/src/LaserRunnerRemoval/laser_detection/ultralytics/weights
+runs_dir: /home/{user_name}/ros_ws/src/LaserRunnerRemoval/laser_detection/ultralytics/runs
+```
 
 ## Workflow
 

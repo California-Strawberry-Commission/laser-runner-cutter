@@ -11,10 +11,10 @@ from glob import glob
 import os
 import cv2
 import json
+from dotenv import load_dotenv
 
-# Use API key from a .env file, currently pip install dotenv causes an error
-api_key = ""
-client = scaleapi.ScaleClient(api_key)
+load_dotenv()
+client = scaleapi.ScaleClient(os.getenv("SCALE_API_KEY"))
 
 
 def create_project(project_name):

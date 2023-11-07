@@ -1,5 +1,10 @@
+ultralytics
+Pillow
+python-dotenv
 numpy
 opencv-python
 dvc[s3]
 labelbox
+labelbox[data]
+ndjson
 scaleapi
