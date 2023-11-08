@@ -17,6 +17,7 @@ class Track:
         self.point_list = []
         self.pos_wrt_cam_list.append(np.array(pos))
         self.point_list.append(np.array(point))
+        self.corrected_laser_point = None
 
     @property
     def pos_wrt_cam(self):
