@@ -13,21 +13,55 @@ from torchvision.ops.boxes import masks_to_boxes
 from torchvision.utils import save_image
 from torchvision.transforms import v2 as T
 import random
+import albumentations as A
 
 SIZE = (720, 960)
 
 
-# Currently does not support taking in images and masks, so random actions introduce error.
-def get_transform(h_chance, v_chance):
-    transforms = []
-    transforms.append(T.Resize(size=SIZE, antialias=True))
-    if h_chance > 0.5:
-        transforms.append(T.RandomHorizontalFlip(1))
-    if v_chance > 0.5:
-        transforms.append(T.RandomVerticalFlip(1))
-    transforms.append(T.ToDtype(torch.float, scale=True))
-    transforms.append(T.ToPureTensor())
-    return T.Compose(transforms)
+class AlbumRandAugment:
+    def __init__(self, basic_count=0, complex_count=0):
+        self.basic_count = basic_count
+        self.complex_count = complex_count
+
+    @property
+    def basic_augmentations(self):
+        return [
+            None,
+            A.RandomRotate90(),
+            A.Transpose(),
+        ]
+
+    @property
+    def complex_augmentations(self):
+        return [
+            None,
+            A.CLAHE(p=1),
+            A.RandomBrightnessContrast(p=1),
+            A.RandomGamma(p=1),
+            A.ElasticTransform(p=1),
+            A.OpticalDistortion(p=1),
+            A.Blur(p=1),
+        ]
+
+    def apply(self, image, mask=None, masks=None):
+        # Use choice instead of sample
+        base_augments = np.random.choice(self.basic_augmentations, self.basic_count)
+        base_augments = [aug for aug in base_augments if aug is not None]
+        complex_augments = np.random.choice(
+            self.complex_augmentations, self.complex_count
+        )
+        complex_augments = [aug for aug in complex_augments if aug is not None]
+
+        transform = A.Compose(
+            base_augments + complex_augments + [A.Resize(SIZE[0], SIZE[1])]
+        )
+        # Transform function will raise an error is masks are passed in with zero size
+        if masks is not None and len(masks) > 0:
+            return transform(image=image, masks=masks)
+        elif mask is not None and len(mask) > 0:
+            return transform(image=image, mask=mask)
+        else:
+            return transform(image=image)
 
 
 class MRCNNDataSet(torch.utils.data.Dataset):
@@ -40,54 +74,73 @@ class MRCNNDataSet(torch.utils.data.Dataset):
         self.transform_gen = transform_gen
 
     def __getitem__(self, idx):
-        img = read_image(self.img_paths[idx])
-        img = img
+        img = cv2.imread(self.img_paths[idx])
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        if self.transform_gen is not None:
-            h_chance = random.random()
-            v_chance = random.random()
-            t_func = self.transform_gen(h_chance, v_chance)
-            img = t_func(img)
+        masks, labels = self._find_mrcnn_labels(idx)
+        augmented = self.transform_gen.apply(img, masks=masks)
+        img_tensor = T.Compose([T.ToImage(), T.ToDtype(torch.float32, scale=True)])(
+            augmented["image"]
+        )
+
+        included_masks = []
+        included_labels = []
+        aug_masks = augmented.get("masks", [])
+        for label, mask in zip(labels, aug_masks):
+            # Augmentation can cause masks with no valid pixels causes errors for masks
+            ret, mask = cv2.threshold(mask, 100, 255, cv2.THRESH_BINARY)
+            if np.max(mask) == 255:
+                included_masks.append(mask)
+                included_labels.append(label)
+
+        included_masks = np.array(included_masks) / 255
+        mask_tensor = torch.from_numpy(included_masks)
+        bboxes = masks_to_boxes(mask_tensor)
+
+        inc2_label = []
+        inc2_masks = []
+        inc2_bboxes = []
+        # Remove bboxes that are single pixel length or width
+        for label, mask, bbox in zip(included_labels, included_masks, bboxes):
+            if not (bbox[0] == bbox[2] or bbox[1] == bbox[3]):
+                inc2_label.append(label)
+                inc2_masks.append(mask)
+                inc2_bboxes.append(bbox.numpy())
+        # If the masks are empty, create empty tensors of ther correct size
+        if len(inc2_masks) == 0:
+            mask_tensor = torch.empty((0, SIZE[0], SIZE[1]), dtype=torch.float32)
+            bbox_tensor = torch.empty((0, 4), dtype=torch.float32)
+            label_tensor = torch.empty((0), dtype=torch.int64)
         else:
-            t_func = None
+            mask_tensor = torch.as_tensor(np.array(inc2_masks), dtype=torch.float32)
+            bbox_tensor = torch.as_tensor(np.array(inc2_bboxes), dtype=torch.float32)
+            label_tensor = torch.as_tensor(np.array(inc2_label), dtype=torch.int64)
 
-        data = self._find_mrcnn_labels(idx, t_func)
+        data = {
+            "boxes": bbox_tensor,
+            "labels": label_tensor,
+            "masks": mask_tensor,
+        }
 
-        return img, data
+        return img_tensor, data
 
     def __len__(self):
         return len(self.img_paths)
 
-    def _find_mrcnn_labels(self, idx, t_func, debug_dir=False):
+    def _find_mrcnn_labels(self, idx):
         mask_subdir = self.mask_subdirs[idx]
         paths = glob.glob(os.path.join(mask_subdir, "*.jpg"))
 
         # This doesn't work for more then one class type, add the class id to the subdir name?
         labels = np.ones(len(paths))
-        # Try to move to all tensor actions in the
-        masks = torch.zeros((len(paths), SIZE[0], SIZE[1]))
+        masks = np.zeros((len(paths), SIZE[0], SIZE[1]))
         for idx, mask_path in enumerate(paths):
-            mask = read_image(mask_path, mode=ImageReadMode.UNCHANGED)
-            mask = t_func(mask)
-            masks[idx] = mask
+            mask = cv2.imread(mask_path)
+            mask = cv2.resize(mask, (SIZE[1], SIZE[0]))
+            masks[idx] = mask[:, :, 0]
             labels[idx] = 1
 
-            if debug_dir:
-                debug_img = cv2.rectangle(
-                    mask,
-                    (int(bboxes[idx][0]), int(bboxes[idx][1])),
-                    (int(bboxes[idx][2]), int(bboxes[idx][3])),
-                    color=(0, 0, 255),
-                )
-                cv2.imwrite(debug_dir, debug_img)
-
-        labels = torch.as_tensor(labels, dtype=torch.int64)
-        bboxes = masks_to_boxes(masks)
-        return {
-            "boxes": bboxes,
-            "labels": labels,
-            "masks": masks,
-        }
+        return masks, labels
 
 
 def collate_fn(batch):
@@ -137,26 +190,33 @@ class MaskRCNN:
         ]
 
         train_dl = torch.utils.data.DataLoader(
-            MRCNNDataSet(train_imgs, train_mask_subdirs, get_transform),
+            MRCNNDataSet(
+                train_imgs,
+                train_mask_subdirs,
+                AlbumRandAugment(basic_count=2, complex_count=2),
+            ),
             batch_size=2,
             shuffle=True,
             collate_fn=collate_fn,
-            num_workers=16,
+            num_workers=12,
             pin_memory=True if torch.cuda.is_available() else False,
         )
         val_dl = torch.utils.data.DataLoader(
-            MRCNNDataSet(val_imgs, val_mask_subdirs, get_transform),
+            MRCNNDataSet(
+                val_imgs,
+                val_mask_subdirs,
+                AlbumRandAugment(basic_count=0, complex_count=0),
+            ),
             batch_size=2,
             shuffle=True,
             collate_fn=collate_fn,
-            num_workers=16,
+            num_workers=12,
             pin_memory=True if torch.cuda.is_available() else False,
         )
 
         # construct an optimizer
         params = [p for p in self.model.parameters() if p.requires_grad]
-        optimizer = torch.optim.SGD(params, lr=0.005, momentum=0.9, weight_decay=0.0005)
-
+        optimizer = torch.optim.Adam(params, lr=1e-4)
         # and a learning rate scheduler
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer, step_size=3, gamma=0.1
@@ -199,11 +259,12 @@ class MaskRCNN:
             print(epoch, "  ", train_loss, "  ", val_loss)
             if val_loss < min_val_loss:
                 min_val_loss = val_loss
+                print(f"saving weights file to {weights_path}")
                 torch.save(self.model.state_dict(), weights_path)
 
 
 if __name__ == "__main__":
-    weights_file = "runner_instance_segment.pt"
+    weights_file = "runner_instance_segment_augmented.pt"
     model = MaskRCNN()
     weights_path = os.path.join(
         os.getcwd(), f"ml_model/data_store/weights/{weights_file}"
@@ -213,4 +274,4 @@ if __name__ == "__main__":
     mask_dir = os.path.join(
         os.getcwd(), "ml_model/data_store/segmentation_data/mrcnn_masks/"
     )
-    model.train_model(img_dir, mask_dir, weights_path)
+    model.train_model(img_dir, mask_dir, weights_path, verbose=False)
