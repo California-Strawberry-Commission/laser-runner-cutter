@@ -165,6 +165,30 @@ class MaskRCNN:
         print(self.device)
         self.model.to(self.device)
 
+    def get_centroids(self, img_arr):
+        """Return a list of centroids for each detection.
+                Currently does not support batches
+
+        Args:
+            img_arr (ndarray[H, W, 3]): RGB ndarray representing the image.
+
+        Returns:
+            [(float, float), .]: List of X, Y points
+        """
+        img_tensor = self.inference_transform(img_arr)
+        img_tensor = img_tensor.to(self.device)
+        res = self.model(img_tensor)
+        point_list = []
+        if len(res[0]["masks"]):
+            for mask_tensor in res[0]["masks"]:
+                mask_img = mask_tensor.detach().cpu().numpy()
+                ret, mask_img = cv2.threshold(mask_img, 0.5, 1, cv2.THRESH_BINARY)
+                x_c, y_c = np.argwhere(mask_img == 1).sum(0) / np.count_nonzero(
+                    mask_img
+                )
+                point_list.append([x_c, y_c])
+        return point_list
+
     def load(self, load_path):
         self.model.load_state_dict(torch.load(load_path))
         self.model.eval()
