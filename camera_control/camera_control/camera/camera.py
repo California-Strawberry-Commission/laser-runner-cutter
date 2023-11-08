@@ -1,10 +1,19 @@
 from abc import ABC, abstractmethod
 
 
-class CamInterface(ABC):
+class Camera(ABC):
     @abstractmethod
     def initialize(self):
         """Initialize any resources that have to be created on camera startup."""
+        pass
+
+    @abstractmethod
+    def set_exposure(self, exposure_ms):
+        """Set camera exposure time.
+
+        Args:
+            exposure_ms (float): exposure time in milliseconds. A negative number indicates auto-exposure.
+        """
         pass
 
     @abstractmethod

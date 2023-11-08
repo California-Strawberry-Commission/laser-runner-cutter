@@ -17,7 +17,13 @@ from camera_control_interfaces.msg import (
     UInt8NumpyArray,
     Int16NumpyArray,
 )
-from camera_control_interfaces.srv import GetBool, GetFrame, GetPosData, SendEnable
+from camera_control_interfaces.srv import (
+    GetBool,
+    GetFrame,
+    GetPosData,
+    SendEnable,
+    SetExposure,
+)
 
 import camera_control.utils.cv_utils as cv_utils
 from ultralytics import YOLO
@@ -102,6 +108,9 @@ class CameraControlNode(Node):
         )
         self.has_frames_srv = self.create_service(
             GetBool, "camera_control/has_frames", self.has_frames
+        )
+        self.set_exposure_srv = self.create_service(
+            SetExposure, "camera_control/set_exposure", self.set_exposure
         )
 
         self.control_laser_pub_srv = self.create_service(
@@ -244,6 +253,10 @@ class CameraControlNode(Node):
 
     def has_frames(self, request, response):
         response.data = self.curr_frames is not None
+        return response
+
+    def set_exposure(self, request, response):
+        self.camera.set_exposure(request.exposure_ms)
         return response
 
     def single_runner_detection(self, request, response):
