@@ -10,4 +10,4 @@ camera_node:
     save_debug: True
     frame_period: .1
     rgb_size: [1920, 1080]
-    depth_size: [1280, 720]
+    depth_size: [848, 480]
