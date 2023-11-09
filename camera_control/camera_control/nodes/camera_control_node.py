@@ -137,7 +137,10 @@ class CameraControlNode(Node):
         include_dir = os.path.join(
             get_package_share_directory("camera_control"), "include"
         )
-        self.model = YOLO(os.path.join(include_dir, "RunnerSegModel.pt"))
+        self.runner_seg_model = YOLO(os.path.join(include_dir, "RunnerSegModel.pt"))
+        self.laser_detection_model = YOLO(
+            os.path.join(include_dir, "LaserDetectionModel.pt")
+        )
 
         self.camera.initialize()
         self.initialize_recording()
@@ -195,12 +198,14 @@ class CameraControlNode(Node):
         runner_point_list = []
 
         if self.laser_pub_control:
-            laser_point_list = cv_utils.detect_lasers(frames, self.background_image)
+            laser_point_list = cv_utils.detect_lasers(
+                self.laser_detection_model, frames
+            )
             laser_msg = self.create_pos_data_msg(laser_point_list, frames)
             self.laser_pos_publisher.publish(laser_msg)
 
         if self.runner_pub_control:
-            runner_point_list = cv_utils.detect_runners(self.model, frames)
+            runner_point_list = cv_utils.detect_runners(self.runner_seg_model, frames)
             runner_msg = self.create_pos_data_msg(runner_point_list, frames)
             self.runner_pos_publisher.publish(runner_msg)
 
@@ -263,7 +268,9 @@ class CameraControlNode(Node):
         return response
 
     def single_runner_detection(self, request, response):
-        runner_point_list = cv_utils.detect_runners(self.model, self.curr_frames)
+        runner_point_list = cv_utils.detect_runners(
+            self.runner_seg_model, self.curr_frames
+        )
         response.pos_data = self.create_pos_data_msg(
             runner_point_list, self.curr_frames
         )
@@ -271,7 +278,7 @@ class CameraControlNode(Node):
 
     def single_laser_detection(self, request, response):
         laser_point_list = cv_utils.detect_lasers(
-            self.curr_frames, self.background_image
+            self.laser_detection_model, self.curr_frames
         )
         response.pos_data = self.create_pos_data_msg(laser_point_list, self.curr_frames)
         return response

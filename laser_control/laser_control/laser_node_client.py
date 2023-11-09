@@ -60,7 +60,6 @@ class LaserNodeClient:
         request = Empty.Request()
         response = self.node.laser_stop.call_async(request)
         rclpy.spin_until_future_complete(self.node, response)
-        self.node.logger.info(f"Stopped laser")
 
     def set_color(self, color):
         request = SetColor.Request()

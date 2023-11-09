@@ -111,10 +111,15 @@ class Calibrate(State):
             # Create an augmented matrix A to solve for the transformation matrix T
             res = np.linalg.lstsq(pos_wrt_cam, found_lsr_pts, rcond=None)
             node.cam_to_laser = res[0]
-            node.logger.info("----------Calibration Test----------")
-            node.logger.info(f"Sent points: \n{found_lsr_pts}")
-            node.logger.info(f"Found img points: \n{found_img_pts}")
-            node.logger.info(f"Calculated points: \n{np.dot(pos_wrt_cam,res[0])}")
+            node.logger.info("----------Calibration Summary----------")
+            node.logger.info(
+                f"{len(found_lsr_pts)} out of {len(lsr_pts)} point correspondences found"
+            )
+            node.logger.info(f"Laser pixels: \n{found_lsr_pts}")
+            node.logger.info(f"Corresponding camera pixels: \n{found_img_pts}")
+            node.logger.info(
+                f"Camera pos to laser pixels: \n{np.dot(pos_wrt_cam, res[0])}"
+            )
             return "calibrated"
         else:
             node.logger.info("failed to find at least 3 laser points")
