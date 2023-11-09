@@ -93,22 +93,20 @@ class RealSense(Camera):
 
         return {"color": color_frame, "depth": depth_frame}
 
-    def get_pos_location(self, x, y, frames):
+    def get_pos_location(self, x, y, frame):
         """Given an x-y point in the color frame, return the x-y-z position with respect to the camera"""
-        depth_point = self._color_pixel_to_depth_pixel((x, y), frames["depth"])
-        if not depth_point:
+        color_pixel = (x, y)
+        depth_frame = frame["depth"]
+        depth_pixel = self._color_pixel_to_depth_pixel(color_pixel, depth_frame)
+        if not depth_pixel:
             return None
-        depth = frames["depth"].get_distance(
-            round(depth_point[0]), round(depth_point[1])
+
+        depth = depth_frame.get_distance(round(depth_pixel[0]), round(depth_pixel[1]))
+        return (
+            rs.rs2_deproject_pixel_to_point(self.color_intrinsics, color_pixel, depth)
+            if depth > 0
+            else None
         )
-        pos_wrt_color = rs.rs2_deproject_pixel_to_point(
-            self.color_intrinsics, [x, y], depth
-        )
-        pos_wrt_color = np.array(pos_wrt_color) * 1000
-        self.logger.debug(
-            f"color point:[{x}, {y}] corresponding color_pos: {pos_wrt_color}"
-        )
-        return pos_wrt_color
 
     def _color_pixel_to_depth_pixel(self, pixel, depth_frame):
         """Given the location of a x-y point in the color frame, return the corresponding x-y point in the depth frame."""
