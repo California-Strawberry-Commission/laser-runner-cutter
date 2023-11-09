@@ -48,8 +48,8 @@ class CameraControlNode(Node):
                 ("save_video", True),
                 ("save_debug", False),
                 ("frame_period", 0.1),
-                ("rgb_size", [1920, 1080]),
-                ("depth_size", [1280, 720]),
+                ("rgb_size", [848, 480]),
+                ("depth_size", [848, 480]),
             ],
         )
 

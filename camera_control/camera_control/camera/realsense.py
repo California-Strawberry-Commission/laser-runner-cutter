@@ -9,7 +9,7 @@ class RealSense(Camera):
         logger,
         color_frame_size,
         depth_frame_size,
-        align_depth_to_color_frame=False,
+        align_depth_to_color_frame=True,
     ):
         self.logger = logger
         self.color_frame_size = color_frame_size

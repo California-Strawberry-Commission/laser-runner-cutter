@@ -10,5 +10,5 @@ realsense:
     save_debug: True
     save_debug: False
     frame_period: .1
-    rgb_size: [1920, 1080]
+    rgb_size: [848, 480]
     depth_size: [848, 480]
