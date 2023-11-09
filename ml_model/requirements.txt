@@ -8,3 +8,4 @@ labelbox
 labelbox[data]
 ndjson
 scaleapi
+albumentations
