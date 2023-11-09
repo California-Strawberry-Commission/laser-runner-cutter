@@ -7,7 +7,8 @@ camera_node:
   ros_parameters:
     video_dir: "/opt/video_stream"
     debug_video_dir: "/opt/debug_video_stream"
-    save_debug: True
+    save_video: False
+    save_debug: False
     frame_period: .1
     rgb_size: [848, 480]
     depth_size: [848, 480]

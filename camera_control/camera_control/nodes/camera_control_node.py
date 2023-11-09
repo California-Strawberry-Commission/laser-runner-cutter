@@ -45,7 +45,7 @@ class CameraControlNode(Node):
             parameters=[
                 ("video_dir", "/opt/video_stream"),
                 ("debug_video_dir", "/opt/debug_video_stream"),
-                ("save_video", True),
+                ("save_video", False),
                 ("save_debug", False),
                 ("frame_period", 0.1),
                 ("rgb_size", [848, 480]),
@@ -184,7 +184,10 @@ class CameraControlNode(Node):
         )
 
         curr_image = np.asanyarray(frames["color"].get_data())
-        self.rec.write(curr_image)
+
+        if self.rec_video_frame:
+            self.rec.write(curr_image)
+
         if self.background_image is None:
             self.background_image = curr_image
 
