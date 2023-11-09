@@ -14,7 +14,7 @@ from std_srvs.srv import Empty
 # Could make a mixin if desired
 class LaserNodeClient:
     def __init__(self, node):
-        node.laser_scaled_frame_corners = node.create_client(
+        node.laser_get_bounds = node.create_client(
             GetBounds, "laser_control/get_bounds"
         )
         node.laser_set_color = node.create_client(SetColor, "laser_control/set_color")
@@ -33,9 +33,7 @@ class LaserNodeClient:
         self.node = node
 
     def wait_active(self):
-        while not self.node.laser_scaled_frame_corners.wait_for_service(
-            timeout_sec=1.0
-        ):
+        while not self.node.laser_get_bounds.wait_for_service(timeout_sec=1.0):
             self.node.logger.info("laser service not available, waiting again...")
 
     def connect(self):
@@ -86,12 +84,9 @@ class LaserNodeClient:
         rclpy.spin_until_future_complete(self.node, response)
         self.node.logger.debug(f"Added laser point: {point}")
 
-    def get_scaled_frame_corners(self, scale_list):
-        lsr_pts = []
-        for calibration_scale in scale_list:
-            request = GetBounds.Request()
-            request.scale = calibration_scale
-            response = self.node.laser_scaled_frame_corners.call_async(request)
-            rclpy.spin_until_future_complete(self.node, response)
-            lsr_pts += [[point.x, point.y] for point in response.result().points]
-        return lsr_pts
+    def get_bounds(self, scale=1.0):
+        request = GetBounds.Request()
+        request.scale = scale
+        response = self.node.laser_get_bounds.call_async(request)
+        rclpy.spin_until_future_complete(self.node, response)
+        return [(point.x, point.y) for point in response.result().points]

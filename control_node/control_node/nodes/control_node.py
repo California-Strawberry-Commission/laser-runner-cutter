@@ -77,11 +77,37 @@ class Calibrate(State):
     def execute(self, blackboard):
         node = blackboard.main_node
         node.logger.info("Entering State Calibrate")
-        scale_factors = [0.15, 0.25]
-        lsr_pts = node.laser_client.get_scaled_frame_corners(scale_factors)
+
+        # Get calibration points
+        x_bounds = [float("inf"), float("-inf")]
+        y_bounds = [float("inf"), float("-inf")]
+        laser_bounds = node.laser_client.get_bounds(1.0)
+        for x, y in laser_bounds:
+            if x < x_bounds[0]:
+                x_bounds[0] = x
+            if x > x_bounds[1]:
+                x_bounds[1] = x
+            if y < y_bounds[0]:
+                y_bounds[0] = y
+            if y > y_bounds[1]:
+                y_bounds[1] = y
+
+        grid_size = (5, 5)
+        x_step = (x_bounds[1] - x_bounds[0]) / (grid_size[0] - 1)
+        y_step = (y_bounds[1] - y_bounds[0]) / (grid_size[1] - 1)
+        lsr_pts = []
+        for i in range(grid_size[0]):
+            for j in range(grid_size[1]):
+                x = x_bounds[0] + i * x_step
+                y = y_bounds[0] + j * y_step
+                lsr_pts.append((x, y))
+
         found_lsr_pts = []
         found_img_pts = []
         pos_wrt_cam = []
+
+        # TODO: set exposure on camera node automatically when detecting laser
+        node.camera_client.set_exposure(0.001)
 
         for point in lsr_pts:
             attempts = 0
@@ -102,6 +128,7 @@ class Calibrate(State):
                 time.sleep(0.005)
 
         node.laser_client.stop_laser()
+        node.camera_client.set_exposure(-1.0)
 
         if len(found_lsr_pts) >= 3:
             pos_wrt_cam = np.array(pos_wrt_cam)
