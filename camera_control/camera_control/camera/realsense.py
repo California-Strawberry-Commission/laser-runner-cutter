@@ -4,10 +4,17 @@ import numpy as np
 
 
 class RealSense(Camera):
-    def __init__(self, logger, color_frame_size, depth_frame_size):
+    def __init__(
+        self,
+        logger,
+        color_frame_size,
+        depth_frame_size,
+        align_depth_to_color_frame=False,
+    ):
         self.logger = logger
         self.color_frame_size = color_frame_size
         self.depth_frame_size = depth_frame_size
+        self.align_depth_to_color_frame = align_depth_to_color_frame
 
     def initialize(self):
         # Setup code based on https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/align-depth2color.py
@@ -28,8 +35,16 @@ class RealSense(Camera):
             30,
         )
         self.profile = self.pipeline.start(self.config)
-        self._setup_intrinsics_extrinsics()
 
+        # Get camera intrinsics and extrinsics
+        color_prof = self.profile.get_stream(rs.stream.color)
+        depth_prof = self.profile.get_stream(rs.stream.depth)
+        self.depth_intrinsics = depth_prof.as_video_stream_profile().get_intrinsics()
+        self.color_intrinsics = color_prof.as_video_stream_profile().get_intrinsics()
+        self.depth_to_color_extrinsics = depth_prof.get_extrinsics_to(color_prof)
+        self.color_to_depth_extrinsics = color_prof.get_extrinsics_to(depth_prof)
+
+        # Get depth scale
         depth_sensor = self.profile.get_device().first_depth_sensor()
         self.depth_scale = depth_sensor.get_depth_scale()
 
@@ -37,9 +52,12 @@ class RealSense(Camera):
         self.depth_min_meters = 0.1
         self.depth_max_meters = 10
 
-        # Post-processing filters
+        # Post-processing
+        self.align = (
+            rs.align(rs.stream.color) if self.align_depth_to_color_frame else None
+        )
         self.temporal_filter = rs.temporal_filter()
-        # self.spatial_filter = rs.spatial_filter() # Doesn't seem to help much. Disabling for now.
+        # self.spatial_filter = rs.spatial_filter()  # Doesn't seem to help much. Disabling for now.
         self.hole_filling_filter = rs.hole_filling_filter()
 
     def set_exposure(self, exposure_ms):
@@ -56,6 +74,10 @@ class RealSense(Camera):
         if not frames:
             return None
 
+        # Align depth frame to color frame if needed
+        if self.align:
+            frames = self.align.process(frames)
+
         color_frame = frames.get_color_frame()
         depth_frame = frames.get_depth_frame()
         if not depth_frame or not color_frame:
@@ -66,17 +88,17 @@ class RealSense(Camera):
         depth_frame = self.hole_filling_filter.process(depth_frame)
 
         # The various post processing functions return a generic frame, so we need
-        # to cast to depth_frame
+        # to cast back to depth_frame
         depth_frame = depth_frame.as_depth_frame()
 
         return {"color": color_frame, "depth": depth_frame}
 
-    def get_pos_location(self, x, y, frame):
+    def get_pos_location(self, x, y, frames):
         """Given an x-y point in the color frame, return the x-y-z position with respect to the camera"""
-        depth_point = self._color_pixel_to_depth(x, y, frame)
+        depth_point = self._color_pixel_to_depth_pixel((x, y), frames["depth"])
         if not depth_point:
             return None
-        depth = frame["depth"].get_distance(
+        depth = frames["depth"].get_distance(
             round(depth_point[0]), round(depth_point[1])
         )
         pos_wrt_color = rs.rs2_deproject_pixel_to_point(
@@ -88,34 +110,23 @@ class RealSense(Camera):
         )
         return pos_wrt_color
 
-    def _setup_intrinsics_extrinsics(self):
-        color_prof = self.profile.get_stream(rs.stream.color)
-        depth_prof = self.profile.get_stream(rs.stream.depth)
-
-        self.depth_intrinsics = depth_prof.as_video_stream_profile().get_intrinsics()
-        self.color_intrinsics = color_prof.as_video_stream_profile().get_intrinsics()
-        self.logger.info(f"Color Frame intrinsics:{self.color_intrinsics}")
-        self.depth_to_color_extrinsics = depth_prof.get_extrinsics_to(color_prof)
-        self.color_to_depth_extrinsics = color_prof.get_extrinsics_to(depth_prof)
-
-    def _color_pixel_to_depth(self, x, y, frame):
+    def _color_pixel_to_depth_pixel(self, pixel, depth_frame):
         """Given the location of a x-y point in the color frame, return the corresponding x-y point in the depth frame."""
-        # Based of a number of realsense github issues including
-        # https://github.com/IntelRealSense/librealsense/issues/5440#issuecomment-566593866
-        depth_pixel = rs.rs2_project_color_pixel_to_depth_pixel(
-            frame["depth"].get_data(),
-            self.depth_scale,
-            self.depth_min_meters,
-            self.depth_max_meters,
-            self.depth_intrinsics,
-            self.color_intrinsics,
-            self.depth_to_color_extrinsics,
-            self.color_to_depth_extrinsics,
-            (x, y),
-        )
-        self.logger.debug(
-            f"Color point:[{x} {y}] corresponding Depth point{depth_pixel}"
-        )
-        if depth_pixel[0] < 0 or depth_pixel[1] < 0:
-            return None
-        return depth_pixel
+        if self.align:
+            return pixel
+        else:
+            # Based of a number of realsense github issues including
+            # https://github.com/IntelRealSense/librealsense/issues/5440#issuecomment-566593866
+            depth_pixel = rs.rs2_project_color_pixel_to_depth_pixel(
+                depth_frame.get_data(),
+                self.depth_scale,
+                self.depth_min_meters,
+                self.depth_max_meters,
+                self.depth_intrinsics,
+                self.color_intrinsics,
+                self.depth_to_color_extrinsics,
+                self.color_to_depth_extrinsics,
+                pixel,
+            )
+
+            return None if depth_pixel[0] < 0 or depth_pixel[1] < 0 else depth_pixel
