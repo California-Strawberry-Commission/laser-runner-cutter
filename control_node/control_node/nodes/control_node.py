@@ -113,6 +113,8 @@ class Calibrate(State):
             attempts = 0
             node.laser_client.stop_laser()
             node.laser_client.start_laser(point=point, color=node.tracking_laser_color)
+            # Wait for galvo to settle and for camera frame capture
+            time.sleep(0.2)
 
             while attempts < 50:
                 attempts += 1
