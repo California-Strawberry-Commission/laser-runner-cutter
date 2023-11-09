@@ -65,6 +65,10 @@ class RealSense(Camera):
         depth_frame = self.temporal_filter.process(depth_frame)
         depth_frame = self.hole_filling_filter.process(depth_frame)
 
+        # The various post processing functions return a generic frame, so we need
+        # to cast to depth_frame
+        depth_frame = depth_frame.as_depth_frame()
+
         return {"color": color_frame, "depth": depth_frame}
 
     def get_pos_location(self, x, y, frame):
