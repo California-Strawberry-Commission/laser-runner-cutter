@@ -36,8 +36,8 @@ DVC is a project that abstracts cloud storage of large data for machine learning
 
 1.  Get an AWS access key for the S3 bucket, and set it for use by DVC:
 
-        $ dvc remote modify --local laser_detection access_key_id <access key>
-        $ dvc remote modify --local laser_detection secret_access_key <secret access key>
+        $ dvc remote modify --local segmentation_data access_key_id <access key>
+        $ dvc remote modify --local segmentation_data secret_access_key <secret access key>
 
 1.  Pull data from the S3 bucket
 
@@ -55,15 +55,30 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
 ## Workflow
 
 1.  Obtain new training images
+
 1.  Use `import_images` from `labelbox_api.py` to upload new images to the existing Labelbox dataset
+
 1.  Annotate the images in Labelbox
+
 1.  Obtain labels from Labelbox
+
     1. Go to Annotate -> Laser Detection
     1. Click the "Data Rows" tab
     1. Click the "All (X data rows)" dropdown, then click "Export data v2"
     1. Select all fields, then click the "Export JSON" button
-1.  Use `create_yolo_labels_from_segment_ndjson` in `labelbox_api.py` to create YOLO label txt files from the Labelbox ndjson export file
-1.  Split the raw image and label data into training and validation datasets in `data_store/laser_detection/images` and `data_store/laser_detection/labels`. Be sure to remove the existing train/val images and labels beforehand.
-1.  The local train script uses the Ultralytics repo to train a laser detection model on the dataset:
 
-        $ python local_train.py
+1.  Use `create_yolo_labels_from_segment_ndjson` in `labelbox_api.py` to create YOLO label txt files from the Labelbox ndjson export file
+
+1.  Run `split_data.py` to split the raw image and label data into training and validation datasets. Be sure to remove the existing train/val images and labels beforehand.
+
+        $ rm -rf data_store/segmentation_data/images
+        $ rm -rf data_store/segmentation_data/labels
+        $ python split_data.py
+
+1.  Train the model locally:
+
+        $ python yolov8_train.py
+
+1.  Evaluate the trained model on the test dataset:
+
+        $ python yolov8_eval.py <path to model>
