@@ -17,7 +17,13 @@ from camera_control_interfaces.msg import (
     UInt8NumpyArray,
     Int16NumpyArray,
 )
-from camera_control_interfaces.srv import GetBool, GetFrame, GetPosData, SendEnable
+from camera_control_interfaces.srv import (
+    GetBool,
+    GetFrame,
+    GetPosData,
+    SendEnable,
+    SetExposure,
+)
 
 import camera_control.utils.cv_utils as cv_utils
 from ultralytics import YOLO
@@ -39,11 +45,11 @@ class CameraControlNode(Node):
             parameters=[
                 ("video_dir", "/opt/video_stream"),
                 ("debug_video_dir", "/opt/debug_video_stream"),
-                ("save_video", True),
+                ("save_video", False),
                 ("save_debug", False),
                 ("frame_period", 0.1),
-                ("rgb_size", [1920, 1080]),
-                ("depth_size", [1280, 720]),
+                ("rgb_size", [848, 480]),
+                ("depth_size", [848, 480]),
             ],
         )
 
@@ -103,6 +109,9 @@ class CameraControlNode(Node):
         self.has_frames_srv = self.create_service(
             GetBool, "camera_control/has_frames", self.has_frames
         )
+        self.set_exposure_srv = self.create_service(
+            SetExposure, "camera_control/set_exposure", self.set_exposure
+        )
 
         self.control_laser_pub_srv = self.create_service(
             SendEnable,
@@ -128,7 +137,10 @@ class CameraControlNode(Node):
         include_dir = os.path.join(
             get_package_share_directory("camera_control"), "include"
         )
-        self.model = YOLO(os.path.join(include_dir, "RunnerSegModel.pt"))
+        self.runner_seg_model = YOLO(os.path.join(include_dir, "RunnerSegModel.pt"))
+        self.laser_detection_model = YOLO(
+            os.path.join(include_dir, "LaserDetectionModel.pt")
+        )
 
         self.camera.initialize()
         self.initialize_recording()
@@ -175,7 +187,10 @@ class CameraControlNode(Node):
         )
 
         curr_image = np.asanyarray(frames["color"].get_data())
-        self.rec.write(curr_image)
+
+        if self.rec_video_frame:
+            self.rec.write(curr_image)
+
         if self.background_image is None:
             self.background_image = curr_image
 
@@ -183,12 +198,14 @@ class CameraControlNode(Node):
         runner_point_list = []
 
         if self.laser_pub_control:
-            laser_point_list = cv_utils.detect_lasers(frames, self.background_image)
+            laser_point_list = cv_utils.detect_lasers(
+                self.laser_detection_model, frames
+            )
             laser_msg = self.create_pos_data_msg(laser_point_list, frames)
             self.laser_pos_publisher.publish(laser_msg)
 
         if self.runner_pub_control:
-            runner_point_list = cv_utils.detect_runners(self.model, frames)
+            runner_point_list = cv_utils.detect_runners(self.runner_seg_model, frames)
             runner_msg = self.create_pos_data_msg(runner_point_list, frames)
             self.runner_pos_publisher.publish(runner_msg)
 
@@ -246,8 +263,14 @@ class CameraControlNode(Node):
         response.data = self.curr_frames is not None
         return response
 
+    def set_exposure(self, request, response):
+        self.camera.set_exposure(request.exposure_ms)
+        return response
+
     def single_runner_detection(self, request, response):
-        runner_point_list = cv_utils.detect_runners(self.model, self.curr_frames)
+        runner_point_list = cv_utils.detect_runners(
+            self.runner_seg_model, self.curr_frames
+        )
         response.pos_data = self.create_pos_data_msg(
             runner_point_list, self.curr_frames
         )
@@ -255,7 +278,7 @@ class CameraControlNode(Node):
 
     def single_laser_detection(self, request, response):
         laser_point_list = cv_utils.detect_lasers(
-            self.curr_frames, self.background_image
+            self.laser_detection_model, self.curr_frames
         )
         response.pos_data = self.create_pos_data_msg(laser_point_list, self.curr_frames)
         return response

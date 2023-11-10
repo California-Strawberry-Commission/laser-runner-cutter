@@ -33,6 +33,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetFrame.srv"
   "srv/GetPosData.srv"
   "srv/SendEnable.srv"
+  "srv/SetExposure.srv"
 )
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

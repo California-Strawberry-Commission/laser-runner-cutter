@@ -1,13 +1,16 @@
 import rclpy
 
 from std_srvs.srv import Empty
-from camera_control_interfaces.srv import GetBool, GetPosData
+from camera_control_interfaces.srv import GetBool, GetPosData, SetExposure
 from laser_control_interfaces.msg import Point
 
 
 # Could make a mixin if desired
 class CameraNodeClient:
     def __init__(self, node):
+        node.camera_set_exposure = node.create_client(
+            SetExposure, "camera_control/set_exposure"
+        )
         node.camera_get_lasers = node.create_client(
             GetPosData, "camera_control/get_laser_detection"
         )
@@ -32,6 +35,12 @@ class CameraNodeClient:
         response = self.node.camera_has_frames.call_async(request)
         rclpy.spin_until_future_complete(self.node, response)
         return response.result().data
+
+    def set_exposure(self, exposure_ms):
+        request = SetExposure.Request()
+        request.exposure_ms = exposure_ms
+        response = self.node.camera_set_exposure.call_async(request)
+        rclpy.spin_until_future_complete(self.node, response)
 
     def get_laser_pos(self):
         request = GetPosData.Request()
