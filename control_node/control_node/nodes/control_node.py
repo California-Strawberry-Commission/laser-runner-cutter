@@ -15,6 +15,7 @@ from laser_control.laser_node_client import LaserNodeClient
 from laser_runner_removal.Tracker import Tracker
 from camera_control.camera_node_client import CameraNodeClient
 from yasmin import State, StateMachine, Blackboard
+from control_node.calibration import Calibration
 
 DEBUG = 1
 
@@ -78,81 +79,8 @@ class Calibrate(State):
         node = blackboard.main_node
         node.logger.info("Entering State Calibrate")
 
-        # Get calibration points
-        x_bounds = [float("inf"), float("-inf")]
-        y_bounds = [float("inf"), float("-inf")]
-        laser_bounds = node.laser_client.get_bounds(1.0)
-        for x, y in laser_bounds:
-            if x < x_bounds[0]:
-                x_bounds[0] = x
-            if x > x_bounds[1]:
-                x_bounds[1] = x
-            if y < y_bounds[0]:
-                y_bounds[0] = y
-            if y > y_bounds[1]:
-                y_bounds[1] = y
-
-        grid_size = (5, 5)
-        x_step = (x_bounds[1] - x_bounds[0]) / (grid_size[0] - 1)
-        y_step = (y_bounds[1] - y_bounds[0]) / (grid_size[1] - 1)
-        lsr_pts = []
-        for i in range(grid_size[0]):
-            for j in range(grid_size[1]):
-                x = x_bounds[0] + i * x_step
-                y = y_bounds[0] + j * y_step
-                lsr_pts.append((x, y))
-
-        found_lsr_pts = []
-        found_img_pts = []
-        pos_wrt_cam = []
-
-        # TODO: set exposure on camera node automatically when detecting laser
-        node.camera_client.set_exposure(0.001)
-
-        for point in lsr_pts:
-            attempts = 0
-            node.laser_client.stop_laser()
-            node.laser_client.start_laser(point=point, color=node.tracking_laser_color)
-            # Wait for galvo to settle and for camera frame capture
-            time.sleep(0.2)
-
-            while attempts < 50:
-                attempts += 1
-                pos_data = node.camera_client.get_laser_pos()
-                if pos_data["pos_list"]:
-                    # can add error if len greater then 1
-                    found_lsr_pts.append(point)
-                    found_img_pts.append(pos_data["point_list"][0])
-                    pos_wrt_cam.append(pos_data["pos_list"][0])
-                    break
-
-                # Should be a ros way to sleep
-                time.sleep(0.005)
-
-        node.laser_client.stop_laser()
-        node.camera_client.set_exposure(-1.0)
-
-        if len(found_lsr_pts) >= 3:
-            pos_wrt_cam = np.array(pos_wrt_cam)
-            found_lsr_pts = np.array(found_lsr_pts)
-
-            # Solve for transform between 3D points 'pos_wrt_cam' and 2D points 'found_lsr_pts'
-            # Create an augmented matrix A to solve for the transformation matrix T
-            res = np.linalg.lstsq(pos_wrt_cam, found_lsr_pts, rcond=None)
-            node.cam_to_laser = res[0]
-            node.logger.info("----------Calibration Summary----------")
-            node.logger.info(
-                f"{len(found_lsr_pts)} out of {len(lsr_pts)} point correspondences found"
-            )
-            node.logger.info(f"Laser pixels: \n{found_lsr_pts}")
-            node.logger.info(f"Corresponding camera pixels: \n{found_img_pts}")
-            node.logger.info(
-                f"Camera pos to laser pixels: \n{np.dot(pos_wrt_cam, res[0])}"
-            )
-            return "calibrated"
-        else:
-            node.logger.info("failed to find at least 3 laser points")
-            return "failed_to_calibrate"
+        result = blackboard.calibration.calibrate()
+        return "calibrated" if result else "failed_to_calibrate"
 
 
 class Acquire(State):
@@ -166,7 +94,7 @@ class Acquire(State):
     def execute(self, blackboard):
         node = blackboard.main_node
         node.logger.info("Entering State Acquire")
-        if node.cam_to_laser is None:
+        if not blackboard.calibration.is_calibrated:
             return "calibration_needed"
 
         # If there are active tracks set it as the current track
@@ -204,8 +132,11 @@ class Correct(State):
     def execute(self, blackboard):
         node = blackboard.main_node
         node.logger.info("Entering State Correct")
+
         # Find the position of the needed laser point based on
-        laser_send_point = node.curr_track.pos_wrt_cam @ node.cam_to_laser
+        laser_send_point = blackboard.calibration.camera_point_to_laser_pixel(
+            node.curr_track.pos_wrt_cam
+        )
 
         node.laser_client.start_laser(
             point=laser_send_point, color=node.tracking_laser_color
@@ -343,13 +274,19 @@ class MainNode(Node):
         )
         main_sm.add_state("BURN", Burn(), transitions={"runner_removed": "ACQ"})
 
-        self.cam_to_laser = None
         self.curr_track = None
         self.laser_client = LaserNodeClient(self)
         self.camera_client = CameraNodeClient(self)
         self.runner_tracker = Tracker()
+
         blackboard = Blackboard()
         blackboard.main_node = self
+        blackboard.calibration = Calibration(
+            self.laser_client,
+            self.camera_client,
+            self.tracking_laser_color,
+            self.logger,
+        )
 
         self.cam_info_received = False
 
