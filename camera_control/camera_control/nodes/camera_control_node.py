@@ -36,7 +36,7 @@ from ament_index_python.packages import get_package_share_directory
 
 class CameraControlNode(Node):
     def __init__(self):
-        Node.__init__(self, "CameraControlNode")
+        super().__init__("camera_control_node")
         self.logger = self.get_logger()
 
         # declare parameters from a ros config file, if no parameter is found, the default is used
