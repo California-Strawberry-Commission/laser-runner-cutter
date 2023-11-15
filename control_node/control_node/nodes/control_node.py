@@ -34,7 +34,8 @@ class Initialize(State):
         State.__init__(self, outcomes=["init_complete"])
 
     def execute(self, blackboard):
-        blackboard.main_node.logger.info("Entering State Initialize")
+        node = blackboard.main_node
+        node.logger.info("Entering State Initialize")
 
         return "init_complete"
 

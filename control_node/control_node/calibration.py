@@ -4,9 +4,9 @@ from scipy.optimize import minimize
 
 
 class Calibration:
-    def __init__(self, laser, camera, laser_color, logger=None):
-        self.laser = laser
-        self.camera = camera
+    def __init__(self, laser_client, camera_client, laser_color, logger=None):
+        self.laser_client = laser_client
+        self.camera_client = camera_client
         self.logger = logger
         self.laser_color = laser_color
 
@@ -31,7 +31,7 @@ class Calibration:
         # Get calibration points
         x_bounds = [float("inf"), float("-inf")]
         y_bounds = [float("inf"), float("-inf")]
-        laser_bounds = self.laser.get_bounds(1.0)
+        laser_bounds = self.laser_client.get_bounds(1.0)
         for x, y in laser_bounds:
             if x < x_bounds[0]:
                 x_bounds[0] = x
@@ -57,17 +57,17 @@ class Calibration:
         self.calibration_camera_points = []
 
         # TODO: set exposure on camera node automatically when detecting laser
-        self.camera.set_exposure(0.001)
+        self.camera_client.set_exposure(0.001)
 
         for laser_pixel in pending_calibration_laser_pixels:
-            self.laser.stop_laser()
-            self.laser.start_laser(point=laser_pixel, color=self.laser_color)
+            self.laser_client.stop_laser()
+            self.laser_client.start_laser(point=laser_pixel, color=self.laser_color)
             # Wait for galvo to settle and for camera frame capture
             time.sleep(0.2)
             self.add_point_correspondence(laser_pixel)
 
-        self.laser.stop_laser()
-        self.camera.set_exposure(-1.0)
+        self.laser_client.stop_laser()
+        self.camera_client.set_exposure(-1.0)
 
         if self.logger:
             self.logger.info(
@@ -98,7 +98,7 @@ class Calibration:
         attempts = 0
         while attempts < 50:
             attempts += 1
-            pos_data = self.camera.get_laser_pos()
+            pos_data = self.camera_client.get_laser_pos()
             if pos_data["pos_list"]:
                 # can add error if len greater then 1
                 self.calibration_laser_pixels.append(laser_pixel)
