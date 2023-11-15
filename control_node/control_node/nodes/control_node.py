@@ -43,9 +43,8 @@ class Initialize(State):
 class ServiceWait(State):
     """State to wait for other services that need to come up"""
 
-    def __init__(self, node, logger, laser_client, camera_client):
+    def __init__(self, logger, laser_client, camera_client):
         super().__init__(outcomes=["services_up"])
-        self.node = node
         self.logger = logger
         self.laser_client = laser_client
         self.camera_client = camera_client
@@ -90,11 +89,10 @@ class Calibrate(State):
 class Acquire(State):
     """A transition phase, checks if calibration is needed, or if runners are present to be trimmed"""
 
-    def __init__(self, node, logger, camera_client, calibration, runner_tracker):
+    def __init__(self, logger, camera_client, calibration, runner_tracker):
         super().__init__(
             outcomes=["calibration_needed", "target_acquired", "no_target_found"]
         )
-        self.node = node
         self.logger = logger
         self.camera_client = camera_client
         self.calibration = calibration
@@ -106,7 +104,7 @@ class Acquire(State):
             return "calibration_needed"
 
         # If there are active tracks set it as the current track
-        if self._set_available_track():
+        if self._set_available_track(blackboard):
             return "target_acquired"
 
         # If there are no active tracks check for new runners
@@ -115,16 +113,16 @@ class Acquire(State):
             for pos, point in zip(pos_data["pos_list"], pos_data["point_list"]):
                 self.runner_tracker.add_track(pos, point)
             # after adding additional tracks, check if a new track is available.
-            if self._set_available_track():
+            if self._set_available_track(blackboard):
                 return "target_acquired"
 
         return "no_target_found"
 
-    def _set_available_track(self):
+    def _set_available_track(self, blackboard):
         if self.runner_tracker.has_active_tracks:
-            self.node.curr_track = self.runner_tracker.active_tracks[0]
+            blackboard.curr_track = self.runner_tracker.active_tracks[0]
             # Publish the runner point we are attempting to cut for logging and image drawing
-            self.camera_client.pub_runner_point(self.node.curr_track.point)
+            self.camera_client.pub_runner_point(blackboard.curr_track.point)
             return True
         else:
             return False
@@ -133,7 +131,6 @@ class Acquire(State):
 class Correct(State):
     def __init__(
         self,
-        node,
         logger,
         laser_client,
         camera_client,
@@ -145,7 +142,6 @@ class Correct(State):
         until they line up correctly.
         """
         super().__init__(outcomes=["on_target", "target_not_reached"])
-        self.node = node
         self.logger = logger
         self.laser_client = laser_client
         self.camera_client = camera_client
@@ -158,26 +154,26 @@ class Correct(State):
 
         # Find the position of the needed laser point based on
         laser_send_point = self.calibration.camera_point_to_laser_pixel(
-            self.node.curr_track.pos_wrt_cam
+            blackboard.curr_track.pos_wrt_cam
         )
 
         self.laser_client.start_laser(
             point=laser_send_point, color=self.tracking_laser_color
         )
         self.missing_laser_count = 0
-        targ_reached = self._correct_laser(laser_send_point)
+        targ_reached = self._correct_laser(laser_send_point, blackboard)
         self.laser_client.stop_laser()
         self.logger.info(f"targ_reached: {targ_reached}")
         if targ_reached:
             return "on_target"
         else:
             self.logger.info("Targets not reached")
-            self.runner_tracker.deactivate(self.node.curr_track)
+            self.runner_tracker.deactivate(blackboard.curr_track)
             return "target_not_reached"
 
-    def _correct_laser(self, laser_send_point):
+    def _correct_laser(self, laser_send_point, blackboard):
         """Iteratively move the tracking laser until it is at the same point as the runner."""
-        self.node.curr_track.corrected_laser_point = laser_send_point
+        blackboard.curr_track.corrected_laser_point = laser_send_point
 
         laser_data = self.camera_client.get_laser_pos()
         if laser_data["point_list"]:
@@ -191,10 +187,10 @@ class Correct(State):
                 self.logger.info("Laser missing during state correct")
                 return False
             time.sleep(0.01)
-            return self._correct_laser(laser_send_point)
+            return self._correct_laser(laser_send_point, blackboard)
 
         # Using the saved runner point, this won't work once we begin moving
-        runner_point = np.array(self.node.curr_track.point)
+        runner_point = np.array(blackboard.curr_track.point)
         dist = np.linalg.norm(laser_point - runner_point)
 
         if dist > 10:
@@ -216,17 +212,16 @@ class Correct(State):
 
             self.laser_client.set_point(laser_send_point)
             self.missing_laser_count = 0
-            return self._correct_laser(new_point)
+            return self._correct_laser(new_point, blackboard)
 
         return True
 
 
 class Burn(State):
     def __init__(
-        self, node, logger, laser_client, burn_color, burn_time_secs, runner_tracker
+        self, logger, laser_client, burn_color, burn_time_secs, runner_tracker
     ):
         super().__init__(outcomes=["runner_removed"])
-        self.node = node
         self.logger = logger
         self.laser_client = laser_client
         self.burn_color = burn_color
@@ -239,7 +234,7 @@ class Burn(State):
 
         # Turn on burn laser
         self.laser_client.start_laser(
-            point=self.node.curr_track.corrected_laser_point,
+            point=blackboard.curr_track.corrected_laser_point,
             color=self.burn_color,
         )
 
@@ -247,14 +242,14 @@ class Burn(State):
             time.sleep(0.1)
 
         self.laser_client.stop_laser()
-        self.runner_tracker.deactivate(self.node.curr_track)
+        self.runner_tracker.deactivate(blackboard.curr_track)
         return "runner_removed"
 
 
 class MainNode(Node):
     def __init__(self):
         """State Machine that controls what the system is currently doing"""
-        Node.__init__(self, "main_node")
+        super().__init__("main_node")
         self.logger = self.get_logger()
 
         # declare parameters from a ros config file, if no parameter is found, the default is used
@@ -287,8 +282,9 @@ class MainNode(Node):
             self.logger,
         )
         self.runner_tracker = Tracker()
-        # TODO: move this to blackboard
-        self.curr_track = None
+
+        blackboard = Blackboard()
+        blackboard.curr_track = None
 
         main_sm = StateMachine(outcomes=["Finished"])
         main_sm.add_state(
@@ -296,7 +292,7 @@ class MainNode(Node):
         )
         main_sm.add_state(
             "WAIT",
-            ServiceWait(self, self.logger, self.laser_client, self.camera_client),
+            ServiceWait(self.logger, self.laser_client, self.camera_client),
             transitions={"services_up": "CALIB"},
         )
         main_sm.add_state(
@@ -307,7 +303,6 @@ class MainNode(Node):
         main_sm.add_state(
             "ACQ",
             Acquire(
-                self,
                 self.logger,
                 self.camera_client,
                 self.calibration,
@@ -322,7 +317,6 @@ class MainNode(Node):
         main_sm.add_state(
             "CORRECT",
             Correct(
-                self,
                 self.logger,
                 self.laser_client,
                 self.camera_client,
@@ -335,7 +329,6 @@ class MainNode(Node):
         main_sm.add_state(
             "BURN",
             Burn(
-                self,
                 self.logger,
                 self.laser_client,
                 self.burn_color,
@@ -345,7 +338,7 @@ class MainNode(Node):
             transitions={"runner_removed": "ACQ"},
         )
 
-        outcome = main_sm(Blackboard())
+        outcome = main_sm(blackboard)
         self.logger.info(outcome)
 
 
