@@ -12,8 +12,10 @@ from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 from torchvision.ops.boxes import masks_to_boxes
 from torchvision.utils import save_image
 from torchvision.transforms import v2 as T
+from tqdm import tqdm
 import random
 import albumentations as A
+from torchmetrics.detection import MeanAveragePrecision
 
 SIZE = (720, 960)
 
@@ -189,6 +191,44 @@ class MaskRCNN:
                 point_list.append([x_c, y_c])
         return point_list
 
+    def get_map_value(self, img_dir, mask_dir):
+        subdir_paths = glob.glob(os.path.join(mask_dir, "*"))
+        imgs = [
+            os.path.join(img_dir, os.path.split(mask_subdir)[-1] + ".jpg")
+            for mask_subdir in subdir_paths
+        ]
+        # Using the dataloader concept to create the test labels
+        test_dl = torch.utils.data.DataLoader(
+            MRCNNDataSet(
+                imgs,
+                subdir_paths,
+                AlbumRandAugment(basic_count=0, complex_count=0),
+            ),
+            batch_size=1,
+            shuffle=True,
+            collate_fn=collate_fn,
+            num_workers=12,
+            pin_memory=True if torch.cuda.is_available() else False,
+        )
+        self.model.eval()
+        metric = MeanAveragePrecision()
+        for dt in tqdm(test_dl):
+            labels_set = []
+            pred_set = []
+            imgs = [img.to(self.device) for img, _ in dt]
+            labels = [
+                {k: v.to(self.device) for k, v in label.items()} for _, label in dt
+            ]
+            preds = self.model(imgs)
+            for label in labels:
+                labels_set.append({k: v.cpu().detach() for k, v in label.items()})
+            for pred in preds:
+                pred_set.append({k: v.cpu().detach() for k, v in pred.items()})
+            metric.update(pred_set, labels_set)
+
+        met = metric.compute()
+        print(met)
+
     def load(self, load_path):
         self.model.load_state_dict(torch.load(load_path))
         self.model.eval()
@@ -288,7 +328,7 @@ class MaskRCNN:
 
 
 if __name__ == "__main__":
-    weights_file = "runner_instance_segment_augmented.pt"
+    weights_file = "runner_instance_segment.pt"
     model = MaskRCNN()
     weights_path = os.path.join(
         os.getcwd(), f"ml_model/data_store/weights/{weights_file}"
@@ -298,4 +338,5 @@ if __name__ == "__main__":
     mask_dir = os.path.join(
         os.getcwd(), "ml_model/data_store/segmentation_data/mrcnn_masks/"
     )
-    model.train_model(img_dir, mask_dir, weights_path, verbose=False)
+    # model.train_model(img_dir, mask_dir, weights_path, verbose=False)
+    model.get_map_value(img_dir, mask_dir)

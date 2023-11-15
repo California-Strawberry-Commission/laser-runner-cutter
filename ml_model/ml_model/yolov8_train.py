@@ -12,5 +12,6 @@ settings.update(
 
 model = YOLO("yolov8n-seg.yaml")
 results = model.train(
-    data="runner-seg.yml", imgsz=(960, 720), device=0, epochs=1000, flipud=0.5
+    data="ml_model/runner-seg.yml", imgsz=(960, 720), device=0, epochs=100, flipud=0.5
 )
+model.val()
