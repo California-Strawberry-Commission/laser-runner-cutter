@@ -1,4 +1,4 @@
-"""File: main_node.py
+"""File: control_node.py
 
 Main ros2 control node for the laser runner removal system. This 
 node uses a state machine to control the general objective of the 
@@ -30,12 +30,12 @@ class Runner:
 class Initialize(State):
     """Initialization state for setting up resources needed by the system"""
 
-    def __init__(self):
-        State.__init__(self, outcomes=["init_complete"])
+    def __init__(self, logger):
+        super().__init__(outcomes=["init_complete"])
+        self.logger = logger
 
     def execute(self, blackboard):
-        node = blackboard.main_node
-        node.logger.info("Entering State Initialize")
+        self.logger.info("Entering State Initialize")
 
         return "init_complete"
 
@@ -43,29 +43,31 @@ class Initialize(State):
 class ServiceWait(State):
     """State to wait for other services that need to come up"""
 
-    def __init__(self):
-        State.__init__(self, outcomes=["services_up"])
+    def __init__(self, node, logger, laser_client, camera_client):
+        super().__init__(outcomes=["services_up"])
+        self.node = node
+        self.logger = logger
+        self.laser_client = laser_client
+        self.camera_client = camera_client
 
     def execute(self, blackboard):
-        node = blackboard.main_node
-
         # THIS SHOULDN'T BE NEEDED
         time.sleep(3)
-        node.logger.info("Entering State ServiceWait")
-        node.laser_client.wait_active()
+        self.logger.info("Entering State ServiceWait")
+        self.laser_client.wait_active()
 
         # Currently don't support enabling multiple laser connections
-        node.logger.info("connecting to laser")
-        node.laser_client.connect()
-        node.logger.info("laser connected")
+        self.logger.info("connecting to laser")
+        self.laser_client.connect()
+        self.logger.info("laser connected")
 
         # ToDo add check laser connected correctly
 
         # Check that the camera has frames
-        node.logger.info("wait for frames")
+        self.logger.info("wait for frames")
         has_frames = False
         while not has_frames:
-            has_frames = node.camera_client.has_frames()
+            has_frames = self.camera_client.has_frames()
 
         return "services_up"
 
@@ -73,114 +75,133 @@ class ServiceWait(State):
 class Calibrate(State):
     """Calibrate the laser to camera, creating a 3D pos to laser frame transform."""
 
-    def __init__(self):
-        State.__init__(self, outcomes=["failed_to_calibrate", "calibrated"])
+    def __init__(self, logger, calibration):
+        super().__init__(outcomes=["failed_to_calibrate", "calibrated"])
+        self.logger = logger
+        self.calibration = calibration
 
     def execute(self, blackboard):
-        node = blackboard.main_node
-        node.logger.info("Entering State Calibrate")
+        self.logger.info("Entering State Calibrate")
 
-        result = blackboard.calibration.calibrate()
+        result = self.calibration.calibrate()
         return "calibrated" if result else "failed_to_calibrate"
 
 
 class Acquire(State):
     """A transition phase, checks if calibration is needed, or if runners are present to be trimmed"""
 
-    def __init__(self):
-        State.__init__(
-            self, outcomes=["calibration_needed", "target_acquired", "no_target_found"]
+    def __init__(self, node, logger, camera_client, calibration, runner_tracker):
+        super().__init__(
+            outcomes=["calibration_needed", "target_acquired", "no_target_found"]
         )
+        self.node = node
+        self.logger = logger
+        self.camera_client = camera_client
+        self.calibration = calibration
+        self.runner_tracker = runner_tracker
 
     def execute(self, blackboard):
-        node = blackboard.main_node
-        node.logger.info("Entering State Acquire")
-        if not blackboard.calibration.is_calibrated:
+        self.logger.info("Entering State Acquire")
+        if not self.calibration.is_calibrated:
             return "calibration_needed"
 
         # If there are active tracks set it as the current track
-        if self._set_available_track(node):
+        if self._set_available_track():
             return "target_acquired"
 
         # If there are no active tracks check for new runners
-        pos_data = node.camera_client.get_runner_pos()
+        pos_data = self.camera_client.get_runner_pos()
         if pos_data["pos_list"]:
             for pos, point in zip(pos_data["pos_list"], pos_data["point_list"]):
-                node.runner_tracker.add_track(pos, point)
+                self.runner_tracker.add_track(pos, point)
             # after adding additional tracks, check if a new track is available.
-            if self._set_available_track(node):
+            if self._set_available_track():
                 return "target_acquired"
 
         return "no_target_found"
 
-    def _set_available_track(self, node):
-        if node.runner_tracker.has_active_tracks:
-            node.curr_track = node.runner_tracker.active_tracks[0]
+    def _set_available_track(self):
+        if self.runner_tracker.has_active_tracks:
+            self.node.curr_track = self.runner_tracker.active_tracks[0]
             # Publish the runner point we are attempting to cut for logging and image drawing
-            node.camera_client.pub_runner_point(node.curr_track.point)
+            self.camera_client.pub_runner_point(self.node.curr_track.point)
             return True
         else:
             return False
 
 
 class Correct(State):
-    def __init__(self):
+    def __init__(
+        self,
+        node,
+        logger,
+        laser_client,
+        camera_client,
+        calibration,
+        tracking_laser_color,
+        runner_tracker,
+    ):
         """Given a runner to cut, check that a tracking laser lines up with the runner. If not correct
         until they line up correctly.
         """
-        State.__init__(self, outcomes=["on_target", "target_not_reached"])
+        super().__init__(outcomes=["on_target", "target_not_reached"])
+        self.node = node
+        self.logger = logger
+        self.laser_client = laser_client
+        self.camera_client = camera_client
+        self.calibration = calibration
+        self.tracking_laser_color = tracking_laser_color
+        self.runner_tracker = runner_tracker
 
     def execute(self, blackboard):
-        node = blackboard.main_node
-        node.logger.info("Entering State Correct")
+        self.logger.info("Entering State Correct")
 
         # Find the position of the needed laser point based on
-        laser_send_point = blackboard.calibration.camera_point_to_laser_pixel(
-            node.curr_track.pos_wrt_cam
+        laser_send_point = self.calibration.camera_point_to_laser_pixel(
+            self.node.curr_track.pos_wrt_cam
         )
 
-        node.laser_client.start_laser(
-            point=laser_send_point, color=node.tracking_laser_color
+        self.laser_client.start_laser(
+            point=laser_send_point, color=self.tracking_laser_color
         )
         self.missing_laser_count = 0
-        targ_reached = self._correct_laser(laser_send_point, blackboard)
-        node.laser_client.stop_laser()
-        blackboard.main_node.logger.info(f"targ_reached: {targ_reached}")
+        targ_reached = self._correct_laser(laser_send_point)
+        self.laser_client.stop_laser()
+        self.logger.info(f"targ_reached: {targ_reached}")
         if targ_reached:
             return "on_target"
         else:
-            node.logger.info("Targets not reached")
-            node.runner_tracker.deactivate(node.curr_track)
+            self.logger.info("Targets not reached")
+            self.runner_tracker.deactivate(self.node.curr_track)
             return "target_not_reached"
 
-    def _correct_laser(self, laser_send_point, blackboard):
+    def _correct_laser(self, laser_send_point):
         """Iteratively move the tracking laser until it is at the same point as the runner."""
-        node = blackboard.main_node
-        node.curr_track.corrected_laser_point = laser_send_point
+        self.node.curr_track.corrected_laser_point = laser_send_point
 
-        laser_data = node.camera_client.get_laser_pos()
+        laser_data = self.camera_client.get_laser_pos()
         if laser_data["point_list"]:
             if len(laser_data["point_list"]) == 1:
                 laser_point = np.array(laser_data["point_list"][0])
             else:
-                node.logger.debug("to many lasers")
+                self.logger.debug("to many lasers")
         else:
             self.missing_laser_count += 1
             if self.missing_laser_count > 20:
-                node.logger.info("Laser missing during state correct")
+                self.logger.info("Laser missing during state correct")
                 return False
             time.sleep(0.01)
-            return self._correct_laser(laser_send_point, blackboard)
+            return self._correct_laser(laser_send_point)
 
         # Using the saved runner point, this won't work once we begin moving
-        runner_point = np.array(node.curr_track.point)
+        runner_point = np.array(self.node.curr_track.point)
         dist = np.linalg.norm(laser_point - runner_point)
 
         if dist > 10:
             correction = (runner_point - laser_point) / 10
             correction[1] = correction[1] * -1
             new_point = laser_send_point + correction
-            node.logger.debug(
+            self.logger.debug(
                 f"Dist:{dist}, Correction{correction}, Old Point:{laser_send_point}, New Point{new_point}"
             )
             # Need to add min max checks to dac or otherwise account for different scales
@@ -190,36 +211,43 @@ class Correct(State):
                 or new_point[0] < 0
                 or new_point[1] < 0
             ):
-                node.logger.info("Failed to reach pos, outside of laser window")
+                self.logger.info("Failed to reach pos, outside of laser window")
                 return False
 
-            node.laser_client.set_point(laser_send_point)
+            self.laser_client.set_point(laser_send_point)
             self.missing_laser_count = 0
-            return self._correct_laser(new_point, blackboard)
+            return self._correct_laser(new_point)
 
         return True
 
 
 class Burn(State):
-    def __init__(self):
-        State.__init__(self, outcomes=["runner_removed"])
+    def __init__(
+        self, node, logger, laser_client, burn_color, burn_time_secs, runner_tracker
+    ):
+        super().__init__(outcomes=["runner_removed"])
+        self.node = node
+        self.logger = logger
+        self.laser_client = laser_client
+        self.burn_color = burn_color
+        self.burn_time_secs = burn_time_secs
+        self.runner_tracker = runner_tracker
 
     def execute(self, blackboard):
-        node = blackboard.main_node
-        node.logger.info("Entering State Burn")
+        self.logger.info("Entering State Burn")
         burn_start = time.time()
 
         # Turn on burn laser
-        node.laser_client.start_laser(
-            point=node.curr_track.corrected_laser_point,
-            color=blackboard.main_node.burn_color,
+        self.laser_client.start_laser(
+            point=self.node.curr_track.corrected_laser_point,
+            color=self.burn_color,
         )
 
-        while burn_start + blackboard.main_node.burn_time > time.time():
+        while burn_start + self.burn_time_secs > time.time():
             time.sleep(0.1)
 
-        node.laser_client.stop_laser()
-        node.runner_tracker.deactivate(node.curr_track)
+        self.laser_client.stop_laser()
+        self.runner_tracker.deactivate(self.node.curr_track)
         return "runner_removed"
 
 
@@ -246,22 +274,45 @@ class MainNode(Node):
         self.burn_color = (
             self.get_parameter("burn_color").get_parameter_value().double_array_value
         )
-        self.burn_time = (
+        self.burn_time_secs = (
             self.get_parameter("burn_time").get_parameter_value().integer_value
         )
 
-        main_sm = StateMachine(outcomes=["Finished"])
+        self.laser_client = LaserNodeClient(self)
+        self.camera_client = CameraNodeClient(self)
+        self.calibration = Calibration(
+            self.laser_client,
+            self.camera_client,
+            self.tracking_laser_color,
+            self.logger,
+        )
+        self.runner_tracker = Tracker()
+        # TODO: move this to blackboard
+        self.curr_track = None
 
-        main_sm.add_state("INIT", Initialize(), transitions={"init_complete": "WAIT"})
-        main_sm.add_state("WAIT", ServiceWait(), transitions={"services_up": "CALIB"})
+        main_sm = StateMachine(outcomes=["Finished"])
+        main_sm.add_state(
+            "INIT", Initialize(self.logger), transitions={"init_complete": "WAIT"}
+        )
+        main_sm.add_state(
+            "WAIT",
+            ServiceWait(self, self.logger, self.laser_client, self.camera_client),
+            transitions={"services_up": "CALIB"},
+        )
         main_sm.add_state(
             "CALIB",
-            Calibrate(),
+            Calibrate(self.logger, self.calibration),
             transitions={"failed_to_calibrate": "Finished", "calibrated": "ACQ"},
         )
         main_sm.add_state(
             "ACQ",
-            Acquire(),
+            Acquire(
+                self,
+                self.logger,
+                self.camera_client,
+                self.calibration,
+                self.runner_tracker,
+            ),
             transitions={
                 "calibration_needed": "CALIB",
                 "target_acquired": "CORRECT",
@@ -270,28 +321,31 @@ class MainNode(Node):
         )
         main_sm.add_state(
             "CORRECT",
-            Correct(),
+            Correct(
+                self,
+                self.logger,
+                self.laser_client,
+                self.camera_client,
+                self.calibration,
+                self.tracking_laser_color,
+                self.runner_tracker,
+            ),
             transitions={"on_target": "BURN", "target_not_reached": "ACQ"},
         )
-        main_sm.add_state("BURN", Burn(), transitions={"runner_removed": "ACQ"})
-
-        self.curr_track = None
-        self.laser_client = LaserNodeClient(self)
-        self.camera_client = CameraNodeClient(self)
-        self.runner_tracker = Tracker()
-
-        blackboard = Blackboard()
-        blackboard.main_node = self
-        blackboard.calibration = Calibration(
-            self.laser_client,
-            self.camera_client,
-            self.tracking_laser_color,
-            self.logger,
+        main_sm.add_state(
+            "BURN",
+            Burn(
+                self,
+                self.logger,
+                self.laser_client,
+                self.burn_color,
+                self.burn_time_secs,
+                self.runner_tracker,
+            ),
+            transitions={"runner_removed": "ACQ"},
         )
 
-        self.cam_info_received = False
-
-        outcome = main_sm(blackboard)
+        outcome = main_sm(Blackboard())
         self.logger.info(outcome)
 
 
