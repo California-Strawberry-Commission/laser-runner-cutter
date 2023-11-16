@@ -50,6 +50,12 @@ Linux systems require udev rules to allow access to USB devices without root pri
 
 1.  Issue the command `sudo udevadm control --reload` (or restart the computer).
 
+### (Optional) Video stream folder
+
+1.  If recording the video files locally create a video_stream and debug_video_stream directory
+        $ sudo mkdir /opt/video_stream
+        $ sudo mkdir /opt/debug_video_stream
+
 ## Install
 
 1.  Install LRR
@@ -69,16 +75,20 @@ Linux systems require udev rules to allow access to USB devices without root pri
         $ colcon build
         $ source ~/ros2_ws/install/local_setup.zsh
 
-## Optional video stream folder
-
-1. If recording the video files locally create a video_stream and debug_video_stream directory 
-        
-        $ sudo mkdir /opt/video_stream
-        $ sudo mkdir /opt/debug_video_stream
-
 ## Run
 
     $ ros2 launch laser_runner_removal launch.py
+
+## rqt plugin
+
+A rqt plugin is used for visualization. If the "Laser Runner Removal" plugin does not appear in rqt, you may need to run rqt with `--force-discover`.
+
+        $ rqt --force-discover
+
+To develop the plugin UI, install QT Designer:
+
+        $ pip install pyqt5-tools
+        $ pyqt5-tools designer
 
 ## Libraries
 

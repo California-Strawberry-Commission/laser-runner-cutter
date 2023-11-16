@@ -1,0 +1,20 @@
+<library path="src">
+  <class name="Laser Runner Removal" type="rqt_laser_runner_removal.rqt_laser_runner_removal.RqtLaserRunnerRemoval" base_class_type="rqt_gui_py::Plugin">
+    <description>
+      GUI for Laser Runner Removal
+    </description>
+    <qtgui>
+      <!-- optional grouping...
+      <group>
+        <label>Group</label>
+      </group>
+      <group>
+        <label>Subgroup</label>
+      </group>
+      -->
+      <label>Laser Runner Removal</label>
+      <icon type="theme">applications-engineering</icon>
+      <statustip>GUI for Laser Runner Removal.</statustip>
+    </qtgui>
+  </class>
+</library>
