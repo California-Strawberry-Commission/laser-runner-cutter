@@ -53,8 +53,8 @@ Linux systems require udev rules to allow access to USB devices without root pri
 ### (Optional) Video stream folder
 
 1.  If recording the video files locally create a video_stream and debug_video_stream directory
-        $ sudo mkdir /opt/video_stream
-        $ sudo mkdir /opt/debug_video_stream
+    $ sudo mkdir /opt/video_stream
+    $ sudo mkdir /opt/debug_video_stream
 
 ## Install
 
@@ -81,9 +81,7 @@ Linux systems require udev rules to allow access to USB devices without root pri
 
 ## rqt plugin
 
-A rqt plugin is used for visualization. If the "Laser Runner Removal" plugin does not appear in rqt, you may need to run rqt with `--force-discover`.
-
-        $ rqt --force-discover
+A rqt plugin is used for visualization. Run `rqt`, under Plugins you should see Laser Runner Removal. If the plugin does not appear in rqt, you may need to run `rqt --force-discover`.
 
 To develop the plugin UI, install QT Designer:
 
