@@ -64,7 +64,7 @@ Linux systems require udev rules to allow access to USB devices without root pri
         $ git clone https://github.com/CA-rvinson/LaserRunnerRemoval.git
 
         # Install dependencies
-        $ cd LaserRunnerRemoval/laser_runner_removal/laser_runner_removal
+        $ cd LaserRunnerRemoval/control_node/control_node
         $ pip3 install -r requirements.txt
 
 1.  Install [YASMIN](https://github.com/uleroboticsgroup/yasmin#installation)
@@ -77,7 +77,7 @@ Linux systems require udev rules to allow access to USB devices without root pri
 
 ## Run
 
-    $ ros2 launch laser_runner_removal launch.py
+    $ ros2 launch control_node launch.py
 
 ## rqt plugin
 
