@@ -1,16 +1,18 @@
 import os
 import numpy as np
 import rclpy
+import time
 from ament_index_python.packages import get_package_share_directory
 from rqt_gui_py.plugin import Plugin
 from python_qt_binding import loadUi
 from python_qt_binding.QtWidgets import QWidget
 from python_qt_binding.QtGui import QColor, QImage, QPixmap
-from std_msgs.msg import String
+from std_msgs.msg import Bool, String
 from camera_control_interfaces.srv import GetFrame
 from ros2node.api import get_node_names
 
 CAMERA_FRAME_DISPLAY_FPS = 10.0
+GET_FRAME_TIMEOUT_SECS = 0.5
 
 
 class RqtLaserRunnerRemoval(Plugin):
@@ -45,16 +47,20 @@ class RqtLaserRunnerRemoval(Plugin):
 
         # Add widget to the user interface
         self.context.add_widget(self.widget)
-        self._show_placeholders_for_camera_frame_displays()
+        self.show_placeholder_frames()
 
         self.state_subscriber = self.context.node.create_subscription(
             String, "control_node/state", self.state_callback, 5
+        )
+        self.laser_playing_subscriber = self.context.node.create_subscription(
+            Bool, "laser_control/playing", self.laser_playing_callback, 5
         )
         self.get_frame_client = self.context.node.create_client(
             GetFrame, "camera_control/get_frame"
         )
         # Used to ensure only one pending response at a time
-        self.get_frame_response = None
+        self.pending_get_frame_response = None
+        self.last_get_frame_request_time = 0.0
         self.get_frame_timer = self.context.node.create_timer(
             1.0 / CAMERA_FRAME_DISPLAY_FPS, self.get_frame
         )
@@ -64,6 +70,9 @@ class RqtLaserRunnerRemoval(Plugin):
 
     def state_callback(self, msg):
         self.widget.stateText.setText(msg.data)
+
+    def laser_playing_callback(self, msg):
+        self.widget.laserText.setText("On" if msg.data else "Off")
 
     def check_control_node_availability(self):
         available_nodes = [
@@ -77,19 +86,24 @@ class RqtLaserRunnerRemoval(Plugin):
             self.widget.stateText.setText("Not running")
 
     def get_frame(self):
-        if (
-            not self.get_frame_client.service_is_ready()
-            or self.get_frame_response is not None
-        ):
+        if not self.get_frame_client.service_is_ready():
+            self.show_placeholder_frames()
+            return
+
+        if self.pending_get_frame_response is not None:
+            if (time.time() - self.get_frame_request_time) > GET_FRAME_TIMEOUT_SECS:
+                self.pending_get_frame_response.cancel()
+                self.pending_get_frame_response = None
             return
 
         request = GetFrame.Request()
-        self.get_frame_response = self.get_frame_client.call_async(request)
+        self.get_frame_request_time = time.time()
+        self.pending_get_frame_response = self.get_frame_client.call_async(request)
         # Note: async calls hang when nested inside timer (https://github.com/ros2/rclpy/issues/1018)
-        self.get_frame_response.add_done_callback(self.frame_callback)
+        self.pending_get_frame_response.add_done_callback(self.frame_callback)
 
     def frame_callback(self, future):
-        self.get_frame_response = None
+        self.pending_get_frame_response = None
         result = future.result()
         timestamp = result.timestamp
         if timestamp <= 0:
@@ -125,7 +139,7 @@ class RqtLaserRunnerRemoval(Plugin):
         pixmap = pixmap.scaled(self.widget.depthFrame.size(), aspectRatioMode=1)
         self.widget.depthFrame.setPixmap(pixmap)
 
-    def _show_placeholders_for_camera_frame_displays(self):
+    def show_placeholder_frames(self):
         placeholder_image = QImage(self.widget.colorFrame.size(), QImage.Format_RGB888)
         placeholder_image.fill(QColor(200, 200, 200))
         self.widget.colorFrame.setPixmap(QPixmap.fromImage(placeholder_image))
