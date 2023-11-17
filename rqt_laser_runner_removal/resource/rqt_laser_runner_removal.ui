@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>400</width>
-    <height>300</height>
+    <width>446</width>
+    <height>559</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -37,6 +37,38 @@
    </property>
    <property name="text">
     <string>Unknown</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="colorFrame">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>30</y>
+     <width>318</width>
+     <height>180</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Color frame</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
+   </property>
+  </widget>
+  <widget class="QLabel" name="depthFrame">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>220</y>
+     <width>318</width>
+     <height>180</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Depth frame</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
    </property>
   </widget>
  </widget>

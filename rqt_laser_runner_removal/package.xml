@@ -11,6 +11,7 @@
   <exec_depend>qt_gui_py_common</exec_depend>
   <exec_depend>rqt_gui</exec_depend>
   <exec_depend>rqt_gui_py</exec_depend>
+  <exec_depend>rclpy</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>std_srvs</exec_depend>
   <exec_depend>camera_control_interfaces</exec_depend>

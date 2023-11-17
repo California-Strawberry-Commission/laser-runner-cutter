@@ -1,4 +1,4 @@
 ---
 float64 timestamp
-UInt8NumpyArray color_image 
-Int16NumpyArray depth_image 
+UInt8NumpyArray color_frame
+Int16NumpyArray depth_frame
