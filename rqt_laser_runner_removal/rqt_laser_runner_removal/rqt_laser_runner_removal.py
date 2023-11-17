@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import rclpy
 from ament_index_python.packages import get_package_share_directory
 from rqt_gui_py.plugin import Plugin
 from python_qt_binding import loadUi
@@ -7,8 +8,9 @@ from python_qt_binding.QtWidgets import QWidget
 from python_qt_binding.QtGui import QColor, QImage, QPixmap
 from std_msgs.msg import String
 from camera_control_interfaces.srv import GetFrame
+from ros2node.api import get_node_names
 
-CAMERA_FRAME_DISPLAY_FPS = 2.0
+CAMERA_FRAME_DISPLAY_FPS = 10.0
 
 
 class RqtLaserRunnerRemoval(Plugin):
@@ -43,6 +45,7 @@ class RqtLaserRunnerRemoval(Plugin):
 
         # Add widget to the user interface
         self.context.add_widget(self.widget)
+        self._show_placeholders_for_camera_frame_displays()
 
         self.state_subscriber = self.context.node.create_subscription(
             String, "control_node/state", self.state_callback, 5
@@ -55,17 +58,23 @@ class RqtLaserRunnerRemoval(Plugin):
         self.get_frame_timer = self.context.node.create_timer(
             1.0 / CAMERA_FRAME_DISPLAY_FPS, self.get_frame
         )
-
-        # Placeholder for camera frame displays
-        placeholder_image = QImage(self.widget.colorFrame.size(), QImage.Format_RGB888)
-        placeholder_image.fill(QColor(200, 200, 200))
-        self.widget.colorFrame.setPixmap(QPixmap.fromImage(placeholder_image))
-        placeholder_image = QImage(self.widget.depthFrame.size(), QImage.Format_RGB888)
-        placeholder_image.fill(QColor(200, 200, 200))
-        self.widget.depthFrame.setPixmap(QPixmap.fromImage(placeholder_image))
+        self.control_node_availability_timer = self.context.node.create_timer(
+            1.0, self.check_control_node_availability
+        )
 
     def state_callback(self, msg):
         self.widget.stateText.setText(msg.data)
+
+    def check_control_node_availability(self):
+        available_nodes = [
+            node_name.name
+            for node_name in get_node_names(
+                node=self.context.node, include_hidden_nodes=False
+            )
+        ]
+        is_control_node_available = rclpy.ok() and "control_node" in available_nodes
+        if not is_control_node_available:
+            self.widget.stateText.setText("Not running")
 
     def get_frame(self):
         if (
@@ -115,6 +124,14 @@ class RqtLaserRunnerRemoval(Plugin):
         )
         pixmap = pixmap.scaled(self.widget.depthFrame.size(), aspectRatioMode=1)
         self.widget.depthFrame.setPixmap(pixmap)
+
+    def _show_placeholders_for_camera_frame_displays(self):
+        placeholder_image = QImage(self.widget.colorFrame.size(), QImage.Format_RGB888)
+        placeholder_image.fill(QColor(200, 200, 200))
+        self.widget.colorFrame.setPixmap(QPixmap.fromImage(placeholder_image))
+        placeholder_image = QImage(self.widget.depthFrame.size(), QImage.Format_RGB888)
+        placeholder_image.fill(QColor(200, 200, 200))
+        self.widget.depthFrame.setPixmap(QPixmap.fromImage(placeholder_image))
 
     def shutdown_plugin(self):
         self.context.node.destroy_subscription(self.state_subscriber)
