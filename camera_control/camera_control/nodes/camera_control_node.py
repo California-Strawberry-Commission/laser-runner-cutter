@@ -22,6 +22,7 @@ from camera_control_interfaces.srv import (
     SendEnable,
     SetExposure,
 )
+from sensor_msgs.msg import Image
 
 import camera_control.utils.cv_utils as cv_utils
 from ultralytics import YOLO
@@ -44,7 +45,7 @@ class CameraControlNode(Node):
         super().__init__("camera_control_node")
         self.logger = self.get_logger()
 
-        # declare parameters from a ros config file, if no parameter is found, the default is used
+        # Declare parameters from a ros config file, if no parameter is found, the default is used
         self.declare_parameters(
             namespace="",
             parameters=[
@@ -58,7 +59,7 @@ class CameraControlNode(Node):
             ],
         )
 
-        # get class attributes from passed in parameters
+        # Get class attributes from passed in parameters
         self.video_dir = (
             self.get_parameter("video_dir").get_parameter_value().string_value
         )
@@ -91,10 +92,16 @@ class CameraControlNode(Node):
         self.cv_bridge = CvBridge()
 
         # Create publishers and subscribers
-        self.laser_pos_publisher = self.create_publisher(
+        self.color_frame_pub = self.create_publisher(
+            Image, "camera_control/color_frame", 1
+        )
+        self.depth_frame_pub = self.create_publisher(
+            Image, "camera_control/depth_frame", 1
+        )
+        self.laser_pos_pub = self.create_publisher(
             PosData, "camera_control/laser_pos_data", 5
         )
-        self.runner_pos_publisher = self.create_publisher(
+        self.runner_pos_pub = self.create_publisher(
             PosData, "camera_control/runner_pos_data", 5
         )
         self.runner_point_sub = self.create_subscription(
@@ -188,6 +195,9 @@ class CameraControlNode(Node):
 
         self.curr_frames = frames
 
+        self.color_frame_pub.publish(self._get_color_frame_msg())
+        self.depth_frame_pub.publish(self._get_depth_frame_msg())
+
         # This is still using a realsense frame concept, for better multicamera
         # probability, all realsense based frame controls should move into the
         # realsense module.
@@ -214,12 +224,12 @@ class CameraControlNode(Node):
                 self.laser_detection_model, frames
             )
             laser_msg = self.create_pos_data_msg(laser_point_list, frames)
-            self.laser_pos_publisher.publish(laser_msg)
+            self.laser_pos_pub.publish(laser_msg)
 
         if self.runner_pub_control:
             runner_point_list = cv_utils.detect_runners(self.runner_seg_model, frames)
             runner_msg = self.create_pos_data_msg(runner_point_list, frames)
-            self.runner_pos_publisher.publish(runner_msg)
+            self.runner_pos_pub.publish(runner_msg)
 
         if self.rec_debug_frame:
             debug_frame = np.copy(curr_image)
@@ -265,23 +275,8 @@ class CameraControlNode(Node):
         if self.curr_frames is None:
             return response
 
-        color_frame = self.curr_frames["color"]
-        depth_frame = self.curr_frames["depth"]
-
-        color_array = np.asanyarray(color_frame.get_data())
-        color_frame_msg = self.cv_bridge.cv2_to_imgmsg(color_array, encoding="rgb8")
-        sec, nanosec = milliseconds_to_ros_time(color_frame.get_timestamp())
-        color_frame_msg.header.stamp.sec = sec
-        color_frame_msg.header.stamp.nanosec = nanosec
-
-        depth_array = np.asanyarray(depth_frame.get_data())
-        depth_frame_msg = self.cv_bridge.cv2_to_imgmsg(depth_array, encoding="mono16")
-        sec, nanosec = milliseconds_to_ros_time(depth_frame.get_timestamp())
-        depth_frame_msg.header.stamp.sec = sec
-        depth_frame_msg.header.stamp.nanosec = nanosec
-
-        response.color_frame = color_frame_msg
-        response.depth_frame = depth_frame_msg
+        response.color_frame = self._get_color_frame_msg()
+        response.depth_frame = self._get_depth_frame_msg()
         return response
 
     def has_frames(self, request, response):
@@ -313,6 +308,30 @@ class CameraControlNode(Node):
 
     def control_runner_pub(self, request, response):
         self.runner_pub_control = request.enable
+
+    def _get_color_frame_msg(self):
+        if self.curr_frames is None:
+            return None
+
+        color_frame = self.curr_frames["color"]
+        color_array = np.asanyarray(color_frame.get_data())
+        color_frame_msg = self.cv_bridge.cv2_to_imgmsg(color_array, encoding="rgb8")
+        sec, nanosec = milliseconds_to_ros_time(color_frame.get_timestamp())
+        color_frame_msg.header.stamp.sec = sec
+        color_frame_msg.header.stamp.nanosec = nanosec
+        return color_frame_msg
+
+    def _get_depth_frame_msg(self):
+        if self.curr_frames is None:
+            return None
+
+        depth_frame = self.curr_frames["depth"]
+        depth_array = np.asanyarray(depth_frame.get_data())
+        depth_frame_msg = self.cv_bridge.cv2_to_imgmsg(depth_array, encoding="mono16")
+        sec, nanosec = milliseconds_to_ros_time(depth_frame.get_timestamp())
+        depth_frame_msg.header.stamp.sec = sec
+        depth_frame_msg.header.stamp.nanosec = nanosec
+        return depth_frame_msg
 
 
 def main(args=None):
