@@ -7,6 +7,16 @@
   <maintainer email="bobby@todo.todo">bobby</maintainer>
   <license>TODO: License declaration</license>
 
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>camera_control</exec_depend>
+  <exec_depend>camera_control_interfaces</exec_depend>
+  <exec_depend>laser_control</exec_depend>
+  <exec_depend>laser_control_interfaces</exec_depend>
+  <exec_depend>laser_runner_removal</exec_depend>
+  <exec_depend>simple_node</exec_depend>
+  <exec_depend>yasmin</exec_depend>
+
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>

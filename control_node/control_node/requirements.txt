@@ -1,0 +1,3 @@
+-r ../../camera_control/camera_control/requirements.txt
+numpy
+scipy

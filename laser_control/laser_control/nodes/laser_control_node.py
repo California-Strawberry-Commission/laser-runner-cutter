@@ -17,6 +17,7 @@ from laser_control_interfaces.srv import (
 )
 from std_srvs.srv import Empty
 from laser_control_interfaces.msg import Point
+from std_msgs.msg import Bool
 
 
 class LaserControlNode(Node):
@@ -70,6 +71,10 @@ class LaserControlNode(Node):
             Empty, "laser_control/close", self.close_callback
         )
 
+        # Pub/sub
+
+        self.playing_pub = self.create_publisher(Bool, "laser_control/playing", 5)
+
         # Initialize DACs
 
         include_dir = os.path.join(
@@ -120,6 +125,7 @@ class LaserControlNode(Node):
             self.connected_dac.connect(dac_idx - self.num_helios_dacs)
 
         response.success = True
+        self._publish_playing()
         return response
 
     def set_color_callback(self, request, response):
@@ -164,17 +170,24 @@ class LaserControlNode(Node):
     def play_callback(self, request, response):
         if self.connected_dac is not None:
             self.connected_dac.play(self.fps, self.pps, self.transition_duration_ms)
+            self._publish_playing()
         return response
 
     def stop_callback(self, request, response):
         if self.connected_dac is not None:
             self.connected_dac.stop()
+            self._publish_playing()
         return response
 
     def close_callback(self, request, response):
         if self.connected_dac is not None:
             self.connected_dac.close()
         return response
+
+    def _publish_playing(self):
+        msg = Bool()
+        msg.data = self.connected_dac.playing
+        self.playing_pub.publish(msg)
 
 
 def main(args=None):

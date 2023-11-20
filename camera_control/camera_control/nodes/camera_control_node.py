@@ -250,6 +250,9 @@ class CameraControlNode(Node):
 
     ###Service Calls
     def get_frame(self, request, response):
+        if self.curr_frames is None:
+            return response
+
         response.timestamp = self.curr_frames["color"].get_timestamp()
         color_array = np.asanyarray(self.curr_frames["color"].get_data())
         depth_array = np.asanyarray(self.curr_frames["depth"].get_data())
