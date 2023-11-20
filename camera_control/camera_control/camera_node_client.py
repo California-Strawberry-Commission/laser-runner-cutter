@@ -21,7 +21,9 @@ class CameraNodeClient:
             GetBool,
             "camera_control/has_frames",
         )
-        node.runner_point_pub = node.create_publisher(Point, "runner_point", 1)
+        node.runner_point_pub = node.create_publisher(
+            Point, "camera_control/runner_point", 1
+        )
         self.node = node
 
     def wait_active(self):

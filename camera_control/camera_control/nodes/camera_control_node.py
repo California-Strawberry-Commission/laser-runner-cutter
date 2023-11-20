@@ -14,8 +14,6 @@ from camera_control_interfaces.msg import (
     PosData,
     Pos,
     Point,
-    UInt8NumpyArray,
-    Int16NumpyArray,
 )
 from camera_control_interfaces.srv import (
     GetBool,
@@ -27,11 +25,18 @@ from camera_control_interfaces.srv import (
 
 import camera_control.utils.cv_utils as cv_utils
 from ultralytics import YOLO
-
+from cv_bridge import CvBridge
 import numpy as np
 import os
 
 from ament_index_python.packages import get_package_share_directory
+
+
+def milliseconds_to_ros_time(milliseconds):
+    # ROS timestamps consist of two integers, one for seconds and one for nanoseconds
+    seconds, remainder_ms = divmod(milliseconds, 1000)
+    nanoseconds = remainder_ms * 1e6
+    return int(seconds), int(nanoseconds)
 
 
 class CameraControlNode(Node):
@@ -82,11 +87,18 @@ class CameraControlNode(Node):
         if not os.path.isdir(self.debug_video_dir) and self.rec_debug_frame:
             os.makedirs(self.debug_video_dir)
 
+        # For converting numpy array to image msg
+        self.cv_bridge = CvBridge()
+
         # Create publishers and subscribers
-        self.laser_pos_publisher = self.create_publisher(PosData, "laser_pos_data", 5)
-        self.runner_pos_publisher = self.create_publisher(PosData, "runner_pos_data", 5)
+        self.laser_pos_publisher = self.create_publisher(
+            PosData, "camera_control/laser_pos_data", 5
+        )
+        self.runner_pos_publisher = self.create_publisher(
+            PosData, "camera_control/runner_pos_data", 5
+        )
         self.runner_point_sub = self.create_subscription(
-            Point, "runner_point", self.runner_point_cb, 1
+            Point, "camera_control/runner_point", self.runner_point_cb, 1
         )
         self.runner_point = None
 
@@ -253,13 +265,23 @@ class CameraControlNode(Node):
         if self.curr_frames is None:
             return response
 
-        response.timestamp = self.curr_frames["color"].get_timestamp()
-        color_array = np.asanyarray(self.curr_frames["color"].get_data())
-        depth_array = np.asanyarray(self.curr_frames["depth"].get_data())
-        color_data = list(color_array.flatten())
-        depth_data = list(depth_array.flatten())
-        response.color_frame = UInt8NumpyArray(data=color_data, shape=color_array.shape)
-        response.depth_frame = Int16NumpyArray(data=depth_data, shape=depth_array.shape)
+        color_frame = self.curr_frames["color"]
+        depth_frame = self.curr_frames["depth"]
+
+        color_array = np.asanyarray(color_frame.get_data())
+        color_frame_msg = self.cv_bridge.cv2_to_imgmsg(color_array, encoding="rgb8")
+        sec, nanosec = milliseconds_to_ros_time(color_frame.get_timestamp())
+        color_frame_msg.header.stamp.sec = sec
+        color_frame_msg.header.stamp.nanosec = nanosec
+
+        depth_array = np.asanyarray(depth_frame.get_data())
+        depth_frame_msg = self.cv_bridge.cv2_to_imgmsg(depth_array, encoding="mono16")
+        sec, nanosec = milliseconds_to_ros_time(depth_frame.get_timestamp())
+        depth_frame_msg.header.stamp.sec = sec
+        depth_frame_msg.header.stamp.nanosec = nanosec
+
+        response.color_frame = color_frame_msg
+        response.depth_frame = depth_frame_msg
         return response
 
     def has_frames(self, request, response):

@@ -10,6 +10,7 @@ from python_qt_binding.QtGui import QColor, QImage, QPixmap
 from std_msgs.msg import Bool, String
 from camera_control_interfaces.srv import GetFrame
 from ros2node.api import get_node_names
+from cv_bridge import CvBridge
 
 CAMERA_FRAME_DISPLAY_FPS = 10.0
 GET_FRAME_TIMEOUT_SECS = 0.5
@@ -22,6 +23,9 @@ class RqtLaserRunnerRemoval(Plugin):
         self.context = context
         self.widget = QWidget()
         self.setObjectName("Laser Runner Removal")
+
+        # For converting image msg to numpy array
+        self.cv_bridge = CvBridge()
 
         # Get path to Qt Designer UI file and load the file
         resource_dir = os.path.join(
@@ -105,36 +109,37 @@ class RqtLaserRunnerRemoval(Plugin):
     def frame_callback(self, future):
         self.pending_get_frame_response = None
         result = future.result()
-        timestamp = result.timestamp
-        if timestamp <= 0:
+        if (
+            result is None
+            or result.color_frame.header.stamp.sec <= 0
+            or result.depth_frame.header.stamp.sec <= 0
+        ):
             return
 
         # Process and render color frame data
-        data = result.color_frame.data
-        shape = result.color_frame.shape
-        frame = np.array(data).reshape(shape).astype(np.uint8)
-        height, width, channels = frame.shape
+        color_data = self.cv_bridge.imgmsg_to_cv2(result.color_frame)
+        height, width, channels = color_data.shape
         bytes_per_line = channels * width
         pixmap = QPixmap.fromImage(
-            QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
+            QImage(color_data.data, width, height, bytes_per_line, QImage.Format_RGB888)
         )
         pixmap = pixmap.scaled(self.widget.colorFrame.size(), aspectRatioMode=1)
         self.widget.colorFrame.setPixmap(pixmap)
 
         # Process and render depth frame data
-        data = result.depth_frame.data
-        shape = result.depth_frame.shape
-        frame = np.array(data).reshape(shape).astype(np.int16)
+        depth_data = self.cv_bridge.imgmsg_to_cv2(result.depth_frame)
         # Normalize 16-bit image to 8-bit for display
-        frame = (
-            (frame.astype(np.float32) - np.min(frame))
-            / (np.max(frame) - np.min(frame))
+        depth_data = (
+            (depth_data.astype(np.float32) - np.min(depth_data))
+            / (np.max(depth_data) - np.min(depth_data))
             * 255
         ).astype(np.uint8)
-        height, width = frame.shape
+        height, width = depth_data.shape
         bytes_per_line = width
         pixmap = QPixmap.fromImage(
-            QImage(frame.data, width, height, bytes_per_line, QImage.Format_Grayscale8)
+            QImage(
+                depth_data.data, width, height, bytes_per_line, QImage.Format_Grayscale8
+            )
         )
         pixmap = pixmap.scaled(self.widget.depthFrame.size(), aspectRatioMode=1)
         self.widget.depthFrame.setPixmap(pixmap)

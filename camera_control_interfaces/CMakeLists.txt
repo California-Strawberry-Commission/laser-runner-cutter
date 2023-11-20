@@ -21,19 +21,19 @@ find_package(ament_cmake REQUIRED)
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
+find_package(sensor_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Point.msg"
   "msg/Pos.msg"
-  "msg/PosData.msg"  
-  "msg/UInt8NumpyArray.msg"
-  "msg/Int16NumpyArray.msg"
+  "msg/PosData.msg"
   "srv/GetBool.srv"
   "srv/GetFrame.srv"
   "srv/GetPosData.srv"
   "srv/SendEnable.srv"
   "srv/SetExposure.srv"
+  DEPENDENCIES sensor_msgs
 )
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
