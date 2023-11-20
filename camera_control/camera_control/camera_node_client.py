@@ -1,6 +1,5 @@
 import rclpy
 
-from std_srvs.srv import Empty
 from camera_control_interfaces.srv import GetBool, GetPosData, SetExposure
 from laser_control_interfaces.msg import Point
 

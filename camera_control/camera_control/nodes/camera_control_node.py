@@ -1,8 +1,3 @@
-""" File realsense.py
-
-Class for using a realsense depth camera. 
-"""
-
 import cv2
 import rclpy
 import time

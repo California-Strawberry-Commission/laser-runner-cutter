@@ -1,7 +1,6 @@
 import os
 import numpy as np
 import rclpy
-import time
 from ament_index_python.packages import get_package_share_directory
 from rqt_gui_py.plugin import Plugin
 from python_qt_binding import loadUi
