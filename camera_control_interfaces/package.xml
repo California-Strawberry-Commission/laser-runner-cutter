@@ -7,6 +7,8 @@
   <maintainer email="rvinson@calstrawberry.org">rvinson</maintainer>
   <license>TODO: License declaration</license>
 
+  <exec_depend>sensor_msgs</exec_depend>
+
   <buildtool_depend>rosidl_default_generators</buildtool_depend>
   <exec_depend>rosidl_default_runtime</exec_depend>
   <member_of_group>rosidl_interface_packages</member_of_group>

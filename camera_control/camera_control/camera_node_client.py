@@ -1,6 +1,5 @@
 import rclpy
 
-from std_srvs.srv import Empty
 from camera_control_interfaces.srv import GetBool, GetPosData, SetExposure
 from laser_control_interfaces.msg import Point
 
@@ -21,7 +20,9 @@ class CameraNodeClient:
             GetBool,
             "camera_control/has_frames",
         )
-        node.runner_point_pub = node.create_publisher(Point, "runner_point", 1)
+        node.runner_point_pub = node.create_publisher(
+            Point, "camera_control/runner_point", 1
+        )
         self.node = node
 
     def wait_active(self):
