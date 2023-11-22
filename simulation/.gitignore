@@ -1,0 +1,36 @@
+*.settings.asset*
+**/UserSettings/*
+
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.svd
+*.pdb
+*.pidb.meta
+
+# VSCode hidden files
+*.vscode/
+
+# Build files
+*/build/
+*/dist/
+*.apk
+*.unitypackage
+*.app
+*.exe
+*.x86_64
+*.x86
+
+# Python
+venv/
+.mypy_cache/
+*.pytest_cache/
+*.pyc
+*.egg-info*
+*.eggs*
+
