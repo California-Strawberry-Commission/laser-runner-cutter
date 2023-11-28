@@ -1,8 +1,7 @@
 using System;
 using UnityEngine;
+using UnityEngine.Profiling;
 using ROS2;
-
-// using sensor_msgs.msg.Image;
 
 public class ROSCamera : MonoBehaviour
 {
@@ -87,23 +86,12 @@ public class ROSCamera : MonoBehaviour
             throw new ArgumentException($"Unsupported texture format: {frame.format}");
         }
 
-        // Unity's texture coordinates have origin at bottom left, so we need to
+        // Unity's texture coordinates have origin at bottom left with OpenGL, so we need to
         // flip the pixels vertically
-        Color[] pixels = frame.GetPixels();
-        for (int i = 0; i < frame.width; i++)
+        if (!SystemInfo.graphicsUVStartsAtTop)
         {
-            for (int j = 0; j < frame.height / 2; j++)
-            {
-                int index1 = j * frame.width + i;
-                int index2 = (frame.height - 1 - j) * frame.width + i;
-
-                // Swap the pixels
-                Color temp = pixels[index1];
-                pixels[index1] = pixels[index2];
-                pixels[index2] = temp;
-            }
+            FlipVertically(frame);
         }
-        frame.SetPixels(pixels);
 
         bool isColor = frame.format == TextureFormat.RGB24;
         uint width = unchecked((uint)frame.width);
@@ -121,5 +109,23 @@ public class ROSCamera : MonoBehaviour
         imageMsg.UpdateHeaderTime((int)timeSinceEpoch.TotalSeconds, unchecked((uint)(timeSinceEpoch.TotalMilliseconds * 1e6 % 1e9)));
 
         return imageMsg;
+    }
+
+    private void FlipVertically(Texture2D frame)
+    {
+        Profiler.BeginSample("FlipVertically");
+        Color32[] originalPixels = frame.GetPixels32();
+        // Use a temporary buffer to store flipped pixels
+        Color32[] flippedPixels = new Color32[frame.width * frame.height];
+        for (int y = 0; y < frame.height; y++)
+        {
+            int index = y * frame.width;
+            int flippedIndex = (frame.height - 1 - y) * frame.width;
+
+            // Copy the pixels to the temporary buffer
+            Array.Copy(originalPixels, index, flippedPixels, flippedIndex, frame.width);
+        }
+        frame.SetPixels32(flippedPixels);
+        Profiler.EndSample();
     }
 }
