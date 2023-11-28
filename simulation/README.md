@@ -2,6 +2,16 @@
 
 Unity-based simulator for the Laser Runner Cutter. ROS2 communication from Unity is done via [ros2-for-unity](https://github.com/RobotecAI/ros2-for-unity).
 
+## Environment setup
+
+1. Install Unity 2022.3.13f1 via [Unity Hub](https://unity.com/download)
+1. Open the `LaserRunnerCutter` project in Unity
+1. Set VS Code as Unity's external editor by following [these instructions](https://code.visualstudio.com/docs/other/unity).
+1. Install the following VS Code extensions:
+   1. C#
+   1. C# Dev Kit
+   1. Unity
+
 ## Updating generated custom msgs
 
 The following instructions are based on [this guide](https://github.com/RobotecAI/ros2-for-unity/blob/develop/README-UBUNTU.md).
