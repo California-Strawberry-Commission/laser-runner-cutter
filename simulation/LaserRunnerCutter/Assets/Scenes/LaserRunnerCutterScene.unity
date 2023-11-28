@@ -721,7 +721,7 @@ MonoBehaviour:
   ros2Unity: {fileID: 310814052}
   textureWidth: 848
   textureHeight: 480
-  publishFps: 1
+  publishFps: 10
 --- !u!1 &1043113997
 GameObject:
   m_ObjectHideFlags: 0

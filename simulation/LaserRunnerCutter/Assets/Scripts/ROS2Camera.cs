@@ -12,26 +12,29 @@ public class ROSCamera : MonoBehaviour
     public int textureHeight = 480;
     public int publishFps = 1;
 
-    private RenderTexture _renderTexture;
-    private ROS2Node _ros2Node;
-    private IPublisher<sensor_msgs.msg.Image> _colorFramePub;
+    private RenderTexture renderTexture;
+    private ROS2Node ros2Node;
+    private IPublisher<sensor_msgs.msg.Image> colorFramePub;
+    private IPublisher<sensor_msgs.msg.Image> depthFramePub;
 
     private void Start()
     {
         if (mainCamera == null)
         {
             mainCamera = GetComponent<Camera>();
+            mainCamera.depthTextureMode = DepthTextureMode.Depth;
         }
 
-        _renderTexture = new RenderTexture(textureWidth, textureHeight, 16);
-        mainCamera.targetTexture = _renderTexture;
+        renderTexture = new RenderTexture(textureWidth, textureHeight, 16);
+        mainCamera.targetTexture = renderTexture;
 
         if (ros2Unity.Ok())
         {
-            if (_ros2Node == null)
+            if (ros2Node == null)
             {
-                _ros2Node = ros2Unity.CreateNode("ROS2UnityCameraNode");
-                _colorFramePub = _ros2Node.CreatePublisher<sensor_msgs.msg.Image>("color_frame");
+                ros2Node = ros2Unity.CreateNode("ROS2UnityCameraNode");
+                colorFramePub = ros2Node.CreatePublisher<sensor_msgs.msg.Image>("color_frame");
+                depthFramePub = ros2Node.CreatePublisher<sensor_msgs.msg.Image>("depth_frame");
             }
         }
 
@@ -41,18 +44,35 @@ public class ROSCamera : MonoBehaviour
 
     private void PublishFrame()
     {
-        sensor_msgs.msg.Image msg = ConvertToImageMsg(GetFrame());
-        _colorFramePub.Publish(msg);
+        sensor_msgs.msg.Image colorImageMsg = ConvertToImageMsg(GetColorFrame());
+        sensor_msgs.msg.Image depthImageMsg = ConvertToImageMsg(GetDepthFrame());
+        colorFramePub.Publish(colorImageMsg);
+        depthFramePub.Publish(depthImageMsg);
     }
 
-    private Texture2D GetFrame()
+    private Texture2D GetColorFrame()
     {
         // Texture2D.ReadPixels looks at the active RenderTexture.
         RenderTexture oldActiveRenderTexture = RenderTexture.active;
-        RenderTexture.active = _renderTexture;
+        RenderTexture.active = renderTexture;
 
-        Texture2D frame = new Texture2D(_renderTexture.width, _renderTexture.height, TextureFormat.RGB24, false);
-        frame.ReadPixels(new Rect(0, 0, _renderTexture.width, _renderTexture.height), 0, 0);
+        Texture2D frame = new Texture2D(renderTexture.width, renderTexture.height, TextureFormat.RGB24, false);
+        frame.ReadPixels(new Rect(0, 0, renderTexture.width, renderTexture.height), 0, 0);
+
+        // Restore active RT
+        RenderTexture.active = oldActiveRenderTexture;
+
+        return frame;
+    }
+
+    private Texture2D GetDepthFrame()
+    {
+        // Texture2D.ReadPixels looks at the active RenderTexture.
+        RenderTexture oldActiveRenderTexture = RenderTexture.active;
+        RenderTexture.active = renderTexture;
+
+        Texture2D frame = new Texture2D(renderTexture.width, renderTexture.height, TextureFormat.R16, false);
+        frame.ReadPixels(new Rect(0, 0, renderTexture.width, renderTexture.height), 0, 0);
 
         // Restore active RT
         RenderTexture.active = oldActiveRenderTexture;
@@ -62,6 +82,11 @@ public class ROSCamera : MonoBehaviour
 
     private sensor_msgs.msg.Image ConvertToImageMsg(Texture2D frame)
     {
+        if (frame.format != TextureFormat.RGB24 && frame.format != TextureFormat.R16)
+        {
+            throw new ArgumentException($"Unsupported texture format: {frame.format}");
+        }
+
         // Unity's texture coordinates have origin at bottom left, so we need to
         // flip the pixels vertically
         Color[] pixels = frame.GetPixels();
@@ -80,13 +105,17 @@ public class ROSCamera : MonoBehaviour
         }
         frame.SetPixels(pixels);
 
+        bool isColor = frame.format == TextureFormat.RGB24;
+        uint width = unchecked((uint)frame.width);
+        uint height = unchecked((uint)frame.height);
+
         sensor_msgs.msg.Image imageMsg = new sensor_msgs.msg.Image
         {
-            Width = unchecked((uint)frame.width),
-            Height = unchecked((uint)frame.height),
-            Encoding = "rgb8",
+            Width = width,
+            Height = height,
+            Encoding = isColor ? "rgb8" : "mono16",
             Data = frame.GetRawTextureData(),
-            Step = unchecked((uint)frame.width) * 3,
+            Step = isColor ? width * 3 : width * 2
         };
         TimeSpan timeSinceEpoch = DateTime.Now - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         imageMsg.UpdateHeaderTime((int)timeSinceEpoch.TotalSeconds, unchecked((uint)(timeSinceEpoch.TotalMilliseconds * 1e6 % 1e9)));
