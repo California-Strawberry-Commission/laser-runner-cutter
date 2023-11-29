@@ -1,12 +1,9 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 public class ROS2Laser : MonoBehaviour
 {
-    public GameObject laserPrefab;
-    public float laserMaxLength = 10.0f;
-
+    [SerializeField] private GameObject laserPrefab;
+    [SerializeField] private float laserMaxLength = 10.0f;
     private GameObject laserInstance;
 
     private void Start()

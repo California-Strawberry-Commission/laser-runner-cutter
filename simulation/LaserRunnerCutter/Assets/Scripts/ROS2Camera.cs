@@ -3,13 +3,12 @@ using ROS2;
 
 public class ROSCamera : MonoBehaviour
 {
-    public Camera colorCamera;
-    public Camera depthCamera;
-    public ROS2UnityComponent ros2Unity;
-    public int textureWidth = 848;
-    public int textureHeight = 480;
-    public int publishFps = 1;
-
+    [SerializeField] private Camera colorCamera;
+    [SerializeField] private Camera depthCamera;
+    [SerializeField] private ROS2UnityComponent ros2Unity;
+    [SerializeField] private int textureWidth = 848;
+    [SerializeField] private int textureHeight = 480;
+    [SerializeField] private int publishFps = 1;
     private RenderTexture colorRenderTexture;
     private RenderTexture depthRenderTexture;
     private ROS2Node ros2Node;

@@ -1,8 +1,8 @@
 using UnityEngine;
 
-public class RenderDepth : MonoBehaviour
+public class DepthCamera : MonoBehaviour
 {
-    private Shader shader;
+    [SerializeField] Shader shader;
     private Material material;
 
     private void Start()
@@ -10,7 +10,10 @@ public class RenderDepth : MonoBehaviour
         Camera camera = GetComponent<Camera>();
         camera.depthTextureMode = DepthTextureMode.Depth;
 
-        shader = Shader.Find("Hidden/Depth");
+        if (shader == null)
+        {
+            shader = Shader.Find("Hidden/Exposure");
+        }
         material = new Material(shader);
     }
 
