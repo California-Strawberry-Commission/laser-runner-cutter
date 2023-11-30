@@ -368,7 +368,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0b92dd818055f05bba50232b4e70fe67, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  shader: {fileID: 0}
+  shader: {fileID: 4800000, guid: cdfc021012b2b1eb8875160831a9438a, type: 3}
 --- !u!1 &689778844
 GameObject:
   m_ObjectHideFlags: 0
@@ -967,7 +967,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d0f1693e6a4b4b60f854283902781bef, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  shader: {fileID: 0}
+  shader: {fileID: 4800000, guid: 20b003e5c8280610fb87e69b52a102c1, type: 3}
   exposure: 0.1
 --- !u!1 &1043113997
 GameObject:

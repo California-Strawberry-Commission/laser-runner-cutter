@@ -19,7 +19,7 @@ public class ColorCamera : MonoBehaviour
     {
         if (shader == null)
         {
-            shader = Shader.Find("Hidden/Exposure");
+            shader = Shader.Find("Hidden/ColorCamera");
         }
         material = new Material(shader);
         material.SetFloat("_Exposure", exposure);

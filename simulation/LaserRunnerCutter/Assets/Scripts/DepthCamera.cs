@@ -12,7 +12,7 @@ public class DepthCamera : MonoBehaviour
 
         if (shader == null)
         {
-            shader = Shader.Find("Hidden/Exposure");
+            shader = Shader.Find("Hidden/DepthCamera");
         }
         material = new Material(shader);
     }

@@ -1,9 +1,6 @@
-Shader "Hidden/Exposure" {
-  Properties {
-    _MainTex("Texture", 2D) = "white" {}
-    _Exposure("Exposure", Range(0.0, 1.0)) = 1.0
-  }
+Shader "Hidden/DepthCamera" {
   SubShader {
+    Tags { "RenderType"="Opaque" }
     Pass {
       CGPROGRAM
 
@@ -21,6 +18,8 @@ Shader "Hidden/Exposure" {
         float2 uv : TEXCOORD0;
       };
 
+      sampler2D _CameraDepthTexture;
+
       v2f vert (appdata v) {
         v2f o;
         UNITY_INITIALIZE_OUTPUT(v2f, o);
@@ -29,15 +28,15 @@ Shader "Hidden/Exposure" {
         return o;
       }
 
-      sampler2D _MainTex;
-      uniform float _Exposure;
-
-      fixed4 frag (v2f i) : SV_Target {
-        fixed4 color = tex2D(_MainTex, i.uv);
-        // Multiply rgb by exposure
-        fixed3 rgb = color.rgb * _Exposure;
-        color = fixed4(rgb, color.a);
-        return color;
+      half4 frag (v2f i) : SV_Target {
+        float2 uv = i.uv;
+        #if !UNITY_UV_STARTS_AT_TOP
+        uv.y = 1.0 - uv.y;
+        #endif
+        // Get depth from depth texture
+        float depth = UNITY_SAMPLE_DEPTH(tex2D(_CameraDepthTexture, uv));
+        depth = Linear01Depth(depth);
+        return depth;
       }
       ENDCG
     }
