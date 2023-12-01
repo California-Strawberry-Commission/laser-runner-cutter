@@ -688,6 +688,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   laserPrefab: {fileID: 4969863761241717124, guid: 862d59d12c557d6839e9ce5d3fb0e292, type: 3}
   laserMaxLength: 10
+  ros2Unity: {fileID: 310814052}
 --- !u!1 &937045119
 GameObject:
   m_ObjectHideFlags: 0
