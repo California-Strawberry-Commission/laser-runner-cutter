@@ -15,22 +15,22 @@ def generate_launch_description():
         [
             launch_ros.actions.Node(
                 package="camera_control",
-                executable="camera_node",
-                name="camera_node",
+                executable="camera_control_node",
+                name="camera0",
                 arguments=["--ros-args", "--log-level", "info"],
                 parameters=[parameters_file],
             ),
             launch_ros.actions.Node(
                 package="laser_control",
                 executable="laser_control_node",
-                name="laser_node",
+                name="laser0",
                 arguments=["--ros-args", "--log-level", "info"],
                 parameters=[parameters_file],
             ),
             launch_ros.actions.Node(
                 package="control_node",
                 executable="control_node",
-                name="control_node",
+                name="control0",
                 arguments=["--ros-args", "--log-level", "info"],
                 parameters=[parameters_file],
             ),

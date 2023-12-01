@@ -55,16 +55,9 @@ class ServiceWait(State):
         self.logger.info("Entering State ServiceWait")
         self.node.publish_state("ServiceWait")
 
-        # THIS SHOULDN'T BE NEEDED
+        # TODO: Check that laser connected correctly
         time.sleep(3)
         self.laser_client.wait_active()
-
-        # Currently don't support enabling multiple laser connections
-        self.logger.info("connecting to laser")
-        self.laser_client.connect()
-        self.logger.info("laser connected")
-
-        # ToDo add check laser connected correctly
 
         # Check that the camera has frames
         self.logger.info("wait for frames")
@@ -267,14 +260,23 @@ class MainNode(Node):
         super().__init__("main_node")
         self.logger = self.get_logger()
 
-        # Declare parameters from a ros config file, if no parameter is found, the default is used
+        # Parameters
+
         self.declare_parameters(
             namespace="",
             parameters=[
+                ("laser_node_name", "laser"),
+                ("camera_node_name", "camera"),
                 ("tracking_laser_color", [0.2, 0.0, 0.0]),
                 ("burn_color", [0.0, 0.0, 1.0]),
                 ("burn_time", 5),
             ],
+        )
+        self.laser_node_name = (
+            self.get_parameter("laser_node_name").get_parameter_value().string_value
+        )
+        self.camera_node_name = (
+            self.get_parameter("camera_node_name").get_parameter_value().string_value
         )
         self.tracking_laser_color = (
             self.get_parameter("tracking_laser_color")
@@ -288,11 +290,14 @@ class MainNode(Node):
             self.get_parameter("burn_time").get_parameter_value().integer_value
         )
 
-        # Set up pub/sub
-        self.state_publisher = self.create_publisher(String, "control_node/state", 5)
+        # Pub/sub
 
-        self.laser_client = LaserNodeClient(self)
-        self.camera_client = CameraNodeClient(self)
+        self.state_publisher = self.create_publisher(String, "~/state", 5)
+
+        # Set up dependencies
+
+        self.laser_client = LaserNodeClient(self, self.laser_node_name)
+        self.camera_client = CameraNodeClient(self, self.camera_node_name)
         self.calibration = Calibration(
             self.laser_client,
             self.camera_client,
@@ -300,6 +305,8 @@ class MainNode(Node):
             self.logger,
         )
         self.runner_tracker = Tracker()
+
+        # Set up state machine
 
         blackboard = Blackboard()
         blackboard.curr_track = None

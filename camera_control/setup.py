@@ -25,7 +25,7 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "camera_node = camera_control.nodes.camera_control_node:main",
+            "camera_control_node = camera_control.nodes.camera_control_node:main",
         ],
     },
 )

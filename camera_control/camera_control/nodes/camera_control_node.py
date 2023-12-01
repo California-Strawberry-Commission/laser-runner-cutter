@@ -1,15 +1,19 @@
-import cv2
-import rclpy
+import os
 import time
 from datetime import datetime
-from rclpy.node import Node
 
+import cv2
+import numpy as np
+import rclpy
+from ament_index_python.packages import get_package_share_directory
+from cv_bridge import CvBridge
+from rclpy.node import Node
+from sensor_msgs.msg import Image
+from ultralytics import YOLO
+
+import camera_control.utils.cv_utils as cv_utils
 from camera_control.camera.realsense import RealSense
-from camera_control_interfaces.msg import (
-    PosData,
-    Pos,
-    Point,
-)
+from camera_control_interfaces.msg import Point, Pos, PosData
 from camera_control_interfaces.srv import (
     GetBool,
     GetFrame,
@@ -17,15 +21,6 @@ from camera_control_interfaces.srv import (
     SendEnable,
     SetExposure,
 )
-from sensor_msgs.msg import Image
-
-import camera_control.utils.cv_utils as cv_utils
-from ultralytics import YOLO
-from cv_bridge import CvBridge
-import numpy as np
-import os
-
-from ament_index_python.packages import get_package_share_directory
 
 
 def milliseconds_to_ros_time(milliseconds):
@@ -40,7 +35,8 @@ class CameraControlNode(Node):
         super().__init__("camera_control_node")
         self.logger = self.get_logger()
 
-        # Declare parameters from a ros config file, if no parameter is found, the default is used
+        # Parameters
+
         self.declare_parameters(
             namespace="",
             parameters=[
@@ -54,7 +50,6 @@ class CameraControlNode(Node):
             ],
         )
 
-        # Get class attributes from passed in parameters
         self.video_dir = (
             self.get_parameter("video_dir").get_parameter_value().string_value
         )
@@ -86,57 +81,49 @@ class CameraControlNode(Node):
         # For converting numpy array to image msg
         self.cv_bridge = CvBridge()
 
-        # Create publishers and subscribers
-        self.color_frame_pub = self.create_publisher(
-            Image, "camera_control/color_frame", 1
-        )
-        self.depth_frame_pub = self.create_publisher(
-            Image, "camera_control/depth_frame", 1
-        )
-        self.laser_pos_pub = self.create_publisher(
-            PosData, "camera_control/laser_pos_data", 5
-        )
-        self.runner_pos_pub = self.create_publisher(
-            PosData, "camera_control/runner_pos_data", 5
-        )
+        # Pub/sub
+
+        self.color_frame_pub = self.create_publisher(Image, "~/color_frame", 1)
+        self.depth_frame_pub = self.create_publisher(Image, "~/depth_frame", 1)
+        self.laser_pos_pub = self.create_publisher(PosData, "~/laser_pos_data", 5)
+        self.runner_pos_pub = self.create_publisher(PosData, "~/runner_pos_data", 5)
         self.runner_point_sub = self.create_subscription(
-            Point, "camera_control/runner_point", self.runner_point_cb, 1
+            Point, "~/runner_point", self.runner_point_cb, 1
         )
         self.runner_point = None
 
         self.frame_call = self.create_timer(self.frame_period, self.frame_callback)
 
-        # Create services
-        self.frame_srv = self.create_service(
-            GetFrame, "camera_control/get_frame", self.get_frame
-        )
+        # Services
+
+        self.frame_srv = self.create_service(GetFrame, "~/get_frame", self.get_frame)
         self.single_runner_srv = self.create_service(
             GetPosData,
-            "camera_control/get_runner_detection",
+            "~/get_runner_detection",
             self.single_runner_detection,
         )
         self.single_laser_srv = self.create_service(
             GetPosData,
-            "camera_control/get_laser_detection",
+            "~/get_laser_detection",
             self.single_laser_detection,
         )
         self.has_frames_srv = self.create_service(
-            GetBool, "camera_control/has_frames", self.has_frames
+            GetBool, "~/has_frames", self.has_frames
         )
         self.set_exposure_srv = self.create_service(
-            SetExposure, "camera_control/set_exposure", self.set_exposure
+            SetExposure, "~/set_exposure", self.set_exposure
         )
 
         self.control_laser_pub_srv = self.create_service(
             SendEnable,
-            "camera_control/control_laser_pub",
+            "~/control_laser_pub",
             self.control_laser_pub,
         )
         self.laser_pub_control = False
 
         self.control_runner_pub_srv = self.create_service(
             SendEnable,
-            "camera_control/control_runner_pub",
+            "~/control_runner_pub",
             self.control_runner_pub,
         )
         self.runner_pub_control = False
@@ -332,10 +319,10 @@ class CameraControlNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     # find way to pass Emu into args
-    camera_node = CameraControlNode()
-    rclpy.spin(camera_node)
+    node = CameraControlNode()
+    rclpy.spin(node)
     rclpy.shutdown()
-    camera_node.destroy_node()
+    node.destroy_node()
 
 
 if __name__ == "__main__":

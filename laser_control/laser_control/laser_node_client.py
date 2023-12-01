@@ -1,46 +1,35 @@
 import rclpy
-
-from laser_control_interfaces.srv import (
-    GetBounds,
-    SetColor,
-    AddPoint,
-    SetPoints,
-    ConnectToDac,
-)
-from laser_control_interfaces.msg import Point
 from std_srvs.srv import Empty
+
+from laser_control_interfaces.msg import Point
+from laser_control_interfaces.srv import AddPoint, GetBounds, SetColor, SetPoints
 
 
 # Could make a mixin if desired
 class LaserNodeClient:
-    def __init__(self, node):
+    def __init__(self, node, laser_node_name):
         node.laser_get_bounds = node.create_client(
-            GetBounds, "laser_control/get_bounds"
+            GetBounds, f"/{laser_node_name}/get_bounds"
         )
-        node.laser_set_color = node.create_client(SetColor, "laser_control/set_color")
-        node.laser_add_point = node.create_client(AddPoint, "laser_control/add_point")
+        node.laser_set_color = node.create_client(
+            SetColor, f"/{laser_node_name}/set_color"
+        )
+        node.laser_add_point = node.create_client(
+            AddPoint, f"/{laser_node_name}/add_point"
+        )
         node.laser_clear_points = node.create_client(
-            Empty, "laser_control/clear_points"
+            Empty, f"/{laser_node_name}/clear_points"
         )
         node.laser_set_points = node.create_client(
-            SetPoints, "laser_control/set_points"
+            SetPoints, f"/{laser_node_name}/set_points"
         )
-        node.laser_connect = node.create_client(
-            ConnectToDac, "laser_control/connect_to_dac"
-        )
-        node.laser_play = node.create_client(Empty, "laser_control/play")
-        node.laser_stop = node.create_client(Empty, "laser_control/stop")
+        node.laser_play = node.create_client(Empty, f"/{laser_node_name}/play")
+        node.laser_stop = node.create_client(Empty, f"/{laser_node_name}/stop")
         self.node = node
 
     def wait_active(self):
         while not self.node.laser_get_bounds.wait_for_service(timeout_sec=1.0):
             self.node.logger.info("laser service not available, waiting again...")
-
-    def connect(self):
-        request = ConnectToDac.Request()
-        request.idx = 0
-        response = self.node.laser_connect.call_async(request)
-        rclpy.spin_until_future_complete(self.node, response)
 
     # TODO Add block option to all calls, if true, wait on spin, if false don't. Could be a decorator?
     def start_laser(self, point=None, color=None):

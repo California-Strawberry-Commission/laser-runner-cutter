@@ -54,16 +54,16 @@ class RqtLaserRunnerRemoval(Plugin):
         self.show_placeholder_frames()
 
         self.state_sub = self.context.node.create_subscription(
-            String, "control_node/state", self.state_callback, 5
+            String, "/control0/state", self.state_callback, 5
         )
         self.laser_playing_sub = self.context.node.create_subscription(
-            Bool, "laser_control/playing", self.laser_playing_callback, 5
+            Bool, "/laser0/playing", self.laser_playing_callback, 5
         )
         self.color_frame_sub = self.context.node.create_subscription(
-            Image, "camera_control/color_frame", self.color_frame_callback, 1
+            Image, "/camera0/color_frame", self.color_frame_callback, 1
         )
         self.depth_frame_sub = self.context.node.create_subscription(
-            Image, "camera_control/depth_frame", self.depth_frame_callback, 1
+            Image, "/camera0/depth_frame", self.depth_frame_callback, 1
         )
 
         self.control_node_availability_timer = self.context.node.create_timer(
