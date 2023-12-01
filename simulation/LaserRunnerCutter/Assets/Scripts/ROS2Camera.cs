@@ -6,9 +6,10 @@ using System;
 
 public class ROSCamera : MonoBehaviour
 {
+    [SerializeField] private string nodeName = "camera";
+    [SerializeField] private ROS2UnityComponent ros2Unity;
     [SerializeField] private Camera colorCamera;
     [SerializeField] private Camera depthCamera;
-    [SerializeField] private ROS2UnityComponent ros2Unity;
     [SerializeField] private int textureWidth = 848;
     [SerializeField] private int textureHeight = 480;
     [SerializeField] private int publishFps = 1;
@@ -38,10 +39,10 @@ public class ROSCamera : MonoBehaviour
         {
             if (ros2Node == null)
             {
-                ros2Node = ros2Unity.CreateNode("ROS2UnityCameraNode");
-                setExposureSrv = ros2Node.CreateService<SetExposure_Request, SetExposure_Response>("set_exposure", SetExposure);
-                colorFramePub = ros2Node.CreatePublisher<sensor_msgs.msg.Image>("color_frame");
-                depthFramePub = ros2Node.CreatePublisher<sensor_msgs.msg.Image>("depth_frame");
+                ros2Node = ros2Unity.CreateNode(nodeName);
+                setExposureSrv = ros2Node.CreateService<SetExposure_Request, SetExposure_Response>("~/set_exposure", SetExposure);
+                colorFramePub = ros2Node.CreatePublisher<sensor_msgs.msg.Image>("~/color_frame");
+                depthFramePub = ros2Node.CreatePublisher<sensor_msgs.msg.Image>("~/depth_frame");
             }
         }
 

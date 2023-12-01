@@ -136,7 +136,7 @@ GameObject:
   - component: {fileID: 264919648}
   - component: {fileID: 264919647}
   m_Layer: 0
-  m_Name: Cube1
+  m_Name: Cube0
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -382,7 +382,7 @@ GameObject:
   - component: {fileID: 689778847}
   - component: {fileID: 689778846}
   m_Layer: 0
-  m_Name: Cube3
+  m_Name: Cube2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -582,7 +582,7 @@ GameObject:
   - component: {fileID: 891521046}
   - component: {fileID: 891521049}
   m_Layer: 0
-  m_Name: Laser
+  m_Name: Laser0
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -686,9 +686,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3a57d3793275adb90af96dd3f3cd8086, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  nodeName: laser0
+  ros2Unity: {fileID: 310814052}
   laserPrefab: {fileID: 4969863761241717124, guid: 862d59d12c557d6839e9ce5d3fb0e292, type: 3}
   laserMaxLength: 10
-  ros2Unity: {fileID: 310814052}
 --- !u!1 &937045119
 GameObject:
   m_ObjectHideFlags: 0
@@ -983,7 +984,7 @@ GameObject:
   - component: {fileID: 1043114000}
   - component: {fileID: 1043113999}
   m_Layer: 0
-  m_Name: Cube2
+  m_Name: Cube1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1088,7 +1089,7 @@ GameObject:
   - component: {fileID: 1078061848}
   - component: {fileID: 1078061847}
   m_Layer: 0
-  m_Name: Cube4
+  m_Name: Cube3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1224,7 +1225,7 @@ GameObject:
   - component: {fileID: 1210935727}
   - component: {fileID: 1210935728}
   m_Layer: 0
-  m_Name: Cameras
+  m_Name: Camera0
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1259,6 +1260,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1cc71ecbdee6845b1a953ac67ad7fa89, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  nodeName: camera0
   colorCamera: {fileID: 963194227}
   depthCamera: {fileID: 638101222}
   ros2Unity: {fileID: 310814052}

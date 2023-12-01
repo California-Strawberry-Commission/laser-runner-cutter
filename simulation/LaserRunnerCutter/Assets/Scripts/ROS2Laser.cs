@@ -13,9 +13,10 @@ public class ROS2Laser : MonoBehaviour
     private static (int lower, int upper) X_BOUNDS = (-32768, 32767);
     private static (int lower, int upper) Y_BOUNDS = (-32768, 32767);
 
+    [SerializeField] private string nodeName = "laser";
+    [SerializeField] private ROS2UnityComponent ros2Unity;
     [SerializeField] private GameObject laserPrefab;
     [SerializeField] private float laserMaxLength = 10.0f;
-    [SerializeField] private ROS2UnityComponent ros2Unity;
     private ROS2Node ros2Node;
     private IService<SetColor_Request, SetColor_Response> setColorSrv;
     private IService<GetBounds_Request, GetBounds_Response> getBoundsSrv;
@@ -132,17 +133,17 @@ public class ROS2Laser : MonoBehaviour
         {
             if (ros2Node == null)
             {
-                ros2Node = ros2Unity.CreateNode("ROS2UnityLaserNode");
-                setColorSrv = ros2Node.CreateService<SetColor_Request, SetColor_Response>("set_color", SetColor);
-                getBoundsSrv = ros2Node.CreateService<GetBounds_Request, GetBounds_Response>("get_bounds", GetBounds);
-                addPointSrv = ros2Node.CreateService<AddPoint_Request, AddPoint_Response>("add_point", AddPoint);
-                setPointsSrv = ros2Node.CreateService<SetPoints_Request, SetPoints_Response>("set_points", SetPoints);
-                removePointSrv = ros2Node.CreateService<Empty_Request, Empty_Response>("remove_point", RemovePoint);
-                clearPointsSrv = ros2Node.CreateService<Empty_Request, Empty_Response>("clear_points", ClearPoints);
-                setPlaybackParamsSrv = ros2Node.CreateService<SetPlaybackParams_Request, SetPlaybackParams_Response>("set_playback_params", SetPlaybackParams);
-                playSrv = ros2Node.CreateService<Empty_Request, Empty_Response>("play", Play);
-                stopSrv = ros2Node.CreateService<Empty_Request, Empty_Response>("stop", Stop);
-                playingPub = ros2Node.CreatePublisher<Bool>("playing");
+                ros2Node = ros2Unity.CreateNode(nodeName);
+                setColorSrv = ros2Node.CreateService<SetColor_Request, SetColor_Response>("~/set_color", SetColor);
+                getBoundsSrv = ros2Node.CreateService<GetBounds_Request, GetBounds_Response>("~/get_bounds", GetBounds);
+                addPointSrv = ros2Node.CreateService<AddPoint_Request, AddPoint_Response>("~/add_point", AddPoint);
+                setPointsSrv = ros2Node.CreateService<SetPoints_Request, SetPoints_Response>("~/set_points", SetPoints);
+                removePointSrv = ros2Node.CreateService<Empty_Request, Empty_Response>("~/remove_point", RemovePoint);
+                clearPointsSrv = ros2Node.CreateService<Empty_Request, Empty_Response>("~/clear_points", ClearPoints);
+                setPlaybackParamsSrv = ros2Node.CreateService<SetPlaybackParams_Request, SetPlaybackParams_Response>("~/set_playback_params", SetPlaybackParams);
+                playSrv = ros2Node.CreateService<Empty_Request, Empty_Response>("~/play", Play);
+                stopSrv = ros2Node.CreateService<Empty_Request, Empty_Response>("~/stop", Stop);
+                playingPub = ros2Node.CreatePublisher<Bool>("~/playing");
             }
         }
         playingPub.Publish(new Bool { Data = false });
