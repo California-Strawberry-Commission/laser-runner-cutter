@@ -167,6 +167,9 @@ class MaskRCNN:
         print(self.device)
         self.model.to(self.device)
 
+    def inference_transform(self, img_arr):
+        return T.Compose([T.ToImage(), T.ToDtype(torch.float32, scale=True)])(img_arr)
+
     def get_centroids(self, img_arr):
         """Return a list of centroids for each detection.
                 Currently does not support batches
@@ -179,7 +182,7 @@ class MaskRCNN:
         """
         img_tensor = self.inference_transform(img_arr)
         img_tensor = img_tensor.to(self.device)
-        res = self.model(img_tensor)
+        res = self.model([img_tensor])
         point_list = []
         if len(res[0]["masks"]):
             for mask_tensor in res[0]["masks"]:
