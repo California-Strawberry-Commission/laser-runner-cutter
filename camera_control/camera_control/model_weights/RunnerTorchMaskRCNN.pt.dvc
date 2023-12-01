@@ -1,0 +1,5 @@
+outs:
+- md5: 3fdf418dc5990d3086917b7f0f36b0a9
+  size: 176229390
+  hash: md5
+  path: RunnerTorchMaskRCNN.pt
