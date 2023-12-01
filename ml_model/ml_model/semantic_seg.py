@@ -12,7 +12,9 @@ from torchvision.transforms import v2 as T
 
 import random
 
-SIZE = (720, 960)
+from ml_model.model_base import ModelBase
+
+SIZE = (768, 1024)
 
 
 # Currently does not support taking in images and masks, so random actions introduce error.
@@ -71,7 +73,7 @@ def collate_fn(batch):
     return batch
 
 
-class SemanticSegmentation:
+class SemanticSegmentation(ModelBase):
     def __init__(self):
         self.model = models.segmentation.deeplabv3_resnet101(
             pretrained=True, progress=True
@@ -83,7 +85,7 @@ class SemanticSegmentation:
         self.model.to(self.device)
         self.model.eval()
 
-    def load(self, load_path):
+    def load_weights(self, load_path):
         self.model.load_state_dict(torch.load(load_path))
 
     def train_model(self, img_dir, mask_dir):
@@ -169,9 +171,6 @@ class SemanticSegmentation:
                 print("Saved new weights")
                 torch.save(self.model.state_dict(), "")
 
-
-if __name__ == "__main__":
-    model = SemanticSegmentation()
-    img_dir = ""
-    mask_dir = ""
-    model.train_model(img_dir, mask_dir)
+    @staticmethod
+    def name():
+        return "torch_segmentation"

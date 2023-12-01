@@ -7,7 +7,7 @@ package_name = "ml_model"
 
 setup(
     name=package_name,
-    version="0.1.0",
+    version="0.0.1",
     packages=find_packages(),
     data_files=[("data_store/weights", glob("data_store/weights/*"))],
     install_requires=["setuptools"],

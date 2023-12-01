@@ -15,9 +15,10 @@ from torchvision.transforms import v2 as T
 from tqdm import tqdm
 import random
 import albumentations as A
+from ml_model.model_base import ModelBase
 from torchmetrics.detection import MeanAveragePrecision
 
-SIZE = (720, 960)
+SIZE = (768, 1024)
 
 
 class AlbumRandAugment:
@@ -131,7 +132,7 @@ class MRCNNDataSet(torch.utils.data.Dataset):
 
     def _find_mrcnn_labels(self, idx):
         mask_subdir = self.mask_subdirs[idx]
-        paths = glob.glob(os.path.join(mask_subdir, "*.jpg"))
+        paths = glob.glob(os.path.join(mask_subdir, "*"))
 
         # This doesn't work for more then one class type, add the class id to the subdir name?
         labels = np.ones(len(paths))
@@ -149,7 +150,7 @@ def collate_fn(batch):
     return batch
 
 
-class MaskRCNN:
+class MaskRCNN(ModelBase):
     def __init__(self):
         self.model = torchvision.models.detection.maskrcnn_resnet50_fpn(
             weights="DEFAULT"
@@ -170,7 +171,7 @@ class MaskRCNN:
     def inference_transform(self, img_arr):
         return T.Compose([T.ToImage(), T.ToDtype(torch.float32, scale=True)])(img_arr)
 
-    def get_centroids(self, img_arr):
+    def get_centroids(self, img_arr, mask_confidence=.2):
         """Return a list of centroids for each detection.
                 Currently does not support batches
 
@@ -187,17 +188,19 @@ class MaskRCNN:
         if len(res[0]["masks"]):
             for mask_tensor in res[0]["masks"]:
                 mask_img = mask_tensor.detach().cpu().numpy()
-                ret, mask_img = cv2.threshold(mask_img, 0.5, 1, cv2.THRESH_BINARY)
-                x_c, y_c = np.argwhere(mask_img == 1).sum(0) / np.count_nonzero(
+                mask_img = mask_img[0, :, :]
+                ret, mask_img = cv2.threshold(mask_img, 0.2, 1, cv2.THRESH_BINARY)
+                y_c, x_c = np.argwhere(mask_img == 1).sum(0) / np.count_nonzero(
                     mask_img
                 )
+                #if not np.isnan(x_c) and np.isnan()
                 point_list.append([x_c, y_c])
         return point_list
 
     def get_map_value(self, img_dir, mask_dir):
         subdir_paths = glob.glob(os.path.join(mask_dir, "*"))
         imgs = [
-            os.path.join(img_dir, os.path.split(mask_subdir)[-1] + ".jpg")
+            os.path.join(img_dir, os.path.split(mask_subdir)[-1] + ".png")
             for mask_subdir in subdir_paths
         ]
         # Using the dataloader concept to create the test labels
@@ -230,9 +233,9 @@ class MaskRCNN:
             metric.update(pred_set, labels_set)
 
         met = metric.compute()
-        print(met)
+        return met
 
-    def load(self, load_path):
+    def load_weights(self, load_path):
         self.model.load_state_dict(torch.load(load_path))
         self.model.eval()
         self.model.to(self.device)
@@ -248,11 +251,11 @@ class MaskRCNN:
         train_mask_subdirs = np.array(subdir_paths)[t_img_idx]
         val_mask_subdirs = np.array(subdir_paths)[v_img_idx]
         train_imgs = [
-            os.path.join(img_dir, os.path.split(mask_subdir)[-1] + ".jpg")
+            os.path.join(img_dir, os.path.split(mask_subdir)[-1] + ".png")
             for mask_subdir in train_mask_subdirs
         ]
         val_imgs = [
-            os.path.join(img_dir, os.path.split(mask_subdir)[-1] + ".jpg")
+            os.path.join(img_dir, os.path.split(mask_subdir)[-1] + ".png")
             for mask_subdir in val_mask_subdirs
         ]
 
@@ -329,17 +332,6 @@ class MaskRCNN:
                 print(f"saving weights file to {weights_path}")
                 torch.save(self.model.state_dict(), weights_path)
 
-
-if __name__ == "__main__":
-    weights_file = "runner_instance_segment.pt"
-    model = MaskRCNN()
-    weights_path = os.path.join(
-        os.getcwd(), f"ml_model/data_store/weights/{weights_file}"
-    )
-    model.load(weights_path)
-    img_dir = os.path.join(os.getcwd(), "ml_model/data_store/segmentation_data/raw/")
-    mask_dir = os.path.join(
-        os.getcwd(), "ml_model/data_store/segmentation_data/mrcnn_masks/"
-    )
-    # model.train_model(img_dir, mask_dir, weights_path, verbose=False)
-    model.get_map_value(img_dir, mask_dir)
+    @staticmethod
+    def name():
+        return "torch_mask_rcnn"
