@@ -24,12 +24,9 @@ find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/Dac.msg"
   "msg/Point.msg"
   "srv/AddPoint.srv"
-  "srv/ConnectToDac.srv"
   "srv/GetBounds.srv"
-  "srv/ListDacs.srv"
   "srv/SetColor.srv"
   "srv/SetPlaybackParams.srv"
   "srv/SetPoints.srv"

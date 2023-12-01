@@ -6,22 +6,22 @@ from laser_control_interfaces.msg import Point
 
 # Could make a mixin if desired
 class CameraNodeClient:
-    def __init__(self, node):
+    def __init__(self, node, camera_node_name):
         node.camera_set_exposure = node.create_client(
-            SetExposure, "camera_control/set_exposure"
+            SetExposure, f"/{camera_node_name}/set_exposure"
         )
         node.camera_get_lasers = node.create_client(
-            GetPosData, "camera_control/get_laser_detection"
+            GetPosData, f"/{camera_node_name}/get_laser_detection"
         )
         node.camera_get_runners = node.create_client(
-            GetPosData, "camera_control/get_runner_detection"
+            GetPosData, f"/{camera_node_name}/get_runner_detection"
         )
         node.camera_has_frames = node.create_client(
             GetBool,
-            "camera_control/has_frames",
+            f"/{camera_node_name}/has_frames",
         )
         node.runner_point_pub = node.create_publisher(
-            Point, "camera_control/runner_point", 1
+            Point, f"/{camera_node_name}/runner_point", 1
         )
         self.node = node
 

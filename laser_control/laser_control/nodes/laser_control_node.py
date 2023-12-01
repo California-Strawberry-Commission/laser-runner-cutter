@@ -5,18 +5,15 @@ from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
 
 from laser_control.laser_dac import EtherDreamDAC, HeliosDAC
-from laser_control_interfaces.msg import Dac
+from laser_control_interfaces.msg import Point
 from laser_control_interfaces.srv import (
     AddPoint,
-    ConnectToDac,
     GetBounds,
-    ListDacs,
     SetColor,
     SetPlaybackParams,
     SetPoints,
 )
 from std_srvs.srv import Empty
-from laser_control_interfaces.msg import Point
 from std_msgs.msg import Bool
 
 
@@ -24,169 +21,136 @@ class LaserControlNode(Node):
     def __init__(self):
         super().__init__("laser_control_node")
 
-        # Playback params
+        # Parameters
 
-        self.fps = 30
-        self.pps = 30000
-        self.transition_duration_ms = 0.5
+        self.declare_parameters(
+            namespace="",
+            parameters=[
+                ("dac_type", "helios"),  # "helios" or "ether_dream"
+                ("dac_index", 0),
+                ("fps", 30),
+                ("pps", 30000),
+                ("transition_duration_ms", 0.5),
+            ],
+        )
+
+        self.dac_type = (
+            self.get_parameter("dac_type").get_parameter_value().string_value
+        )
+        self.dac_index = (
+            self.get_parameter("dac_index").get_parameter_value().integer_value
+        )
+        self.fps = self.get_parameter("fps").get_parameter_value().integer_value
+        self.pps = self.get_parameter("pps").get_parameter_value().integer_value
+        self.transition_duration_ms = (
+            self.get_parameter("transition_duration_ms")
+            .get_parameter_value()
+            .double_value
+        )
 
         # Services
 
-        self.list_dacs_srv = self.create_service(
-            ListDacs, "laser_control/list_dacs", self.list_dacs_callback
-        )
-        self.connect_to_dac_srv = self.create_service(
-            ConnectToDac, "laser_control/connect_to_dac", self.connect_to_dac_callback
-        )
         self.set_color_srv = self.create_service(
-            SetColor, "laser_control/set_color", self.set_color_callback
+            SetColor, "~/set_color", self._set_color_callback
         )
         self.get_bounds_srv = self.create_service(
-            GetBounds, "laser_control/get_bounds", self.get_bounds_callback
+            GetBounds, "~/get_bounds", self._get_bounds_callback
         )
         self.add_point_srv = self.create_service(
-            AddPoint, "laser_control/add_point", self.add_point_callback
+            AddPoint, "~/add_point", self._add_point_callback
         )
         self.set_points_srv = self.create_service(
-            SetPoints, "laser_control/set_points", self.set_points_callback
+            SetPoints, "~/set_points", self._set_points_callback
         )
         self.remove_point_srv = self.create_service(
-            Empty, "laser_control/remove_point", self.remove_point_callback
+            Empty, "~/remove_point", self._remove_point_callback
         )
         self.clear_points_srv = self.create_service(
-            Empty, "laser_control/clear_points", self.clear_points_callback
+            Empty, "~/clear_points", self._clear_points_callback
         )
         self.set_playback_params_srv = self.create_service(
             SetPlaybackParams,
-            "laser_control/set_playback_params",
-            self.set_playback_params_callback,
+            "~/set_playback_params",
+            self._set_playback_params_callback,
         )
-        self.play_srv = self.create_service(
-            Empty, "laser_control/play", self.play_callback
-        )
-        self.stop_srv = self.create_service(
-            Empty, "laser_control/stop", self.stop_callback
-        )
-        self.close_srv = self.create_service(
-            Empty, "laser_control/close", self.close_callback
-        )
+        self.play_srv = self.create_service(Empty, "~/play", self._play_callback)
+        self.stop_srv = self.create_service(Empty, "~/stop", self._stop_callback)
 
         # Pub/sub
 
-        self.playing_pub = self.create_publisher(Bool, "laser_control/playing", 5)
+        self.playing_pub = self.create_publisher(Bool, "~/playing", 5)
 
-        # Initialize DACs
+        # Initialize DAC
 
         include_dir = os.path.join(
             get_package_share_directory("laser_control"), "include"
         )
-        self.helios = HeliosDAC(os.path.join(include_dir, "libHeliosDacAPI.so"))
-        self.ether_dream = EtherDreamDAC(os.path.join(include_dir, "libEtherDream.so"))
-        self.connected_dac = None
+        self.dac = None
+        if self.dac_type == "helios":
+            self.dac = HeliosDAC(os.path.join(include_dir, "libHeliosDacAPI.so"))
+        elif self.dac_type == "ether_dream":
+            self.dac = EtherDreamDAC(os.path.join(include_dir, "libEtherDream.so"))
+        else:
+            raise Exception(f"Unknown dac_type: {self.dac_type}")
 
-        # Initialize DAC interfaces
-        self.num_helios_dacs = self.helios.initialize()
-        self.num_ether_dream_dacs = self.ether_dream.initialize()
+        num_dacs = self.dac.initialize()
+        self.get_logger().info(f"{num_dacs} DACs of type {self.dac_type} found")
+        self.dac.connect(self.dac_index)
 
-        # Construct DAC list
-        self.dac_list = []
-        for i in range(0, self.num_helios_dacs):
-            dac = Dac()
-            dac.type = dac.DAC_TYPE_HELIOS
-            dac.name = f"Helios {i}"
-            self.dac_list.append(dac)
-
-        for i in range(0, self.num_ether_dream_dacs):
-            dac = Dac()
-            dac.type = dac.DAC_TYPE_ETHER_DREAM
-            dac.name = f"Ether Dream {i}"
-            self.dac_list.append(dac)
-
-        self.get_logger().info(
-            f"Found {self.num_ether_dream_dacs} Ether Dream and {self.num_helios_dacs} Helios DACs"
-        )
-
-    def list_dacs_callback(self, request, response):
-        response.dacs = self.dac_list
+    def _set_color_callback(self, request, response):
+        if self.dac is not None:
+            self.dac.set_color(request.r, request.g, request.b, request.i)
         return response
 
-    def connect_to_dac_callback(self, request, response):
-        dac_idx = request.idx
-        if dac_idx < 0 or dac_idx >= len(self.dac_list):
-            response.success = False
-            return response
-
-        dac = self.dac_list[dac_idx]
-        if dac.type == dac.DAC_TYPE_HELIOS:
-            self.connected_dac = self.helios
-            self.connected_dac.connect(dac_idx)
-        elif dac.type == dac.DAC_TYPE_ETHER_DREAM:
-            self.connected_dac = self.ether_dream
-            self.connected_dac.connect(dac_idx - self.num_helios_dacs)
-
-        response.success = True
-        self._publish_playing()
-        return response
-
-    def set_color_callback(self, request, response):
-        if self.connected_dac is not None:
-            self.connected_dac.set_color(request.r, request.g, request.b, request.i)
-        return response
-
-    def get_bounds_callback(self, request, response):
-        if self.connected_dac is not None:
-            points = self.connected_dac.get_bounds(request.scale)
+    def _get_bounds_callback(self, request, response):
+        if self.dac is not None:
+            points = self.dac.get_bounds(request.scale)
             response.points = [Point(x=point[0], y=point[1]) for point in points]
         return response
 
-    def add_point_callback(self, request, response):
-        if self.connected_dac is not None:
-            self.connected_dac.add_point(request.point.x, request.point.y)
+    def _add_point_callback(self, request, response):
+        if self.dac is not None:
+            self.dac.add_point(request.point.x, request.point.y)
         return response
 
-    def set_points_callback(self, request, response):
-        if self.connected_dac is not None:
-            self.connected_dac.clear_points()
+    def _set_points_callback(self, request, response):
+        if self.dac is not None:
+            self.dac.clear_points()
             for point in request.points:
-                self.connected_dac.add_point(point.x, point.y)
+                self.dac.add_point(point.x, point.y)
         return response
 
-    def remove_point_callback(self, request, response):
-        if self.connected_dac is not None:
-            self.connected_dac.remove_point()
+    def _remove_point_callback(self, request, response):
+        if self.dac is not None:
+            self.dac.remove_point()
         return response
 
-    def clear_points_callback(self, request, response):
-        if self.connected_dac is not None:
-            self.connected_dac.clear_points()
+    def _clear_points_callback(self, request, response):
+        if self.dac is not None:
+            self.dac.clear_points()
         return response
 
-    def set_playback_params_callback(self, request, response):
+    def _set_playback_params_callback(self, request, response):
         self.fps = request.fps
         self.pps = request.pps
         self.transition_duration_ms = request.transition_duration_ms
         return response
 
-    def play_callback(self, request, response):
-        if self.connected_dac is not None:
-            self.connected_dac.play(self.fps, self.pps, self.transition_duration_ms)
+    def _play_callback(self, request, response):
+        if self.dac is not None:
+            self.dac.play(self.fps, self.pps, self.transition_duration_ms)
             self._publish_playing()
         return response
 
-    def stop_callback(self, request, response):
-        if self.connected_dac is not None:
-            self.connected_dac.stop()
+    def _stop_callback(self, request, response):
+        if self.dac is not None:
+            self.dac.stop()
             self._publish_playing()
-        return response
-
-    def close_callback(self, request, response):
-        if self.connected_dac is not None:
-            self.connected_dac.close()
         return response
 
     def _publish_playing(self):
         msg = Bool()
-        msg.data = self.connected_dac.playing
+        msg.data = self.dac.playing
         self.playing_pub.publish(msg)
 
 
