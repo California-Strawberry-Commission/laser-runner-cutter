@@ -13,7 +13,6 @@
   <exec_depend>camera_control_interfaces</exec_depend>
   <exec_depend>laser_control</exec_depend>
   <exec_depend>laser_control_interfaces</exec_depend>
-  <exec_depend>laser_runner_removal</exec_depend>
   <exec_depend>simple_node</exec_depend>
   <exec_depend>yasmin</exec_depend>
 
