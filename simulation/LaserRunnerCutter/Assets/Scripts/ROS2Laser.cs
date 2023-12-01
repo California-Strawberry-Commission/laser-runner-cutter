@@ -90,8 +90,15 @@ public class ROS2Laser : MonoBehaviour
             GameObject laserInstance = Instantiate(laserPrefab);
             laserInstances.Add(laserInstance);
 
-            // TODO: convert point to ray
-            Ray ray = new Ray(transform.position, transform.forward);
+            // Convert point to direction
+            // At 1.5m away, bounds at +-0.5m
+            Vector3 direction = new Vector3
+            {
+                x = (0.5f * 2 * point.x - X_BOUNDS.upper) / (X_BOUNDS.upper - X_BOUNDS.lower) + 0.5f,
+                y = (0.5f * 2 * point.y - Y_BOUNDS.upper) / (Y_BOUNDS.upper - Y_BOUNDS.lower) + 0.5f,
+                z = 1.5f,
+            };
+            Ray ray = new Ray(transform.position, transform.TransformDirection(direction));
             RaycastHit hit;
             if (Physics.Raycast(ray, out hit, laserMaxLength))
             {
@@ -139,11 +146,6 @@ public class ROS2Laser : MonoBehaviour
             }
         }
         playingPub.Publish(new Bool { Data = false });
-
-        // REMOVE ME
-        AddPoint(0, 0);
-        AddPoint(32767, 32767);
-        Play();
     }
 
     private SetColor_Response SetColor(SetColor_Request msg)
