@@ -71,5 +71,5 @@ The following instructions are based on [this guide](https://github.com/RobotecA
 1. Copy the new library files to the Unity project:
 
    ```
-   cp -ru install/asset/Ros2ForUnity/Plugins <path to this repo>/simulation/LaserRunnerCutter/Assets/Ros2ForUnity/Plugins
+   cp -ru install/asset/Ros2ForUnity/Plugins <path to this repo>/simulator/LaserRunnerCutter/Assets/Ros2ForUnity/Plugins
    ```
