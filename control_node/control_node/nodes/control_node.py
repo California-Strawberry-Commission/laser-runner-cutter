@@ -5,18 +5,18 @@ node uses a state machine to control the general objective of the
 system. States are things like calibrating the camera laser system,
 finding a specific runner to burn, and burning said runner.  
 """
-import rclpy
+import time
 
 import numpy as np
-
+import rclpy
 from simple_node import Node
-import time
-from laser_control.laser_node_client import LaserNodeClient
-from laser_runner_removal.Tracker import Tracker
-from camera_control.camera_node_client import CameraNodeClient
-from yasmin import State, StateMachine, Blackboard
-from control_node.calibration import Calibration
 from std_msgs.msg import String
+from yasmin import Blackboard, State, StateMachine
+
+from camera_control.camera_node_client import CameraNodeClient
+from control_node.calibration import Calibration
+from control_node.tracker import Tracker
+from laser_control.laser_node_client import LaserNodeClient
 
 
 class Runner:

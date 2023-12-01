@@ -1,5 +1,0 @@
-float64 timestamp 
----
-float64 timestamp
-uint8[] color_image 
-uint16[] depth_image 
