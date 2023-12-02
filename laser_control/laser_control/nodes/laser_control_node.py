@@ -105,7 +105,9 @@ class LaserControlNode(Node):
     def _get_bounds_callback(self, request, response):
         if self.dac is not None:
             points = self.dac.get_bounds(request.scale)
-            response.points = [Point(x=point[0], y=point[1]) for point in points]
+            response.points = [
+                Point(x=int(point[0]), y=int(point[1])) for point in points
+            ]
         return response
 
     def _add_point_callback(self, request, response):
