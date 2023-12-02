@@ -59,7 +59,7 @@ class LaserNodeClient:
 
     def set_point(self, point):
         request = SetPoints.Request()
-        request.points = [Point(x=point[0], y=point[1])]
+        request.points = [Point(x=int(point[0]), y=int(point[1]))]
         response = self.node.laser_set_points.call_async(request)
         rclpy.spin_until_future_complete(self.node, response)
 
