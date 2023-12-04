@@ -63,7 +63,7 @@ class Calibration:
         for laser_pixel in pending_calibration_laser_pixels:
             self.laser_client.set_point(laser_pixel)
             # Wait for galvo to settle and for camera frame capture
-            time.sleep(1.0)
+            time.sleep(0.5)
             self.add_point_correspondence(laser_pixel)
 
         self.laser_client.stop_laser()
@@ -153,6 +153,15 @@ class Calibration:
             self.logger.info(
                 f"Laser pixels calculated using transform:\n{homogeneous_transformed_points[:, :2]}"
             )
+            error = np.mean(
+                np.sqrt(
+                    np.sum(
+                        (homogeneous_transformed_points[:, :2] - laser_pixels) ** 2,
+                        axis=1,
+                    )
+                )
+            )
+            self.logger.info(f"Mean reprojection error: {error}")
 
     def _update_transform_least_squares(self):
         laser_pixels = np.array(self.calibration_laser_pixels)
@@ -181,3 +190,12 @@ class Calibration:
             self.logger.info(
                 f"Laser pixels calculated using transform:\n{homogeneous_transformed_points[:, :2]}"
             )
+            error = np.mean(
+                np.sqrt(
+                    np.sum(
+                        (homogeneous_transformed_points[:, :2] - laser_pixels) ** 2,
+                        axis=1,
+                    )
+                )
+            )
+            self.logger.info(f"Mean reprojection error: {error}")
