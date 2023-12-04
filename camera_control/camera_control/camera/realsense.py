@@ -1,6 +1,5 @@
 from .camera import Camera
 import pyrealsense2 as rs
-import numpy as np
 
 
 class RealSense(Camera):
@@ -10,16 +9,30 @@ class RealSense(Camera):
         color_frame_size,
         depth_frame_size,
         align_depth_to_color_frame=True,
+        camera_index=0,
     ):
         self.logger = logger
         self.color_frame_size = color_frame_size
         self.depth_frame_size = depth_frame_size
         self.align_depth_to_color_frame = align_depth_to_color_frame
+        self.camera_index = camera_index
 
     def initialize(self):
         # Setup code based on https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/align-depth2color.py
-        self.pipeline = rs.pipeline()
         self.config = rs.config()
+
+        # Connect to specific camera
+        context = rs.context()
+        devices = context.query_devices()
+        if self.camera_index < 0 or self.camera_index >= len(devices):
+            raise Exception("camera_index is out of bounds")
+
+        serial_number = devices[self.camera_index].get_info(
+            rs.camera_info.serial_number
+        )
+        self.config.enable_device(serial_number)
+
+        # Configure streams
         self.config.enable_stream(
             rs.stream.depth,
             self.depth_frame_size[0],
@@ -34,6 +47,9 @@ class RealSense(Camera):
             rs.format.rgb8,
             30,
         )
+
+        # Start pipeline
+        self.pipeline = rs.pipeline()
         self.profile = self.pipeline.start(self.config)
 
         # Get camera intrinsics and extrinsics

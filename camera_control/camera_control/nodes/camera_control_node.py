@@ -44,6 +44,7 @@ class CameraControlNode(Node):
                 ("debug_video_dir", "/opt/debug_video_stream"),
                 ("save_video", False),
                 ("save_debug", False),
+                ("camera_index", 0),
                 ("frame_period", 0.1),
                 ("rgb_size", [848, 480]),
                 ("depth_size", [848, 480]),
@@ -61,6 +62,9 @@ class CameraControlNode(Node):
         )
         self.rec_debug_frame = (
             self.get_parameter("save_debug").get_parameter_value().bool_value
+        )
+        self.camera_index = (
+            self.get_parameter("camera_index").get_parameter_value().integer_value
         )
         self.frame_period = (
             self.get_parameter("frame_period").get_parameter_value().double_value
@@ -129,7 +133,9 @@ class CameraControlNode(Node):
         self.runner_pub_control = False
 
         self.curr_frames = None
-        self.camera = RealSense(self.logger, self.rgb_size, self.depth_size)
+        self.camera = RealSense(
+            self.logger, self.rgb_size, self.depth_size, camera_index=self.camera_index
+        )
         self.background_image = None
         self.initialize()
 
