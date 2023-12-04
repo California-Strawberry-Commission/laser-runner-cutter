@@ -88,6 +88,8 @@ To develop the plugin UI, install QT Designer:
         $ pip install pyqt5-tools
         $ pyqt5-tools designer
 
+Then, open the UI file `rqt_laser_runner_removal.ui`.
+
 ## Libraries
 
 C/C++ libraries included were compiled for linux-x86_64 from the following sources:
