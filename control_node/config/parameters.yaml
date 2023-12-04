@@ -11,6 +11,7 @@ camera0:
     debug_video_dir: "/opt/debug_video_stream"
     save_video: False
     save_debug: False
+    camera_index: 0
     frame_period: .1
     rgb_size: [848, 480]
     depth_size: [848, 480]
