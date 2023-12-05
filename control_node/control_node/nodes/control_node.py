@@ -58,6 +58,16 @@ class ServiceWait(State):
         # TODO: Check that laser connected correctly
         time.sleep(3)
         self.laser_client.wait_active()
+        # Cache laser bounds on blackboard
+        bounds = self.laser_client.get_bounds(1.0)
+        blackboard.laser_x_bounds = (
+            min(bounds, key=lambda point: point[0]),
+            max(bounds, key=lambda point: point[0]),
+        )
+        blackboard.laser_y_bounds = (
+            min(bounds, key=lambda point: point[1]),
+            max(bounds, key=lambda point: point[1]),
+        )
 
         # Check that the camera has frames
         self.logger.info("wait for frames")
@@ -207,10 +217,10 @@ class Correct(State):
             )
             # Need to add min max checks to dac or otherwise account for different scales
             if (
-                new_point[0] > 4095
-                or new_point[1] > 4095
-                or new_point[0] < 0
-                or new_point[1] < 0
+                new_point[0] > blackboard.laser_x_bounds[1]
+                or new_point[1] > blackboard.laser_y_bounds[1]
+                or new_point[0] < blackboard.laser_x_bounds[0]
+                or new_point[1] < blackboard.laser_y_bounds[0]
             ):
                 self.logger.info("Failed to reach pos, outside of laser window")
                 return False
@@ -238,16 +248,12 @@ class Burn(State):
         self.logger.info("Entering State Burn")
         self.node.publish_state("Burn")
 
-        burn_start = time.time()
-
         # Turn on burn laser
         self.laser_client.start_laser(
             point=blackboard.curr_track.corrected_laser_point,
             color=self.burn_color,
         )
-
-        while burn_start + self.burn_time_secs > time.time():
-            time.sleep(0.1)
+        time.sleep(self.burn_time_secs)
 
         self.laser_client.stop_laser()
         self.runner_tracker.deactivate(blackboard.curr_track)

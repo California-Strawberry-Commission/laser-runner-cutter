@@ -58,12 +58,12 @@ class Calibration:
 
         # TODO: set exposure on camera node automatically when detecting laser
         self.camera_client.set_exposure(0.001)
+        self.laser_client.start_laser(color=self.laser_color)
 
         for laser_pixel in pending_calibration_laser_pixels:
-            self.laser_client.stop_laser()
-            self.laser_client.start_laser(point=laser_pixel, color=self.laser_color)
+            self.laser_client.set_point(laser_pixel)
             # Wait for galvo to settle and for camera frame capture
-            time.sleep(0.2)
+            time.sleep(0.5)
             self.add_point_correspondence(laser_pixel)
 
         self.laser_client.stop_laser()
@@ -84,6 +84,7 @@ class Calibration:
         # Use least squares for an initial estimate, then use bundle adjustment to refine
         self._update_transform_least_squares()
         self.update_transform_bundle_adjustment()
+        # TODO: calculate reprojection error
         self.is_calibrated = True
 
         return True
@@ -152,6 +153,15 @@ class Calibration:
             self.logger.info(
                 f"Laser pixels calculated using transform:\n{homogeneous_transformed_points[:, :2]}"
             )
+            error = np.mean(
+                np.sqrt(
+                    np.sum(
+                        (homogeneous_transformed_points[:, :2] - laser_pixels) ** 2,
+                        axis=1,
+                    )
+                )
+            )
+            self.logger.info(f"Mean reprojection error: {error}")
 
     def _update_transform_least_squares(self):
         laser_pixels = np.array(self.calibration_laser_pixels)
@@ -180,3 +190,12 @@ class Calibration:
             self.logger.info(
                 f"Laser pixels calculated using transform:\n{homogeneous_transformed_points[:, :2]}"
             )
+            error = np.mean(
+                np.sqrt(
+                    np.sum(
+                        (homogeneous_transformed_points[:, :2] - laser_pixels) ** 2,
+                        axis=1,
+                    )
+                )
+            )
+            self.logger.info(f"Mean reprojection error: {error}")
