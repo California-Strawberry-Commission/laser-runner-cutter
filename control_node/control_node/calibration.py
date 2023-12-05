@@ -32,6 +32,7 @@ class Calibration:
         x_bounds = [float("inf"), float("-inf")]
         y_bounds = [float("inf"), float("-inf")]
         laser_bounds = self.laser_client.get_bounds(1.0)
+
         for x, y in laser_bounds:
             if x < x_bounds[0]:
                 x_bounds[0] = x
@@ -60,11 +61,15 @@ class Calibration:
         self.camera_client.set_exposure(0.001)
         self.laser_client.start_laser(color=self.laser_color)
 
+        self.laser_client.set_color([0.0, 0.0, 0.0])
+        self.laser_client.start_laser()
         for laser_pixel in pending_calibration_laser_pixels:
             self.laser_client.set_point(laser_pixel)
+            self.laser_client.set_color(self.laser_color)
             # Wait for galvo to settle and for camera frame capture
-            time.sleep(0.5)
+            time.sleep(1)
             self.add_point_correspondence(laser_pixel)
+            self.laser_client.set_color([0.0, 0.0, 0.0])
 
         self.laser_client.stop_laser()
         self.camera_client.set_exposure(-1.0)
@@ -98,6 +103,7 @@ class Calibration:
     def add_point_correspondence(self, laser_pixel):
         attempts = 0
         while attempts < 50:
+            self.logger.info(f"attempt = {attempts}")
             attempts += 1
             pos_data = self.camera_client.get_laser_pos()
             if pos_data["pos_list"]:
@@ -108,10 +114,13 @@ class Calibration:
                     self.logger.info(
                         f"Added point correspondence. Total correspondences = {len(self.calibration_laser_pixels)}"
                     )
-                break
+                return
 
             # Should be a ros way to sleep
-            time.sleep(0.005)
+            time.sleep(0.2)
+        self.logger.info(
+            f"Failed to find point. Total correspondences = {len(self.calibration_laser_pixels)}"
+        )
 
     def update_transform_bundle_adjustment(self):
         def cost_function(parameters, camera_points, laser_pixels):
