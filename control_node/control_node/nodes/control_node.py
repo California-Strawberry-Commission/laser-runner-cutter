@@ -329,7 +329,7 @@ class MainNode(Node):
             self.tracking_laser_color,
             self.logger,
         )
-        self.runner_tracker = Tracker()
+        self.runner_tracker = Tracker(self.logger)
 
         # Set up state machine
 
