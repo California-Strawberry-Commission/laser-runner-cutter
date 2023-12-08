@@ -1,0 +1,9 @@
+# Datasets
+path: data_store/segmentation_data/
+train: images/train
+val: images/val
+test: images/test
+
+# Classes dictionary
+names:
+  0: runner

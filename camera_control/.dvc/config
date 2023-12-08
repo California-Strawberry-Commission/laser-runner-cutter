@@ -1,0 +1,4 @@
+[core]
+    remote = deployed_model_weights
+['remote "deployed_model_weights"']
+    url = s3://laser-runner-removal-dvc

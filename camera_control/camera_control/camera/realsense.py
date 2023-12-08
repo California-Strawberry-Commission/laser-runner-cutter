@@ -117,6 +117,10 @@ class RealSense(Camera):
         if not depth_pixel:
             return None
 
+        if np.isnan(depth_pixel[0]) or np.isnan(depth_pixel[1]):
+            self.logger.info("Nan depth returned")
+            return None
+
         depth = depth_frame.get_distance(round(depth_pixel[0]), round(depth_pixel[1]))
         return (
             rs.rs2_deproject_pixel_to_point(self.color_intrinsics, color_pixel, depth)

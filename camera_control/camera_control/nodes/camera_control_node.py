@@ -21,6 +21,7 @@ from camera_control_interfaces.srv import (
     SendEnable,
     SetExposure,
 )
+from ml_model.model_lookup import model_lookup
 
 
 def milliseconds_to_ros_time(milliseconds):
@@ -48,6 +49,11 @@ class CameraControlNode(Node):
                 ("frame_period", 0.1),
                 ("rgb_size", [848, 480]),
                 ("depth_size", [848, 480]),
+                ("runner_model_type", "torch_mask_rcnn"),
+                ("runner_model_weights", "RunnerTorchMaskRCNN.pt"),
+                ("laser_model_type", "yolo_detections"),
+                ("laser_model_weights", "LaserYoloDetection.pt"),
+                ("weight_directory", None),
             ],
         )
 
@@ -74,6 +80,25 @@ class CameraControlNode(Node):
         )
         self.depth_size = (
             self.get_parameter("depth_size").get_parameter_value().integer_array_value
+        )
+        runner_model_type = (
+            self.get_parameter("runner_model_type").get_parameter_value().string_value
+        )
+        self.runner_model_cls = model_lookup(runner_model_type)
+        self.runner_model_weights = (
+            self.get_parameter("runner_model_weights")
+            .get_parameter_value()
+            .string_value
+        )
+        laser_model_type = (
+            self.get_parameter("laser_model_type").get_parameter_value().string_value
+        )
+        self.laser_model_cls = model_lookup(laser_model_type)
+        self.laser_model_weights = (
+            self.get_parameter("laser_model_weights").get_parameter_value().string_value
+        )
+        self.weights_dir = (
+            self.get_parameter("weight_directory").get_parameter_value().string_value
         )
 
         # This is currently not functioning correctly because of permission errors
@@ -140,14 +165,38 @@ class CameraControlNode(Node):
         self.initialize()
 
     def initialize(self):
-        # Setup yolo model
-        include_dir = os.path.join(
-            get_package_share_directory("camera_control"), "include"
-        )
-        self.runner_seg_model = YOLO(os.path.join(include_dir, "RunnerSegModel.pt"))
-        self.laser_detection_model = YOLO(
-            os.path.join(include_dir, "LaserDetectionModel.pt")
-        )
+        # Setup  model
+        if self.weights_dir == "":
+            """
+            Resource filename does not currently work because ./data_store is outside the
+            ml_model src folder of the package. I believe it would need to move down a level
+            to be included in ./site_packages/ml_models/*
+            """
+            package_share_directory = get_package_share_directory("camera_control")
+            self.logger.info(str(package_share_directory))
+            runner_weights_path = os.path.join(
+                package_share_directory, "model_weights", self.runner_model_weights
+            )
+            laser_weights_path = os.path.join(
+                package_share_directory, "model_weights", self.laser_model_weights
+            )
+        else:
+            runner_weights_path = os.path.join(
+                self.weights_dir, self.runner_model_weights
+            )
+            laser_weights_path = os.path.join(
+                self.weights_dir, self.laser_model_weights
+            )
+        self.runner_seg_model = self.runner_model_cls()
+        self.laser_detection_model = self.laser_model_cls()
+        self.logger.info(runner_weights_path)
+        self.runner_seg_model.load_weights(runner_weights_path)
+        self.laser_detection_model.load_weights(laser_weights_path)
+
+        self._rpc_runner_point_list = []
+        self._rpc_runner_score_list = []
+        self._rpc_laser_point_list = []
+        self._rpc_laser_score_list = []
 
         self.camera.initialize()
         self.initialize_recording()
@@ -174,7 +223,11 @@ class CameraControlNode(Node):
             )
 
     def runner_point_cb(self, msg):
-        self.runner_point = [int(msg.x), int(msg.y)]
+        # -1, -1 represents no point, if send instead set to None
+        rec_point = [int(msg.x), int(msg.y)]
+        if rec_point == [-1, -1]:
+            rec_point = None
+        self.runner_point = rec_point
 
     def frame_callback(self):
         frames = self.camera.get_frames()
@@ -199,31 +252,49 @@ class CameraControlNode(Node):
         curr_image = np.asanyarray(frames["color"].get_data())
 
         if self.rec_video_frame:
-            self.rec.write(curr_image)
+            bgr_img = cv2.cvtColor(curr_image, cv2.COLOR_RGB2BGR)
+            self.rec.write(bgr_img)
 
         if self.background_image is None:
             self.background_image = curr_image
 
         laser_point_list = []
+        laser_score_list = []
         runner_point_list = []
+        runner_score_list = []
 
         if self.laser_pub_control:
-            laser_point_list = cv_utils.detect_lasers(
-                self.laser_detection_model, frames
+            image = np.asanyarray(self.curr_frames["color"].get_data())
+            laser_scores, laser_point_list = self.laser_detection_model.get_centroids(
+                image
             )
             laser_msg = self.create_pos_data_msg(laser_point_list, frames)
             self.laser_pos_pub.publish(laser_msg)
+        else:
+            laser_point_list = self._rpc_laser_point_list
+            laser_score_list = self._rpc_laser_score_list
 
         if self.runner_pub_control:
-            runner_point_list = cv_utils.detect_runners(self.runner_seg_model, frames)
+            image = np.asanyarray(self.curr_frames["color"].get_data())
+            runner_scores, runner_point_list = self.runner_seg_model.get_centroids(
+                image
+            )
             runner_msg = self.create_pos_data_msg(runner_point_list, frames)
             self.runner_pos_pub.publish(runner_msg)
+        else:
+            runner_point_list = self._rpc_runner_point_list
+            runner_score_list = self._rpc_runner_score_list
 
         if self.rec_debug_frame:
             debug_frame = np.copy(curr_image)
-            debug_frame = cv_utils.draw_laser(debug_frame, laser_point_list)
-            debug_frame = cv_utils.draw_runners(debug_frame, runner_point_list)
-            if self.laser_on and self.runner_point is not None:
+            debug_frame = cv2.cvtColor(debug_frame, cv2.COLOR_RGB2BGR)
+            debug_frame = cv_utils.draw_laser(
+                debug_frame, laser_point_list, laser_score_list
+            )
+            debug_frame = cv_utils.draw_runners(
+                debug_frame, runner_point_list, runner_score_list
+            )
+            if self.runner_point is not None:
                 debug_frame = cv2.drawMarker(
                     debug_frame,
                     self.runner_point,
@@ -276,19 +347,23 @@ class CameraControlNode(Node):
         return response
 
     def single_runner_detection(self, request, response):
-        runner_point_list = cv_utils.detect_runners(
-            self.runner_seg_model, self.curr_frames
-        )
+        image = np.asanyarray(self.curr_frames["color"].get_data())
+        runner_scores, runner_point_list = self.runner_seg_model.get_centroids(image)
         response.pos_data = self.create_pos_data_msg(
             runner_point_list, self.curr_frames
         )
+        self.logger.debug(f"Camera runner msg:{response.pos_data}")
+        self._rpc_runner_point_list = runner_point_list
+        self._rpc_runner_score_list = runner_scores
         return response
 
     def single_laser_detection(self, request, response):
-        laser_point_list = cv_utils.detect_lasers(
-            self.laser_detection_model, self.curr_frames
-        )
+        image = np.asanyarray(self.curr_frames["color"].get_data())
+        laser_scores, laser_point_list = self.laser_detection_model.get_centroids(image)
         response.pos_data = self.create_pos_data_msg(laser_point_list, self.curr_frames)
+        self.logger.debug(f"Camera laser msg:{response.pos_data}")
+        self._rpc_laser_point_list = laser_point_list
+        self._rpc_laser_score_list = laser_scores
         return response
 
     def control_laser_pub(self, request, response):

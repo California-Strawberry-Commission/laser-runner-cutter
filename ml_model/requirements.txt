@@ -9,3 +9,4 @@ labelbox[data]
 ndjson
 scaleapi
 albumentations
+torchmetrics

@@ -17,6 +17,7 @@ from camera_control.camera_node_client import CameraNodeClient
 from control_node.calibration import Calibration
 from control_node.tracker import Tracker
 from laser_control.laser_node_client import LaserNodeClient
+from camera_control_interfaces.msg import Point
 
 
 class Runner:
@@ -171,11 +172,13 @@ class Correct(State):
         laser_send_point = self.calibration.camera_point_to_laser_pixel(
             blackboard.curr_track.pos_wrt_cam
         )
-
         self.laser_client.start_laser(
             point=laser_send_point, color=self.tracking_laser_color
         )
         self.missing_laser_count = 0
+        self.logger.info(
+            f"laser_send_point: {laser_send_point} tracking_laser_color{self.tracking_laser_color}"
+        )
         targ_reached = self._correct_laser(laser_send_point, blackboard)
         self.laser_client.stop_laser()
         self.logger.info(f"targ_reached: {targ_reached}")
@@ -195,13 +198,20 @@ class Correct(State):
             if len(laser_data["point_list"]) == 1:
                 laser_point = np.array(laser_data["point_list"][0])
             else:
-                self.logger.debug("to many lasers")
+                self.logger.info("to many lasers")
+                self.missing_laser_count += 1
+                if self.missing_laser_count > 20:
+                    self.logger.info("Laser missing during state correct")
+                    return False
+                time.sleep(0.05)
+                return self._correct_laser(laser_send_point, blackboard)
+
         else:
             self.missing_laser_count += 1
             if self.missing_laser_count > 20:
                 self.logger.info("Laser missing during state correct")
                 return False
-            time.sleep(0.01)
+            time.sleep(0.05)
             return self._correct_laser(laser_send_point, blackboard)
 
         # Using the saved runner point, this won't work once we begin moving
@@ -234,12 +244,20 @@ class Correct(State):
 
 class Burn(State):
     def __init__(
-        self, node, logger, laser_client, burn_color, burn_time_secs, runner_tracker
+        self,
+        node,
+        logger,
+        laser_client,
+        camera_client,
+        burn_color,
+        burn_time_secs,
+        runner_tracker,
     ):
         super().__init__(outcomes=["runner_removed"])
         self.node = node
         self.logger = logger
         self.laser_client = laser_client
+        self.camera_client = camera_client
         self.burn_color = burn_color
         self.burn_time_secs = burn_time_secs
         self.runner_tracker = runner_tracker
@@ -257,6 +275,7 @@ class Burn(State):
 
         self.laser_client.stop_laser()
         self.runner_tracker.deactivate(blackboard.curr_track)
+        self.camera_client.pub_runner_point([-1.0, -1.0])
         return "runner_removed"
 
 
@@ -310,7 +329,7 @@ class MainNode(Node):
             self.tracking_laser_color,
             self.logger,
         )
-        self.runner_tracker = Tracker()
+        self.runner_tracker = Tracker(self.logger)
 
         # Set up state machine
 
@@ -365,6 +384,7 @@ class MainNode(Node):
                 self,
                 self.logger,
                 self.laser_client,
+                self.camera_client,
                 self.burn_color,
                 self.burn_time_secs,
                 self.runner_tracker,
