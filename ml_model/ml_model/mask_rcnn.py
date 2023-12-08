@@ -171,7 +171,7 @@ class MaskRCNN(ModelBase):
     def inference_transform(self, img_arr):
         return T.Compose([T.ToImage(), T.ToDtype(torch.float32, scale=True)])(img_arr)
 
-    def get_centroids(self, img_arr, mask_confidence=.2):
+    def get_centroids(self, img_arr, score_thresh=0.25, mask_thresh=0.2):
         """Return a list of centroids for each detection.
                 Currently does not support batches
 
@@ -185,17 +185,25 @@ class MaskRCNN(ModelBase):
         img_tensor = img_tensor.to(self.device)
         res = self.model([img_tensor])
         point_list = []
+        score_list = []
         if len(res[0]["masks"]):
-            for mask_tensor in res[0]["masks"]:
+            for score, mask_tensor in zip(res[0]["scores"], res[0]["masks"]):
+                if score < score_thresh:
+                    # Could return here is scores are sorted
+                    continue
                 mask_img = mask_tensor.detach().cpu().numpy()
                 mask_img = mask_img[0, :, :]
-                ret, mask_img = cv2.threshold(mask_img, 0.2, 1, cv2.THRESH_BINARY)
+                ret, mask_img = cv2.threshold(
+                    mask_img, mask_thresh, 1, cv2.THRESH_BINARY
+                )
                 y_c, x_c = np.argwhere(mask_img == 1).sum(0) / np.count_nonzero(
                     mask_img
                 )
-                #if not np.isnan(x_c) and np.isnan()
+                # if not np.isnan(x_c) and np.isnan()
                 point_list.append([x_c, y_c])
-        return point_list
+                score_list.append(score)
+
+        return score_list, point_list
 
     def get_map_value(self, img_dir, mask_dir):
         subdir_paths = glob.glob(os.path.join(mask_dir, "*"))

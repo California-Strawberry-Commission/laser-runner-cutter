@@ -194,7 +194,9 @@ class CameraControlNode(Node):
         self.laser_detection_model.load_weights(laser_weights_path)
 
         self._rpc_runner_point_list = []
+        self._rpc_runner_score_list = []
         self._rpc_laser_point_list = []
+        self._rpc_laser_score_list = []
 
         self.camera.initialize()
         self.initialize_recording()
@@ -257,29 +259,41 @@ class CameraControlNode(Node):
             self.background_image = curr_image
 
         laser_point_list = []
+        laser_score_list = []
         runner_point_list = []
+        runner_score_list = []
 
         if self.laser_pub_control:
             image = np.asanyarray(self.curr_frames["color"].get_data())
-            laser_point_list = self.laser_detection_model.get_centroids(image)
+            laser_scores, laser_point_list = self.laser_detection_model.get_centroids(
+                image
+            )
             laser_msg = self.create_pos_data_msg(laser_point_list, frames)
             self.laser_pos_pub.publish(laser_msg)
         else:
             laser_point_list = self._rpc_laser_point_list
+            laser_score_list = self._rpc_laser_score_list
 
         if self.runner_pub_control:
             image = np.asanyarray(self.curr_frames["color"].get_data())
-            runner_point_list = self.runner_seg_model.get_centroids(image)
+            runner_scores, runner_point_list = self.runner_seg_model.get_centroids(
+                image
+            )
             runner_msg = self.create_pos_data_msg(runner_point_list, frames)
             self.runner_pos_pub.publish(runner_msg)
         else:
             runner_point_list = self._rpc_runner_point_list
+            runner_score_list = self._rpc_runner_score_list
 
         if self.rec_debug_frame:
             debug_frame = np.copy(curr_image)
             debug_frame = cv2.cvtColor(debug_frame, cv2.COLOR_RGB2BGR)
-            debug_frame = cv_utils.draw_laser(debug_frame, laser_point_list)
-            debug_frame = cv_utils.draw_runners(debug_frame, runner_point_list)
+            debug_frame = cv_utils.draw_laser(
+                debug_frame, laser_point_list, laser_score_list
+            )
+            debug_frame = cv_utils.draw_runners(
+                debug_frame, runner_point_list, runner_score_list
+            )
             if self.runner_point is not None:
                 debug_frame = cv2.drawMarker(
                     debug_frame,
@@ -334,19 +348,22 @@ class CameraControlNode(Node):
 
     def single_runner_detection(self, request, response):
         image = np.asanyarray(self.curr_frames["color"].get_data())
-        runner_point_list = self.runner_seg_model.get_centroids(image)
+        runner_scores, runner_point_list = self.runner_seg_model.get_centroids(image)
         response.pos_data = self.create_pos_data_msg(
             runner_point_list, self.curr_frames
         )
+        self.logger.debug(f"Camera runner msg:{response.pos_data}")
         self._rpc_runner_point_list = runner_point_list
+        self._rpc_runner_score_list = runner_scores
         return response
 
     def single_laser_detection(self, request, response):
         image = np.asanyarray(self.curr_frames["color"].get_data())
-        laser_point_list = self.laser_detection_model.get_centroids(image)
+        laser_scores, laser_point_list = self.laser_detection_model.get_centroids(image)
         response.pos_data = self.create_pos_data_msg(laser_point_list, self.curr_frames)
-        self.logger.info(f"Camera laser msg:{response.pos_data}")
+        self.logger.debug(f"Camera laser msg:{response.pos_data}")
         self._rpc_laser_point_list = laser_point_list
+        self._rpc_laser_score_list = laser_scores
         return response
 
     def control_laser_pub(self, request, response):

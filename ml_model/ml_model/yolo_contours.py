@@ -2,17 +2,20 @@ import os
 import cv2
 import glob
 from ml_model.yolo import YoloBaseModel
+from shapely import Polygon
 
 
 class YoloContours(YoloBaseModel):
     def get_centroids(self, image):
-        res = model(image)
+        res = self.model(image)
         point_list = []
+        score_list = []
         if res[0].masks:
-            for cords in res[0].masks.xy:
+            for score, cords in zip(res[0].probs, res[0].masks.xy):
                 polygon = Polygon(cords)
                 point_list.append((polygon.centroid.x, polygon.centroid.y))
-        return point_list
+                score_list.append(score)
+        return score_list, point_list
 
     @staticmethod
     def name():
