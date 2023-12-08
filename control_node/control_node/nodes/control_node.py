@@ -222,7 +222,7 @@ class Correct(State):
             correction = (runner_point - laser_point) / 10
             correction[1] = correction[1] * -1
             new_point = laser_send_point + correction
-            self.logger.info(
+            self.logger.debug(
                 f"Dist:{dist}, Correction{correction}, Old Point:{laser_send_point}, New Point{new_point}"
             )
             # Need to add min max checks to dac or otherwise account for different scales
@@ -275,7 +275,7 @@ class Burn(State):
 
         self.laser_client.stop_laser()
         self.runner_tracker.deactivate(blackboard.curr_track)
-        self.camera_client.pub_runner_point(Point(x=-1.0, y=-1.0))
+        self.camera_client.pub_runner_point([-1.0, -1.0])
         return "runner_removed"
 
 
