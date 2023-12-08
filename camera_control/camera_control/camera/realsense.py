@@ -119,8 +119,6 @@ class RealSense(Camera):
 
         if np.isnan(depth_pixel[0]) or np.isnan(depth_pixel[1]):
             self.logger.info("Nan depth returned")
-            from remote_pdb import RemotePdb
-            RemotePdb('127.0.0.1', 4444).set_trace()
             return None
 
         depth = depth_frame.get_distance(round(depth_pixel[0]), round(depth_pixel[1]))
