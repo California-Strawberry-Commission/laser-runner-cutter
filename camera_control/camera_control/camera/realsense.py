@@ -1,5 +1,6 @@
 from .camera import Camera
 import pyrealsense2 as rs
+import numpy as np
 
 
 class RealSense(Camera):
