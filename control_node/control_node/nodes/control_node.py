@@ -169,6 +169,7 @@ class Correct(State):
         self.node.publish_state("Correct")
 
         # Find the position of the needed laser point based on
+        self.camera_client.set_exposure(0.001)
         laser_send_point = self.calibration.camera_point_to_laser_pixel(
             blackboard.curr_track.pos_wrt_cam
         )
@@ -182,6 +183,7 @@ class Correct(State):
         targ_reached = self._correct_laser(laser_send_point, blackboard)
         self.laser_client.stop_laser()
         self.logger.info(f"targ_reached: {targ_reached}")
+        self.camera_client.set_exposure(-1.0)
         if targ_reached:
             return "on_target"
         else:
