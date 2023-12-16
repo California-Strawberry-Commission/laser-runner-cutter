@@ -57,7 +57,7 @@ class Tracker:
     def active_tracks(self):
         return [track for track in self.tracks if track.active]
 
-    def add_track(self, new_pos, new_point, min_dist=20):
+    def add_track(self, new_pos, new_point, min_dist=0.01):
         """Add a track to list of current tracks.
         If a track already exists close to the one passed in, instead add it to that track.
 
