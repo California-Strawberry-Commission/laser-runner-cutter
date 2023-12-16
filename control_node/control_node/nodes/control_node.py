@@ -169,6 +169,7 @@ class Correct(State):
         self.node.publish_state("Correct")
 
         # Find the position of the needed laser point based on
+        self.camera_client.set_exposure(0.001)
         laser_send_point = self.calibration.camera_point_to_laser_pixel(
             blackboard.curr_track.pos_wrt_cam
         )
@@ -182,6 +183,7 @@ class Correct(State):
         targ_reached = self._correct_laser(laser_send_point, blackboard)
         self.laser_client.stop_laser()
         self.logger.info(f"targ_reached: {targ_reached}")
+        self.camera_client.set_exposure(-1.0)
         if targ_reached:
             return "on_target"
         else:
@@ -218,7 +220,7 @@ class Correct(State):
         runner_point = np.array(blackboard.curr_track.point)
         dist = np.linalg.norm(laser_point - runner_point)
 
-        if dist > 10:
+        if dist > 2.5:
             correction = (runner_point - laser_point) / 10
             correction[1] = correction[1] * -1
             new_point = laser_send_point + correction
@@ -226,11 +228,11 @@ class Correct(State):
                 f"Dist:{dist}, Correction{correction}, Old Point:{laser_send_point}, New Point{new_point}"
             )
             # Need to add min max checks to dac or otherwise account for different scales
-            if (
-                new_point[0] > blackboard.laser_x_bounds[1]
-                or new_point[1] > blackboard.laser_y_bounds[1]
-                or new_point[0] < blackboard.laser_x_bounds[0]
-                or new_point[1] < blackboard.laser_y_bounds[0]
+            if np.any(
+                new_point[0] > 4095
+                or new_point[1] > 4095
+                or new_point[0] < 0
+                or new_point[1] < 0
             ):
                 self.logger.info("Failed to reach pos, outside of laser window")
                 return False
