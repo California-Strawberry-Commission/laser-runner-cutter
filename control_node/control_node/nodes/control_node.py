@@ -220,7 +220,7 @@ class Correct(State):
         runner_point = np.array(blackboard.curr_track.point)
         dist = np.linalg.norm(laser_point - runner_point)
 
-        if dist > 10:
+        if dist > 2.5:
             correction = (runner_point - laser_point) / 10
             correction[1] = correction[1] * -1
             new_point = laser_send_point + correction
@@ -228,11 +228,11 @@ class Correct(State):
                 f"Dist:{dist}, Correction{correction}, Old Point:{laser_send_point}, New Point{new_point}"
             )
             # Need to add min max checks to dac or otherwise account for different scales
-            if (
-                new_point[0] > blackboard.laser_x_bounds[1]
-                or new_point[1] > blackboard.laser_y_bounds[1]
-                or new_point[0] < blackboard.laser_x_bounds[0]
-                or new_point[1] < blackboard.laser_y_bounds[0]
+            if np.any(
+                new_point[0] > 4095
+                or new_point[1] > 4095
+                or new_point[0] < 0
+                or new_point[1] < 0
             ):
                 self.logger.info("Failed to reach pos, outside of laser window")
                 return False
