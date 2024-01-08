@@ -2,9 +2,9 @@ pyrealsense2
 numpy
 Pillow
 ultralytics
+dvc
 dvc[s3]
 python-dotenv
 labelbox
 labelbox[data]
 ndjson
-../../laser_control

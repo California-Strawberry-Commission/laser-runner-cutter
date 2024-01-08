@@ -1,0 +1,5 @@
+/ultralytics
+yolov8n.pt
+/data
+/models
+/metrics
