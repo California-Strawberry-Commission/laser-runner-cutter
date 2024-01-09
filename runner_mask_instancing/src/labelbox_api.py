@@ -16,7 +16,7 @@ load_dotenv()
 CLIENT = lb.Client(os.getenv("LABELBOX_API_KEY"))
 DATASET_NAME = "Runner Masks"
 PROJECT_NAME = "Runner Mask Instancing"
-CLASS_MAP = {"runner": 0}
+CLASS_MAP = {"runner_mask_instance_line": 0}
 
 DATA_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -53,7 +53,9 @@ def create_yolo_labels_from_export_ndjson(
         label = row["projects"][project.uid]["labels"][0]
         annotations = label["annotations"]["objects"]
         objects = [
-            annotation for annotation in annotations if annotation["name"] == "laser"
+            annotation
+            for annotation in annotations
+            if annotation["name"] == "runner_mask_instance_line"
         ]
 
         media_attributes = row["media_attributes"]
@@ -65,14 +67,16 @@ def create_yolo_labels_from_export_ndjson(
 
         with open(yolo_label_path, "w") as yolo_label_file:
             for object in objects:
-                point = object["point"]
+                # YOLO format: (class_id, x1, y1, x2, y2, ..., xn, yn)
+                # x and y are normalized on image dimensions
+                points = object["line"]
                 class_id = CLASS_MAP[object["name"]]
-                # YOLO format: (class_id, x_center, y_center, width, height)
-                # Set arbitrarily small bounding box size
-                bb_size = (10, 10)
-                yolo_label_file.write(
-                    f"{class_id} {point['x'] / width} {point['y'] / height} {bb_size[0] / width} {bb_size[1] / height}\n"
-                )
+                yolo_label_file.write(f"{class_id}")
+                for point in points:
+                    yolo_label_file.write(
+                        f" {point['x'] / width} {point['y'] / height}"
+                    )
+                yolo_label_file.write("\n")
 
 
 if __name__ == "__main__":

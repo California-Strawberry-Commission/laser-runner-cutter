@@ -1,0 +1,9 @@
+# Datasets
+path: data/prepared
+train: images/train
+val: images/val
+test: images/test
+
+# Classes dictionary
+names:
+  0: runner_mask_instance_line
