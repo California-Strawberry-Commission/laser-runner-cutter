@@ -34,13 +34,12 @@ def create_yolo_labels(masks_dir=MASKS_DIR, output_dir=OUT_DIR, class_id=0):
                 for f in os.listdir(subdir_path)
                 if os.path.isfile(os.path.join(subdir_path, f))
             ]
-            yolo_label_file.write(f"{class_id}")
             for file in files:
                 file_path = os.path.join(subdir_path, file)
                 mask_image = Image.open(file_path)
                 mask_image_array = np.array(mask_image)
                 segment = convert_mask_to_yolo_segment(mask_image_array)
-                yolo_label_file.write(" ".join(map(str, segment)) + "\n")
+                yolo_label_file.write(f"{class_id} {' '.join(map(str, segment))}\n")
 
 
 if __name__ == "__main__":
