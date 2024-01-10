@@ -17,10 +17,10 @@ PROJECT_NAME = "Runner Mask Instancing"
 
 DATA_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
-    "../data",
+    "../data/raw",
 )
 IMAGES_DIR = os.path.join(DATA_DIR, "images")
-OUT_DIR = os.path.join(DATA_DIR, "instanced")
+OUT_DIR = os.path.join(DATA_DIR, "masks")
 
 
 def instance_masks(

@@ -54,15 +54,11 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
 
 ## Workflow
 
-1.  Obtain new training images. See `src/image_capture.py` for an example.
+1.  Upload non-instanced runner mask images to the existing Labelbox dataset:
 
-        $ python src/image_capture --output_directory <directory>
+        $ python src/labelbox_api import_images --images_dir <path to images dir>
 
-1.  Upload new images to the existing Labelbox dataset:
-
-        $ python src/labelbox_api import_images --images_dir <directory>
-
-1.  Annotate the images in Labelbox
+1.  Annotate the images in Labelbox with one polyline for each runner instance
 
 1.  Obtain labels from Labelbox
 
@@ -71,9 +67,13 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
     1. Click the "All (X data rows)" dropdown, then click "Export data v2"
     1. Select all fields, then click the "Export JSON" button
 
-1.  Create YOLO label txt files from the Labelbox ndjson export file:
+1.  Using the Labelbox polyline annotations, instance the mask images
 
-        $ python src/labelbox_api create_labels --labelbox_export_file <ndjson export file path>
+        $ python src/instance_mask_images.py -f <path to ndjson export>
+
+1.  Create YOLO label txt files from the instanced masks:
+
+        $ python src/create_yolo_labels.py --input_dir <path to directory containing the instanced masks>
 
 1.  Run `split_data.py` to split the raw image and label data into training and validation datasets. Be sure to remove the existing train/val images and labels beforehand.
 
