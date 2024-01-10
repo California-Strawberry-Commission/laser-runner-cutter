@@ -112,11 +112,14 @@ class YoloBaseModel(ModelBase):
         )
         # ToDo: Copy weights file from ultralytics weights to datastore weights
 
-    def get_map_value(self):
+    def get_map_value(self, img_dir, mask_dir):
+        # Currently the map value is calculated from the last training weights.
+        # The image_dir and mask_dir are not currently used in this function, they are instead set in
+        # the call to create_temp_split
         if self.temp_data_yaml is None:
             self.create_temp_yaml()
         metrics = self.model.val(data=self.temp_data_yaml)
-        print(f"mAP@75: {metrics.seg.map75}")
+        return metrics
 
     def create_temp_yaml(self):
         # ToDo: Look into why these settings don't take effect until run twice
