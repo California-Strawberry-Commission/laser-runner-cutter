@@ -89,9 +89,6 @@ def main():
     if args.command == "train":
         model.train_model(img_dir, submask_dir, weights_path)
     elif args.command == "eval":
-        import pdb
-
-        pdb.set_trace()
         map_values = model.get_map_value(img_dir, submask_dir)
         print(map_values)
     else:
