@@ -3,6 +3,7 @@ import glob
 import os
 import cv2
 
+from shapely.geometry import Point
 from PIL import Image
 
 
@@ -72,8 +73,20 @@ def resize_images(folder_path, output_width, output_height):
                 print(f"Skipping {filename} - Not an image.")
 
 
-# Provide the folder path containing the JPG images
-folder_path = "./ml_model/data_store/segmentation_data/images/"
-width = 960  # Change this to the desired width
-height = 720  # Change this to the desired height
-resize_images(folder_path, width, height)
+def binary_mask_to_points(binary_mask):
+    points = []
+    rows, cols = len(binary_mask), len(binary_mask[0])
+    for i in range(rows):
+        for j in range(cols):
+            if binary_mask[i][j]:
+                points.append(Point(j, i))  # Points are created with (x, y) coordinates
+    return points
+
+
+def find_closest_point(binary_mask, given_point):
+    mask_points = binary_mask_to_points(binary_mask)
+    given_point = Point(
+        given_point[1], given_point[0]
+    )  # Converting (x, y) to Point(y, x)
+    closest_point = min(mask_points, key=lambda p: given_point.distance(p))
+    return closest_point.x, closest_point.y  # Reverting
