@@ -16,10 +16,10 @@ from tqdm import tqdm
 import random
 import albumentations as A
 from ml_model.model_base import ModelBase
+from ml_model.utils import find_closest_point
 from torchmetrics.detection import MeanAveragePrecision
 
 SIZE = (768, 1024)
-
 
 class AlbumRandAugment:
     def __init__(self, basic_count=0, complex_count=0):
@@ -199,8 +199,9 @@ class MaskRCNN(ModelBase):
                 y_c, x_c = np.argwhere(mask_img == 1).sum(0) / np.count_nonzero(
                     mask_img
                 )
+                closest_point = find_closest_point(mask_img, (x_c, y_c))
                 # if not np.isnan(x_c) and np.isnan()
-                point_list.append([x_c, y_c])
+                point_list.append(closest_point)
                 score_list.append(score)
 
         return score_list, point_list

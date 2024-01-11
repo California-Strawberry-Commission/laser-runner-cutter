@@ -2,7 +2,8 @@ import os
 import cv2
 import glob
 from ml_model.yolo import YoloBaseModel
-from shapely import Polygon
+from shapely import Polygon, Point
+from shapely.ops import nearest_points
 
 
 class YoloContours(YoloBaseModel):
@@ -13,8 +14,12 @@ class YoloContours(YoloBaseModel):
         if res[0].masks:
             for score, cords in zip(res[0].probs, res[0].masks.xy):
                 polygon = Polygon(cords)
-                point_list.append((polygon.centroid.x, polygon.centroid.y))
+                closest_polygon_point, closest_point = nearest_points(
+                    polygon, polygon.centroid
+                )
+                point_list.append((closest_polygon_point.x, closest_polygon_point.y))
                 score_list.append(score)
+
         return score_list, point_list
 
     @staticmethod
