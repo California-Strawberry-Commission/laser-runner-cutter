@@ -8,4 +8,5 @@ python-dotenv
 labelbox
 labelbox[data]
 ndjson
+natsort
 ../../laser_control

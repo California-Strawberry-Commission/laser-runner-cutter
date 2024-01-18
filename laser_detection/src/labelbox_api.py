@@ -13,6 +13,7 @@ import ndjson
 from PIL import Image
 from dotenv import load_dotenv
 import uuid
+from natsort import natsorted
 
 
 load_dotenv()
@@ -33,7 +34,11 @@ def import_images(dataset_name=DATASET_NAME, images_dir=IMAGES_DIR):
     dataset = CLIENT.get_datasets(where=lb.Dataset.name == dataset_name).get_one()
     if not dataset:
         dataset = CLIENT.create_dataset(name=dataset_name)
-    img_paths = glob(os.path.join(images_dir, "*.jpg"))
+
+    img_paths = glob(os.path.join(images_dir, "*.jpg")) + glob(
+        os.path.join(images_dir, "*.png")
+    )
+    img_paths = natsorted(img_paths)
     for img_path in img_paths:
         _, img_name = os.path.split(img_path)
         dataset.create_data_row({"row_data": img_path, "global_key": img_name})

@@ -91,6 +91,12 @@ def min_index(arr1, arr2):
 
 
 def convert_mask_to_polygons(mask):
+    """
+    Convert a mask to a list of polygons based on contours
+
+    Args:
+        mask (numpy.ndarray)
+    """
     contours, hierarchies = cv2.findContours(
         mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
     )
@@ -115,7 +121,7 @@ def convert_mask_to_polygons(mask):
             contour_parent = contours_parent[parent_idx]
             if len(contour_parent) == 0:
                 continue
-            contours_parent[parent_idx] = merge_with_parent(contour_parent, contour)
+            contours_parent[parent_idx] = _merge_with_parent(contour_parent, contour)
 
     contours_parent_tmp = []
     for contour in contours_parent:
@@ -130,16 +136,65 @@ def convert_mask_to_polygons(mask):
     return polygons
 
 
-def merge_with_parent(contour_parent, contour):
-    if not is_clockwise(contour_parent):
+def convert_contour_to_line_segments(contour, image_shape):
+    """
+    Convert a contour to line segments that best resemble that contour
+
+    Args:
+        contour
+        image_shape
+    """
+    mask = np.zeros(image_shape, dtype=np.uint8)
+    try:
+        cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
+    except Exception as exc:
+        return []
+
+    # Apply morphological operations to find the skeleton
+    skeleton = cv2.ximgproc.thinning(mask)
+
+    # Find non-zero pixels in the skeleton
+    points = np.column_stack(np.where(skeleton > 0))
+    points = [(point[1], point[0]) for point in points]
+
+    if len(points) < 2:
+        return []
+
+    # Estimate endpoints
+    min_x = min(point[0] for point in points)
+    max_x = max(point[0] for point in points)
+    min_y = min(point[1] for point in points)
+    max_y = max(point[1] for point in points)
+    skel_width = max_x - min_x
+    skel_height = max_y - min_y
+    if skel_width >= skel_height:
+        # Find the index of the point with the min x
+        start_point_index = min(enumerate(points), key=lambda el: el[1][0])[0]
+    else:
+        # Find the index of the point with the min y
+        start_point_index = min(enumerate(points), key=lambda el: el[1][1])[0]
+
+    # Order a list of points such that subsequent points are closest together,
+    # using the nearest neighbor approach
+    points = _order_points_nearest_neighbor(points, start_point_index)
+
+    # Apply Douglas-Peucker algorithm for simplification
+    points = cv2.approxPolyDP(np.array(points), epsilon=5.0, closed=False)
+    points = np.squeeze(points, axis=1)
+
+    return points
+
+
+def _merge_with_parent(contour_parent, contour):
+    if not _is_clockwise(contour_parent):
         contour_parent = contour_parent[::-1]
-    if is_clockwise(contour):
+    if _is_clockwise(contour):
         contour = contour[::-1]
-    idx1, idx2 = get_merge_point_idx(contour_parent, contour)
-    return merge_contours(contour_parent, contour, idx1, idx2)
+    idx1, idx2 = _get_merge_point_idx(contour_parent, contour)
+    return _merge_contours(contour_parent, contour, idx1, idx2)
 
 
-def is_clockwise(contour):
+def _is_clockwise(contour):
     value = 0
     num = len(contour)
     for i, point in enumerate(contour):
@@ -152,7 +207,7 @@ def is_clockwise(contour):
     return value < 0
 
 
-def merge_contours(contour1, contour2, idx1, idx2):
+def _merge_contours(contour1, contour2, idx1, idx2):
     contour = []
     for i in list(range(0, idx1 + 1)):
         contour.append(contour1[i])
@@ -166,7 +221,7 @@ def merge_contours(contour1, contour2, idx1, idx2):
     return contour
 
 
-def get_merge_point_idx(contour1, contour2):
+def _get_merge_point_idx(contour1, contour2):
     idx1 = 0
     idx2 = 0
     distance_min = -1
@@ -182,3 +237,22 @@ def get_merge_point_idx(contour1, contour2):
                 idx1 = i
                 idx2 = j
     return idx1, idx2
+
+
+def _order_points_nearest_neighbor(points, start_index):
+    if len(points) <= 1:
+        return points
+
+    ordered_points = [points[start_index]]
+    remaining_points = set(points[:start_index] + points[start_index + 1 :])
+
+    while remaining_points:
+        last_point = ordered_points[-1]
+        nearest_point = min(
+            remaining_points,
+            key=lambda p: np.linalg.norm(np.array(last_point) - np.array(p)),
+        )
+        ordered_points.append(nearest_point)
+        remaining_points.remove(nearest_point)
+
+    return ordered_points
