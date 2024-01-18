@@ -4,6 +4,7 @@ Description: Split mask images into instances based on Labelbox polyline labels
 """
 
 import argparse
+import shutil
 import os
 import labelbox as lb
 import ndjson
@@ -13,7 +14,7 @@ from PIL import Image
 
 load_dotenv()
 CLIENT = lb.Client(os.getenv("LABELBOX_API_KEY"))
-PROJECT_NAME = "Runner Mask Instancing"
+PROJECT_NAME = "Runner1800 Mask Instancing"
 
 DATA_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -83,6 +84,15 @@ def instance_masks(
             assigned_instances.add(instance_id)
 
         # Generate instanced mask images
+        mask_dir = os.path.join(output_dir, os.path.splitext(image_filename)[0])
+        if os.path.exists(mask_dir):
+            try:
+                # Remove the directory and its contents
+                shutil.rmtree(mask_dir)
+            except Exception as e:
+                print(f"Error while removing directory '{mask_dir}': {e}")
+        if not os.path.exists(mask_dir):
+            os.makedirs(mask_dir)
         for instance_id in assigned_instances:
             mask = Image.new("L", (width, height), color=0)
 
@@ -93,9 +103,6 @@ def instance_masks(
                     mask.putpixel((x, y), 255)
 
             # Save mask to file
-            mask_dir = os.path.join(output_dir, os.path.splitext(image_filename)[0])
-            if not os.path.exists(mask_dir):
-                os.makedirs(mask_dir)
             mask.save(os.path.join(mask_dir, f"{instance_id}.png"))
 
 

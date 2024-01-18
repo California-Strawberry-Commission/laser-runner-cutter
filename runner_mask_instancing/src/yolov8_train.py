@@ -18,7 +18,7 @@ settings.update(
 model = YOLO("yolov8n-seg.yaml")
 results = model.train(
     data=os.path.join(project_path, "dataset.yml"),
-    imgsz=(960, 720),
+    imgsz=(1024, 768),
     device=0,
     batch=-1,
     epochs=100,
