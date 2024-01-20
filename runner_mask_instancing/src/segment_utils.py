@@ -136,20 +136,14 @@ def convert_mask_to_polygons(mask):
     return polygons
 
 
-def convert_contour_to_line_segments(contour, image_shape):
+def convert_mask_to_line_segments(mask, epsilon=4.0):
     """
-    Convert a contour to line segments that best resemble that contour
+    Convert a mask to line segments that best resemble that mask
 
     Args:
-        contour
-        image_shape
+        mask (numpy.ndarray)
+        epsilon (float): tolerance parameter for Douglas-Peucker algorithm. A larger epsilon will result in less line segments
     """
-    mask = np.zeros(image_shape, dtype=np.uint8)
-    try:
-        cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
-    except Exception as exc:
-        return []
-
     # Apply morphological operations to find the skeleton
     skeleton = cv2.ximgproc.thinning(mask)
 
@@ -179,10 +173,28 @@ def convert_contour_to_line_segments(contour, image_shape):
     points = _order_points_nearest_neighbor(points, start_point_index)
 
     # Apply Douglas-Peucker algorithm for simplification
-    points = cv2.approxPolyDP(np.array(points), epsilon=5.0, closed=False)
+    points = cv2.approxPolyDP(np.array(points), epsilon=epsilon, closed=False)
     points = np.squeeze(points, axis=1)
 
     return points
+
+
+def convert_contour_to_line_segments(contour, image_shape, epsilon=4.0):
+    """
+    Convert a contour to line segments that best resemble that contour
+
+    Args:
+        contour (List(List)): points corresponding to the contour outline
+        image_shape (tuple): shape of image that contour is based on
+        epsilon (float): tolerance parameter for Douglas-Peucker algorithm. A larger epsilon will result in less line segments
+    """
+    mask = np.zeros(image_shape, dtype=np.uint8)
+    try:
+        cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
+    except Exception as exc:
+        return []
+
+    return convert_mask_to_line_segments(mask, epsilon)
 
 
 def _merge_with_parent(contour_parent, contour):
