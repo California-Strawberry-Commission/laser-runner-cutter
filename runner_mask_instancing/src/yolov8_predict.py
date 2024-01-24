@@ -1,5 +1,7 @@
 import os
 import torch.nn.functional as F
+import cv2
+import numpy as np
 from ultralytics import YOLO
 from PIL import Image, ImageDraw
 from segment_utils import convert_mask_to_line_segments
@@ -18,7 +20,7 @@ MODEL_PATH = os.path.join(MODELS_DIR, "yolov8-segment", "weights", "best.pt")
 
 model = YOLO(MODEL_PATH)
 results = model.predict(
-    os.path.join(DATA_DIR, "runner1800", "albion_404.png"),
+    os.path.join(DATA_DIR, "runner1800", "albion_407.png"),
     imgsz=(1024, 768),
     iou=0.5,
     conf=0.3,
@@ -45,10 +47,23 @@ for result in results:
     print(f"Confidences: {confidences_np}")
 
     for i in range(len(masks_np)):
-        im = Image.fromarray(masks_np[i])
+        mask = masks_np[i]
+
+        # Remove small contours from mask
+        area_threshold = 100
+        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        filtered_contours = [
+            cnt for cnt in contours if cv2.contourArea(cnt) > area_threshold
+        ]
+        filtered_mask = np.zeros_like(mask)
+        cv2.drawContours(
+            filtered_mask, filtered_contours, -1, 255, thickness=cv2.FILLED
+        )
+
+        im = Image.fromarray(filtered_mask)
         draw = ImageDraw.Draw(im)
 
-        points = convert_mask_to_line_segments(masks_np[i], 4.0)
+        points = convert_mask_to_line_segments(filtered_mask, 4.0)
         if len(points) < 2:
             continue
 

@@ -73,7 +73,7 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
 
 1.  Create YOLO label txt files from the instanced masks:
 
-        $ python src/create_yolo_labels.py --input_dir <path to directory containing the instanced masks>
+        $ python src/create_yolo_labels.py
 
 1.  Run `split_data.py` to split the raw image and label data into training and validation datasets. Be sure to remove the existing train/val images and labels beforehand.
 

@@ -13,6 +13,7 @@ import labelbox as lb
 import labelbox.types as lb_types
 import ndjson
 import torch.nn.functional as F
+import cv2
 from dotenv import load_dotenv
 from natsort import natsorted
 from segment_utils import convert_mask_to_line_segments
@@ -134,7 +135,23 @@ def upload_yolo_predictions(
 
             for i in range(len(masks_np)):
                 confidence = confidences_np[i]
-                points = convert_mask_to_line_segments(masks_np[i], 4.0)
+                mask = masks_np[i]
+
+                # Remove small contours from mask
+                area_threshold = 32
+                contours, _ = cv2.findContours(
+                    mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
+                )
+                filtered_contours = [
+                    cnt for cnt in contours if cv2.contourArea(cnt) > area_threshold
+                ]
+                filtered_mask = np.zeros_like(mask)
+                cv2.drawContours(
+                    filtered_mask, filtered_contours, -1, 255, thickness=cv2.FILLED
+                )
+
+                # Convert mask to line segments and into Labelbox prediction annotation
+                points = convert_mask_to_line_segments(filtered_mask, 4.0)
                 if len(points) < 2:
                     continue
 
@@ -155,6 +172,7 @@ def upload_yolo_predictions(
                         ],
                     )
                 )
+        print(f"Prediction generated for {img_name}")
 
     try:
         upload_job = lb.MALPredictionImport.create_from_objects(
