@@ -20,7 +20,7 @@ MODEL_PATH = os.path.join(MODELS_DIR, "yolov8-segment", "weights", "best.pt")
 
 model = YOLO(MODEL_PATH)
 results = model.predict(
-    os.path.join(DATA_DIR, "runner1800", "albion_407.png"),
+    os.path.join(DATA_DIR, "runner500", "151.png"),
     imgsz=(1024, 768),
     iou=0.5,
     conf=0.3,
@@ -29,6 +29,9 @@ for result in results:
     plot_array = result.plot()
     plot_image = Image.fromarray(plot_array[..., ::-1])
     plot_image.show()
+
+    if result.masks is None:
+        continue
 
     masks_data = result.masks.data
     # Resize masks to original image size
@@ -50,7 +53,7 @@ for result in results:
         mask = masks_np[i]
 
         # Remove small contours from mask
-        area_threshold = 100
+        area_threshold = 64
         contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         filtered_contours = [
             cnt for cnt in contours if cv2.contourArea(cnt) > area_threshold

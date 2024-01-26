@@ -117,6 +117,9 @@ def upload_yolo_predictions(
         )
 
         for result in results:
+            if result.masks is None:
+                continue
+
             masks_data = result.masks.data
 
             # Resize masks to original image size
@@ -138,7 +141,7 @@ def upload_yolo_predictions(
                 mask = masks_np[i]
 
                 # Remove small contours from mask
-                area_threshold = 32
+                area_threshold = 64
                 contours, _ = cv2.findContours(
                     mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
                 )
