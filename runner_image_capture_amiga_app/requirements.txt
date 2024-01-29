@@ -1,0 +1,6 @@
+farm-ng-amiga
+fastapi
+uvicorn[standard]
+pyrealsense2
+numpy
+opencv-contrib-python

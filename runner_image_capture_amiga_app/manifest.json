@@ -1,0 +1,15 @@
+{
+  "services": {
+    "example-app": {
+      "name": "example-app",
+      "type": "app",
+      "exec_cmd": "/mnt/managed_home/farm-ng-user-YOUR_USER_HERE/amiga-app-template/venv/bin/python3 /mnt/managed_home/farm-ng-user-YOUR_USER_HERE/amiga-app-template/main.py",
+      "args": [
+        "--config /opt/farmng/config.json", "--port 8042"
+      ],
+      "autostart": true,
+      "http_gui_port": 8042,
+      "display_name": "Monitor App"
+    }
+  }
+}
