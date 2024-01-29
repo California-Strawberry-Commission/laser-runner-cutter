@@ -5,6 +5,7 @@ export default function CameraPreview() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
+    console.log("USE EFFECT");
     const startWebsocket = () => {
       const ws = new WebSocket(`ws://${window.location.hostname}:8042/camera`);
 
