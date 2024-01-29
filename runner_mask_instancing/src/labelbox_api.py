@@ -12,9 +12,11 @@ import numpy as np
 import labelbox as lb
 import labelbox.types as lb_types
 import ndjson
+import torch.nn.functional as F
+import cv2
 from dotenv import load_dotenv
 from natsort import natsorted
-from segment_utils import convert_contour_to_line_segments
+from segment_utils import convert_mask_to_line_segments
 from ultralytics import YOLO
 from PIL import Image
 
@@ -98,6 +100,7 @@ def upload_yolo_predictions(
 ):
     project = CLIENT.get_projects(where=lb.Project.name == project_name).get_one()
     model = YOLO(model_path)
+    predictions = []
     mask_paths = glob(os.path.join(masks_dir, "*.jpg")) + glob(
         os.path.join(masks_dir, "*.png")
     )
@@ -113,14 +116,45 @@ def upload_yolo_predictions(
             conf=0.3,
         )
 
-        predictions = []
         for result in results:
-            for c in result:
-                contour = c.masks.xy.pop()
-                contour = contour.astype(np.int32)
-                points = convert_contour_to_line_segments(
-                    contour, result.orig_img.shape[:2]
+            if result.masks is None:
+                continue
+
+            masks_data = result.masks.data
+
+            # Resize masks to original image size
+            masks_data = F.interpolate(
+                masks_data.unsqueeze(1),
+                size=(result.orig_img.shape[0], result.orig_img.shape[1]),
+                mode="bilinear",
+                align_corners=False,
+            )
+            masks_data = masks_data.squeeze(1)
+
+            masks_data[masks_data != 0] = 255
+            masks_np = masks_data.byte().cpu().numpy()
+
+            confidences_np = result.boxes.conf.cpu().numpy()
+
+            for i in range(len(masks_np)):
+                confidence = confidences_np[i]
+                mask = masks_np[i]
+
+                # Remove small contours from mask
+                area_threshold = 64
+                contours, _ = cv2.findContours(
+                    mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
                 )
+                filtered_contours = [
+                    cnt for cnt in contours if cv2.contourArea(cnt) > area_threshold
+                ]
+                filtered_mask = np.zeros_like(mask)
+                cv2.drawContours(
+                    filtered_mask, filtered_contours, -1, 255, thickness=cv2.FILLED
+                )
+
+                # Convert mask to line segments and into Labelbox prediction annotation
+                points = convert_mask_to_line_segments(filtered_mask, 4.0)
                 if len(points) < 2:
                     continue
 
@@ -130,7 +164,7 @@ def upload_yolo_predictions(
                         annotations=[
                             lb_types.ObjectAnnotation(
                                 name=list(CLASS_MAP.keys())[0],
-                                confidence=c.boxes.conf.cpu().numpy()[0],
+                                confidence=confidence,
                                 value=lb_types.Line(
                                     points=[
                                         lb_types.Point(x=point[0], y=point[1])
@@ -141,18 +175,19 @@ def upload_yolo_predictions(
                         ],
                     )
                 )
+        print(f"Prediction generated for {img_name}")
 
-        try:
-            upload_job = lb.MALPredictionImport.create_from_objects(
-                client=CLIENT,
-                project_id=project.uid,
-                name="mal_job" + str(uuid.uuid4()),
-                predictions=predictions,
-            )
-            upload_job.wait_until_done()
-            print(f"successfully uploaded predictions for {img_name}")
-        except Exception as exc:
-            print(f"Failed to upload predictions for {img_name}: {exc}")
+    try:
+        upload_job = lb.MALPredictionImport.create_from_objects(
+            client=CLIENT,
+            project_id=project.uid,
+            name="mal_job" + str(uuid.uuid4()),
+            predictions=predictions,
+        )
+        upload_job.wait_until_done()
+        print(f"successfully uploaded predictions")
+    except Exception as exc:
+        print(f"Failed to upload predictions: {exc}")
 
 
 if __name__ == "__main__":

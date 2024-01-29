@@ -21,6 +21,6 @@ results = model.train(
     imgsz=(1024, 768),
     device=0,
     batch=-1,
-    epochs=100,
+    epochs=150,
     flipud=0.5,
 )
