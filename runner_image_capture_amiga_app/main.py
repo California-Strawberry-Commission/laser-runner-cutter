@@ -39,6 +39,9 @@ app.add_middleware(
 class FileManager:
     def save_frame(self, frame, directory=DEFAULT_SAVE_DIR, prefix=DEFAULT_FILE_PREFIX):
         directory = os.path.expanduser(directory)
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
         file_path = os.path.join(
             directory, self._get_next_filename_with_prefix(directory, prefix)
         )
@@ -126,6 +129,20 @@ class RealSense:
         return color_frame
 
 
+class ManualCaptureRequest(BaseModel):
+    saveDir: Union[str, None] = None
+
+
+class IntervalCaptureRequest(BaseModel):
+    intervalSecs: float = 0.0
+    saveDir: Union[str, None] = None
+
+
+class OverlapCaptureRequest(BaseModel):
+    overlap: float = 0.0
+    saveDir: Union[str, None] = None
+
+
 file_manager = FileManager()
 camera = RealSense()
 camera.initialize()
@@ -142,17 +159,24 @@ async def send_frame(websocket: WebSocket):
         await asyncio.sleep(0.1)
 
 
-class ManualCaptureRequest(BaseModel):
-    saveDir: Union[str, None] = None
+async def interval_capture_task(
+    interval_secs: float, save_dir: str, stop_event: asyncio.Event
+):
+    while not stop_event.is_set():
+        await asyncio.sleep(interval_secs)
+        frame = camera.get_frame()
+        file_path = file_manager.save_frame(np.asanyarray(frame.get_data()), save_dir)
 
 
-@app.post("/capture/manual")
-async def manual_capture(request: ManualCaptureRequest) -> JSONResponse:
-    frame = camera.get_frame()
-    file_path = file_manager.save_frame(
-        np.asanyarray(frame.get_data()), request.saveDir
-    )
-    return JSONResponse(content={"file": file_path}, status_code=200)
+async def overlap_capture_task(
+    overlap: float, save_dir: str, stop_event: asyncio.Event
+):
+    # TODO
+    while not stop_event.is_set():
+        await asyncio.sleep(1.0 / 30)
+        frame = camera.get_frame()
+        # Calculate overlap with last saved frame
+        # file_path = file_manager.save_frame(np.asanyarray(frame.get_data()), save_dir)
 
 
 @app.websocket("/camera_preview")
@@ -164,6 +188,75 @@ async def camera_preview(websocket: WebSocket):
         pass
     finally:
         await websocket.close()
+
+
+@app.post("/capture/manual")
+async def manual_capture(request: ManualCaptureRequest) -> JSONResponse:
+    frame = camera.get_frame()
+    file_path = file_manager.save_frame(
+        np.asanyarray(frame.get_data()), request.saveDir
+    )
+    return JSONResponse(content={"file": file_path}, status_code=200)
+
+
+@app.post("/capture/interval")
+async def interval_capture(request: IntervalCaptureRequest) -> JSONResponse:
+    stop_event = asyncio.Event()
+
+    async def interval_capture_task_wrapper():
+        task = asyncio.create_task(
+            interval_capture_task(request.intervalSecs, request.saveDir, stop_event)
+        )
+        camera.capture_task = task  # Store the task reference
+        await task  # Wait for the task to complete or be canceled
+        camera.capture_task = None  # Reset the task reference
+
+    asyncio.create_task(interval_capture_task_wrapper())
+    return JSONResponse(
+        content={
+            "message": f"Interval capture scheduled for every {request.intervalSecs} seconds",
+            "stop_url": f"/capture/stop",
+        },
+        status_code=200,
+    )
+
+
+@app.post("/capture/overlap")
+async def overlap_capture(request: OverlapCaptureRequest) -> JSONResponse:
+    stop_event = asyncio.Event()
+
+    async def overlap_capture_task_wrapper():
+        task = asyncio.create_task(
+            overlap_capture_task(request.overlap, request.saveDir, stop_event)
+        )
+        camera.capture_task = task  # Store the task reference
+        await task  # Wait for the task to complete or be canceled
+        camera.capture_task = None  # Reset the task reference
+
+    asyncio.create_task(overlap_capture_task_wrapper())
+    return JSONResponse(
+        content={
+            "message": f"Overlap capture scheduled at {request.overlap}%",
+            "stop_url": f"/capture/stop",
+        },
+        status_code=200,
+    )
+
+
+@app.get("/capture/stop")
+async def stop_capture() -> JSONResponse:
+    if camera.capture_task:
+        camera.capture_task.cancel()
+        message = "Capture task stopped"
+    else:
+        message = "No capture tasks to stop"
+
+    return JSONResponse(
+        content={
+            "message": message,
+        },
+        status_code=200,
+    )
 
 
 if __name__ == "__main__":
