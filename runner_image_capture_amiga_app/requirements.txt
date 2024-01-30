@@ -4,3 +4,4 @@ uvicorn[standard]
 pyrealsense2
 numpy
 opencv-contrib-python
+natsort
