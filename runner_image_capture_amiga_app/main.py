@@ -19,6 +19,8 @@ import numpy as np
 import cv2
 import base64
 import asyncio
+import queue
+import threading
 
 
 DEFAULT_SAVE_DIR = os.path.expanduser("~/Pictures/runners")
@@ -36,6 +38,20 @@ app.add_middleware(
 )
 
 
+class ManualCaptureRequest(BaseModel):
+    saveDir: Union[str, None] = None
+
+
+class IntervalCaptureRequest(BaseModel):
+    intervalSecs: float = 0.0
+    saveDir: Union[str, None] = None
+
+
+class OverlapCaptureRequest(BaseModel):
+    overlap: float = 0.0
+    saveDir: Union[str, None] = None
+
+
 class FileManager:
     def save_frame(self, frame, directory=DEFAULT_SAVE_DIR, prefix=DEFAULT_FILE_PREFIX):
         directory = os.path.expanduser(directory)
@@ -45,7 +61,7 @@ class FileManager:
         file_path = os.path.join(
             directory, self._get_next_filename_with_prefix(directory, prefix)
         )
-        cv2.imwrite(file_path, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+        cv2.imwrite(file_path, frame)
         return file_path
 
     def _get_next_filename_with_prefix(self, directory, prefix):
@@ -129,33 +145,58 @@ class RealSense:
         return color_frame
 
 
-class ManualCaptureRequest(BaseModel):
-    saveDir: Union[str, None] = None
+class LogQueue:
+    def __init__(self, max_size=5):
+        self.queue = queue.Queue(maxsize=max_size)
+        self.lock = threading.Lock()
 
+    def enqueue(self, item):
+        with self.lock:
+            try:
+                self.queue.put_nowait(item)
+            except queue.Full:
+                self.dequeue()
+                self.queue.put_nowait(item)
 
-class IntervalCaptureRequest(BaseModel):
-    intervalSecs: float = 0.0
-    saveDir: Union[str, None] = None
+    def dequeue(self):
+        with self.lock:
+            try:
+                return self.queue.get_nowait()
+            except queue.Empty:
+                return None
 
-
-class OverlapCaptureRequest(BaseModel):
-    overlap: float = 0.0
-    saveDir: Union[str, None] = None
+    def is_empty(self):
+        with self.lock:
+            return self.queue.empty()
 
 
 file_manager = FileManager()
 camera = RealSense()
 camera.initialize()
+log_queue = LogQueue()
+
+
+def rs_to_cv_frame(rs_frame):
+    frame = np.asanyarray(rs_frame.get_data())
+    return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
 
 async def send_frame(websocket: WebSocket):
     while True:
         frame = camera.get_frame()
         if frame:
-            frame_data = np.asanyarray(frame.get_data())
-            _, buffer = cv2.imencode(".jpg", frame_data)
+            frame = rs_to_cv_frame(frame)
+            _, buffer = cv2.imencode(".jpg", frame)
             img_str = base64.b64encode(buffer).decode("utf-8")
             await websocket.send_text(img_str)
+        await asyncio.sleep(0.1)
+
+
+async def send_log(websocket: WebSocket):
+    while True:
+        msg = log_queue.dequeue()
+        if msg is not None:
+            await websocket.send_text(msg)
         await asyncio.sleep(0.1)
 
 
@@ -165,18 +206,79 @@ async def interval_capture_task(
     while not stop_event.is_set():
         await asyncio.sleep(interval_secs)
         frame = camera.get_frame()
-        file_path = file_manager.save_frame(np.asanyarray(frame.get_data()), save_dir)
+        if frame:
+            file_path = file_manager.save_frame(rs_to_cv_frame(frame), save_dir)
+            log_queue.enqueue(f"Frame captured: {file_path}")
 
 
 async def overlap_capture_task(
     overlap: float, save_dir: str, stop_event: asyncio.Event
 ):
-    # TODO
+    last_saved_frame = None
     while not stop_event.is_set():
-        await asyncio.sleep(1.0 / 30)
-        frame = camera.get_frame()
-        # Calculate overlap with last saved frame
-        # file_path = file_manager.save_frame(np.asanyarray(frame.get_data()), save_dir)
+        await asyncio.sleep(1.0 / 10)
+        current_frame = camera.get_frame()
+        if current_frame:
+            current_frame = rs_to_cv_frame(current_frame)
+            if last_saved_frame is None:
+                file_path = file_manager.save_frame(current_frame, save_dir)
+                log_queue.enqueue(f"Frame captured: {file_path}")
+                last_saved_frame = current_frame
+            else:
+                # Calculate overlap with last saved frame
+                overlap = calculate_overlap(last_saved_frame, current_frame)
+                print(overlap)
+
+
+def calculate_overlap(frame1, frame2):
+    # TODO: can we use visual odometry on RealSense?
+
+    # Convert frames to grayscale
+    gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
+
+    # Detect ORB keypoints and descriptors
+    orb = cv2.ORB_create()
+    keypoints1, descriptors1 = orb.detectAndCompute(gray1, None)
+    keypoints2, descriptors2 = orb.detectAndCompute(gray2, None)
+
+    # Use BFMatcher to find the best matches
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    matches = bf.match(descriptors1, descriptors2)
+
+    # Sort the matches based on their distances
+    matches = sorted(matches, key=lambda x: x.distance)
+
+    # Select the top N matches (you can adjust N based on your needs)
+    N = min(len(matches), 50)
+    selected_matches = matches[:N]
+
+    # Extract corresponding keypoints
+    src_points = np.float32(
+        [keypoints1[m.queryIdx].pt for m in selected_matches]
+    ).reshape(-1, 1, 2)
+    dst_points = np.float32(
+        [keypoints2[m.trainIdx].pt for m in selected_matches]
+    ).reshape(-1, 1, 2)
+
+    # Find the perspective transformation matrix
+    M, _ = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 5.0)
+
+    # Get the dimensions of the input frames
+    h, w = gray1.shape
+
+    # Define the corners of the first frame
+    corners1 = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(
+        -1, 1, 2
+    )
+
+    # Transform the corners using the perspective transformation matrix
+    corners2 = cv2.perspectiveTransform(corners1, M)
+
+    # Calculate the overlap percentage based on the transformed corners
+    overlap_percentage = cv2.contourArea(corners2) / cv2.contourArea(corners1) * 100.0
+
+    return overlap_percentage
 
 
 @app.websocket("/camera_preview")
@@ -190,13 +292,27 @@ async def camera_preview(websocket: WebSocket):
         await websocket.close()
 
 
+@app.websocket("/log")
+async def log(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        await send_log(websocket)
+    except asyncio.CancelledError:
+        pass
+    finally:
+        await websocket.close()
+
+
 @app.post("/capture/manual")
 async def manual_capture(request: ManualCaptureRequest) -> JSONResponse:
     frame = camera.get_frame()
-    file_path = file_manager.save_frame(
-        np.asanyarray(frame.get_data()), request.saveDir
-    )
-    return JSONResponse(content={"file": file_path}, status_code=200)
+    if frame:
+        file_path = file_manager.save_frame(rs_to_cv_frame(frame), request.saveDir)
+        log_queue.enqueue(f"Frame captured: {file_path}")
+        return JSONResponse(content={"file": file_path}, status_code=200)
+    else:
+        log_queue.enqueue(f"Error: could not get frame")
+        return JSONResponse(content={"error": "Could not get frame"}, status_code=500)
 
 
 @app.post("/capture/interval")
@@ -212,6 +328,7 @@ async def interval_capture(request: IntervalCaptureRequest) -> JSONResponse:
         camera.capture_task = None  # Reset the task reference
 
     asyncio.create_task(interval_capture_task_wrapper())
+    log_queue.enqueue(f"Interval capture started")
     return JSONResponse(
         content={
             "message": f"Interval capture scheduled for every {request.intervalSecs} seconds",
@@ -234,6 +351,7 @@ async def overlap_capture(request: OverlapCaptureRequest) -> JSONResponse:
         camera.capture_task = None  # Reset the task reference
 
     asyncio.create_task(overlap_capture_task_wrapper())
+    log_queue.enqueue(f"Overlap capture started")
     return JSONResponse(
         content={
             "message": f"Overlap capture scheduled at {request.overlap}%",
@@ -248,6 +366,7 @@ async def stop_capture() -> JSONResponse:
     if camera.capture_task:
         camera.capture_task.cancel()
         message = "Capture task stopped"
+        log_queue.enqueue(f"Capture stopped")
     else:
         message = "No capture tasks to stop"
 

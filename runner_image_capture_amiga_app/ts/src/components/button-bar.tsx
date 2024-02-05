@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,27 +10,67 @@ enum CaptureMode {
   OVERLAP,
 }
 
-export default function ButtonBar() {
+export default function ButtonBar({ logLimit = 10 }: { logLimit: number }) {
+  const webSocket = useRef<WebSocket | null>(null);
   const [saveDir, setSaveDir] = useState<string>("~/Pictures/runners");
   const [captureMode, setCaptureMode] = useState<CaptureMode>(
     CaptureMode.MANUAL
   );
   const [captureInProgress, setCaptureInProgress] = useState<boolean>(false);
+  const [logMessages, setLogMessages] = useState<string[]>([]);
+
+  useEffect(() => {
+    const startWebSocket = () => {
+      const ws = new WebSocket(`ws://${window.location.hostname}:8042/log`);
+
+      ws.onmessage = (event) => {
+        const msg = event.data;
+        const timestamp = new Date().toLocaleTimeString();
+        setLogMessages((prevLogMessages) => {
+          const newMessages = [...prevLogMessages, `[${timestamp}] ${msg}`];
+          if (newMessages.length > logLimit) {
+            newMessages.shift();
+          }
+          return newMessages;
+        });
+      };
+
+      ws.onclose = () => {
+        setTimeout(startWebSocket, 1000);
+      };
+
+      webSocket.current = ws;
+    };
+
+    startWebSocket();
+
+    return () => {
+      if (webSocket.current) {
+        webSocket.current.close();
+      }
+    };
+  }, []);
 
   const onSaveDirChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setSaveDir(e.target.value);
     },
-    []
+    [setSaveDir]
   );
 
-  const onModeClick = useCallback((captureMode: CaptureMode) => {
-    setCaptureMode(captureMode);
-  }, []);
+  const onModeClick = useCallback(
+    (captureMode: CaptureMode) => {
+      setCaptureMode(captureMode);
+    },
+    [setCaptureMode]
+  );
 
-  const onCaptureStateChange = useCallback((inProgress: boolean) => {
-    setCaptureInProgress(inProgress);
-  }, []);
+  const onCaptureStateChange = useCallback(
+    (inProgress: boolean) => {
+      setCaptureInProgress(inProgress);
+    },
+    [setCaptureInProgress]
+  );
 
   return (
     <div className="flex flex-col gap-2 w-96">
@@ -67,7 +107,7 @@ export default function ButtonBar() {
           </Button>
         </div>
       </div>
-      <Separator />
+      <Separator className="my-2" />
       {captureMode === CaptureMode.MANUAL ? (
         <ManualMode saveDir={saveDir} />
       ) : null}
@@ -85,13 +125,25 @@ export default function ButtonBar() {
           onCaptureStateChange={onCaptureStateChange}
         />
       ) : null}
+      <Separator className="my-2" />
+      <h2 className="text-center font-bold">Log Messages</h2>
+      <div className="h-[160px] overflow-y-auto">
+        <ul>
+          {logMessages
+            .slice()
+            .reverse()
+            .map((message, index) => (
+              <li className="text-xs" key={index}>
+                {message}
+              </li>
+            ))}
+        </ul>
+      </div>
     </div>
   );
 }
 
 function ManualMode({ saveDir }: { saveDir: string }) {
-  const [message, setMessage] = useState<string>("");
-
   const onCaptureClick = useCallback(async () => {
     try {
       const response = await fetch(
@@ -109,18 +161,16 @@ function ManualMode({ saveDir }: { saveDir: string }) {
         throw new Error("Network response was not ok " + response.statusText);
       }
 
-      const rawData = await response.json();
-      setMessage(`Saved: ${rawData.file}`);
+      await response.json();
     } catch (error) {
       console.error("Error requesting capture:", error);
     }
-  }, [saveDir, setMessage]);
+  }, [saveDir]);
 
   return (
     <>
       <h2 className="text-center font-bold">Manual Mode</h2>
       <Button onClick={onCaptureClick}>Capture</Button>
-      <p className="text-xs">{message}</p>
     </>
   );
 }
