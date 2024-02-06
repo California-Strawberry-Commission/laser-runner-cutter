@@ -10,9 +10,10 @@ enum CaptureMode {
   OVERLAP,
 }
 
-export default function ButtonBar({ logLimit = 10 }: { logLimit: number }) {
+export default function ButtonBar({ logLimit = 10 }: { logLimit?: number }) {
   const webSocket = useRef<WebSocket | null>(null);
   const [saveDir, setSaveDir] = useState<string>("~/Pictures/runners");
+  const [exposureMs, setExposureMs] = useState<number>(0.2);
   const [captureMode, setCaptureMode] = useState<CaptureMode>(
     CaptureMode.MANUAL
   );
@@ -58,6 +59,40 @@ export default function ButtonBar({ logLimit = 10 }: { logLimit: number }) {
     [setSaveDir]
   );
 
+  const onExposureChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = Number(e.target.value);
+      if (isNaN(value)) {
+        return;
+      }
+      setExposureMs(value);
+    },
+    []
+  );
+
+  const onExposureApplyClick = async () => {
+    try {
+      const response = await fetch(
+        `${window.location.protocol}//${window.location.hostname}:8042/camera/exposure`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ exposureMs }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Network response was not ok " + response.statusText);
+      }
+
+      await response.json();
+    } catch (error) {
+      console.error("Error requesting capture:", error);
+    }
+  };
+
   const onModeClick = useCallback(
     (captureMode: CaptureMode) => {
       setCaptureMode(captureMode);
@@ -85,6 +120,16 @@ export default function ButtonBar({ logLimit = 10 }: { logLimit: number }) {
         />
       </div>
       <div className="flex flex-row gap-2 items-center">
+        <Label htmlFor="exposure">Exposure (ms):</Label>
+        <Input
+          type="number"
+          id="exposure"
+          value={exposureMs}
+          onChange={onExposureChange}
+        />
+        <Button onClick={onExposureApplyClick}>Apply</Button>
+      </div>
+      <div className="flex flex-row gap-2 items-center">
         <Label>Select Mode:</Label>
         <div className="flex flex-row gap-1">
           <Button
@@ -98,12 +143,6 @@ export default function ButtonBar({ logLimit = 10 }: { logLimit: number }) {
             onClick={() => onModeClick(CaptureMode.INTERVAL)}
           >
             Interval
-          </Button>
-          <Button
-            disabled={captureMode === CaptureMode.OVERLAP || captureInProgress}
-            onClick={() => onModeClick(CaptureMode.OVERLAP)}
-          >
-            Overlap
           </Button>
         </div>
       </div>

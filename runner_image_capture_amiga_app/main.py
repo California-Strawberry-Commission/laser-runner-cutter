@@ -38,6 +38,10 @@ app.add_middleware(
 )
 
 
+class CameraExposureRequest(BaseModel):
+    exposureMs: float = 0.2
+
+
 class ManualCaptureRequest(BaseModel):
     saveDir: Union[str, None] = None
 
@@ -100,7 +104,13 @@ class FileManager:
 
 
 class RealSense:
-    def __init__(self, frame_size=(1920, 1080), fps=30, camera_index=0):
+    def __init__(self, frame_size=(1280, 720), fps=6, camera_index=0):
+        # Note: when connected via USB2, RealSense cameras are limited to:
+        # - 1280x720 @ 6fps
+        # - 640x480 @ 30fps
+        # - 480x270 @ 60fps
+        # See https://www.intelrealsense.com/usb2-support-for-intel-realsense-technology/
+
         self.frame_size = frame_size
         self.camera_index = camera_index
         self.fps = fps
@@ -132,6 +142,15 @@ class RealSense:
         # Start pipeline
         self.pipeline = rs.pipeline()
         self.profile = self.pipeline.start(self.config)
+
+    def set_exposure(self, exposure_ms):
+        color_sensor = self.profile.get_device().first_color_sensor()
+        if exposure_ms < 0:
+            color_sensor.set_option(rs.option.enable_auto_exposure, 1)
+        else:
+            # D435 has a minimum exposure time of 1us
+            exposure_us = max(1, round(exposure_ms * 1000))
+            color_sensor.set_option(rs.option.exposure, exposure_us)
 
     def get_frame(self):
         frames = self.pipeline.wait_for_frames()
@@ -173,6 +192,7 @@ class LogQueue:
 file_manager = FileManager()
 camera = RealSense()
 camera.initialize()
+camera.set_exposure(0.2)
 log_queue = LogQueue()
 
 
@@ -189,7 +209,7 @@ async def send_frame(websocket: WebSocket):
             _, buffer = cv2.imencode(".jpg", frame)
             img_str = base64.b64encode(buffer).decode("utf-8")
             await websocket.send_text(img_str)
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(1.0 / camera.fps)
 
 
 async def send_log(websocket: WebSocket):
@@ -204,11 +224,11 @@ async def interval_capture_task(
     interval_secs: float, save_dir: str, stop_event: asyncio.Event
 ):
     while not stop_event.is_set():
-        await asyncio.sleep(interval_secs)
         frame = camera.get_frame()
         if frame:
             file_path = file_manager.save_frame(rs_to_cv_frame(frame), save_dir)
             log_queue.enqueue(f"Frame captured: {file_path}")
+        await asyncio.sleep(interval_secs)
 
 
 async def overlap_capture_task(
@@ -216,7 +236,6 @@ async def overlap_capture_task(
 ):
     last_saved_frame = None
     while not stop_event.is_set():
-        await asyncio.sleep(1.0 / 10)
         current_frame = camera.get_frame()
         if current_frame:
             current_frame = rs_to_cv_frame(current_frame)
@@ -228,6 +247,7 @@ async def overlap_capture_task(
                 # Calculate overlap with last saved frame
                 overlap = calculate_overlap(last_saved_frame, current_frame)
                 print(overlap)
+        await asyncio.sleep(1.0 / 10)
 
 
 def calculate_overlap(frame1, frame2):
@@ -281,7 +301,7 @@ def calculate_overlap(frame1, frame2):
     return overlap_percentage
 
 
-@app.websocket("/camera_preview")
+@app.websocket("/camera/preview")
 async def camera_preview(websocket: WebSocket):
     await websocket.accept()
     try:
@@ -290,6 +310,12 @@ async def camera_preview(websocket: WebSocket):
         pass
     finally:
         await websocket.close()
+
+
+@app.post("/camera/exposure")
+async def camera_exposure(request: CameraExposureRequest) -> JSONResponse:
+    camera.set_exposure(request.exposureMs)
+    return JSONResponse(status_code=200)
 
 
 @app.websocket("/log")

@@ -1,15 +1,15 @@
 {
   "services": {
-    "example-app": {
-      "name": "example-app",
+    "runner-image-capture": {
+      "name": "runner-image-capture",
       "type": "app",
-      "exec_cmd": "/mnt/managed_home/farm-ng-user-YOUR_USER_HERE/amiga-app-template/venv/bin/python3 /mnt/managed_home/farm-ng-user-YOUR_USER_HERE/amiga-app-template/main.py",
+      "exec_cmd": "/mnt/managed_home/farm-ng-user-genkikondo/LaserRunnerRemoval/runner_image_capture_amiga_app/venv/bin/python3 /mnt/managed_home/farm-ng-user-genkikondo/LaserRunnerRemoval/runner_image_capture_amiga_app/main.py",
       "args": [
-        "--config /opt/farmng/config.json", "--port 8042"
+        "--port 8042"
       ],
       "autostart": true,
       "http_gui_port": 8042,
-      "display_name": "Monitor App"
+      "display_name": "Runner Image Capture"
     }
   }
 }

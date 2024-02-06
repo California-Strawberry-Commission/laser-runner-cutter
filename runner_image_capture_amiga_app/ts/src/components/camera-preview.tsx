@@ -8,7 +8,7 @@ export default function CameraPreview() {
   useEffect(() => {
     const startWebSocket = () => {
       const ws = new WebSocket(
-        `ws://${window.location.hostname}:8042/camera_preview`
+        `ws://${window.location.hostname}:8042/camera/preview`
       );
 
       ws.onopen = () => {
