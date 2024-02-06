@@ -224,11 +224,11 @@ async def interval_capture_task(
     interval_secs: float, save_dir: str, stop_event: asyncio.Event
 ):
     while not stop_event.is_set():
-        await asyncio.sleep(interval_secs)
         frame = camera.get_frame()
         if frame:
             file_path = file_manager.save_frame(rs_to_cv_frame(frame), save_dir)
             log_queue.enqueue(f"Frame captured: {file_path}")
+        await asyncio.sleep(interval_secs)
 
 
 async def overlap_capture_task(
@@ -236,7 +236,6 @@ async def overlap_capture_task(
 ):
     last_saved_frame = None
     while not stop_event.is_set():
-        await asyncio.sleep(1.0 / 10)
         current_frame = camera.get_frame()
         if current_frame:
             current_frame = rs_to_cv_frame(current_frame)
@@ -248,6 +247,7 @@ async def overlap_capture_task(
                 # Calculate overlap with last saved frame
                 overlap = calculate_overlap(last_saved_frame, current_frame)
                 print(overlap)
+        await asyncio.sleep(1.0 / 10)
 
 
 def calculate_overlap(frame1, frame2):
