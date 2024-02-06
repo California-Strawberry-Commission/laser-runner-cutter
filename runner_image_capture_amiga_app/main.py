@@ -38,6 +38,10 @@ app.add_middleware(
 )
 
 
+class CameraExposureRequest(BaseModel):
+    exposureMs: float = 0.2
+
+
 class ManualCaptureRequest(BaseModel):
     saveDir: Union[str, None] = None
 
@@ -139,6 +143,15 @@ class RealSense:
         self.pipeline = rs.pipeline()
         self.profile = self.pipeline.start(self.config)
 
+    def set_exposure(self, exposure_ms):
+        color_sensor = self.profile.get_device().first_color_sensor()
+        if exposure_ms < 0:
+            color_sensor.set_option(rs.option.enable_auto_exposure, 1)
+        else:
+            # D435 has a minimum exposure time of 1us
+            exposure_us = max(1, round(exposure_ms * 1000))
+            color_sensor.set_option(rs.option.exposure, exposure_us)
+
     def get_frame(self):
         frames = self.pipeline.wait_for_frames()
         if not frames:
@@ -179,6 +192,7 @@ class LogQueue:
 file_manager = FileManager()
 camera = RealSense()
 camera.initialize()
+camera.set_exposure(0.2)
 log_queue = LogQueue()
 
 
@@ -195,7 +209,7 @@ async def send_frame(websocket: WebSocket):
             _, buffer = cv2.imencode(".jpg", frame)
             img_str = base64.b64encode(buffer).decode("utf-8")
             await websocket.send_text(img_str)
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(1.0 / camera.fps)
 
 
 async def send_log(websocket: WebSocket):
@@ -287,7 +301,7 @@ def calculate_overlap(frame1, frame2):
     return overlap_percentage
 
 
-@app.websocket("/camera_preview")
+@app.websocket("/camera/preview")
 async def camera_preview(websocket: WebSocket):
     await websocket.accept()
     try:
@@ -296,6 +310,12 @@ async def camera_preview(websocket: WebSocket):
         pass
     finally:
         await websocket.close()
+
+
+@app.post("/camera/exposure")
+async def camera_exposure(request: CameraExposureRequest) -> JSONResponse:
+    camera.set_exposure(request.exposureMs)
+    return JSONResponse(status_code=200)
 
 
 @app.websocket("/log")
