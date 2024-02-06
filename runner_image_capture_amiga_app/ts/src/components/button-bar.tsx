@@ -10,7 +10,7 @@ enum CaptureMode {
   OVERLAP,
 }
 
-export default function ButtonBar({ logLimit = 10 }: { logLimit: number }) {
+export default function ButtonBar({ logLimit = 10 }: { logLimit?: number }) {
   const webSocket = useRef<WebSocket | null>(null);
   const [saveDir, setSaveDir] = useState<string>("~/Pictures/runners");
   const [captureMode, setCaptureMode] = useState<CaptureMode>(
