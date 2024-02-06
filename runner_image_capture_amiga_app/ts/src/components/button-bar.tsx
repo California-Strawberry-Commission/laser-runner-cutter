@@ -99,12 +99,6 @@ export default function ButtonBar({ logLimit = 10 }: { logLimit?: number }) {
           >
             Interval
           </Button>
-          <Button
-            disabled={captureMode === CaptureMode.OVERLAP || captureInProgress}
-            onClick={() => onModeClick(CaptureMode.OVERLAP)}
-          >
-            Overlap
-          </Button>
         </div>
       </div>
       <Separator className="my-2" />
