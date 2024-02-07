@@ -269,7 +269,7 @@ function IntervalMode({
   filePrefix,
   captureInProgress,
   onCaptureStateChange,
-  step = 0.1,
+  step = 1.0,
 }: {
   saveDir: string;
   filePrefix: string;
