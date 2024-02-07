@@ -367,7 +367,9 @@ async def interval_capture(request: IntervalCaptureRequest) -> JSONResponse:
 
     async def interval_capture_task_wrapper():
         task = asyncio.create_task(
-            interval_capture_task(request.intervalSecs, request.saveDir, stop_event)
+            interval_capture_task(
+                request.intervalSecs, request.saveDir, request.filePrefix, stop_event
+            )
         )
         camera.capture_task = task  # Store the task reference
         await task  # Wait for the task to complete or be canceled
@@ -390,7 +392,9 @@ async def overlap_capture(request: OverlapCaptureRequest) -> JSONResponse:
 
     async def overlap_capture_task_wrapper():
         task = asyncio.create_task(
-            overlap_capture_task(request.overlap, request.saveDir, stop_event)
+            overlap_capture_task(
+                request.overlap, request.saveDir, request.filePrefix, stop_event
+            )
         )
         camera.capture_task = task  # Store the task reference
         await task  # Wait for the task to complete or be canceled
