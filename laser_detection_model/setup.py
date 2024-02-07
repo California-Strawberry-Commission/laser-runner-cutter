@@ -1,8 +1,7 @@
 from setuptools import setup, find_packages
-from glob import glob
 
 
-package_name = "runner_mask_instancing"
+package_name = "laser_detection_model"
 
 setup(
     name=package_name,
