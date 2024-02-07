@@ -3,7 +3,9 @@ import { useEffect, useRef, useState } from "react";
 export default function CameraPreview() {
   const webSocket = useRef<WebSocket | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isWebSocketOpen, setIsWebSocketOpen] = useState(false);
+  const [isWebSocketOpen, setIsWebSocketOpen] = useState<boolean>(false);
+  const [frameWidth, setFrameWidth] = useState<number>(0);
+  const [frameHeight, setFrameHeight] = useState<number>(0);
 
   useEffect(() => {
     const startWebSocket = () => {
@@ -41,6 +43,9 @@ export default function CameraPreview() {
             canvasRef.current.width,
             canvasRef.current.height
           );
+
+          setFrameWidth(img.width);
+          setFrameHeight(img.height);
         };
       };
 
@@ -63,7 +68,13 @@ export default function CameraPreview() {
 
   return (
     <div className="relative w-[848px] h-[480px] flex justify-center items-center">
-      {isWebSocketOpen ? null : (
+      {isWebSocketOpen ? (
+        <div className="absolute top-4 left-4 z-10 text-white bg-black bg-opacity-50">
+          <p>
+            {frameWidth}x{frameHeight}
+          </p>
+        </div>
+      ) : (
         <div className="absolute z-10 inset-0 bg-gray-200 flex justify-center items-center">
           <p>Camera not available</p>
         </div>
