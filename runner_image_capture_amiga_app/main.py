@@ -333,7 +333,7 @@ async def camera_preview(websocket: WebSocket):
 @app.post("/camera/exposure")
 async def camera_exposure(request: CameraExposureRequest) -> JSONResponse:
     camera.set_exposure(request.exposureMs)
-    return JSONResponse(status_code=200)
+    return JSONResponse(content={"message": "Success"}, status_code=200)
 
 
 @app.websocket("/log")

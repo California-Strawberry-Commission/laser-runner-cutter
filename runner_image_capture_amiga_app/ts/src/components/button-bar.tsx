@@ -10,7 +10,13 @@ enum CaptureMode {
   OVERLAP,
 }
 
-export default function ButtonBar({ logLimit = 10 }: { logLimit?: number }) {
+export default function ButtonBar({
+  logLimit = 10,
+  exposureStep = 0.01,
+}: {
+  logLimit?: number;
+  exposureStep?: number;
+}) {
   const webSocket = useRef<WebSocket | null>(null);
   const [saveDir, setSaveDir] = useState<string>("~/Pictures/runners");
   const [filePrefix, setFilePrefix] = useState<string>("runner_");
@@ -67,6 +73,18 @@ export default function ButtonBar({ logLimit = 10 }: { logLimit?: number }) {
     [setFilePrefix]
   );
 
+  const onExposureDecrementClick = useCallback(() => {
+    setExposureMs(
+      (prev) => Math.round((prev - exposureStep) / exposureStep) * exposureStep
+    );
+  }, [exposureStep, setExposureMs]);
+
+  const onExposureIncrementClick = useCallback(() => {
+    setExposureMs(
+      (prev) => Math.round((prev + exposureStep) / exposureStep) * exposureStep
+    );
+  }, [exposureStep, setExposureMs]);
+
   const onExposureChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const value = Number(e.target.value);
@@ -122,6 +140,7 @@ export default function ButtonBar({ logLimit = 10 }: { logLimit?: number }) {
         <Input
           type="text"
           id="saveDir"
+          name="saveDir"
           placeholder="Path where images will be saved"
           value={saveDir}
           onChange={onSaveDirChange}
@@ -132,6 +151,7 @@ export default function ButtonBar({ logLimit = 10 }: { logLimit?: number }) {
         <Input
           type="text"
           id="filePrefix"
+          name="filePrefix"
           placeholder="String to prepend to filenames"
           value={filePrefix}
           onChange={onFilePrefixChange}
@@ -139,12 +159,16 @@ export default function ButtonBar({ logLimit = 10 }: { logLimit?: number }) {
       </div>
       <div className="flex flex-row gap-2 items-center">
         <Label htmlFor="exposure">Exposure (ms):</Label>
+        <Button onClick={onExposureDecrementClick}>-</Button>
         <Input
           type="number"
           id="exposure"
+          name="exposure"
+          step={exposureStep}
           value={exposureMs}
           onChange={onExposureChange}
         />
+        <Button onClick={onExposureIncrementClick}>+</Button>
         <Button onClick={onExposureApplyClick}>Apply</Button>
       </div>
       <div className="flex flex-row gap-2 items-center">
@@ -245,11 +269,13 @@ function IntervalMode({
   filePrefix,
   captureInProgress,
   onCaptureStateChange,
+  step = 0.1,
 }: {
   saveDir: string;
   filePrefix: string;
   captureInProgress: boolean;
   onCaptureStateChange: (inProgress: boolean) => void;
+  step?: number;
 }) {
   const [intervalSecs, setIntervalSecs] = useState<number>(5);
 
@@ -261,8 +287,16 @@ function IntervalMode({
       }
       setIntervalSecs(value);
     },
-    []
+    [setIntervalSecs]
   );
+
+  const onIntervalDecrementClick = useCallback(() => {
+    setIntervalSecs((prev) => Math.round((prev - step) / step) * step);
+  }, [step, setIntervalSecs]);
+
+  const onIntervalIncrementClick = useCallback(() => {
+    setIntervalSecs((prev) => Math.round((prev + step) / step) * step);
+  }, [step, setIntervalSecs]);
 
   const onStartClick = useCallback(async () => {
     try {
@@ -281,13 +315,12 @@ function IntervalMode({
         throw new Error("Network response was not ok " + response.statusText);
       }
 
-      const rawData = await response.json();
-      console.log(rawData.file);
+      await response.json();
       onCaptureStateChange(true);
     } catch (error) {
       console.error("Error starting capture:", error);
     }
-  }, [intervalSecs, saveDir, filePrefix]);
+  }, [intervalSecs, saveDir, filePrefix, onCaptureStateChange]);
 
   const onStopClick = useCallback(async () => {
     try {
@@ -299,8 +332,7 @@ function IntervalMode({
         throw new Error("Network response was not ok " + response.statusText);
       }
 
-      const rawData = await response.json();
-      console.log(rawData.file);
+      await response.json();
       onCaptureStateChange(false);
     } catch (error) {
       console.error("Error stopping capture:", error);
@@ -312,12 +344,17 @@ function IntervalMode({
       <h2 className="text-center font-bold">Interval Mode</h2>
       <div className="flex flex-row gap-2 items-center">
         <Label htmlFor="interval">Interval (seconds):</Label>
+        <Button onClick={onIntervalDecrementClick}>-</Button>
         <Input
           type="number"
           id="interval"
+          name="interval"
+          step={step}
+          min={0}
           value={intervalSecs}
           onChange={onIntervalChange}
         />
+        <Button onClick={onIntervalIncrementClick}>+</Button>
       </div>
       {captureInProgress ? (
         <Button onClick={onStopClick}>Stop</Button>
@@ -369,8 +406,7 @@ function OverlapMode({
         throw new Error("Network response was not ok " + response.statusText);
       }
 
-      const rawData = await response.json();
-      console.log(rawData.file);
+      await response.json();
       onCaptureStateChange(true);
     } catch (error) {
       console.error("Error starting capture:", error);
@@ -387,8 +423,7 @@ function OverlapMode({
         throw new Error("Network response was not ok " + response.statusText);
       }
 
-      const rawData = await response.json();
-      console.log(rawData.file);
+      await response.json();
       onCaptureStateChange(false);
     } catch (error) {
       console.error("Error stopping capture:", error);
@@ -403,6 +438,7 @@ function OverlapMode({
         <Input
           type="number"
           id="overlap"
+          name="overlap"
           value={overlap}
           onChange={onOverlapChange}
         />
