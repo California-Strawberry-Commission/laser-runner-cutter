@@ -3,12 +3,11 @@ from __future__ import annotations
 import os
 import argparse
 from pathlib import Path
-from typing import Union
+from typing import Dict, List, Union
 from natsort import natsorted
 
 import uvicorn
-from fastapi import FastAPI
-from fastapi import WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -27,33 +26,23 @@ DEFAULT_SAVE_DIR = os.path.expanduser("~/Pictures/runners")
 DEFAULT_FILE_PREFIX = "runner_"
 
 
-app = FastAPI()
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: set[WebSocket] = set()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.add(websocket)
 
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.discard(websocket)
 
-class CameraExposureRequest(BaseModel):
-    exposureMs: float = 0.2
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        await websocket.send_text(message)
 
-
-class ManualCaptureRequest(BaseModel):
-    saveDir: Union[str, None] = None
-
-
-class IntervalCaptureRequest(BaseModel):
-    intervalSecs: float = 0.0
-    saveDir: Union[str, None] = None
-
-
-class OverlapCaptureRequest(BaseModel):
-    overlap: float = 0.0
-    saveDir: Union[str, None] = None
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            await connection.send_text(message)
 
 
 class FileManager:
@@ -104,7 +93,7 @@ class FileManager:
 
 
 class RealSense:
-    def __init__(self, frame_size=(1280, 720), fps=6, camera_index=0):
+    def __init__(self, frame_size=(1920, 1080), fps=30, camera_index=0):
         # Note: when connected via USB2, RealSense cameras are limited to:
         # - 1280x720 @ 6fps
         # - 640x480 @ 30fps
@@ -189,6 +178,33 @@ class LogQueue:
             return self.queue.empty()
 
 
+class CameraExposureRequest(BaseModel):
+    exposureMs: float = 0.2
+
+
+class ManualCaptureRequest(BaseModel):
+    saveDir: Union[str, None] = None
+
+
+class IntervalCaptureRequest(BaseModel):
+    intervalSecs: float = 0.0
+    saveDir: Union[str, None] = None
+
+
+class OverlapCaptureRequest(BaseModel):
+    overlap: float = 0.0
+    saveDir: Union[str, None] = None
+
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+connection_manager = ConnectionManager()
 file_manager = FileManager()
 camera = RealSense()
 camera.initialize()
@@ -202,22 +218,46 @@ def rs_to_cv_frame(rs_frame):
 
 
 async def send_frame(websocket: WebSocket):
-    while True:
-        frame = camera.get_frame()
-        if frame:
-            frame = rs_to_cv_frame(frame)
-            _, buffer = cv2.imencode(".jpg", frame)
-            img_str = base64.b64encode(buffer).decode("utf-8")
-            await websocket.send_text(img_str)
-        await asyncio.sleep(1.0 / camera.fps)
+    try:
+        while True:
+            frame = camera.get_frame()
+            if frame:
+                frame = rs_to_cv_frame(frame)
+                _, buffer = cv2.imencode(".jpg", frame)
+                img_str = base64.b64encode(buffer).decode("utf-8")
+                await websocket.send_text(img_str)
+            await asyncio.sleep(1.0 / camera.fps)
+    except Exception as e:
+        print(f"Error in send_frame task: {e}")
+    finally:
+        connection_manager.disconnect(websocket)
 
 
 async def send_log(websocket: WebSocket):
-    while True:
-        msg = log_queue.dequeue()
-        if msg is not None:
-            await websocket.send_text(msg)
-        await asyncio.sleep(0.1)
+    try:
+        websocket_connected = True
+        while websocket_connected:
+            msg = log_queue.dequeue()
+            if msg is not None:
+                await websocket.send_text(msg)
+            else:
+                try:
+                    # Check if connection is active
+                    await asyncio.wait_for(websocket.receive_bytes(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    # Connection is still alive
+                    websocket_connected = True
+                except WebSocketDisconnect:
+                    # Connection closed by client
+                    websocket_connected = False
+                else:
+                    # Received some data from the client, ignore it
+                    websocket_connected = True
+                await asyncio.sleep(1.0 / 10)
+    except Exception as e:
+        print(f"Error in send_log task: {e}")
+    finally:
+        connection_manager.disconnect(websocket)
 
 
 async def interval_capture_task(
@@ -237,6 +277,8 @@ async def overlap_capture_task(
     last_saved_frame = None
     while not stop_event.is_set():
         current_frame = camera.get_frame()
+        """
+        TODO: WIP
         if current_frame:
             current_frame = rs_to_cv_frame(current_frame)
             if last_saved_frame is None:
@@ -247,69 +289,19 @@ async def overlap_capture_task(
                 # Calculate overlap with last saved frame
                 overlap = calculate_overlap(last_saved_frame, current_frame)
                 print(overlap)
-        await asyncio.sleep(1.0 / 10)
-
-
-def calculate_overlap(frame1, frame2):
-    # TODO: can we use visual odometry on RealSense?
-
-    # Convert frames to grayscale
-    gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
-    gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
-
-    # Detect ORB keypoints and descriptors
-    orb = cv2.ORB_create()
-    keypoints1, descriptors1 = orb.detectAndCompute(gray1, None)
-    keypoints2, descriptors2 = orb.detectAndCompute(gray2, None)
-
-    # Use BFMatcher to find the best matches
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-    matches = bf.match(descriptors1, descriptors2)
-
-    # Sort the matches based on their distances
-    matches = sorted(matches, key=lambda x: x.distance)
-
-    # Select the top N matches (you can adjust N based on your needs)
-    N = min(len(matches), 50)
-    selected_matches = matches[:N]
-
-    # Extract corresponding keypoints
-    src_points = np.float32(
-        [keypoints1[m.queryIdx].pt for m in selected_matches]
-    ).reshape(-1, 1, 2)
-    dst_points = np.float32(
-        [keypoints2[m.trainIdx].pt for m in selected_matches]
-    ).reshape(-1, 1, 2)
-
-    # Find the perspective transformation matrix
-    M, _ = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 5.0)
-
-    # Get the dimensions of the input frames
-    h, w = gray1.shape
-
-    # Define the corners of the first frame
-    corners1 = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(
-        -1, 1, 2
-    )
-
-    # Transform the corners using the perspective transformation matrix
-    corners2 = cv2.perspectiveTransform(corners1, M)
-
-    # Calculate the overlap percentage based on the transformed corners
-    overlap_percentage = cv2.contourArea(corners2) / cv2.contourArea(corners1) * 100.0
-
-    return overlap_percentage
+        """
+        await asyncio.sleep(1.0 / camera.fps)
 
 
 @app.websocket("/camera/preview")
 async def camera_preview(websocket: WebSocket):
-    await websocket.accept()
+    await connection_manager.connect(websocket)
     try:
         await send_frame(websocket)
     except asyncio.CancelledError:
         pass
     finally:
-        await websocket.close()
+        connection_manager.disconnect(websocket)
 
 
 @app.post("/camera/exposure")
@@ -320,13 +312,13 @@ async def camera_exposure(request: CameraExposureRequest) -> JSONResponse:
 
 @app.websocket("/log")
 async def log(websocket: WebSocket):
-    await websocket.accept()
+    await connection_manager.connect(websocket)
     try:
         await send_log(websocket)
     except asyncio.CancelledError:
         pass
     finally:
-        await websocket.close()
+        connection_manager.disconnect(websocket)
 
 
 @app.post("/capture/manual")
@@ -402,6 +394,13 @@ async def stop_capture() -> JSONResponse:
         },
         status_code=200,
     )
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    connections = list(connection_manager.active_connections)
+    for websocket in connections:
+        await websocket.close(1001)
 
 
 if __name__ == "__main__":
