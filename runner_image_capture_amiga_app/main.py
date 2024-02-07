@@ -93,7 +93,7 @@ class FileManager:
 
 
 class RealSense:
-    def __init__(self, frame_size=(1920, 1080), fps=300, camera_index=0):
+    def __init__(self, frame_size=(1920, 1080), fps=30, camera_index=0):
         # Note: when connected via USB2, RealSense cameras are limited to:
         # - 1280x720 @ 6fps
         # - 640x480 @ 30fps
