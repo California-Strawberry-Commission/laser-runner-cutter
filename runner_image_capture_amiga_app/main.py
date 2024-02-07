@@ -93,7 +93,7 @@ class FileManager:
 
 
 class RealSense:
-    def __init__(self, frame_size=(1920, 1080), fps=30, camera_index=0):
+    def __init__(self, frame_size=(1920, 1080), fps=300, camera_index=0):
         # Note: when connected via USB2, RealSense cameras are limited to:
         # - 1280x720 @ 6fps
         # - 640x480 @ 30fps
@@ -130,7 +130,21 @@ class RealSense:
 
         # Start pipeline
         self.pipeline = rs.pipeline()
-        self.profile = self.pipeline.start(self.config)
+        try:
+            self.profile = self.pipeline.start(self.config)
+        except Exception as e:
+            print(f"Error starting RealSense pipeline: {e}")
+            # When connected via USB2, limit to 1280x720 @ 6fps
+            self.frame_size = (1280, 720)
+            self.fps = 6
+            self.config.enable_stream(
+                rs.stream.color,
+                self.frame_size[0],
+                self.frame_size[1],
+                rs.format.rgb8,
+                self.fps,
+            )
+            self.profile = self.pipeline.start(self.config)
 
     def set_exposure(self, exposure_ms):
         color_sensor = self.profile.get_device().first_color_sensor()
