@@ -49,6 +49,11 @@ class FileManager:
     def save_frame(
         self, frame, directory=DEFAULT_IMAGE_DIR, prefix=DEFAULT_IMAGE_FILE_PREFIX
     ):
+        if not directory:  # directory cannot be empty string
+            directory = DEFAULT_IMAGE_DIR
+        if prefix is None:  # prefix can be empty string
+            prefix = DEFAULT_IMAGE_FILE_PREFIX
+
         directory = os.path.expanduser(directory)
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -200,16 +205,19 @@ class CameraExposureRequest(BaseModel):
 
 class ManualCaptureRequest(BaseModel):
     saveDir: Union[str, None] = None
+    filePrefix: Union[str, None] = None
 
 
 class IntervalCaptureRequest(BaseModel):
     intervalSecs: float = 1.0
     saveDir: Union[str, None] = None
+    filePrefix: Union[str, None] = None
 
 
 class OverlapCaptureRequest(BaseModel):
     overlap: float = 50.0
     saveDir: Union[str, None] = None
+    filePrefix: Union[str, None] = None
 
 
 app = FastAPI()
@@ -277,18 +285,20 @@ async def send_log(websocket: WebSocket):
 
 
 async def interval_capture_task(
-    interval_secs: float, save_dir: str, stop_event: asyncio.Event
+    interval_secs: float, save_dir: str, file_prefix: str, stop_event: asyncio.Event
 ):
     while not stop_event.is_set():
         frame = camera.get_frame()
         if frame:
-            file_path = file_manager.save_frame(rs_to_cv_frame(frame), save_dir)
+            file_path = file_manager.save_frame(
+                rs_to_cv_frame(frame), save_dir, file_prefix
+            )
             log_queue.enqueue(f"Frame captured: {file_path}")
         await asyncio.sleep(interval_secs)
 
 
 async def overlap_capture_task(
-    overlap: float, save_dir: str, stop_event: asyncio.Event
+    overlap: float, save_dir: str, file_prefix: str, stop_event: asyncio.Event
 ):
     last_saved_frame = None
     while not stop_event.is_set():
@@ -298,7 +308,7 @@ async def overlap_capture_task(
         if current_frame:
             current_frame = rs_to_cv_frame(current_frame)
             if last_saved_frame is None:
-                file_path = file_manager.save_frame(current_frame, save_dir)
+                file_path = file_manager.save_frame(current_frame, save_dir, file_prefix)
                 log_queue.enqueue(f"Frame captured: {file_path}")
                 last_saved_frame = current_frame
             else:
@@ -341,7 +351,9 @@ async def log(websocket: WebSocket):
 async def manual_capture(request: ManualCaptureRequest) -> JSONResponse:
     frame = camera.get_frame()
     if frame:
-        file_path = file_manager.save_frame(rs_to_cv_frame(frame), request.saveDir)
+        file_path = file_manager.save_frame(
+            rs_to_cv_frame(frame), request.saveDir, request.filePrefix
+        )
         log_queue.enqueue(f"Frame captured: {file_path}")
         return JSONResponse(content={"file": file_path}, status_code=200)
     else:

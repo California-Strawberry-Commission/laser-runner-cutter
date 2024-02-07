@@ -13,6 +13,7 @@ enum CaptureMode {
 export default function ButtonBar({ logLimit = 10 }: { logLimit?: number }) {
   const webSocket = useRef<WebSocket | null>(null);
   const [saveDir, setSaveDir] = useState<string>("~/Pictures/runners");
+  const [filePrefix, setFilePrefix] = useState<string>("runner_");
   const [exposureMs, setExposureMs] = useState<number>(0.2);
   const [captureMode, setCaptureMode] = useState<CaptureMode>(
     CaptureMode.MANUAL
@@ -57,6 +58,13 @@ export default function ButtonBar({ logLimit = 10 }: { logLimit?: number }) {
       setSaveDir(e.target.value);
     },
     [setSaveDir]
+  );
+
+  const onFilePrefixChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setFilePrefix(e.target.value);
+    },
+    [setFilePrefix]
   );
 
   const onExposureChange = useCallback(
@@ -120,6 +128,16 @@ export default function ButtonBar({ logLimit = 10 }: { logLimit?: number }) {
         />
       </div>
       <div className="flex flex-row gap-2 items-center">
+        <Label htmlFor="filePrefix">File Prefix:</Label>
+        <Input
+          type="text"
+          id="filePrefix"
+          placeholder="String to prepend to filenames"
+          value={filePrefix}
+          onChange={onFilePrefixChange}
+        />
+      </div>
+      <div className="flex flex-row gap-2 items-center">
         <Label htmlFor="exposure">Exposure (ms):</Label>
         <Input
           type="number"
@@ -148,11 +166,12 @@ export default function ButtonBar({ logLimit = 10 }: { logLimit?: number }) {
       </div>
       <Separator className="my-2" />
       {captureMode === CaptureMode.MANUAL ? (
-        <ManualMode saveDir={saveDir} />
+        <ManualMode saveDir={saveDir} filePrefix={filePrefix} />
       ) : null}
       {captureMode === CaptureMode.INTERVAL ? (
         <IntervalMode
           saveDir={saveDir}
+          filePrefix={filePrefix}
           captureInProgress={captureInProgress}
           onCaptureStateChange={onCaptureStateChange}
         />
@@ -160,6 +179,7 @@ export default function ButtonBar({ logLimit = 10 }: { logLimit?: number }) {
       {captureMode === CaptureMode.OVERLAP ? (
         <OverlapMode
           saveDir={saveDir}
+          filePrefix={filePrefix}
           captureInProgress={captureInProgress}
           onCaptureStateChange={onCaptureStateChange}
         />
@@ -182,7 +202,13 @@ export default function ButtonBar({ logLimit = 10 }: { logLimit?: number }) {
   );
 }
 
-function ManualMode({ saveDir }: { saveDir: string }) {
+function ManualMode({
+  saveDir,
+  filePrefix,
+}: {
+  saveDir: string;
+  filePrefix: string;
+}) {
   const onCaptureClick = useCallback(async () => {
     try {
       const response = await fetch(
@@ -192,7 +218,7 @@ function ManualMode({ saveDir }: { saveDir: string }) {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ saveDir }),
+          body: JSON.stringify({ saveDir, filePrefix }),
         }
       );
 
@@ -204,7 +230,7 @@ function ManualMode({ saveDir }: { saveDir: string }) {
     } catch (error) {
       console.error("Error requesting capture:", error);
     }
-  }, [saveDir]);
+  }, [saveDir, filePrefix]);
 
   return (
     <>
@@ -216,10 +242,12 @@ function ManualMode({ saveDir }: { saveDir: string }) {
 
 function IntervalMode({
   saveDir,
+  filePrefix,
   captureInProgress,
   onCaptureStateChange,
 }: {
   saveDir: string;
+  filePrefix: string;
   captureInProgress: boolean;
   onCaptureStateChange: (inProgress: boolean) => void;
 }) {
@@ -245,7 +273,7 @@ function IntervalMode({
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ intervalSecs, saveDir }),
+          body: JSON.stringify({ intervalSecs, saveDir, filePrefix }),
         }
       );
 
@@ -259,7 +287,7 @@ function IntervalMode({
     } catch (error) {
       console.error("Error starting capture:", error);
     }
-  }, [intervalSecs, saveDir]);
+  }, [intervalSecs, saveDir, filePrefix]);
 
   const onStopClick = useCallback(async () => {
     try {
@@ -302,10 +330,12 @@ function IntervalMode({
 
 function OverlapMode({
   saveDir,
+  filePrefix,
   captureInProgress,
   onCaptureStateChange,
 }: {
   saveDir: string;
+  filePrefix: string;
   captureInProgress: boolean;
   onCaptureStateChange: (inProgress: boolean) => void;
 }) {
@@ -331,7 +361,7 @@ function OverlapMode({
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ overlap, saveDir }),
+          body: JSON.stringify({ overlap, saveDir, filePrefix }),
         }
       );
 
@@ -345,7 +375,7 @@ function OverlapMode({
     } catch (error) {
       console.error("Error starting capture:", error);
     }
-  }, [overlap, saveDir]);
+  }, [overlap, saveDir, filePrefix]);
 
   const onStopClick = useCallback(async () => {
     try {
