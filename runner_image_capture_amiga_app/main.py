@@ -22,8 +22,8 @@ import queue
 import threading
 
 
-DEFAULT_SAVE_DIR = os.path.expanduser("~/Pictures/runners")
-DEFAULT_FILE_PREFIX = "runner_"
+DEFAULT_IMAGE_DIR = os.path.expanduser("~/Pictures/runners")
+DEFAULT_IMAGE_FILE_PREFIX = "runner_"
 
 
 class ConnectionManager:
@@ -46,7 +46,9 @@ class ConnectionManager:
 
 
 class FileManager:
-    def save_frame(self, frame, directory=DEFAULT_SAVE_DIR, prefix=DEFAULT_FILE_PREFIX):
+    def save_frame(
+        self, frame, directory=DEFAULT_IMAGE_DIR, prefix=DEFAULT_IMAGE_FILE_PREFIX
+    ):
         directory = os.path.expanduser(directory)
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -130,7 +132,21 @@ class RealSense:
 
         # Start pipeline
         self.pipeline = rs.pipeline()
-        self.profile = self.pipeline.start(self.config)
+        try:
+            self.profile = self.pipeline.start(self.config)
+        except Exception as e:
+            print(f"Error starting RealSense pipeline: {e}")
+            # When connected via USB2, limit to 1280x720 @ 6fps
+            self.frame_size = (1280, 720)
+            self.fps = 6
+            self.config.enable_stream(
+                rs.stream.color,
+                self.frame_size[0],
+                self.frame_size[1],
+                rs.format.rgb8,
+                self.fps,
+            )
+            self.profile = self.pipeline.start(self.config)
 
     def set_exposure(self, exposure_ms):
         color_sensor = self.profile.get_device().first_color_sensor()
@@ -187,12 +203,12 @@ class ManualCaptureRequest(BaseModel):
 
 
 class IntervalCaptureRequest(BaseModel):
-    intervalSecs: float = 0.0
+    intervalSecs: float = 1.0
     saveDir: Union[str, None] = None
 
 
 class OverlapCaptureRequest(BaseModel):
-    overlap: float = 0.0
+    overlap: float = 50.0
     saveDir: Union[str, None] = None
 
 
