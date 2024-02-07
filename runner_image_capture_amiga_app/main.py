@@ -22,8 +22,8 @@ import queue
 import threading
 
 
-DEFAULT_SAVE_DIR = os.path.expanduser("~/Pictures/runners")
-DEFAULT_FILE_PREFIX = "runner_"
+DEFAULT_IMAGE_DIR = os.path.expanduser("~/Pictures/runners")
+DEFAULT_IMAGE_FILE_PREFIX = "runner_"
 
 
 class ConnectionManager:
@@ -46,7 +46,9 @@ class ConnectionManager:
 
 
 class FileManager:
-    def save_frame(self, frame, directory=DEFAULT_SAVE_DIR, prefix=DEFAULT_FILE_PREFIX):
+    def save_frame(
+        self, frame, directory=DEFAULT_IMAGE_DIR, prefix=DEFAULT_IMAGE_FILE_PREFIX
+    ):
         directory = os.path.expanduser(directory)
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -201,12 +203,12 @@ class ManualCaptureRequest(BaseModel):
 
 
 class IntervalCaptureRequest(BaseModel):
-    intervalSecs: float = 0.0
+    intervalSecs: float = 1.0
     saveDir: Union[str, None] = None
 
 
 class OverlapCaptureRequest(BaseModel):
-    overlap: float = 0.0
+    overlap: float = 50.0
     saveDir: Union[str, None] = None
 
 
