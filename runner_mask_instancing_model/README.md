@@ -1,4 +1,6 @@
-# Laser Detection ML Model
+# Runner Mask Instancing ML Model
+
+Project for preparing training data and training a ML model for instancing mask images. Goal: given a binary mask that represents runners, segment it into separate instances of runners.
 
 ## Environment setup
 
@@ -14,7 +16,7 @@
 
 1.  Create and source into a venv
 
-        $ cd laser_detection
+        $ cd runner_mask_instancing_model
         $ python3 -m venv venv
         $ source venv/bin/activate
 
@@ -34,12 +36,12 @@ DVC abstracts cloud storage and versioning of data for machine learning. It allo
 
 1.  Get an AWS access key for the S3 bucket, and set it for use by DVC:
 
-        $ dvc remote modify --local laser_detection access_key_id <access key>
-        $ dvc remote modify --local laser_detection secret_access_key <secret access key>
+        $ dvc remote modify --local runner_mask_instancing access_key_id <access key>
+        $ dvc remote modify --local runner_mask_instancing secret_access_key <secret access key>
 
 1.  Pull data from the S3 bucket
 
-        $ dvc pull -r laser_detection
+        $ dvc pull -r runner_mask_instancing
 
 ### Labelbox integration
 
@@ -47,31 +49,31 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
 
 1.  Get an API key from the Labelbox workspace, and add it to the `.env` file.
 
-        $ cd laser_detection
+        $ cd runner_mask_instancing_model
         $ echo "LABELBOX_API_KEY=<api key>" > .env
 
 ## Workflow
 
-1.  Obtain new training images. See `src/image_capture.py` for an example.
+1.  Upload non-instanced runner mask images to the existing Labelbox dataset:
 
-        $ python src/image_capture --output_directory <directory>
+        $ python src/labelbox_api import_images --images_dir <path to images dir>
 
-1.  Upload new images to the existing Labelbox dataset:
-
-        $ python src/labelbox_api import_images --images_dir <directory>
-
-1.  Annotate the images in Labelbox
+1.  Annotate the images in Labelbox with one polyline for each runner instance
 
 1.  Obtain labels from Labelbox
 
-    1. Go to Annotate -> Laser Detection
+    1. Go to Annotate -> Runner Mask Instancing
     1. Click the "Data Rows" tab
     1. Click the "All (X data rows)" dropdown, then click "Export data v2"
     1. Select all fields, then click the "Export JSON" button
 
-1.  Create YOLO label txt files from the Labelbox ndjson export file:
+1.  Using the Labelbox polyline annotations, instance the mask images
 
-        $ python src/labelbox_api create_labels --labelbox_export_file <ndjson export file path>
+        $ python src/instance_mask_images.py -f <path to ndjson export>
+
+1.  Create YOLO label txt files from the instanced masks:
+
+        $ python src/create_yolo_labels.py
 
 1.  Run `split_data.py` to split the raw image and label data into training and validation datasets. Be sure to remove the existing train/val images and labels beforehand.
 
