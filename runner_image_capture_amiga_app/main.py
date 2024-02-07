@@ -428,13 +428,6 @@ async def stop_capture() -> JSONResponse:
     )
 
 
-@app.on_event("shutdown")
-async def shutdown():
-    connections = list(connection_manager.active_connections)
-    for websocket in connections:
-        await websocket.close(1001)
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8042, help="port to run the server")
