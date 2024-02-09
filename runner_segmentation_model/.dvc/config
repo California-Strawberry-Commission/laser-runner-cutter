@@ -1,0 +1,4 @@
+[core]
+    remote = runner_segmentation
+['remote "runner_segmentation"']
+    url = s3://runner-segmentation-dvc

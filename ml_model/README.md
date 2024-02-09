@@ -1,6 +1,6 @@
 # Machine Learning
 
-Directory withing the laser runner removal project for preparing data and training ML models
+Project for preparing training data and training a ML model for instanced segmentation of runners in a color image.
 
 ## Environment setup
 

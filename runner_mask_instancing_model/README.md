@@ -16,13 +16,23 @@ Project for preparing training data and training a ML model for instancing mask 
 
 1.  Create and source into a venv
 
-        $ cd runner_mask_instancing_model
-        $ python3 -m venv venv
+    Install Python 3.11:
+
+        $ sudo apt update && sudo apt upgrade -y
+        $ sudo add-apt-repository ppa:deadsnakes/ppa
+        $ sudo apt update
+        $ sudo apt install python3.11
+        $ sudo apt install python3.11-venv
+
+    Create venv:
+
+        $ cd runner_segmentation_model
+        $ python3.11 -m venv venv
         $ source venv/bin/activate
 
-1.  Install a specific version of pytorch to match cuda versions and detect GPUs
+1.  Install specific version of PyTorch to match the CUDA version
 
-        $ pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+        $ pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
     NOTE: If you have any existing installs of touch torchvision or torchaudio in the venv, this will cause errors and they should be uninstalled
 
