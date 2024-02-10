@@ -7,7 +7,7 @@
       "args": [
         "--port 8042"
       ],
-      "autostart": true,
+      "autostart": false,
       "http_gui_port": 8042,
       "display_name": "Runner Image Capture"
     }

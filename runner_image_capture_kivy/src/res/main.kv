@@ -1,0 +1,106 @@
+<BackgroundColor@Widget>
+    background_color: 1, 1, 1, 1
+    canvas.before:
+        Color:
+            rgba: root.background_color
+        Rectangle:
+            size: self.size
+            pos: self.pos
+<BackgroundLabel@Label+BackgroundColor>
+    background_color: 1, 1, 1, 1
+BoxLayout:
+    orientation: "vertical"
+    # Content
+    BoxLayout:
+        size_hint: 1, 0.9
+        orientation: "horizontal"
+        # UserInput
+        BoxLayout:
+            size_hint: 0.4, 1
+            orientation: "vertical"
+            spacing: 5
+            Label:
+                text: "Runner Image Capture"
+                size_hint_y : None
+                height: 40
+                text_size: self.size
+                halign: "center"
+                valign: "middle"
+                font_size: "20sp"
+                bold: True
+                color: 0, 0, 0, 1
+            # SaveDir
+            BoxLayout:
+                orientation: "horizontal"
+                size_hint_y: None
+                height: 40
+                Label:
+                    text: "Save Directory:"
+                    size_hint: 0.4, 1
+                    text_size: self.size
+                    halign: "center"
+                    valign: "middle"
+                    font_size: "16sp"
+                    color: 0, 0, 0, 1
+                TextInput:
+                    multiline: False
+                    size_hint: 0.6, 1
+            # FilePrefix
+            BoxLayout:
+                orientation: "horizontal"
+                size_hint_y: None
+                height: 40
+                Label:
+                    text: "File Prefix:"
+                    size_hint: 0.4, 1
+                    text_size: self.size
+                    halign: "center"
+                    valign: "middle"
+                    font_size: "16sp"
+                    color: 0, 0, 0, 1
+                TextInput:
+                    multiline: False
+                    size_hint: 0.6, 1
+            # Exposure
+            BoxLayout:
+                orientation: "horizontal"
+                size_hint_y: None
+                height: 40
+                Label:
+                    text: "Exposure:"
+                    size_hint: 0.4, 1
+                    text_size: self.size
+                    halign: "center"
+                    valign: "middle"
+                    font_size: "16sp"
+                    color: 0, 0, 0, 1
+                TextInput:
+                    multiline: False
+                    size_hint: 0.6, 1
+            # CaptureMode
+            TabbedPanel:
+                do_default_tab: False
+                tab_width: 150
+                TabbedPanelItem:
+                    text: "Manual"
+                    on_press: app.update_view('rgb')
+                TabbedPanelItem:
+                    text: "Interval"
+                    on_press: app.update_view('disparity')
+        # CameraPreview
+        BoxLayout:
+            size_hint: 0.6, 1
+    # Footer
+    BoxLayout:
+        size_hint: 1, 0.1
+        # BackButton
+        Button:
+            id: back_btn_layout
+            background_color: 1, 1, 1, 1
+            size_hint: 0.8, 0.8
+            background_normal: "assets/back_button.png"
+            on_release: app.on_exit_btn()
+            Image:
+                source: "assets/back_button_normal.png" if self.parent.state == "normal" else "assets/back_button_down.png"
+                pos: self.parent.pos
+                size: self.parent.size
