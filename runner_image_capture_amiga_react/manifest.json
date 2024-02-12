@@ -3,7 +3,7 @@
     "runner-image-capture": {
       "name": "runner-image-capture-react",
       "type": "app",
-      "exec_cmd": "/mnt/managed_home/farm-ng-user-genkikondo/LaserRunnerRemoval/runner_image_capture_amiga_react/venv/bin/python3 /mnt/managed_home/farm-ng-user-genkikondo/LaserRunnerRemoval/runner_image_capture_amiga_react/main.py",
+      "exec_cmd": "/mnt/managed_home/farm-ng-user-genkikondo/laser-runner-cutter/runner_image_capture_amiga_react/venv/bin/python3 /mnt/managed_home/farm-ng-user-genkikondo/laser-runner-cutter/runner_image_capture_amiga_react/main.py",
       "args": [
         "--port 8042"
       ],

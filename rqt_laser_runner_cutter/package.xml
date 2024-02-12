@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>rqt_laser_runner_removal</name>
+  <name>rqt_laser_runner_cutter</name>
   <version>0.0.0</version>
   <description>TODO: Package description</description>
   <maintainer email="kondo.genki@gmail.com">genki</maintainer>
@@ -18,6 +18,6 @@
 
   <export>
     <build_type>ament_python</build_type>
-    <rqt_gui plugin="${prefix}/plugin.xml"/>
+    <rqt_gui plugin="${prefix}/plugin.xml" />
   </export>
 </package>

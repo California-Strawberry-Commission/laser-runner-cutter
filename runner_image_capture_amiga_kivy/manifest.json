@@ -3,7 +3,7 @@
         "runner-image-capture-kivy": {
             "name": "runner-image-capture-kivy",
             "type": "app",
-            "exec_cmd": "/mnt/managed_home/farm-ng-user-genkikondo/LaserRunnerRemoval/runner_image_capture_amiga_kivy/entry.sh",
+            "exec_cmd": "/mnt/managed_home/farm-ng-user-genkikondo/laser-runner-cutter/runner_image_capture_amiga_kivy/entry.sh",
             "display_name": "Runner Image Capture (Kivy)",
             "autostart": false
         }

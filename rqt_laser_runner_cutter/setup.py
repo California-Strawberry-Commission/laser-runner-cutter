@@ -1,6 +1,6 @@
 from setuptools import setup
 
-package_name = "rqt_laser_runner_removal"
+package_name = "rqt_laser_runner_cutter"
 
 setup(
     name=package_name,
@@ -10,7 +10,7 @@ setup(
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         (
             "share/" + package_name + "/resource",
-            ["resource/rqt_laser_runner_removal.ui"],
+            ["resource/rqt_laser_runner_cutter.ui"],
         ),
         ("share/" + package_name, ["package.xml"]),
         ("share/" + package_name, ["plugin.xml"]),

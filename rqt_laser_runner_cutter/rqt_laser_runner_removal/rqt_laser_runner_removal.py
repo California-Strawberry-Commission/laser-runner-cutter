@@ -16,28 +16,28 @@ CAMERA_FRAME_DISPLAY_FPS = 10.0
 GET_FRAME_TIMEOUT_SECS = 0.5
 
 
-class RqtLaserRunnerRemoval(Plugin):
+class RqtLaserRunnerCutter(Plugin):
     def __init__(self, context):
         super().__init__(context)
 
         self.context = context
         self.widget = QWidget()
-        self.setObjectName("Laser Runner Removal")
+        self.setObjectName("Laser Runner Cutter")
 
         # For converting image msg to numpy array
         self.cv_bridge = CvBridge()
 
         # Get path to Qt Designer UI file and load the file
         resource_dir = os.path.join(
-            get_package_share_directory("rqt_laser_runner_removal"), "resource"
+            get_package_share_directory("rqt_laser_runner_cutter"), "resource"
         )
         ui_file = os.path.join(
             resource_dir,
-            "rqt_laser_runner_removal.ui",
+            "rqt_laser_runner_cutter.ui",
         )
         loadUi(ui_file, self.widget)
 
-        self.widget.setObjectName("Laser Runner Removal UI")
+        self.widget.setObjectName("Laser Runner Cutter UI")
 
         # Show _widget.windowTitle on left-top of each plugin (when
         # it's set in _widget). This is useful when you open multiple

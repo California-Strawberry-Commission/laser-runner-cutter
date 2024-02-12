@@ -1,10 +1,11 @@
 """File: control_node.py
 
-Main ros2 control node for the laser runner removal system. This 
+Main ros2 control node for the Laser Runner Cutter. This 
 node uses a state machine to control the general objective of the 
 system. States are things like calibrating the camera laser system,
 finding a specific runner to burn, and burning said runner.  
 """
+
 import time
 
 import numpy as np

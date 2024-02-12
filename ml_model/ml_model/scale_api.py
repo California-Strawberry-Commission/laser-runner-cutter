@@ -1,6 +1,6 @@
 """File: scale_api.py
 
-Description: Functions for using the scale API. Currently the laser runner removal project is planning on 
+Description: Functions for using the scale API. Currently the Laser Runner Cutter is planning on 
 using primarily labelbox for external data labeling. Future use of the scale api will require a either creating 
 a CLI utility, or creating an external script for calling this function. 
 """

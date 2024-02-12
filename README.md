@@ -1,6 +1,6 @@
-# Laser Runner Removal
+# Laser Runner Cutter
 
-Laser Runner Removal is a project by the California Strawberry Commission for automated detection and cutting of strawberry runners (also known as stolons).
+Laser Runner Cutter is a project by the California Strawberry Commission for automated detection and cutting of strawberry runners (also known as stolons).
 
 ## Environment setup
 
@@ -58,13 +58,13 @@ Linux systems require udev rules to allow access to USB devices without root pri
 
 ## Install
 
-1.  Install LRR
+1.  Install Laser Runner Cutter
 
         $ cd ~/ros2_ws/src
-        $ git clone https://github.com/CA-rvinson/LaserRunnerRemoval.git
+        $ git clone https://github.com/California-Strawberry-Commission/laser-runner-cutter
 
         # Install dependencies
-        $ cd LaserRunnerRemoval/control_node/control_node
+        $ cd laser-runner-cutter/control_node/control_node
         $ pip3 install -r requirements.txt
 
 1.  Install [YASMIN](https://github.com/uleroboticsgroup/yasmin#installation)
@@ -81,14 +81,14 @@ Linux systems require udev rules to allow access to USB devices without root pri
 
 ## rqt plugin
 
-A rqt plugin is used for visualization. Run `rqt`, under Plugins you should see Laser Runner Removal. If the plugin does not appear in rqt, you may need to run `rqt --force-discover`.
+A rqt plugin is used for visualization. Run `rqt`, under Plugins you should see Laser Runner Cutter. If the plugin does not appear in rqt, you may need to run `rqt --force-discover`.
 
 To develop the plugin UI, install QT Designer:
 
         $ pip install pyqt5-tools
         $ pyqt5-tools designer
 
-Then, open the UI file `rqt_laser_runner_removal.ui`.
+Then, open the UI file `rqt_laser_runner_cutter.ui`.
 
 ## Libraries
 

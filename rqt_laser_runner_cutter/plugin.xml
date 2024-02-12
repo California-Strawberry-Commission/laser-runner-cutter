@@ -1,7 +1,9 @@
 <library path="src">
-  <class name="Laser Runner Removal" type="rqt_laser_runner_removal.rqt_laser_runner_removal.RqtLaserRunnerRemoval" base_class_type="rqt_gui_py::Plugin">
+  <class name="Laser Runner Cutter"
+    type="rqt_laser_runner_cutter.rqt_laser_runner_cutter.RqtLaserRunnerCutter"
+    base_class_type="rqt_gui_py::Plugin">
     <description>
-      GUI for Laser Runner Removal
+      GUI for Laser Runner Cutter
     </description>
     <qtgui>
       <!-- optional grouping...
@@ -12,9 +14,9 @@
         <label>Subgroup</label>
       </group>
       -->
-      <label>Laser Runner Removal</label>
+      <label>Laser Runner Cutter</label>
       <icon type="theme">applications-engineering</icon>
-      <statustip>GUI for Laser Runner Removal.</statustip>
+      <statustip>GUI for Laser Runner Cutter.</statustip>
     </qtgui>
   </class>
 </library>
