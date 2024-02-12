@@ -1,0 +1,150 @@
+<BackgroundColor@Widget>
+    background_color: 1, 1, 1, 1
+    canvas.before:
+        Color:
+            rgba: root.background_color
+        Rectangle:
+            size: self.size
+            pos: self.pos
+<BackgroundLabel@Label+BackgroundColor>
+    background_color: 1, 1, 1, 1
+BoxLayout:
+    orientation: "vertical"
+    # Content
+    BoxLayout:
+        size_hint: 1, 0.9
+        orientation: "horizontal"
+        # UserInput
+        BoxLayout:
+            size_hint: 0.4, 1
+            orientation: "vertical"
+            spacing: 5
+            Label:
+                text: "Runner Image Capture"
+                size_hint_y : None
+                height: 40
+                text_size: self.size
+                halign: "center"
+                valign: "middle"
+                font_size: "20sp"
+                bold: True
+                color: 0, 0, 0, 1
+            # SaveDir
+            BoxLayout:
+                orientation: "horizontal"
+                size_hint_y: None
+                height: 40
+                Label:
+                    text: "Save Directory:"
+                    size_hint: 0.4, 1
+                    text_size: self.size
+                    halign: "center"
+                    valign: "middle"
+                    font_size: "16sp"
+                    color: 0, 0, 0, 1
+                TextInput:
+                    multiline: False
+                    size_hint: 0.6, 1
+                    id: save_dir
+            # FilePrefix
+            BoxLayout:
+                orientation: "horizontal"
+                size_hint_y: None
+                height: 40
+                Label:
+                    text: "File Prefix:"
+                    size_hint: 0.4, 1
+                    text_size: self.size
+                    halign: "center"
+                    valign: "middle"
+                    font_size: "16sp"
+                    color: 0, 0, 0, 1
+                TextInput:
+                    multiline: False
+                    size_hint: 0.6, 1
+                    id: file_prefix
+            # Exposure
+            BoxLayout:
+                orientation: "horizontal"
+                size_hint_y: None
+                height: 40
+                Label:
+                    text: "Exposure (ms):"
+                    size_hint: 0.4, 1
+                    text_size: self.size
+                    halign: "center"
+                    valign: "middle"
+                    font_size: "16sp"
+                    color: 0, 0, 0, 1
+                TextInput:
+                    multiline: False
+                    size_hint: 0.6, 1
+                    id: exposure_ms
+            # CaptureMode
+            TabbedPanel:
+                do_default_tab: False
+                tab_width: 150
+                TabbedPanelItem:
+                    text: "Manual"
+                    BoxLayout:
+                        height: 80
+                        orientation: "vertical"
+                        Button:
+                            text: "Capture"
+                TabbedPanelItem:
+                    text: "Interval"
+                    BoxLayout:
+                        height: 80
+                        orientation: "vertical"
+                        # Interval
+                        BoxLayout:
+                            orientation: "horizontal"
+                            size_hint_y: None
+                            height: 40
+                            BackgroundLabel:
+                                text: "Interval (s):"
+                                size_hint: 0.4, 1
+                                text_size: self.size
+                                halign: "center"
+                                valign: "middle"
+                                font_size: "16sp"
+                                color: 0, 0, 0, 1
+                            TextInput:
+                                multiline: False
+                                size_hint: 0.6, 1
+                                id: interval_s
+                        Button:
+                            text: "Capture"
+            # Logs
+            Label:
+                text: "Logs"
+                size_hint_y : None
+                height: 30
+                text_size: self.size
+                halign: "center"
+                valign: "middle"
+                font_size: "14sp"
+                bold: True
+                color: 0, 0, 0, 1
+            BackgroundLabel:
+                height: 80
+                background_color: 1, 0, 0, 1
+        # CameraPreview
+        BoxLayout:
+            size_hint: 0.6, 1
+    # Footer
+    RelativeLayout:
+        size_hint: 1, 0.1
+        # BackButton
+        Button:
+            id: back_button
+            background_color: 1, 1, 1, 1
+            size_hint: None, None
+            size: 100, 40
+            pos_hint: {'center_x': 0.5, 'center_y': 0.5}
+            background_normal: "assets/back_button.png"
+            on_release: app.on_back_click()
+            Image:
+                source: "assets/back_button_normal.png" if self.parent.state == "normal" else "assets/back_button_down.png"
+                pos: self.parent.pos
+                size: self.parent.size
