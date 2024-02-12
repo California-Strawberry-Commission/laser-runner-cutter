@@ -45,6 +45,7 @@ BoxLayout:
                 TextInput:
                     multiline: False
                     size_hint: 0.6, 1
+                    id: save_dir
             # FilePrefix
             BoxLayout:
                 orientation: "horizontal"
@@ -61,13 +62,14 @@ BoxLayout:
                 TextInput:
                     multiline: False
                     size_hint: 0.6, 1
+                    id: file_prefix
             # Exposure
             BoxLayout:
                 orientation: "horizontal"
                 size_hint_y: None
                 height: 40
                 Label:
-                    text: "Exposure:"
+                    text: "Exposure (ms):"
                     size_hint: 0.4, 1
                     text_size: self.size
                     halign: "center"
@@ -77,29 +79,71 @@ BoxLayout:
                 TextInput:
                     multiline: False
                     size_hint: 0.6, 1
+                    id: exposure_ms
             # CaptureMode
             TabbedPanel:
                 do_default_tab: False
                 tab_width: 150
                 TabbedPanelItem:
                     text: "Manual"
-                    on_press: app.update_view('rgb')
+                    BoxLayout:
+                        height: 80
+                        orientation: "vertical"
+                        Button:
+                            text: "Capture"
                 TabbedPanelItem:
                     text: "Interval"
-                    on_press: app.update_view('disparity')
+                    BoxLayout:
+                        height: 80
+                        orientation: "vertical"
+                        # Interval
+                        BoxLayout:
+                            orientation: "horizontal"
+                            size_hint_y: None
+                            height: 40
+                            BackgroundLabel:
+                                text: "Interval (s):"
+                                size_hint: 0.4, 1
+                                text_size: self.size
+                                halign: "center"
+                                valign: "middle"
+                                font_size: "16sp"
+                                color: 0, 0, 0, 1
+                            TextInput:
+                                multiline: False
+                                size_hint: 0.6, 1
+                                id: interval_s
+                        Button:
+                            text: "Capture"
+            # Logs
+            Label:
+                text: "Logs"
+                size_hint_y : None
+                height: 30
+                text_size: self.size
+                halign: "center"
+                valign: "middle"
+                font_size: "14sp"
+                bold: True
+                color: 0, 0, 0, 1
+            BackgroundLabel:
+                height: 80
+                background_color: 1, 0, 0, 1
         # CameraPreview
         BoxLayout:
             size_hint: 0.6, 1
     # Footer
-    BoxLayout:
+    RelativeLayout:
         size_hint: 1, 0.1
         # BackButton
         Button:
-            id: back_btn_layout
+            id: back_button
             background_color: 1, 1, 1, 1
-            size_hint: 0.8, 0.8
+            size_hint: None, None
+            size: 100, 40
+            pos_hint: {'center_x': 0.5, 'center_y': 0.5}
             background_normal: "assets/back_button.png"
-            on_release: app.on_exit_btn()
+            on_release: app.on_back_click()
             Image:
                 source: "assets/back_button_normal.png" if self.parent.state == "normal" else "assets/back_button_down.png"
                 pos: self.parent.pos
