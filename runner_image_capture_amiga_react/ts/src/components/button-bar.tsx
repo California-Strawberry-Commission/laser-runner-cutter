@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import KeyboardContext from "@/lib/keyboard-context";
 
 enum CaptureMode {
   MANUAL,
@@ -26,6 +27,7 @@ export default function ButtonBar({
   );
   const [captureInProgress, setCaptureInProgress] = useState<boolean>(false);
   const [logMessages, setLogMessages] = useState<string[]>([]);
+  const { setInputName } = useContext(KeyboardContext);
 
   useEffect(() => {
     const startWebSocket = () => {
@@ -143,6 +145,7 @@ export default function ButtonBar({
           name="saveDir"
           placeholder="Path where images will be saved"
           value={saveDir}
+          onFocus={() => setInputName("saveDir")}
           onChange={onSaveDirChange}
         />
       </div>
@@ -154,6 +157,7 @@ export default function ButtonBar({
           name="filePrefix"
           placeholder="String to prepend to filenames"
           value={filePrefix}
+          onFocus={() => setInputName("filePrefix")}
           onChange={onFilePrefixChange}
         />
       </div>
@@ -166,6 +170,7 @@ export default function ButtonBar({
           name="exposure"
           step={exposureStep}
           value={exposureMs}
+          onFocus={() => setInputName("exposure")}
           onChange={onExposureChange}
         />
         <Button onClick={onExposureIncrementClick}>+</Button>
@@ -210,7 +215,7 @@ export default function ButtonBar({
       ) : null}
       <Separator className="my-2" />
       <h2 className="text-center font-bold">Log Messages</h2>
-      <div className="h-[160px] overflow-y-auto">
+      <div className="h-[80px] overflow-y-auto">
         <ul>
           {logMessages
             .slice()
@@ -278,6 +283,7 @@ function IntervalMode({
   step?: number;
 }) {
   const [intervalSecs, setIntervalSecs] = useState<number>(5);
+  const { setInputName } = useContext(KeyboardContext);
 
   const onIntervalChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -352,6 +358,7 @@ function IntervalMode({
           step={step}
           min={0}
           value={intervalSecs}
+          onFocus={() => setInputName("interval")}
           onChange={onIntervalChange}
         />
         <Button onClick={onIntervalIncrementClick}>+</Button>
@@ -377,6 +384,7 @@ function OverlapMode({
   onCaptureStateChange: (inProgress: boolean) => void;
 }) {
   const [overlap, setOverlap] = useState<number>(50);
+  const { setInputName } = useContext(KeyboardContext);
 
   const onOverlapChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -440,6 +448,7 @@ function OverlapMode({
           id="overlap"
           name="overlap"
           value={overlap}
+          onFocus={() => setInputName("overlap")}
           onChange={onOverlapChange}
         />
       </div>
