@@ -2,5 +2,5 @@ fastapi
 uvicorn[standard]
 pyrealsense2
 numpy
-opencv-contrib-python
+opencv-python
 natsort

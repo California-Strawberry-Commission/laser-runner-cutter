@@ -6,14 +6,17 @@
         Rectangle:
             size: self.size
             pos: self.pos
+
 <BackgroundLabel@Label+BackgroundColor>
     background_color: 1, 1, 1, 1
+
 BoxLayout:
     orientation: "vertical"
     # Content
     BoxLayout:
         size_hint: 1, 0.9
         orientation: "horizontal"
+        spacing: 5
         # UserInput
         BoxLayout:
             size_hint: 0.4, 1
@@ -77,44 +80,44 @@ BoxLayout:
                     font_size: "16sp"
                     color: 0, 0, 0, 1
                 TextInput:
+                    size_hint: 0.5, 1
+                    multiline: False
+                    input_filter: "float"
+                    id: exposure_ms
+                Button:
+                    size_hint: 0.1, 1
+                    text: "Apply"
+                    on_release: app.on_exposure_apply_click()
+            # ManualCapture
+            Button:
+                size_hint_y: None
+                height: 40
+                text: "Capture single frame"
+                on_release: app.on_manual_capture_click()
+            # IntervalCapture
+            BoxLayout:
+                orientation: "horizontal"
+                size_hint_y: None
+                height: 40
+                Label:
+                    text: "Interval (s):"
+                    size_hint: 0.4, 1
+                    text_size: self.size
+                    halign: "center"
+                    valign: "middle"
+                    font_size: "16sp"
+                    color: 0, 0, 0, 1
+                TextInput:
                     multiline: False
                     size_hint: 0.6, 1
-                    id: exposure_ms
-            # CaptureMode
-            TabbedPanel:
-                do_default_tab: False
-                tab_width: 150
-                TabbedPanelItem:
-                    text: "Manual"
-                    BoxLayout:
-                        height: 80
-                        orientation: "vertical"
-                        Button:
-                            text: "Capture"
-                TabbedPanelItem:
-                    text: "Interval"
-                    BoxLayout:
-                        height: 80
-                        orientation: "vertical"
-                        # Interval
-                        BoxLayout:
-                            orientation: "horizontal"
-                            size_hint_y: None
-                            height: 40
-                            BackgroundLabel:
-                                text: "Interval (s):"
-                                size_hint: 0.4, 1
-                                text_size: self.size
-                                halign: "center"
-                                valign: "middle"
-                                font_size: "16sp"
-                                color: 0, 0, 0, 1
-                            TextInput:
-                                multiline: False
-                                size_hint: 0.6, 1
-                                id: interval_s
-                        Button:
-                            text: "Capture"
+                    input_filter: "float"
+                    id: interval_s
+            Button:
+                size_hint_y: None
+                height: 40
+                text: "Start interval capture"
+                id: interval_capture_button
+                on_release: app.on_interval_capture_click()
             # Logs
             Label:
                 text: "Logs"
@@ -123,15 +126,32 @@ BoxLayout:
                 text_size: self.size
                 halign: "center"
                 valign: "middle"
-                font_size: "14sp"
+                font_size: "18sp"
                 bold: True
                 color: 0, 0, 0, 1
-            BackgroundLabel:
-                height: 80
-                background_color: 1, 0, 0, 1
+            ScrollView:
+                do_scroll_x: False
+                Label:
+                    font_size: "14sp"
+                    size_hint: None, None
+                    size: self.texture_size
+                    color: 0, 0, 0, 1
+                    id: logs
         # CameraPreview
         BoxLayout:
+            orientation: "vertical"
             size_hint: 0.6, 1
+            Image:
+                id: camera_preview
+            Label:
+                size_hint: 1, 0.2
+                text: "Camera not available"
+                id: camera_status
+                text_size: self.size
+                halign: "center"
+                valign: "middle"
+                font_size: "18sp"
+                color: 0, 0, 0, 1
     # Footer
     RelativeLayout:
         size_hint: 1, 0.1
