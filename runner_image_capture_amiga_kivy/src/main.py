@@ -20,12 +20,9 @@ Config.set("graphics", "fullscreen", "false")
 Config.set("input", "mouse", "mouse,disable_on_activity")
 Config.set("kivy", "keyboard_mode", "systemanddock")
 
-from kivy.app import App  # noqa: E402
-from kivy.clock import Clock  # noqa: E402
-from kivy.core.window import Window  # noqa: E402
+from kivymd.app import MDApp
 from kivy.graphics.texture import Texture  # noqa: E402
 from kivy.lang.builder import Builder  # noqa: E402
-from kivy.uix.image import Image  # noqa: E402
 
 from file_manager import file_manager
 from camera import realsense
@@ -41,7 +38,7 @@ DEFAULT_INTERVAL_S = 5
 logger = logging.getLogger("amiga.apps.runnerimagecapture")
 
 
-class RunnerImageCaptureApp(App):
+class RunnerImageCaptureApp(MDApp):
     def __init__(self) -> None:
         super().__init__()
         self.interval_capture_task: asyncio.Task = None
@@ -53,7 +50,10 @@ class RunnerImageCaptureApp(App):
         self.camera.initialize()
         self.camera.set_exposure(DEFAULT_EXPOSURE_MS)
 
-        Window.clearcolor = (1, 1, 1, 1)
+        # KivyMD theme
+        self.theme_cls.theme_style = "Dark"
+        self.theme_cls.primary_palette = "Orange"
+
         return Builder.load_file("res/main.kv")
 
     def log(self, str) -> None:
@@ -83,6 +83,7 @@ class RunnerImageCaptureApp(App):
     def on_exposure_apply_click(self) -> None:
         exposure_ms = float(self.root.ids["exposure_ms"].text)
         self.camera.set_exposure(exposure_ms)
+        self.log(f"Exposure set to {exposure_ms}ms")
 
     def on_manual_capture_click(self) -> None:
         self.capture_frame()
@@ -102,11 +103,11 @@ class RunnerImageCaptureApp(App):
             self.root.ids["interval_capture_button"].text = "Start interval capture"
             self.log("Stopped interval capture")
 
-    def on_back_click(self) -> None:
+    def on_quit_click(self) -> None:
         """Kills the running kivy application."""
         for task in self.tasks:
             task.cancel()
-        App.get_running_app().stop()
+        MDApp.get_running_app().stop()
 
     async def app_func(self):
         async def run_wrapper():

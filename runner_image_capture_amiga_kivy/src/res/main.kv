@@ -1,28 +1,16 @@
-<BackgroundColor@Widget>
-    background_color: 1, 1, 1, 1
-    canvas.before:
-        Color:
-            rgba: root.background_color
-        Rectangle:
-            size: self.size
-            pos: self.pos
-
-<BackgroundLabel@Label+BackgroundColor>
-    background_color: 1, 1, 1, 1
-
-BoxLayout:
+MDBoxLayout:  # Root
     orientation: "vertical"
-    # Content
-    BoxLayout:
+    padding: 10
+    spacing: 10
+    MDBoxLayout:  # Content
         size_hint: 1, 0.9
         orientation: "horizontal"
-        spacing: 5
-        # UserInput
-        BoxLayout:
+        spacing: 10
+        MDBoxLayout:  # Configuration
             size_hint: 0.4, 1
             orientation: "vertical"
-            spacing: 5
-            Label:
+            spacing: 10
+            MDLabel:  # Title
                 text: "Runner Image Capture"
                 size_hint_y : None
                 height: 40
@@ -31,140 +19,121 @@ BoxLayout:
                 valign: "middle"
                 font_size: "20sp"
                 bold: True
-                color: 0, 0, 0, 1
-            # SaveDir
-            BoxLayout:
+            MDTextField:  # SaveDir
+                id: save_dir
+                multiline: False
+                hint_text: "Save Directory"
+                mode: "rectangle"
+            MDTextField:  # FilePrefix
+                id: file_prefix
+                multiline: False
+                hint_text: "File Prefix"
+                mode: "rectangle"
+            MDBoxLayout:  # Exposure
                 orientation: "horizontal"
-                size_hint_y: None
-                height: 40
-                Label:
-                    text: "Save Directory:"
-                    size_hint: 0.4, 1
-                    text_size: self.size
-                    halign: "center"
-                    valign: "middle"
-                    font_size: "16sp"
-                    color: 0, 0, 0, 1
-                TextInput:
-                    multiline: False
-                    size_hint: 0.6, 1
-                    id: save_dir
-            # FilePrefix
-            BoxLayout:
-                orientation: "horizontal"
-                size_hint_y: None
-                height: 40
-                Label:
-                    text: "File Prefix:"
-                    size_hint: 0.4, 1
-                    text_size: self.size
-                    halign: "center"
-                    valign: "middle"
-                    font_size: "16sp"
-                    color: 0, 0, 0, 1
-                TextInput:
-                    multiline: False
-                    size_hint: 0.6, 1
-                    id: file_prefix
-            # Exposure
-            BoxLayout:
-                orientation: "horizontal"
-                size_hint_y: None
-                height: 40
-                Label:
-                    text: "Exposure (ms):"
-                    size_hint: 0.4, 1
-                    text_size: self.size
-                    halign: "center"
-                    valign: "middle"
-                    font_size: "16sp"
-                    color: 0, 0, 0, 1
-                TextInput:
-                    size_hint: 0.5, 1
-                    multiline: False
-                    input_filter: "float"
+                adaptive_height: True
+                spacing: 10
+                MDTextField:
                     id: exposure_ms
-                Button:
-                    size_hint: 0.1, 1
-                    text: "Apply"
-                    on_release: app.on_exposure_apply_click()
-            # ManualCapture
-            Button:
-                size_hint_y: None
-                height: 40
-                text: "Capture single frame"
-                on_release: app.on_manual_capture_click()
-            # IntervalCapture
-            BoxLayout:
-                orientation: "horizontal"
-                size_hint_y: None
-                height: 40
-                Label:
-                    text: "Interval (s):"
-                    size_hint: 0.4, 1
-                    text_size: self.size
-                    halign: "center"
-                    valign: "middle"
-                    font_size: "16sp"
-                    color: 0, 0, 0, 1
-                TextInput:
                     multiline: False
-                    size_hint: 0.6, 1
+                    hint_text: "Exposure (ms)"
                     input_filter: "float"
-                    id: interval_s
-            Button:
+                    mode: "rectangle"
+                MDFillRoundFlatButton:
+                    text: "Apply"
+                    font_style: "Button"
+                    pos_hint: {"center_x": 0.5, "center_y": 0.5}
+                    on_release: app.on_exposure_apply_click()
+            MDBoxLayout:  # Spacer
                 size_hint_y: None
-                height: 40
-                text: "Start interval capture"
-                id: interval_capture_button
-                on_release: app.on_interval_capture_click()
+                height: 10
+            MDBoxLayout:  # Capture
+                orientation: "horizontal"
+                adaptive_height: True
+                spacing: 10
+                MDBoxLayout:  # ManualCapture
+                    orientation: "vertical"
+                    size_hint: 0.5, 1
+                    adaptive_height: True
+                    spacing: 10
+                    pos_hint: {"top": 1}
+                    MDLabel:
+                        text: "Manual"
+                        size_hint_y : None
+                        height: 30
+                        halign: "center"
+                        font_size: "18sp"
+                        bold: True
+                    MDFillRoundFlatButton:
+                        text: "Capture single frame"
+                        font_style: "Button"
+                        size_hint_x: 1
+                        pos_hint: {"center_x": 0.5, "center_y": 0.5}
+                        on_release: app.on_manual_capture_click()
+                MDBoxLayout:  # IntervalCapture
+                    orientation: "vertical"
+                    size_hint: 0.5, 1
+                    adaptive_height: True
+                    spacing: 10
+                    pos_hint: {"top": 1}
+                    MDLabel:
+                        text: "Interval"
+                        size_hint_y : None
+                        height: 30
+                        halign: "center"
+                        font_size: "18sp"
+                        bold: True
+                    MDTextField:
+                        id: interval_s
+                        multiline: False
+                        hint_text: "Interval (s)"
+                        input_filter: "float"
+                        mode: "rectangle"
+                    MDFillRoundFlatButton:
+                        id: interval_capture_button
+                        text: "Start interval capture"
+                        font_style: "Button"
+                        size_hint_x: 1
+                        pos_hint: {"center_x": 0.5, "center_y": 0.5}
+                        on_release: app.on_interval_capture_click()
+            MDBoxLayout:  # Spacer
+                size_hint_y: None
+                height: 10
             # Logs
-            Label:
+            MDLabel:
                 text: "Logs"
                 size_hint_y : None
                 height: 30
-                text_size: self.size
                 halign: "center"
-                valign: "middle"
                 font_size: "18sp"
                 bold: True
-                color: 0, 0, 0, 1
-            ScrollView:
+            MDScrollView:
                 do_scroll_x: False
-                Label:
-                    font_size: "14sp"
-                    size_hint: None, None
-                    size: self.texture_size
-                    color: 0, 0, 0, 1
+                MDLabel:
                     id: logs
+                    font_size: "14sp"
+                    size_hint_y: None
+                    size: self.texture_size
         # CameraPreview
-        BoxLayout:
+        MDBoxLayout:
             orientation: "vertical"
             size_hint: 0.6, 1
+            spacing: 10
             Image:
                 id: camera_preview
-            Label:
-                size_hint: 1, 0.2
-                text: "Camera not available"
+            MDLabel:
                 id: camera_status
-                text_size: self.size
+                text: "Camera not available"
                 halign: "center"
-                valign: "middle"
                 font_size: "18sp"
-                color: 0, 0, 0, 1
+                size_hint_y: None
+                size: self.texture_size
     # Footer
-    RelativeLayout:
+    MDRelativeLayout:
         size_hint: 1, 0.1
         # BackButton
-        Button:
-            id: back_button
-            background_color: 1, 1, 1, 1
-            size_hint: None, None
-            size: 100, 40
-            pos_hint: {'center_x': 0.5, 'center_y': 0.5}
-            background_normal: "assets/back_button.png"
-            on_release: app.on_back_click()
-            Image:
-                source: "assets/back_button_normal.png" if self.parent.state == "normal" else "assets/back_button_down.png"
-                pos: self.parent.pos
-                size: self.parent.size
+        MDFillRoundFlatButton:
+            text: "Quit"
+            font_style: "Button"
+            pos_hint: {"center_x": 0.5, "center_y": 0.5}
+            on_release: app.on_quit_click()
