@@ -24,15 +24,22 @@ from kivymd.app import MDApp
 from kivy.graphics.texture import Texture  # noqa: E402
 from kivy.lang.builder import Builder  # noqa: E402
 
-from file_manager import file_manager
-from camera import realsense
+from config_manager.config_manager import ConfigManager
+from file_manager.file_manager import FileManager
+from camera.realsense import RealSense
 
 
-# TODO: save/load from config file
-DEFAULT_SAVE_DIR = "~/Pictures/runners"
-DEFAULT_FILE_PREFIX = "runner_"
-DEFAULT_EXPOSURE_MS = 0.2
-DEFAULT_INTERVAL_S = 5
+CONFIG_FILE = "~/.config/runner-image-capture/config.json"
+CONFIG_KEY_SAVE_DIR = "saveDir"
+CONFIG_KEY_FILE_PREFIX = "filePrefix"
+CONFIG_KEY_EXPOSURE_MS = "exposureMs"
+CONFIG_KEY_INTERVAL_S = "intervalS"
+DEFAULT_CONFIG = {
+    CONFIG_KEY_SAVE_DIR: "~/Pictures/runners",
+    CONFIG_KEY_FILE_PREFIX: "runner_",
+    CONFIG_KEY_EXPOSURE_MS: 0.2,
+    CONFIG_KEY_INTERVAL_S: 5,
+}
 
 
 logger = logging.getLogger("amiga.apps.runnerimagecapture")
@@ -44,11 +51,12 @@ class RunnerImageCaptureApp(MDApp):
         self.interval_capture_task: asyncio.Task = None
 
     def build(self):
-        self.file_manager = file_manager.FileManager()
+        self.config_manager = ConfigManager(CONFIG_FILE, DEFAULT_CONFIG)
+        self.file_manager = FileManager()
         self.log_queue = deque(maxlen=100)
-        self.camera = realsense.RealSense()
+        self.camera = RealSense()
         self.camera.initialize()
-        self.camera.set_exposure(DEFAULT_EXPOSURE_MS)
+        self.camera.set_exposure(self.config_manager.get(CONFIG_KEY_EXPOSURE_MS))
 
         # KivyMD theme
         self.theme_cls.theme_style = "Dark"
@@ -65,10 +73,31 @@ class RunnerImageCaptureApp(MDApp):
         self.root.ids["logs"].text = "\n".join(reversed(self.log_queue))
 
     def on_start(self) -> None:
-        self.root.ids["save_dir"].text = DEFAULT_SAVE_DIR
-        self.root.ids["file_prefix"].text = DEFAULT_FILE_PREFIX
-        self.root.ids["exposure_ms"].text = str(DEFAULT_EXPOSURE_MS)
-        self.root.ids["interval_s"].text = str(DEFAULT_INTERVAL_S)
+        # Set initial values on text fields
+        self.root.ids["save_dir"].text = self.config_manager.get(CONFIG_KEY_SAVE_DIR)
+        self.root.ids["file_prefix"].text = self.config_manager.get(
+            CONFIG_KEY_FILE_PREFIX
+        )
+        self.root.ids["exposure_ms"].text = str(
+            self.config_manager.get(CONFIG_KEY_EXPOSURE_MS)
+        )
+        self.root.ids["interval_s"].text = str(
+            self.config_manager.get(CONFIG_KEY_INTERVAL_S)
+        )
+
+    def on_stop(self) -> None:
+        # Save config
+        self.config_manager.set(CONFIG_KEY_SAVE_DIR, self.root.ids["save_dir"].text)
+        self.config_manager.set(
+            CONFIG_KEY_FILE_PREFIX, self.root.ids["file_prefix"].text
+        )
+        self.config_manager.set(
+            CONFIG_KEY_EXPOSURE_MS, float(self.root.ids["exposure_ms"].text)
+        )
+        self.config_manager.set(
+            CONFIG_KEY_INTERVAL_S, float(self.root.ids["interval_s"].text)
+        )
+        self.config_manager.write_config()
 
     def capture_frame(self) -> None:
         frame = self.camera.get_frame()
