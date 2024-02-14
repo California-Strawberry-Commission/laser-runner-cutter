@@ -42,13 +42,11 @@ DEFAULT_CONFIG = {
 }
 
 
-logger = logging.getLogger("amiga.apps.runnerimagecapture")
-
-
 class RunnerImageCaptureApp(MDApp):
     def __init__(self) -> None:
         super().__init__()
         self.interval_capture_task: asyncio.Task = None
+        self.logger = logging.getLogger("amiga.apps.runnerimagecapture")
 
     def build(self):
         self.config_manager = ConfigManager(CONFIG_FILE, DEFAULT_CONFIG)
@@ -65,6 +63,8 @@ class RunnerImageCaptureApp(MDApp):
         return Builder.load_file("res/main.kv")
 
     def log(self, str) -> None:
+        self.logger.info(str)
+
         # Get the current timestamp
         current_time = datetime.now()
         # Format the timestamp
@@ -115,6 +115,7 @@ class RunnerImageCaptureApp(MDApp):
         self.log(f"Exposure set to {exposure_ms}ms")
 
     def on_manual_capture_click(self) -> None:
+        self.log(f"Manual capture")
         self.capture_frame()
 
     def on_interval_capture_click(self) -> None:
@@ -134,6 +135,7 @@ class RunnerImageCaptureApp(MDApp):
 
     def on_quit_click(self) -> None:
         """Kills the running kivy application."""
+        self.log(f"Quit button clicked")
         for task in self.tasks:
             task.cancel()
         MDApp.get_running_app().stop()
