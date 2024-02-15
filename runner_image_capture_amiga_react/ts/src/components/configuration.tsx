@@ -11,12 +11,10 @@ enum CaptureMode {
   OVERLAP,
 }
 
-export default function ButtonBar({
-  logLimit = 10,
-  exposureStep = 0.01,
+export default function Configuration({
+  logLimit = 100,
 }: {
   logLimit?: number;
-  exposureStep?: number;
 }) {
   const webSocket = useRef<WebSocket | null>(null);
   const [saveDir, setSaveDir] = useState<string>("~/Pictures/runners");
@@ -27,7 +25,6 @@ export default function ButtonBar({
   );
   const [captureInProgress, setCaptureInProgress] = useState<boolean>(false);
   const [logMessages, setLogMessages] = useState<string[]>([]);
-  const { setInputName } = useContext(KeyboardContext);
 
   useEffect(() => {
     const startWebSocket = () => {
@@ -60,43 +57,6 @@ export default function ButtonBar({
       }
     };
   }, []);
-
-  const onSaveDirChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setSaveDir(e.target.value);
-    },
-    [setSaveDir]
-  );
-
-  const onFilePrefixChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setFilePrefix(e.target.value);
-    },
-    [setFilePrefix]
-  );
-
-  const onExposureDecrementClick = useCallback(() => {
-    setExposureMs(
-      (prev) => Math.round((prev - exposureStep) / exposureStep) * exposureStep
-    );
-  }, [exposureStep, setExposureMs]);
-
-  const onExposureIncrementClick = useCallback(() => {
-    setExposureMs(
-      (prev) => Math.round((prev + exposureStep) / exposureStep) * exposureStep
-    );
-  }, [exposureStep, setExposureMs]);
-
-  const onExposureChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = Number(e.target.value);
-      if (isNaN(value)) {
-        return;
-      }
-      setExposureMs(value);
-    },
-    []
-  );
 
   const onExposureApplyClick = async () => {
     try {
@@ -138,42 +98,66 @@ export default function ButtonBar({
   return (
     <div className="flex flex-col gap-2 w-96">
       <div className="flex flex-row gap-2 items-center">
-        <Label htmlFor="saveDir">Save Directory:</Label>
+        <Label className="flex-none w-20" htmlFor="saveDir">
+          Save Directory:
+        </Label>
         <Input
           type="text"
           id="saveDir"
           name="saveDir"
           placeholder="Path where images will be saved"
           value={saveDir}
-          onFocus={() => setInputName("saveDir")}
-          onChange={onSaveDirChange}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+            setSaveDir(e.target.value);
+          }}
+          keyboardOnChange={(value) => {
+            setSaveDir(value);
+          }}
         />
       </div>
       <div className="flex flex-row gap-2 items-center">
-        <Label htmlFor="filePrefix">File Prefix:</Label>
+        <Label className="flex-none w-20" htmlFor="filePrefix">
+          File Prefix:
+        </Label>
         <Input
           type="text"
           id="filePrefix"
           name="filePrefix"
           placeholder="String to prepend to filenames"
           value={filePrefix}
-          onFocus={() => setInputName("filePrefix")}
-          onChange={onFilePrefixChange}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+            setFilePrefix(e.target.value);
+          }}
+          keyboardOnChange={(value) => {
+            setFilePrefix(value);
+          }}
         />
       </div>
       <div className="flex flex-row gap-2 items-center">
-        <Label htmlFor="exposure">Exposure (ms):</Label>
-        <Button onClick={onExposureDecrementClick}>-</Button>
+        <Label className="flex-none w-20" htmlFor="exposure">
+          Exposure (ms):
+        </Label>
         <Input
           type="number"
           id="exposure"
           name="exposure"
-          step={exposureStep}
+          step={0.01}
           value={exposureMs}
-          onFocus={() => setInputName("exposure")}
-          onChange={onExposureChange}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+            const value = Number(e.target.value);
+            if (isNaN(value)) {
+              return;
+            }
+            setExposureMs(value);
+          }}
+          keyboardOnChange={(str) => {
+            const value = Number(str);
+            if (isNaN(value)) {
+              return;
+            }
+            setExposureMs(value);
+          }}
         />
-        <Button onClick={onExposureIncrementClick}>+</Button>
         <Button onClick={onExposureApplyClick}>Apply</Button>
       </div>
       <div className="flex flex-row gap-2 items-center">

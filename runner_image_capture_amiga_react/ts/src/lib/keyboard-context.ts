@@ -1,10 +1,15 @@
 import { createContext } from "react";
 
-const KeyboardContext = createContext({
-  inputs: {},
-  setInputs: (inputs: {}) => {},
-  layoutName: "default",
-  setInputName: (inputName: string) => {},
+export type KeyboardOnChange = (value: string) => void;
+
+const KeyboardContext: React.Context<{
+  setKeyboardValue: (value: string) => void;
+  setKeyboardOnChange: (onChange: KeyboardOnChange) => void;
+  setKeyboardVisible: (visible: boolean) => void;
+}> = createContext({
+  setKeyboardValue: (_) => {},
+  setKeyboardOnChange: (_) => {},
+  setKeyboardVisible: (_) => {},
 });
 
 export default KeyboardContext;

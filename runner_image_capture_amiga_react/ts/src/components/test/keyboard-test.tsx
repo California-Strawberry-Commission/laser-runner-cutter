@@ -1,13 +1,14 @@
-import { useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import Keyboard, { KeyboardReactInterface } from "react-simple-keyboard";
 import "react-simple-keyboard/build/css/index.css";
 import KeyboardContext, { KeyboardOnChange } from "@/lib/keyboard-context";
-import CameraPreview from "@/components/camera-preview";
-import Configuration from "@/components/configuration";
+import { Input } from "@/components/ui/input";
 
 export default function App() {
   const [keyboardOnChange, setKeyboardOnChange] = useState<KeyboardOnChange>();
   const [keyboardVisible, setKeyboardVisible] = useState<boolean>(false);
+  const [saveDir, setSaveDir] = useState("InitialSaveDir");
+  const [filePrefix, setFilePrefix] = useState("InitialFilePrefix");
   const [layoutName, setLayoutName] = useState("default");
   const keyboard = useRef<KeyboardReactInterface>();
 
@@ -17,13 +18,18 @@ export default function App() {
   };
 
   const onKeyPress = (button: string) => {
+    console.log("Button pressed", button);
     if (button === "{shift}" || button === "{lock}") {
       handleShift();
     }
   };
 
+  const onChangeFilePrefix = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFilePrefix(e.target.value);
+  };
+
   return (
-    <div>
+    <div className="p-4">
       <KeyboardContext.Provider
         value={{
           setKeyboardValue: (value: string) => {
@@ -35,19 +41,23 @@ export default function App() {
           setKeyboardVisible,
         }}
       >
-        <div className="p-4">
-          <main className="flex flex-col gap-4">
-            <div className="flex flex-row gap-4">
-              <div>
-                <h1 className="text-3xl font-bold pb-4">
-                  Runner Image Capture
-                </h1>
-                <Configuration />
-              </div>
-              <CameraPreview />
-            </div>
-          </main>
-        </div>
+        <Input
+          id="saveDir"
+          name="saveDir"
+          value={saveDir}
+          placeholder={"Tap on the virtual keyboard to start"}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+            setSaveDir(e.target.value);
+          }}
+          keyboardOnChange={(value) => setSaveDir(value)}
+        />
+        <Input
+          id="filePrefix"
+          name="filePrefix"
+          value={filePrefix}
+          placeholder={"Tap on the virtual keyboard to start"}
+          onChange={onChangeFilePrefix}
+        />
       </KeyboardContext.Provider>
       {keyboardVisible && (
         <div className="fixed bottom-0 w-full flex justify-center">
