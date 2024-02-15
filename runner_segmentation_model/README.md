@@ -63,3 +63,7 @@ DVC abstracts cloud storage and versioning of data for machine learning. It allo
 1.  Train the YOLOv8 model locally:
 
         $ python src/yolov8_train.py
+
+1.  Evaluate the trained model on the test dataset:
+
+        $ python src/yolov8_eval.py <path to trained model>

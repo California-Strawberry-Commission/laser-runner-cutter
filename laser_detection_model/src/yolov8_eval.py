@@ -14,8 +14,10 @@ def main(model_path):
     model = YOLO(model_path)
     metrics = model.val(
         data=os.path.join(PROJECT_PATH, "dataset.yml"),
+        split="test",
     )
-    print(f"mAP@50: {metrics.box.map50}")
+    print(f"mAP50: {metrics.box.map50}")
+    print(f"mAP50-95: {metrics.box.map}")
 
 
 if __name__ == "__main__":

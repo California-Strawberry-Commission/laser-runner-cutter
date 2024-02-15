@@ -21,7 +21,7 @@ def main(model_path):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Test a trained model")
+    parser = argparse.ArgumentParser(description="Test a trained YOLOv8 model")
     parser.add_argument(
         "model",
         help="Path to the trained model parameters file",
