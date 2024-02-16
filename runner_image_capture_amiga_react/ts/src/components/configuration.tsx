@@ -1,14 +1,12 @@
-import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import KeyboardContext from "@/lib/keyboard-context";
 
 enum CaptureMode {
   MANUAL,
   INTERVAL,
-  OVERLAP,
 }
 
 export default function Configuration({
@@ -80,13 +78,6 @@ export default function Configuration({
       console.error("Error requesting capture:", error);
     }
   };
-
-  const onModeClick = useCallback(
-    (captureMode: CaptureMode) => {
-      setCaptureMode(captureMode);
-    },
-    [setCaptureMode]
-  );
 
   const onCaptureStateChange = useCallback(
     (inProgress: boolean) => {
@@ -165,13 +156,13 @@ export default function Configuration({
         <div className="flex flex-row gap-1">
           <Button
             disabled={captureMode === CaptureMode.MANUAL || captureInProgress}
-            onClick={() => onModeClick(CaptureMode.MANUAL)}
+            onClick={() => setCaptureMode(CaptureMode.MANUAL)}
           >
             Manual
           </Button>
           <Button
             disabled={captureMode === CaptureMode.INTERVAL || captureInProgress}
-            onClick={() => onModeClick(CaptureMode.INTERVAL)}
+            onClick={() => setCaptureMode(CaptureMode.INTERVAL)}
           >
             Interval
           </Button>
@@ -183,14 +174,6 @@ export default function Configuration({
       ) : null}
       {captureMode === CaptureMode.INTERVAL ? (
         <IntervalMode
-          saveDir={saveDir}
-          filePrefix={filePrefix}
-          captureInProgress={captureInProgress}
-          onCaptureStateChange={onCaptureStateChange}
-        />
-      ) : null}
-      {captureMode === CaptureMode.OVERLAP ? (
-        <OverlapMode
           saveDir={saveDir}
           filePrefix={filePrefix}
           captureInProgress={captureInProgress}
@@ -222,7 +205,7 @@ function ManualMode({
   saveDir: string;
   filePrefix: string;
 }) {
-  const onCaptureClick = useCallback(async () => {
+  const onCaptureClick = async () => {
     try {
       const response = await fetch(
         `${window.location.protocol}//${window.location.hostname}:8042/capture/manual`,
@@ -243,7 +226,7 @@ function ManualMode({
     } catch (error) {
       console.error("Error requesting capture:", error);
     }
-  }, [saveDir, filePrefix]);
+  };
 
   return (
     <>
@@ -258,37 +241,15 @@ function IntervalMode({
   filePrefix,
   captureInProgress,
   onCaptureStateChange,
-  step = 1.0,
 }: {
   saveDir: string;
   filePrefix: string;
   captureInProgress: boolean;
   onCaptureStateChange: (inProgress: boolean) => void;
-  step?: number;
 }) {
   const [intervalSecs, setIntervalSecs] = useState<number>(5);
-  const { setInputName } = useContext(KeyboardContext);
 
-  const onIntervalChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = Number(e.target.value);
-      if (isNaN(value) || value < 0) {
-        return;
-      }
-      setIntervalSecs(value);
-    },
-    [setIntervalSecs]
-  );
-
-  const onIntervalDecrementClick = useCallback(() => {
-    setIntervalSecs((prev) => Math.round((prev - step) / step) * step);
-  }, [step, setIntervalSecs]);
-
-  const onIntervalIncrementClick = useCallback(() => {
-    setIntervalSecs((prev) => Math.round((prev + step) / step) * step);
-  }, [step, setIntervalSecs]);
-
-  const onStartClick = useCallback(async () => {
+  const onStartClick = async () => {
     try {
       const response = await fetch(
         `${window.location.protocol}//${window.location.hostname}:8042/capture/interval`,
@@ -310,9 +271,9 @@ function IntervalMode({
     } catch (error) {
       console.error("Error starting capture:", error);
     }
-  }, [intervalSecs, saveDir, filePrefix, onCaptureStateChange]);
+  };
 
-  const onStopClick = useCallback(async () => {
+  const onStopClick = async () => {
     try {
       const response = await fetch(
         `${window.location.protocol}//${window.location.hostname}:8042/capture/stop`
@@ -327,113 +288,36 @@ function IntervalMode({
     } catch (error) {
       console.error("Error stopping capture:", error);
     }
-  }, []);
+  };
 
   return (
     <>
       <h2 className="text-center font-bold">Interval Mode</h2>
       <div className="flex flex-row gap-2 items-center">
-        <Label htmlFor="interval">Interval (seconds):</Label>
-        <Button onClick={onIntervalDecrementClick}>-</Button>
+        <Label className="flex-none w-20" htmlFor="interval">
+          Interval (seconds):
+        </Label>
         <Input
           type="number"
           id="interval"
           name="interval"
-          step={step}
+          step={1.0}
           min={0}
           value={intervalSecs}
-          onFocus={() => setInputName("interval")}
-          onChange={onIntervalChange}
-        />
-        <Button onClick={onIntervalIncrementClick}>+</Button>
-      </div>
-      {captureInProgress ? (
-        <Button onClick={onStopClick}>Stop</Button>
-      ) : (
-        <Button onClick={onStartClick}>Start</Button>
-      )}
-    </>
-  );
-}
-
-function OverlapMode({
-  saveDir,
-  filePrefix,
-  captureInProgress,
-  onCaptureStateChange,
-}: {
-  saveDir: string;
-  filePrefix: string;
-  captureInProgress: boolean;
-  onCaptureStateChange: (inProgress: boolean) => void;
-}) {
-  const [overlap, setOverlap] = useState<number>(50);
-  const { setInputName } = useContext(KeyboardContext);
-
-  const onOverlapChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = Number(e.target.value);
-      if (isNaN(value) || value < 0) {
-        return;
-      }
-      setOverlap(value);
-    },
-    []
-  );
-
-  const onStartClick = useCallback(async () => {
-    try {
-      const response = await fetch(
-        `${window.location.protocol}//${window.location.hostname}:8042/capture/overlap`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ overlap, saveDir, filePrefix }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Network response was not ok " + response.statusText);
-      }
-
-      await response.json();
-      onCaptureStateChange(true);
-    } catch (error) {
-      console.error("Error starting capture:", error);
-    }
-  }, [overlap, saveDir, filePrefix]);
-
-  const onStopClick = useCallback(async () => {
-    try {
-      const response = await fetch(
-        `${window.location.protocol}//${window.location.hostname}:8042/capture/stop`
-      );
-
-      if (!response.ok) {
-        throw new Error("Network response was not ok " + response.statusText);
-      }
-
-      await response.json();
-      onCaptureStateChange(false);
-    } catch (error) {
-      console.error("Error stopping capture:", error);
-    }
-  }, []);
-
-  return (
-    <>
-      <h2 className="text-center font-bold">Overlap Mode</h2>
-      <div className="flex flex-row gap-2 items-center">
-        <Label htmlFor="overlap">Overlap (%):</Label>
-        <Input
-          type="number"
-          id="overlap"
-          name="overlap"
-          value={overlap}
-          onFocus={() => setInputName("overlap")}
-          onChange={onOverlapChange}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+            const value = Number(e.target.value);
+            if (isNaN(value) || value < 0) {
+              return;
+            }
+            setIntervalSecs(value);
+          }}
+          keyboardOnChange={(str) => {
+            const value = Number(str);
+            if (isNaN(value) || value < 0) {
+              return;
+            }
+            setIntervalSecs(value);
+          }}
         />
       </div>
       {captureInProgress ? (

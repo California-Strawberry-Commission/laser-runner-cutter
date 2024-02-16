@@ -34,6 +34,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
 
     const onBlurInternal = (e: FocusEvent<HTMLInputElement>) => {
       onBlur && onBlur(e);
+      // TODO: onBlur is triggered when keyboard is clicked
       // setKeyboardVisible(false);
     };
 
@@ -47,6 +48,10 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         ref={innerRef}
         onFocus={onFocusInternal}
         onBlur={onBlurInternal}
+        // Prevent physical keyboard input
+        onKeyDown={(event) => {
+          event.preventDefault();
+        }}
         {...props}
       />
     );

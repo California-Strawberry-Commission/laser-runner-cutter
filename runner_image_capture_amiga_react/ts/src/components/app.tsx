@@ -49,18 +49,19 @@ export default function App() {
           </main>
         </div>
       </KeyboardContext.Provider>
-      {keyboardVisible && (
-        <div className="fixed bottom-0 w-full flex justify-center">
-          <div className="w-[800px]">
-            <Keyboard
-              keyboardRef={(r) => (keyboard.current = r)}
-              layoutName={layoutName}
-              onChange={keyboardOnChange}
-              onKeyPress={onKeyPress}
-            />
-          </div>
+      {/* Render as hidden because we need the keyboard ref at all times */}
+      <div
+        className={`fixed bottom-0 w-full flex justify-center z-10 ${keyboardVisible ? "" : "hidden"}`}
+      >
+        <div className="w-[800px]">
+          <Keyboard
+            keyboardRef={(r) => (keyboard.current = r)}
+            layoutName={layoutName}
+            onChange={keyboardOnChange}
+            onKeyPress={onKeyPress}
+          />
         </div>
-      )}
+      </div>
     </div>
   );
 }

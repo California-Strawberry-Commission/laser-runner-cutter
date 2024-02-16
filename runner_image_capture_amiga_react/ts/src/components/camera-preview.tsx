@@ -75,7 +75,7 @@ export default function CameraPreview() {
           </p>
         </div>
       ) : (
-        <div className="absolute z-10 inset-0 bg-gray-200 flex justify-center items-center">
+        <div className="absolute inset-0 bg-gray-200 flex justify-center items-center">
           <p>Camera not available</p>
         </div>
       )}
