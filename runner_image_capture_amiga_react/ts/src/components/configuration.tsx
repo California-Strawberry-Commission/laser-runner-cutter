@@ -98,10 +98,7 @@ export default function Configuration({
           name="saveDir"
           placeholder="Path where images will be saved"
           value={saveDir}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-            setSaveDir(e.target.value);
-          }}
-          keyboardOnChange={(value) => {
+          onChange={(value) => {
             setSaveDir(value);
           }}
         />
@@ -116,10 +113,7 @@ export default function Configuration({
           name="filePrefix"
           placeholder="String to prepend to filenames"
           value={filePrefix}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-            setFilePrefix(e.target.value);
-          }}
-          keyboardOnChange={(value) => {
+          onChange={(value) => {
             setFilePrefix(value);
           }}
         />
@@ -134,19 +128,9 @@ export default function Configuration({
           name="exposure"
           step={0.01}
           value={exposureMs}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-            const value = Number(e.target.value);
-            if (isNaN(value)) {
-              return;
-            }
-            setExposureMs(value);
-          }}
-          keyboardOnChange={(str) => {
-            const value = Number(str);
-            if (isNaN(value)) {
-              return;
-            }
-            setExposureMs(value);
+          onChange={(value) => {
+            const newValue = Number(value);
+            setExposureMs(isNaN(newValue) ? 0 : newValue);
           }}
         />
         <Button onClick={onExposureApplyClick}>Apply</Button>
@@ -304,19 +288,9 @@ function IntervalMode({
           step={1.0}
           min={0}
           value={intervalSecs}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-            const value = Number(e.target.value);
-            if (isNaN(value) || value < 0) {
-              return;
-            }
-            setIntervalSecs(value);
-          }}
-          keyboardOnChange={(str) => {
-            const value = Number(str);
-            if (isNaN(value) || value < 0) {
-              return;
-            }
-            setIntervalSecs(value);
+          onChange={(value) => {
+            const newValue = Number(value);
+            setIntervalSecs(isNaN(newValue) || newValue < 0 ? 0 : newValue);
           }}
         />
       </div>

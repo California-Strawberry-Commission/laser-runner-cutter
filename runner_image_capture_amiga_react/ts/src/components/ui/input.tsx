@@ -1,41 +1,71 @@
 import React, {
+  ChangeEvent,
   FocusEvent,
   useContext,
+  useEffect,
   useImperativeHandle,
   useRef,
+  useState,
 } from "react";
 
 import { cn } from "@/lib/utils";
-import KeyboardContext, { KeyboardOnChange } from "@/lib/keyboard-context";
+import KeyboardContext from "@/lib/keyboard-context";
 
 export interface InputProps
-  extends React.InputHTMLAttributes<HTMLInputElement> {
-  keyboardOnChange?: KeyboardOnChange;
+  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange"> {
+  onChange?: (value: string) => void;
 }
 
+/**
+ * This is an internally controlled Input component that is needed to support
+ * the virtual keyboard. There are multiple sources of input that this component
+ * needs to support: physical keyboard, virtual keyboard, and any external
+ * component (via props.value).
+ *
+ * Physical keyboard inputs are handled via the internal <input>'s onChange. The new
+ * value needs to be propagated to <Input>'s state, the virtual keyboard state, and
+ * through props.onChange.
+ *
+ * Virtual keyboard inputs are handled via the function passed into setKeyboardOnChange.
+ * Within this function, we need to propagate the new value to <Input>'s state
+ * and through props.onChange.
+ *
+ * External value changes incoming via props.value needs to be propagated to
+ * <Input>'s state and the virtual keyboard state. This is achieved in the effect hook.
+ */
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  // TODO: this currently can only be used as a controlled component
-  ({ className, type, onFocus, onBlur, keyboardOnChange, ...props }, ref) => {
+  ({ className, type, value: propValue, onFocus, onChange, ...props }, ref) => {
     const innerRef = useRef<HTMLInputElement>(null);
+    const [value, setValue] = useState<string>(
+      propValue !== undefined ? String(propValue) : ""
+    );
     const { setKeyboardValue, setKeyboardOnChange, setKeyboardVisible } =
       useContext(KeyboardContext);
 
     useImperativeHandle(ref, () => innerRef.current!, []);
+
+    useEffect(() => {
+      const newPropValue = propValue !== undefined ? String(propValue) : "";
+      setValue(newPropValue);
+      setKeyboardValue(newPropValue);
+    }, [propValue]);
 
     const onFocusInternal = (e: FocusEvent<HTMLInputElement>) => {
       onFocus && onFocus(e);
       const currentValue = innerRef.current ? innerRef.current.value : "";
       setKeyboardValue(currentValue);
       setKeyboardOnChange((value: string) => {
-        keyboardOnChange && keyboardOnChange(value);
+        setValue(value);
+        onChange && onChange(value);
       });
       setKeyboardVisible(true);
     };
 
-    const onBlurInternal = (e: FocusEvent<HTMLInputElement>) => {
-      onBlur && onBlur(e);
-      // TODO: onBlur is triggered when keyboard is clicked
-      // setKeyboardVisible(false);
+    const onChangeInternal = (e: ChangeEvent<HTMLInputElement>) => {
+      const newValue = e.target.value;
+      setValue(newValue);
+      setKeyboardValue(newValue);
+      onChange && onChange(newValue);
     };
 
     return (
@@ -46,12 +76,9 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           className
         )}
         ref={innerRef}
+        value={value}
+        onChange={onChangeInternal}
         onFocus={onFocusInternal}
-        onBlur={onBlurInternal}
-        // Prevent physical keyboard input
-        onKeyDown={(event) => {
-          event.preventDefault();
-        }}
         {...props}
       />
     );
