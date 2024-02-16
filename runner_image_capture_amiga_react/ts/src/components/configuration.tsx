@@ -1,13 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-
-enum CaptureMode {
-  MANUAL,
-  INTERVAL,
-}
 
 export default function Configuration({
   logLimit = 100,
@@ -18,9 +13,6 @@ export default function Configuration({
   const [saveDir, setSaveDir] = useState<string>("~/Pictures/runners");
   const [filePrefix, setFilePrefix] = useState<string>("runner_");
   const [exposureMs, setExposureMs] = useState<number>(0.2);
-  const [captureMode, setCaptureMode] = useState<CaptureMode>(
-    CaptureMode.MANUAL
-  );
   const [captureInProgress, setCaptureInProgress] = useState<boolean>(false);
   const [logMessages, setLogMessages] = useState<string[]>([]);
 
@@ -135,36 +127,15 @@ export default function Configuration({
         />
         <Button onClick={onExposureApplyClick}>Apply</Button>
       </div>
-      <div className="flex flex-row gap-2 items-center">
-        <Label>Select Mode:</Label>
-        <div className="flex flex-row gap-1">
-          <Button
-            disabled={captureMode === CaptureMode.MANUAL || captureInProgress}
-            onClick={() => setCaptureMode(CaptureMode.MANUAL)}
-          >
-            Manual
-          </Button>
-          <Button
-            disabled={captureMode === CaptureMode.INTERVAL || captureInProgress}
-            onClick={() => setCaptureMode(CaptureMode.INTERVAL)}
-          >
-            Interval
-          </Button>
-        </div>
-      </div>
-      <Separator className="my-2" />
-      {captureMode === CaptureMode.MANUAL ? (
+      <div className="flex flex-row gap-2">
         <ManualMode saveDir={saveDir} filePrefix={filePrefix} />
-      ) : null}
-      {captureMode === CaptureMode.INTERVAL ? (
         <IntervalMode
           saveDir={saveDir}
           filePrefix={filePrefix}
           captureInProgress={captureInProgress}
           onCaptureStateChange={onCaptureStateChange}
         />
-      ) : null}
-      <Separator className="my-2" />
+      </div>
       <h2 className="text-center font-bold">Log Messages</h2>
       <div className="h-[80px] overflow-y-auto">
         <ul>
@@ -213,10 +184,14 @@ function ManualMode({
   };
 
   return (
-    <>
-      <h2 className="text-center font-bold">Manual Mode</h2>
-      <Button onClick={onCaptureClick}>Capture</Button>
-    </>
+    <Card className="w-1/2">
+      <CardContent className="flex flex-col gap-2 p-2">
+        <h2 className="text-center font-bold">Manual Mode</h2>
+        <Button className="w-full" onClick={onCaptureClick}>
+          Capture
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -275,30 +250,32 @@ function IntervalMode({
   };
 
   return (
-    <>
-      <h2 className="text-center font-bold">Interval Mode</h2>
-      <div className="flex flex-row gap-2 items-center">
-        <Label className="flex-none w-20" htmlFor="interval">
-          Interval (seconds):
-        </Label>
-        <Input
-          type="number"
-          id="interval"
-          name="interval"
-          step={1.0}
-          min={0}
-          value={intervalSecs}
-          onChange={(value) => {
-            const newValue = Number(value);
-            setIntervalSecs(isNaN(newValue) || newValue < 0 ? 0 : newValue);
-          }}
-        />
-      </div>
-      {captureInProgress ? (
-        <Button onClick={onStopClick}>Stop</Button>
-      ) : (
-        <Button onClick={onStartClick}>Start</Button>
-      )}
-    </>
+    <Card className="w-1/2">
+      <CardContent className="flex flex-col gap-2 p-2">
+        <h2 className="text-center font-bold">Interval Mode</h2>
+        <div className="flex flex-row gap-2 items-center">
+          <Label className="flex-none w-20" htmlFor="interval">
+            Interval (seconds):
+          </Label>
+          <Input
+            type="number"
+            id="interval"
+            name="interval"
+            step={1.0}
+            min={0}
+            value={intervalSecs}
+            onChange={(value) => {
+              const newValue = Number(value);
+              setIntervalSecs(isNaN(newValue) || newValue < 0 ? 0 : newValue);
+            }}
+          />
+        </div>
+        {captureInProgress ? (
+          <Button onClick={onStopClick}>Stop</Button>
+        ) : (
+          <Button onClick={onStartClick}>Start</Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }
