@@ -27,6 +27,7 @@ from kivy.lang.builder import Builder  # noqa: E402
 from config_manager.config_manager import ConfigManager
 from file_manager.file_manager import FileManager
 from camera.realsense import RealSense
+from metadata_provider.metadata_provider import MetadataProvider
 
 
 CONFIG_FILE = "~/.config/runner-image-capture/config.json"
@@ -34,11 +35,31 @@ CONFIG_KEY_SAVE_DIR = "saveDir"
 CONFIG_KEY_FILE_PREFIX = "filePrefix"
 CONFIG_KEY_EXPOSURE_MS = "exposureMs"
 CONFIG_KEY_INTERVAL_S = "intervalS"
+CONFIG_KEY_METADATA_SERVICES = "meta_services"
 DEFAULT_CONFIG = {
     CONFIG_KEY_SAVE_DIR: "~/Pictures/runners",
     CONFIG_KEY_FILE_PREFIX: "runner_",
     CONFIG_KEY_EXPOSURE_MS: 0.2,
     CONFIG_KEY_INTERVAL_S: 5,
+    CONFIG_KEY_METADATA_SERVICES: {
+        "configs": [
+            {
+                "name": "gps",
+                "port": 3001,
+                "host": "localhost",
+                "log_level": "INFO",
+                "subscriptions": [
+                    {
+                        "uri": {
+                            "path": "*",
+                            "query": "service_name=gps"
+                        },
+                        "every_n": 1
+                    }
+                ]
+            }
+        ]
+    }
 }
 
 
@@ -50,6 +71,7 @@ class RunnerImageCaptureApp(MDApp):
 
     def build(self):
         self.config_manager = ConfigManager(CONFIG_FILE, DEFAULT_CONFIG)
+        self.metadata_provider = MetadataProvider(self.config_manager.get(CONFIG_KEY_METADATA_SERVICES))
         self.file_manager = FileManager()
         self.log_queue = deque(maxlen=100)
         self.camera = RealSense()
@@ -107,6 +129,7 @@ class RunnerImageCaptureApp(MDApp):
             file_path = self.file_manager.save_frame(
                 self._rs_to_cv_frame(frame), save_dir, file_prefix
             )
+            self.metadata_provider.add_exif(file_path)
             self.log(f"Frame captured: {file_path}")
 
     def on_exposure_apply_click(self) -> None:
