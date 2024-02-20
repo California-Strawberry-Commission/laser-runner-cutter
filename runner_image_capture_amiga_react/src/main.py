@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import os
+import sys
 import argparse
 from pathlib import Path
 from typing import Dict, List, Union
 from natsort import natsorted
-
+import numpy as np
+import cv2
+import base64
+import asyncio
+import queue
+import threading
+import logging
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,13 +20,10 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-import pyrealsense2 as rs
-import numpy as np
-import cv2
-import base64
-import asyncio
-import queue
-import threading
+sys.path.append(os.path.dirname(__file__))
+
+from libs.camera.realsense import RealSense
+from libs.file_manager.file_manager import FileManager
 
 
 DEFAULT_IMAGE_DIR = os.path.expanduser("~/Pictures/runners")
@@ -43,135 +47,6 @@ class ConnectionManager:
     async def broadcast(self, message: str):
         for connection in self.active_connections:
             await connection.send_text(message)
-
-
-class FileManager:
-    def save_frame(
-        self, frame, directory=DEFAULT_IMAGE_DIR, prefix=DEFAULT_IMAGE_FILE_PREFIX
-    ):
-        if not directory:  # directory cannot be empty string
-            directory = DEFAULT_IMAGE_DIR
-        if prefix is None:  # prefix can be empty string
-            prefix = DEFAULT_IMAGE_FILE_PREFIX
-
-        directory = os.path.expanduser(directory)
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-
-        file_path = os.path.join(
-            directory, self._get_next_filename_with_prefix(directory, prefix)
-        )
-        cv2.imwrite(file_path, frame)
-        return file_path
-
-    def _get_next_filename_with_prefix(self, directory, prefix):
-        last_file = self._find_last_filename_with_prefix(directory, prefix)
-        next_id = (
-            0
-            if last_file is None
-            else self._get_integer_in_filename(last_file, prefix) + 1
-        )
-        return f"{prefix}{next_id}.png"
-
-    def _find_last_filename_with_prefix(self, directory, prefix):
-        # TODO: cache files
-        files = [
-            f
-            for f in os.listdir(directory)
-            if f.startswith(prefix) and os.path.isfile(os.path.join(directory, f))
-        ]
-
-        if not files:
-            return None
-
-        sorted_files = natsorted(files)
-        last_file = sorted_files[-1]
-        return last_file
-
-    def _get_integer_in_filename(self, filename, prefix):
-        # Remove prefix
-        filename = filename[len(prefix) :] if filename.startswith(prefix) else filename
-        # Remove extension
-        root, _ = os.path.splitext(filename)
-        try:
-            return int(root)
-        except ValueError:
-            return -1
-
-
-class RealSense:
-    def __init__(self, frame_size=(1920, 1080), fps=30, camera_index=0):
-        # Note: when connected via USB2, RealSense cameras are limited to:
-        # - 1280x720 @ 6fps
-        # - 640x480 @ 30fps
-        # - 480x270 @ 60fps
-        # See https://www.intelrealsense.com/usb2-support-for-intel-realsense-technology/
-
-        self.frame_size = frame_size
-        self.camera_index = camera_index
-        self.fps = fps
-
-    def initialize(self):
-        # Setup code based on https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/align-depth2color.py
-        self.config = rs.config()
-
-        # Connect to specific camera
-        context = rs.context()
-        devices = context.query_devices()
-        if self.camera_index < 0 or self.camera_index >= len(devices):
-            raise Exception("camera_index is out of bounds")
-
-        serial_number = devices[self.camera_index].get_info(
-            rs.camera_info.serial_number
-        )
-        self.config.enable_device(serial_number)
-
-        # Configure stream
-        self.config.enable_stream(
-            rs.stream.color,
-            self.frame_size[0],
-            self.frame_size[1],
-            rs.format.rgb8,
-            self.fps,
-        )
-
-        # Start pipeline
-        self.pipeline = rs.pipeline()
-        try:
-            self.profile = self.pipeline.start(self.config)
-        except Exception as e:
-            print(f"Error starting RealSense pipeline: {e}")
-            # When connected via USB2, limit to 1280x720 @ 6fps
-            self.frame_size = (1280, 720)
-            self.fps = 6
-            self.config.enable_stream(
-                rs.stream.color,
-                self.frame_size[0],
-                self.frame_size[1],
-                rs.format.rgb8,
-                self.fps,
-            )
-            self.profile = self.pipeline.start(self.config)
-
-    def set_exposure(self, exposure_ms):
-        color_sensor = self.profile.get_device().first_color_sensor()
-        if exposure_ms < 0:
-            color_sensor.set_option(rs.option.enable_auto_exposure, 1)
-        else:
-            # D435 has a minimum exposure time of 1us
-            exposure_us = max(1, round(exposure_ms * 1000))
-            color_sensor.set_option(rs.option.exposure, exposure_us)
-
-    def get_frame(self):
-        frames = self.pipeline.wait_for_frames()
-        if not frames:
-            return None
-
-        color_frame = frames.get_color_frame()
-        if not color_frame:
-            return None
-
-        return color_frame
 
 
 class LogQueue:
@@ -210,12 +85,6 @@ class ManualCaptureRequest(BaseModel):
 
 class IntervalCaptureRequest(BaseModel):
     intervalSecs: float = 1.0
-    saveDir: Union[str, None] = None
-    filePrefix: Union[str, None] = None
-
-
-class OverlapCaptureRequest(BaseModel):
-    overlap: float = 50.0
     saveDir: Union[str, None] = None
     filePrefix: Union[str, None] = None
 
@@ -297,28 +166,6 @@ async def interval_capture_task(
         await asyncio.sleep(interval_secs)
 
 
-async def overlap_capture_task(
-    overlap: float, save_dir: str, file_prefix: str, stop_event: asyncio.Event
-):
-    last_saved_frame = None
-    while not stop_event.is_set():
-        current_frame = camera.get_frame()
-        """
-        TODO: WIP
-        if current_frame:
-            current_frame = rs_to_cv_frame(current_frame)
-            if last_saved_frame is None:
-                file_path = file_manager.save_frame(current_frame, save_dir, file_prefix)
-                log_queue.enqueue(f"Frame captured: {file_path}")
-                last_saved_frame = current_frame
-            else:
-                # Calculate overlap with last saved frame
-                overlap = calculate_overlap(last_saved_frame, current_frame)
-                print(overlap)
-        """
-        await asyncio.sleep(1.0 / camera.fps)
-
-
 @app.websocket("/camera/preview")
 async def camera_preview(websocket: WebSocket):
     await connection_manager.connect(websocket)
@@ -380,31 +227,6 @@ async def interval_capture(request: IntervalCaptureRequest) -> JSONResponse:
     return JSONResponse(
         content={
             "message": f"Interval capture scheduled for every {request.intervalSecs} seconds",
-            "stop_url": f"/capture/stop",
-        },
-        status_code=200,
-    )
-
-
-@app.post("/capture/overlap")
-async def overlap_capture(request: OverlapCaptureRequest) -> JSONResponse:
-    stop_event = asyncio.Event()
-
-    async def overlap_capture_task_wrapper():
-        task = asyncio.create_task(
-            overlap_capture_task(
-                request.overlap, request.saveDir, request.filePrefix, stop_event
-            )
-        )
-        camera.capture_task = task  # Store the task reference
-        await task  # Wait for the task to complete or be canceled
-        camera.capture_task = None  # Reset the task reference
-
-    asyncio.create_task(overlap_capture_task_wrapper())
-    log_queue.enqueue(f"Overlap capture started")
-    return JSONResponse(
-        content={
-            "message": f"Overlap capture scheduled at {request.overlap}%",
             "stop_url": f"/capture/stop",
         },
         status_code=200,
