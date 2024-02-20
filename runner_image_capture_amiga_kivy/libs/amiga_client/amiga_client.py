@@ -29,7 +29,6 @@ class AmigaClient:
         """Long-running task which stores most recent channel messages"""
         self._service_message_cache[service_name] = {}
         async for event, msg in event_client.subscribe(subscription):
-            print(event.uri.path)
             msg_dict = json_format.MessageToDict(msg)  # Store keep local record as plain JSON
             self._service_message_cache[service_name][event.uri.path] = msg_dict
 
