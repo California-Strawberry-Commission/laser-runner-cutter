@@ -109,6 +109,8 @@ class RunnerImageCaptureApp(MDApp):
         self.root.ids["interval_s"].text = str(
             self.config_manager.get(CONFIG_KEY_INTERVAL_S)
         )
+        
+        self.amiga_client.init_clients()
 
     def on_stop(self) -> None:
         # Save config
@@ -173,9 +175,6 @@ class RunnerImageCaptureApp(MDApp):
             await self.async_run(async_lib="asyncio")
             if self.interval_capture_task is not None:
                 self.interval_capture_task.cancel()
-
-        # Don't add long-running eventclients to task list
-        self.amiga_client.init_clients()
 
         self.tasks: list[asyncio.Task] = [asyncio.create_task(self.stream_camera())]
 
