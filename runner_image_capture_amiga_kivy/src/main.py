@@ -37,7 +37,7 @@ CONFIG_KEY_SAVE_DIR = "saveDir"
 CONFIG_KEY_FILE_PREFIX = "filePrefix"
 CONFIG_KEY_EXPOSURE_MS = "exposureMs"
 CONFIG_KEY_INTERVAL_S = "intervalS"
-CONFIG_KEY_METADATA_SERVICES = "meta_services"
+CONFIG_KEY_METADATA_SERVICES = "metaServices"
 DEFAULT_CONFIG = {
     CONFIG_KEY_SAVE_DIR: "~/Pictures/runners",
     CONFIG_KEY_FILE_PREFIX: "runner_",
@@ -179,6 +179,7 @@ class RunnerImageCaptureApp(MDApp):
     def on_quit_click(self) -> None:
         """Kills the running kivy application."""
         self.log(f"Quit button clicked")
+        self.amiga_client.cleanup()
         for task in self.tasks:
             task.cancel()
         MDApp.get_running_app().stop()

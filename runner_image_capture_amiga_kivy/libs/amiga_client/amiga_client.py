@@ -31,7 +31,12 @@ class AmigaClient:
         async for event, msg in event_client.subscribe(subscription):
             msg_dict = json_format.MessageToDict(msg)  # Store keep local record as plain JSON
             self._service_message_cache[service_name][event.uri.path] = msg_dict
-
+    
+    def cleanup(self):
+        """Cleans up subscription tasks. Call when client is no longer needed."""
+        for task in self._subscription_tasks:
+            task.cancel()
+    
     def get_message(self, service, path):
         """Returns the last cached message from the given path and service"""
         if (s := self._service_message_cache.get(service)) is not None:

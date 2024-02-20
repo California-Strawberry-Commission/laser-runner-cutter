@@ -7,10 +7,9 @@ from amiga_client.amiga_client import AmigaClient
 
 
 class MetadataProvider:
-    def __init__(self, amiga_client, logger=None, overwrite = True):
+    def __init__(self, amiga_client, logger=None, ):
         self.amiga_client = amiga_client
         self.logger = logger
-        self.overwrite = overwrite
     
     def _log(self, str):
         if self.logger:
@@ -26,7 +25,7 @@ class MetadataProvider:
         
         return json.loads(exif[Base.MakerNote])
 
-    def add_exif(self, file):
+    def add_exif(self, file, overwrite = True):
         """Opens the passed file, sets exif metadata, and saves it https://exiv2.org/tags.html"""
         self._log(f"Add EXIF to {file}")
 
@@ -35,8 +34,10 @@ class MetadataProvider:
         
         exif[Base.MakerNote] = json.dumps(self.amiga_client.get_cache())
         
-        file_path = file if self.overwrite else file + "exif.png"
+        file_path = file if overwrite else file + "exif.png"
         im.save(file_path, exif=exif)
+        
+        return file_path
         
         
 # Testing - do not run this file as main.
