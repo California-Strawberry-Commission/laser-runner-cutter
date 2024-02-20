@@ -7,7 +7,7 @@ from amiga_client.amiga_client import AmigaClient
 
 
 class MetadataProvider:
-    def __init__(self, amiga_client, logger=None, ):
+    def __init__(self, amiga_client, logger=None):
         self.amiga_client = amiga_client
         self.logger = logger
     
@@ -38,57 +38,3 @@ class MetadataProvider:
         im.save(file_path, exif=exif)
         
         return file_path
-        
-        
-# Testing - do not run this file as main.
-if __name__ == "__main__":
-    c = AmigaClient({
-        "configs": [
-            {
-                "name": "gps",
-                "port": 3001,
-                "host": "129.65.121.182",
-                "log_level": "INFO",
-                "subscriptions": [
-                    {
-                        "uri": {
-                            "path": "/pvt",
-                            "query": "service_name=gps"
-                        },
-                        "every_n": 1
-                    },
-                ]
-            },
-            {
-                "name": "filter",
-                "port": 20001,
-                "host": "129.65.121.182",
-                "log_level": "INFO",
-                "subscriptions": [
-                    {
-                        "uri": {
-                            "path": "/state",
-                            "query": "service_name=filter"
-                        },
-                        "every_n": 1
-                    }
-                ]
-            }
-        ]
-    })
-    
-    m = MetadataProvider(c)
-        
-    async def main():
-        async def exif_trigger():
-            await asyncio.sleep(2)
-            print("Triggering exif mod")
-            m.add_exif("/mnt/c/Users/t-dchmiel/Projects/laser-runner-cutter/runner_image_capture_amiga_kivy/libs/metadata_provider/strawberry.png")
-            await asyncio.sleep(2)
-            print(m.get_exif("/mnt/c/Users/t-dchmiel/Projects/laser-runner-cutter/runner_image_capture_amiga_kivy/libs/metadata_provider/strawberry.png")["gps"]["/pvt"]["latitude"])
-
-        asyncio.create_task(exif_trigger())
-        c.init_clients()
-        await asyncio.gather(*c._subscription_tasks)
-    
-    asyncio.new_event_loop().run_until_complete(main()) 
