@@ -74,7 +74,7 @@ class RunnerImageCaptureApp(MDApp):
     def build(self):
         self.config_manager = ConfigManager(CONFIG_FILE, DEFAULT_CONFIG)
         self.amiga_client = AmigaClient(self.config_manager.get(CONFIG_KEY_METADATA_SERVICES))
-        self.metadata_provider = MetadataProvider(self.amiga_client)
+        self.metadata_provider = MetadataProvider(self.amiga_client, self.logger)
         self.file_manager = FileManager()
         self.log_queue = deque(maxlen=100)
         self.camera = RealSense()
@@ -173,6 +173,9 @@ class RunnerImageCaptureApp(MDApp):
             await self.async_run(async_lib="asyncio")
             if self.interval_capture_task is not None:
                 self.interval_capture_task.cancel()
+
+        # Don't add long-running eventclients to task list
+        self.amiga_client.init_clients()
 
         self.tasks: list[asyncio.Task] = [asyncio.create_task(self.stream_camera())]
 
