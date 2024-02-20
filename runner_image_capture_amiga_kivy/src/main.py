@@ -9,6 +9,7 @@ import numpy as np
 from datetime import datetime
 from collections import deque
 
+
 os.environ["KIVY_NO_ARGS"] = "1"
 
 from kivy.config import Config  # noreorder # noqa: E402
@@ -28,6 +29,7 @@ from config_manager.config_manager import ConfigManager
 from file_manager.file_manager import FileManager
 from camera.realsense import RealSense
 from metadata_provider.metadata_provider import MetadataProvider
+from amiga_client.amiga_client import AmigaClient
 
 
 CONFIG_FILE = "~/.config/runner-image-capture/config.json"
@@ -51,7 +53,7 @@ DEFAULT_CONFIG = {
                 "subscriptions": [
                     {
                         "uri": {
-                            "path": "*",
+                            "path": "/pvt",
                             "query": "service_name=gps"
                         },
                         "every_n": 1
@@ -71,7 +73,8 @@ class RunnerImageCaptureApp(MDApp):
 
     def build(self):
         self.config_manager = ConfigManager(CONFIG_FILE, DEFAULT_CONFIG)
-        self.metadata_provider = MetadataProvider(self.config_manager.get(CONFIG_KEY_METADATA_SERVICES))
+        self.amiga_client = AmigaClient(self.config_manager.get(CONFIG_KEY_METADATA_SERVICES))
+        self.metadata_provider = MetadataProvider(self.amiga_client)
         self.file_manager = FileManager()
         self.log_queue = deque(maxlen=100)
         self.camera = RealSense()
