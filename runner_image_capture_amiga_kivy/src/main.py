@@ -57,6 +57,21 @@ DEFAULT_CONFIG = {
                             "query": "service_name=gps"
                         },
                         "every_n": 1
+                    },
+                ]
+            },
+            {
+                "name": "filter",
+                "port": 20001,
+                "host": "localhost",
+                "log_level": "INFO",
+                "subscriptions": [
+                    {
+                        "uri": {
+                            "path": "/state",
+                            "query": "service_name=filter"
+                        },
+                        "every_n": 1
                     }
                 ]
             }

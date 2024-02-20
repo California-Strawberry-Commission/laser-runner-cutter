@@ -3,14 +3,19 @@ import asyncio
 from PIL import Image
 from PIL.ExifTags import Base
 import json
+from amiga_client.amiga_client import AmigaClient
 
 
 class MetadataProvider:
-    def __init__(self, amiga_client, logger, overwrite = True):
+    def __init__(self, amiga_client, logger=None, overwrite = True):
         self.amiga_client = amiga_client
         self.logger = logger
         self.overwrite = overwrite
     
+    def _log(self, str):
+        if self.logger:
+            self.logger.info(str)
+            
     def get_exif(self, file):
         """Loads JSON-encoded metadata from MakerNote"""
         im = Image.open(file)
@@ -23,7 +28,7 @@ class MetadataProvider:
 
     def add_exif(self, file):
         """Opens the passed file, sets exif metadata, and saves it https://exiv2.org/tags.html"""
-        self.logger.info(f"Add EXIF to {file}")
+        self._log(f"Add EXIF to {file}")
 
         im = Image.open(file)
         exif = im.getexif()
@@ -36,17 +41,6 @@ class MetadataProvider:
         
 # Testing - do not run this file as main.
 if __name__ == "__main__":
-    import os
-    import sys
-    
-    # Needed to import amigaclient from adjacent dir
-    this_dir = os.path.split(__file__)[0]
-    needed_dir = os.path.join(this_dir, '../amiga_client')
-    sys.path.insert(0, needed_dir)
-
-    from amiga_client.amiga_client import AmigaClient
-
-
     c = AmigaClient({
         "configs": [
             {
@@ -59,6 +53,21 @@ if __name__ == "__main__":
                         "uri": {
                             "path": "/pvt",
                             "query": "service_name=gps"
+                        },
+                        "every_n": 1
+                    },
+                ]
+            },
+            {
+                "name": "filter",
+                "port": 20001,
+                "host": "129.65.121.182",
+                "log_level": "INFO",
+                "subscriptions": [
+                    {
+                        "uri": {
+                            "path": "/state",
+                            "query": "service_name=filter"
                         },
                         "every_n": 1
                     }
@@ -75,10 +84,10 @@ if __name__ == "__main__":
             print("Triggering exif mod")
             m.add_exif("/mnt/c/Users/t-dchmiel/Projects/laser-runner-cutter/runner_image_capture_amiga_kivy/libs/metadata_provider/strawberry.png")
             await asyncio.sleep(2)
-            print(m.get_exif("/mnt/c/Users/t-dchmiel/Projects/laser-runner-cutter/runner_image_capture_amiga_kivy/libs/metadata_provider/strawberry.pngexif.png")["gps"]["/pvt"]["latitude"])
+            print(m.get_exif("/mnt/c/Users/t-dchmiel/Projects/laser-runner-cutter/runner_image_capture_amiga_kivy/libs/metadata_provider/strawberry.png")["gps"]["/pvt"]["latitude"])
 
         asyncio.create_task(exif_trigger())
-        m.init_clients()
-        await asyncio.gather(*m._subscription_tasks)
+        c.init_clients()
+        await asyncio.gather(*c._subscription_tasks)
     
     asyncio.new_event_loop().run_until_complete(main()) 
