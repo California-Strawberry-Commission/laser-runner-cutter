@@ -6,9 +6,10 @@ import json
 
 
 class MetadataProvider:
-    def __init__(self, amiga_client, logger):
+    def __init__(self, amiga_client, logger, overwrite = True):
         self.amiga_client = amiga_client
         self.logger = logger
+        self.overwrite = overwrite
     
     def get_exif(self, file):
         """Loads JSON-encoded metadata from MakerNote"""
@@ -28,8 +29,9 @@ class MetadataProvider:
         exif = im.getexif()
         
         exif[Base.MakerNote] = json.dumps(self.amiga_client.get_cache())
-                
-        im.save(file + "exif.png", exif=exif)
+        
+        file_path = file if self.overwrite else file + "exif.png"
+        im.save(file_path, exif=exif)
         
         
 # Testing - do not run this file as main.
