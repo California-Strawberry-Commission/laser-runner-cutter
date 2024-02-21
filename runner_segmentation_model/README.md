@@ -55,10 +55,16 @@ DVC abstracts cloud storage and versioning of data for machine learning. It allo
 
 ## Workflow
 
-1.  Run `split_data.py` to split the raw image and label data into training and validation datasets. Be sure to remove the existing train/val images and labels beforehand.
+1.  Split the raw image and label data into training and validation datasets. Be sure to remove the existing train/val/test images and labels beforehand.
 
+        Remove existing split:
         $ rm -rf data/prepared
-        $ python src/split_data.py
+        Split the images first:
+        $ python src/split_data.py images
+        Split the YOLO labels to match the image split:
+        $ python src/split_data.py yolo_labels
+        Split the instanced masks (used by Mask R-CNN) to match the image split:
+        $ python src/split_data.py masks
 
 1.  Train the YOLOv8 model locally:
 
