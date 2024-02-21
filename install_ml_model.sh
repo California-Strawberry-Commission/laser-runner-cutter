@@ -2,4 +2,4 @@
 cd ml_model 
 python3 setup.py bdist_wheel
 #This is currently tied to the current version
-pip install dist/ml_model-0.0.1-py3-none-any.whl
+pip install dist/ml_model-0.0.1-py3-none-any.whl --force-reinstall

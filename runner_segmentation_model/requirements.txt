@@ -1,4 +1,3 @@
-pyrealsense2
 numpy
 Pillow
 ultralytics
@@ -10,3 +9,5 @@ labelbox[data]
 ndjson
 natsort
 opencv-python
+albumentations
+torchmetrics

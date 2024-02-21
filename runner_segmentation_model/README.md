@@ -66,10 +66,12 @@ DVC abstracts cloud storage and versioning of data for machine learning. It allo
         Split the instanced masks (used by Mask R-CNN) to match the image split:
         $ python src/split_data.py masks
 
-1.  Train the YOLOv8 model locally:
+1.  Train and evaluate the YOLOv8 model locally:
 
-        $ python src/yolov8_train.py
+        $ python src/yolov8.py train
+        $ python src/yolov8.py eval --weights_file <path to trained weights>
 
-1.  Evaluate the trained model on the test dataset:
+1.  Train and evaluate the Mask R-CNN model locally:
 
-        $ python src/yolov8_eval.py <path to trained model>
+        $ python src/mask_rcnn.py train
+        $ python src/mask_rcnn.py eval --weights_file <path to trained weights>
