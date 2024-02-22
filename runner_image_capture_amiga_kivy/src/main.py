@@ -9,6 +9,7 @@ import numpy as np
 from datetime import datetime
 from collections import deque
 
+
 os.environ["KIVY_NO_ARGS"] = "1"
 
 from kivy.config import Config  # noreorder # noqa: E402
@@ -27,6 +28,8 @@ from kivy.lang.builder import Builder  # noqa: E402
 from config_manager.config_manager import ConfigManager
 from file_manager.file_manager import FileManager
 from camera.realsense import RealSense
+from metadata_provider.metadata_provider import MetadataProvider
+from amiga_client.amiga_client import AmigaClient
 
 
 CONFIG_FILE = "~/.config/runner-image-capture/config.json"
@@ -34,11 +37,46 @@ CONFIG_KEY_SAVE_DIR = "saveDir"
 CONFIG_KEY_FILE_PREFIX = "filePrefix"
 CONFIG_KEY_EXPOSURE_MS = "exposureMs"
 CONFIG_KEY_INTERVAL_S = "intervalS"
+CONFIG_KEY_METADATA_SERVICES = "metaServices"
 DEFAULT_CONFIG = {
     CONFIG_KEY_SAVE_DIR: "~/Pictures/runners",
     CONFIG_KEY_FILE_PREFIX: "runner_",
     CONFIG_KEY_EXPOSURE_MS: 0.2,
     CONFIG_KEY_INTERVAL_S: 5,
+    CONFIG_KEY_METADATA_SERVICES: {
+        "configs": [
+            {
+                "name": "gps",
+                "port": 3001,
+                "host": "localhost",
+                "log_level": "INFO",
+                "subscriptions": [
+                    {
+                        "uri": {
+                            "path": "/pvt",
+                            "query": "service_name=gps"
+                        },
+                        "every_n": 1
+                    },
+                ]
+            },
+            {
+                "name": "filter",
+                "port": 20001,
+                "host": "localhost",
+                "log_level": "INFO",
+                "subscriptions": [
+                    {
+                        "uri": {
+                            "path": "/state",
+                            "query": "service_name=filter"
+                        },
+                        "every_n": 1
+                    }
+                ]
+            }
+        ]
+    }
 }
 
 
@@ -50,6 +88,8 @@ class RunnerImageCaptureApp(MDApp):
 
     def build(self):
         self.config_manager = ConfigManager(CONFIG_FILE, DEFAULT_CONFIG)
+        self.amiga_client = AmigaClient(self.config_manager.get(CONFIG_KEY_METADATA_SERVICES))
+        self.metadata_provider = MetadataProvider(self.amiga_client, self.logger)
         self.file_manager = FileManager()
         self.log_queue = deque(maxlen=100)
         self.camera = RealSense()
@@ -84,6 +124,8 @@ class RunnerImageCaptureApp(MDApp):
         self.root.ids["interval_s"].text = str(
             self.config_manager.get(CONFIG_KEY_INTERVAL_S)
         )
+        
+        self.amiga_client.init_clients()
 
     def on_stop(self) -> None:
         # Save config
@@ -107,6 +149,7 @@ class RunnerImageCaptureApp(MDApp):
             file_path = self.file_manager.save_frame(
                 self._rs_to_cv_frame(frame), save_dir, file_prefix
             )
+            self.metadata_provider.add_exif(file_path)
             self.log(f"Frame captured: {file_path}")
 
     def on_exposure_apply_click(self) -> None:
@@ -136,6 +179,7 @@ class RunnerImageCaptureApp(MDApp):
     def on_quit_click(self) -> None:
         """Kills the running kivy application."""
         self.log(f"Quit button clicked")
+        self.amiga_client.cleanup()
         for task in self.tasks:
             task.cancel()
         MDApp.get_running_app().stop()
