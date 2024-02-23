@@ -179,14 +179,17 @@ class MaskRCNN:
         )
         in_features = self.model.roi_heads.box_predictor.cls_score.in_features
         # Currently only working with one class
+        num_classes = 2
         self.model.roi_heads.box_predictor = (
-            torchvision.models.detection.faster_rcnn.FastRCNNPredictor(in_features, 2)
+            torchvision.models.detection.faster_rcnn.FastRCNNPredictor(
+                in_features, num_classes
+            )
         )
         in_features_mask = self.model.roi_heads.mask_predictor.conv5_mask.in_channels
         hidden_layer = 256
         self.model.roi_heads.mask_predictor = (
             torchvision.models.detection.mask_rcnn.MaskRCNNPredictor(
-                in_features_mask, hidden_layer, 2
+                in_features_mask, hidden_layer, num_classes
             )
         )
         self.model.to(self.device)
@@ -244,7 +247,7 @@ class MaskRCNN:
             train_loss_list = []
             val_loss_list = []
             self.model.train()
-            for item in train_data:
+            for item in tqdm(train_data):
                 imgs = [img.to(self.device) for img, _ in item]
                 labels = [
                     {k: v.to(self.device) for k, v in label.items()}
@@ -298,22 +301,24 @@ class MaskRCNN:
             pin_memory=torch.cuda.is_available(),
         )
         self.model.eval()
-        metric = torchmetrics.detection.MeanAveragePrecision()
-        for item in tqdm(test_data):
-            labels_set = []
-            pred_set = []
-            imgs = [img.to(self.device) for img, _ in item]
-            labels = [
-                {k: v.to(self.device) for k, v in label.items()} for _, label in item
-            ]
-            preds = self.model(imgs)
-            for label in labels:
-                labels_set.append({k: v.cpu().detach() for k, v in label.items()})
-            for pred in preds:
-                pred_set.append({k: v.cpu().detach() for k, v in pred.items()})
-            metric.update(pred_set, labels_set)
+        with torch.no_grad():
+            metric = torchmetrics.detection.MeanAveragePrecision()
+            for item in tqdm(test_data):
+                labels_set = []
+                pred_set = []
+                imgs = [img.to(self.device) for img, _ in item]
+                labels = [
+                    {k: v.to(self.device) for k, v in label.items()}
+                    for _, label in item
+                ]
+                preds = self.model(imgs)
+                for label in labels:
+                    labels_set.append({k: v.cpu().detach() for k, v in label.items()})
+                for pred in preds:
+                    pred_set.append({k: v.cpu().detach() for k, v in pred.items()})
+                metric.update(pred_set, labels_set)
 
-        return metric.compute()
+            return metric.compute()
 
 
 def tuple_type(arg_string):

@@ -32,7 +32,7 @@ class YoloV8:
         print(f"Training finished in {train_stop - train_start} seconds.")
 
     def eval(self, dataset_yml):
-        metrics = model.val(
+        metrics = self.model.val(
             data=dataset_yml,
             split="test",
         )
