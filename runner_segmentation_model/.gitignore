@@ -1,4 +1,5 @@
 /ultralytics
+/maskrcnn
 yolov8n.pt
 /data
 /models

@@ -10,8 +10,6 @@ from torchvision.transforms import v2 as transforms
 from time import perf_counter
 from tqdm import tqdm
 import albumentations as A
-import zipfile
-import boto3
 
 PROJECT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 DEFAULT_PREPARED_DATA_DIR = os.path.join(
@@ -350,7 +348,6 @@ if __name__ == "__main__":
         "--size", type=tuple_type, default=f"({DEFAULT_SIZE[0]}, {DEFAULT_SIZE[1]})"
     )
     train_parser.add_argument("--epochs", type=int, default=DEFAULT_EPOCHS)
-    train_parser.add_argument("--aws", action="store_true")
 
     eval_parser = subparsers.add_parser("eval", help="Evaluate model performance")
     eval_parser.add_argument(
@@ -383,27 +380,6 @@ if __name__ == "__main__":
             size=args.size,
             epochs=args.epochs,
         )
-        if args.aws:
-            # Zip and upload results
-            results_dir = os.path.join(PROJECT_PATH, "maskrcnn")
-            zip_filepath = os.path.join(PROJECT_PATH, "maskrcnn.zip")
-            with zipfile.ZipFile(zip_filepath, "w") as zip:
-                for path, directories, files in os.walk(results_dir):
-                    for file in files:
-                        file_path = os.path.join(path, file)
-                        zip.write(file_path)
-            boto3.client("s3").upload_file(
-                zip_filepath, "runner-segmentation-dvc", "out/maskrcnn.zip"
-            )
-
-            # Send notification to SNS
-            boto3.client("sns", region_name="us-west-2").publish(
-                TargetArn="arn:aws:sns:us-west-2:197938073352:MlModelTrainingStatus",
-                Message="Runner segmentation model training completed.",
-            )
-
-            # Shutdown EC2 instance
-            os.system("sudo shutdown -h now")
     elif args.command == "eval":
         metrics = model.eval(args.images_dir, args.masks_dir, size=args.size)
         print(metrics)

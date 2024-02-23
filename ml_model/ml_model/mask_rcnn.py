@@ -21,6 +21,7 @@ from torchmetrics.detection import MeanAveragePrecision
 
 SIZE = (768, 1024)
 
+
 class AlbumRandAugment:
     def __init__(self, basic_count=0, complex_count=0):
         self.basic_count = basic_count
@@ -272,7 +273,7 @@ class MaskRCNN(ModelBase):
             MRCNNDataSet(
                 train_imgs,
                 train_mask_subdirs,
-                AlbumRandAugment(basic_count=2, complex_count=2),
+                AlbumRandAugment(basic_count=0, complex_count=0),
             ),
             batch_size=2,
             shuffle=True,
