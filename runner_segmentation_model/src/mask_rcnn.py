@@ -129,15 +129,12 @@ class MaskRCNNDataset(torch.utils.data.Dataset):
         )(img)
         # If there are no masks, create empty tensors of the correct size
         if len(masks) == 0:
-            mask_tensor = torch.empty(
-                (0, self.size[1], self.size[0]), dtype=torch.float32
-            )
+            mask_tensor = torch.empty((0, self.size[1], self.size[0]), dtype=torch.bool)
             bbox_tensor = torch.empty((0, 4), dtype=torch.float32)
             label_tensor = torch.empty((0), dtype=torch.int64)
         else:
-            mask_tensor = torch.as_tensor(
-                masks / 255, dtype=torch.float32
-            )  # convert masks from [0, 255] to [0, 1]
+            # Convert masks from float nparray to boolean tensor
+            mask_tensor = torch.as_tensor(masks > 0, dtype=torch.bool)
             bbox_tensor = torch.as_tensor(bboxes, dtype=torch.float32)
             label_tensor = torch.as_tensor(np.ones(len(masks)), dtype=torch.int64)
 
@@ -242,16 +239,16 @@ class MaskRCNN:
         )
 
         min_val_loss = np.inf
-        for epoch in range(epochs):
+        for epoch in tqdm(range(epochs)):
             epoch_start = perf_counter()
             train_loss_list = []
             val_loss_list = []
             self.model.train()
-            for item in tqdm(train_data):
-                imgs = [img.to(self.device) for img, _ in item]
+            for batch in tqdm(train_data):
+                imgs = [img.to(self.device) for img, _ in batch]
                 labels = [
                     {k: v.to(self.device) for k, v in label.items()}
-                    for _, label in item
+                    for _, label in batch
                 ]
                 loss = self.model(imgs, labels)
                 if verbose:
@@ -265,11 +262,11 @@ class MaskRCNN:
             # Update the learning rate
             lr_scheduler.step()
             with torch.no_grad():
-                for item in val_data:
-                    imgs = [img.to(self.device) for img, _ in item]
+                for batch in val_data:
+                    imgs = [img.to(self.device) for img, _ in batch]
                     labels = [
                         {k: v.to(self.device) for k, v in label.items()}
-                        for _, label in item
+                        for _, label in batch
                     ]
                     loss = self.model(imgs, labels)
                     losses = sum([l for l in loss.values()])
@@ -302,23 +299,35 @@ class MaskRCNN:
         )
         self.model.eval()
         with torch.no_grad():
-            metric = torchmetrics.detection.MeanAveragePrecision()
-            for item in tqdm(test_data):
-                labels_set = []
-                pred_set = []
-                imgs = [img.to(self.device) for img, _ in item]
+            metric_bbox = torchmetrics.detection.MeanAveragePrecision(iou_type="bbox")
+            metric_segm = torchmetrics.detection.MeanAveragePrecision(iou_type="segm")
+            for batch in tqdm(test_data):
+                images = [img.to(self.device) for img, _ in batch]
                 labels = [
                     {k: v.to(self.device) for k, v in label.items()}
-                    for _, label in item
+                    for _, label in batch
                 ]
-                preds = self.model(imgs)
+                preds = self.model(images)
+                labels_cpu = []
+                preds_cpu = []
                 for label in labels:
-                    labels_set.append({k: v.cpu().detach() for k, v in label.items()})
+                    d = {k: v.cpu().detach() for k, v in label.items()}
+                    # For MeanAveragePrecision.update(), make sure pred["masks"] is a boolean tensor
+                    # with the shape (n, h, w) where n is the number of masks, w is the width,
+                    # and h is the height
+                    d["masks"] = d["masks"] > 0
+                    labels_cpu.append(d)
                 for pred in preds:
-                    pred_set.append({k: v.cpu().detach() for k, v in pred.items()})
-                metric.update(pred_set, labels_set)
+                    d = {k: v.cpu().detach() for k, v in pred.items()}
+                    # For MeanAveragePrecision.update(), make sure pred["masks"] is a boolean tensor
+                    # with the shape (n, h, w) where n is the number of predicted masks, w is the width,
+                    # and h is the height
+                    d["masks"] = (d["masks"] > 0).squeeze(1)
+                    preds_cpu.append(d)
+                metric_bbox.update(preds_cpu, labels_cpu)
+                metric_segm.update(preds_cpu, labels_cpu)
 
-            return metric.compute()
+            return metric_bbox.compute(), metric_segm.compute()
 
 
 def tuple_type(arg_string):
@@ -386,7 +395,10 @@ if __name__ == "__main__":
             epochs=args.epochs,
         )
     elif args.command == "eval":
-        metrics = model.eval(args.images_dir, args.masks_dir, size=args.size)
-        print(metrics)
+        metric_bbox, metric_segm = model.eval(
+            args.images_dir, args.masks_dir, size=args.size
+        )
+        print(metric_bbox)
+        print(metric_segm)
     else:
         print("Invalid command.")
