@@ -129,15 +129,12 @@ class MaskRCNNDataset(torch.utils.data.Dataset):
         )(img)
         # If there are no masks, create empty tensors of the correct size
         if len(masks) == 0:
-            mask_tensor = torch.empty(
-                (0, self.size[1], self.size[0]), dtype=torch.float32
-            )
+            mask_tensor = torch.empty((0, self.size[1], self.size[0]), dtype=torch.bool)
             bbox_tensor = torch.empty((0, 4), dtype=torch.float32)
             label_tensor = torch.empty((0), dtype=torch.int64)
         else:
-            mask_tensor = torch.as_tensor(
-                masks / 255, dtype=torch.float32
-            )  # convert masks from [0, 255] to [0, 1]
+            # Convert masks from float nparray to boolean tensor
+            mask_tensor = torch.as_tensor(masks > 0, dtype=torch.bool)
             bbox_tensor = torch.as_tensor(bboxes, dtype=torch.float32)
             label_tensor = torch.as_tensor(np.ones(len(masks)), dtype=torch.int64)
 
@@ -174,21 +171,29 @@ class MaskRCNN:
         self.device = (
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         )
+
+        # Initialize a Mask R-CNN model with pretrained weights
         self.model = torchvision.models.detection.maskrcnn_resnet50_fpn(
             weights="DEFAULT"
         )
-        in_features = self.model.roi_heads.box_predictor.cls_score.in_features
-        # Currently only working with one class
+
+        # We need to replace the bounding box and segmentation mask predictors for the
+        # pretrained model with new ones for our dataset.
+        num_classes = 2  # 1 class (runner) + background
+        in_features_box = self.model.roi_heads.box_predictor.cls_score.in_features
         self.model.roi_heads.box_predictor = (
-            torchvision.models.detection.faster_rcnn.FastRCNNPredictor(in_features, 2)
-        )
-        in_features_mask = self.model.roi_heads.mask_predictor.conv5_mask.in_channels
-        hidden_layer = 256
-        self.model.roi_heads.mask_predictor = (
-            torchvision.models.detection.mask_rcnn.MaskRCNNPredictor(
-                in_features_mask, hidden_layer, 2
+            torchvision.models.detection.faster_rcnn.FastRCNNPredictor(
+                in_features_box, num_classes
             )
         )
+        in_features_mask = self.model.roi_heads.mask_predictor.conv5_mask.in_channels
+        dim_reduced = self.model.roi_heads.mask_predictor.conv5_mask.out_channels
+        self.model.roi_heads.mask_predictor = (
+            torchvision.models.detection.mask_rcnn.MaskRCNNPredictor(
+                in_features_mask, dim_reduced, num_classes
+            )
+        )
+
         self.model.to(self.device)
 
     def load_weights(self, weights_file):
@@ -232,45 +237,75 @@ class MaskRCNN:
 
         # Construct an optimizer
         params = [p for p in self.model.parameters() if p.requires_grad]
-        optimizer = torch.optim.Adam(params, lr=1e-4)
+        lr = 5e-4
+        optimizer = torch.optim.AdamW(
+            params, lr=lr
+        )  # AdamW optimizer includes weight decay for regularization
         # and a learning rate scheduler
+        """
         lr_scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer, step_size=3, gamma=0.1
         )
+        """
+        lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer, max_lr=lr, total_steps=epochs * len(train_data)
+        )
 
-        min_val_loss = np.inf
-        for epoch in range(epochs):
+        # Initialize a gradient scaler for mixed-precision training if the device is a CUDA GPU
+        scaler = torch.cuda.amp.GradScaler() if self.device.type == "cuda" else None
+
+        self.model.train()
+        best_val_loss = float("inf")
+        for epoch in tqdm(range(epochs), desc="Train"):
             epoch_start = perf_counter()
             train_loss_list = []
             val_loss_list = []
-            self.model.train()
-            for item in train_data:
-                imgs = [img.to(self.device) for img, _ in item]
+            for batch in tqdm(train_data, desc="Epoch"):
+                imgs = [img.to(self.device) for img, _ in batch]
                 labels = [
                     {k: v.to(self.device) for k, v in label.items()}
-                    for _, label in item
+                    for _, label in batch
                 ]
-                loss = self.model(imgs, labels)
-                if verbose:
-                    print(loss)
-                losses = sum([l for l in loss.values()])
-                train_loss_list.append(losses.cpu().detach().numpy())
-                optimizer.zero_grad()
-                losses.backward()
-                optimizer.step()
 
-            # Update the learning rate
-            lr_scheduler.step()
+                # Clear gradients, as PyTorch accumulates gradients by default
+                optimizer.zero_grad()
+
+                # Forward pass with Automatic Mixed Precision (AMP) context manager
+                with torch.amp.autocast(torch.device(self.device).type):
+                    loss_dict = self.model(imgs, labels)
+                    if verbose:
+                        print(loss_dict)
+                    loss = sum([loss for loss in loss_dict.values()])
+                    train_loss_list.append(loss.item())
+
+                # Backpropagate the error and update the weights
+                if scaler:
+                    scaler.scale(loss).backward()
+                    scaler.step(optimizer)
+                    old_scaler = scaler.get_scale()
+                    scaler.update()
+                    new_scaler = scaler.get_scale()
+                    if new_scaler >= old_scaler:
+                        lr_scheduler.step()
+                else:
+                    loss.backward()
+                    optimizer.step()
+                    lr_scheduler.step()
+
+            # Get the validation loss
             with torch.no_grad():
-                for item in val_data:
-                    imgs = [img.to(self.device) for img, _ in item]
+                for batch in val_data:
+                    imgs = [img.to(self.device) for img, _ in batch]
                     labels = [
                         {k: v.to(self.device) for k, v in label.items()}
-                        for _, label in item
+                        for _, label in batch
                     ]
-                    loss = self.model(imgs, labels)
-                    losses = sum([l for l in loss.values()])
-                    val_loss_list.append(losses.cpu().detach().numpy())
+
+                    # Forward pass with Automatic Mixed Precision (AMP) context manager
+                    with torch.amp.autocast(torch.device(self.device).type):
+                        loss_dict = self.model(imgs, labels)
+                        loss = sum([loss for loss in loss_dict.values()])
+                        val_loss_list.append(loss.item())
 
             train_loss = np.average(np.array(train_loss_list))
             val_loss = np.average(np.array(val_loss_list))
@@ -278,8 +313,10 @@ class MaskRCNN:
             print(
                 f"Epoch {epoch} took {epoch_stop - epoch_start} seconds. Train loss = {train_loss}, val loss = {val_loss}"
             )
-            if val_loss < min_val_loss:
-                min_val_loss = val_loss
+
+            # Save the model if it's the best validation loss we've seen
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
                 os.makedirs(os.path.dirname(weights_file), exist_ok=True)
                 torch.save(self.model.state_dict(), weights_file)
                 print(f"Saved weights file to {weights_file}")
@@ -298,22 +335,72 @@ class MaskRCNN:
             pin_memory=torch.cuda.is_available(),
         )
         self.model.eval()
-        metric = torchmetrics.detection.MeanAveragePrecision()
-        for item in tqdm(test_data):
-            labels_set = []
-            pred_set = []
-            imgs = [img.to(self.device) for img, _ in item]
-            labels = [
-                {k: v.to(self.device) for k, v in label.items()} for _, label in item
-            ]
-            preds = self.model(imgs)
-            for label in labels:
-                labels_set.append({k: v.cpu().detach() for k, v in label.items()})
-            for pred in preds:
-                pred_set.append({k: v.cpu().detach() for k, v in pred.items()})
-            metric.update(pred_set, labels_set)
+        with torch.no_grad():
+            metric_bbox = torchmetrics.detection.MeanAveragePrecision(iou_type="bbox")
+            metric_segm = torchmetrics.detection.MeanAveragePrecision(iou_type="segm")
+            for batch in tqdm(test_data):
+                images = [img.to(self.device) for img, _ in batch]
+                labels = [
+                    {k: v.to(self.device) for k, v in label.items()}
+                    for _, label in batch
+                ]
+                preds = self.model(images)
+                labels_cpu = []
+                preds_cpu = []
+                for label in labels:
+                    d = {k: v.cpu().detach() for k, v in label.items()}
+                    # For MeanAveragePrecision.update(), make sure pred["masks"] is a boolean tensor
+                    # with the shape (n, h, w) where n is the number of masks, w is the width,
+                    # and h is the height
+                    d["masks"] = d["masks"] > 0
+                    labels_cpu.append(d)
+                for pred in preds:
+                    d = {k: v.cpu().detach() for k, v in pred.items()}
+                    # For MeanAveragePrecision.update(), make sure pred["masks"] is a boolean tensor
+                    # with the shape (n, h, w) where n is the number of predicted masks, w is the width,
+                    # and h is the height
+                    d["masks"] = (d["masks"] > 0).squeeze(1)
+                    preds_cpu.append(d)
+                metric_bbox.update(preds_cpu, labels_cpu)
+                metric_segm.update(preds_cpu, labels_cpu)
 
-        return metric.compute()
+            return metric_bbox.compute(), metric_segm.compute()
+
+
+def move_data_to_device(
+    data,
+    device: torch.device,
+):
+    """
+    Recursively move data to the specified device.
+
+    This function takes a data structure (could be a tensor, list, tuple, or dictionary)
+    and moves all tensors within the structure to the given PyTorch device.
+
+    Args:
+    data (any): data to move to the device.
+    device (torch.device): the PyTorch device to move the data to.
+    """
+
+    # If the data is a tuple, iterate through its elements and move each to the device.
+    if isinstance(data, tuple):
+        return tuple(move_data_to_device(d, device) for d in data)
+
+    # If the data is a list, iterate through its elements and move each to the device.
+    if isinstance(data, list):
+        return list(move_data_to_device(d, device) for d in data)
+
+    # If the data is a dictionary, iterate through its key-value pairs and move each value to the device.
+    elif isinstance(data, dict):
+        return {k: move_data_to_device(v, device) for k, v in data.items()}
+
+    # If the data is a tensor, directly move it to the device.
+    elif isinstance(data, torch.Tensor):
+        return data.to(device)
+
+    # If the data type is not a tensor, list, tuple, or dictionary, it remains unchanged.
+    else:
+        return data
 
 
 def tuple_type(arg_string):
@@ -381,7 +468,10 @@ if __name__ == "__main__":
             epochs=args.epochs,
         )
     elif args.command == "eval":
-        metrics = model.eval(args.images_dir, args.masks_dir, size=args.size)
-        print(metrics)
+        metric_bbox, metric_segm = model.eval(
+            args.images_dir, args.masks_dir, size=args.size
+        )
+        print(metric_bbox)
+        print(metric_segm)
     else:
         print("Invalid command.")
