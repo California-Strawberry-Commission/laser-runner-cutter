@@ -11,4 +11,3 @@ natsort
 opencv-python
 albumentations
 torchmetrics
-boto3
