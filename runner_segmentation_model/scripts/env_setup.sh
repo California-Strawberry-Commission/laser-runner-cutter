@@ -38,10 +38,10 @@ sudo ./aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli --u
 
 # Install Python 3.11
 sudo apt update && sudo apt upgrade -y
-sudo add-apt-repository ppa:deadsnakes/ppa
+sudo add-apt-repository -y ppa:deadsnakes/ppa
 sudo apt update
-sudo apt install python3.11
-sudo apt install python3.11-venv
+sudo apt-get -y install python3.11
+sudo apt-get -y install python3.11-venv
 
 # Create and source into a venv
 script_dir=$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )

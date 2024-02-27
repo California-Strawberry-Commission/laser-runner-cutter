@@ -13,19 +13,25 @@ source "$script_dir/../venv/bin/activate"
 # Run train command
 "$@"
 
-# Zip and upload results
-cd "$script_dir/.."
-if [ -d "ultralytics" ]; then
-  zip -r "ultralytics.zip" "ultralytics"
-  aws s3 cp "ultralytics.zip" "s3://csc-runner-segmentation-dvc/out/ultralytics.zip"
-fi
-if [ -d "maskrcnn" ]; then
-  zip -r "maskrcnn.zip" "maskrcnn"
-  aws s3 cp "maskrcnn.zip" "s3://csc-runner-segmentation-dvc/out/maskrcnn.zip"
-fi
+sns_topic_arn="arn:aws:sns:us-west-2:582853214798:CscMlModelTrainingStatus"
+if [[ $? -eq 0 ]]; then
+  # Zip and upload results
+  cd "$script_dir/.."
+  if [ -d "ultralytics" ]; then
+    zip -r "ultralytics.zip" "ultralytics"
+    aws s3 cp "ultralytics.zip" "s3://csc-runner-segmentation-dvc/out/ultralytics.zip"
+  fi
+  if [ -d "maskrcnn" ]; then
+    zip -r "maskrcnn.zip" "maskrcnn"
+    aws s3 cp "maskrcnn.zip" "s3://csc-runner-segmentation-dvc/out/maskrcnn.zip"
+  fi
 
-# Send notification to SNS
-aws sns publish --topic-arn "arn:aws:sns:us-east-1:582853214798:MlModelTrainingStatus" --message "Runner segmentation model training completed." > /dev/null 2>&1
+  # Send notification to SNS
+  aws sns publish --topic-arn "$sns_topic_arn" --message "Runner segmentation model training SUCCESSFUL." > /dev/null 2>&1
+else
+  # Send notification to SNS
+  aws sns publish --topic-arn "$sns_topic_arn" --message "Runner segmentation model training FAILED." > /dev/null 2>&1
+fi
 
 # Shutdown EC2 instance
 sudo shutdown -h now
