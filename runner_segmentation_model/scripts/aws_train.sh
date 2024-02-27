@@ -17,15 +17,15 @@ source "$script_dir/../venv/bin/activate"
 cd "$script_dir/.."
 if [ -d "ultralytics" ]; then
   zip -r "ultralytics.zip" "ultralytics"
-  aws s3 cp "ultralytics.zip" "s3://runner-segmentation-dvc/out/ultralytics.zip"
+  aws s3 cp "ultralytics.zip" "s3://csc-runner-segmentation-dvc/out/ultralytics.zip"
 fi
 if [ -d "maskrcnn" ]; then
   zip -r "maskrcnn.zip" "maskrcnn"
-  aws s3 cp "maskrcnn.zip" "s3://runner-segmentation-dvc/out/maskrcnn.zip"
+  aws s3 cp "maskrcnn.zip" "s3://csc-runner-segmentation-dvc/out/maskrcnn.zip"
 fi
 
 # Send notification to SNS
-aws sns publish --topic-arn "arn:aws:sns:us-west-2:197938073352:MlModelTrainingStatus" --message "Runner segmentation model training completed." > /dev/null 2>&1
+aws sns publish --topic-arn "arn:aws:sns:us-east-1:582853214798:MlModelTrainingStatus" --message "Runner segmentation model training completed." > /dev/null 2>&1
 
 # Shutdown EC2 instance
 sudo shutdown -h now

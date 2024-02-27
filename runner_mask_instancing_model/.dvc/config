@@ -1,4 +1,4 @@
 [core]
     remote = runner_mask_instancing
 ['remote "runner_mask_instancing"']
-    url = s3://runner-mask-instancing-dvc
+    url = s3://csc-runner-mask-instancing-dvc
