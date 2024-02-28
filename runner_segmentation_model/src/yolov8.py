@@ -2,6 +2,7 @@ import os
 import argparse
 from ultralytics import settings, YOLO
 from time import perf_counter
+import json
 
 PROJECT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 DEFAULT_SIZE = (1024, 768)
@@ -35,6 +36,7 @@ class YoloV8:
         metrics = self.model.val(
             data=dataset_yml,
             split="test",
+            iou=0.6,
         )
         return metrics
 
@@ -91,7 +93,12 @@ if __name__ == "__main__":
         model.train(args.dataset_yml, args.size, args.epochs)
     elif args.command == "eval":
         metrics = model.eval(args.dataset_yml)
-        print(f"mAP50: {metrics.seg.map50}")
-        print(f"mAP50-95: {metrics.seg.map}")
+        summary = {
+            "mAP50 (box)": metrics.box.map50,
+            "mAP50-95 (box)": metrics.box.map,
+            "mAP50 (seg)": metrics.seg.map50,
+            "mAP50-95 (seg)": metrics.seg.map,
+        }
+        print(json.dumps(summary))
     else:
         print("Invalid command.")
