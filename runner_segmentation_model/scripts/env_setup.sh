@@ -31,10 +31,11 @@ sudo cp /var/cuda-repo-ubuntu2004-11-8-local/cuda-*-keyring.gpg /usr/share/keyri
 sudo apt-get update
 sudo apt-get -y install cuda
 
-# Install AWS CLI
+# Install AWS CLI and zip
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
 unzip awscliv2.zip
 sudo ./aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli --update
+sudo apt-get -y install zip
 
 # Install Python 3.11
 sudo apt update && sudo apt upgrade -y

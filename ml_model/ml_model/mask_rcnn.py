@@ -227,7 +227,7 @@ class MaskRCNN(ModelBase):
             pin_memory=True if torch.cuda.is_available() else False,
         )
         self.model.eval()
-        metric = MeanAveragePrecision()
+        metric = MeanAveragePrecision(iou_type="segm")
         for dt in tqdm(test_dl):
             labels_set = []
             pred_set = []
@@ -237,9 +237,19 @@ class MaskRCNN(ModelBase):
             ]
             preds = self.model(imgs)
             for label in labels:
-                labels_set.append({k: v.cpu().detach() for k, v in label.items()})
+                d = {k: v.cpu().detach() for k, v in label.items()}
+                # For MeanAveragePrecision.update(), make sure pred["masks"] is a boolean tensor
+                # with the shape (n, h, w) where n is the number of masks, w is the width,
+                # and h is the height
+                d["masks"] = d["masks"] > 0
+                labels_set.append(d)
             for pred in preds:
-                pred_set.append({k: v.cpu().detach() for k, v in pred.items()})
+                d = {k: v.cpu().detach() for k, v in pred.items()}
+                # For MeanAveragePrecision.update(), make sure pred["masks"] is a boolean tensor
+                # with the shape (n, h, w) where n is the number of predicted masks, w is the width,
+                # and h is the height
+                d["masks"] = (d["masks"] > 0).squeeze(1)
+                pred_set.append(d)
             metric.update(pred_set, labels_set)
 
         met = metric.compute()
