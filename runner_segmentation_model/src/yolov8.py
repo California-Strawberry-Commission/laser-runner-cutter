@@ -3,6 +3,8 @@ import argparse
 from ultralytics import settings, YOLO
 from time import perf_counter
 import json
+import cv2
+import numpy as np
 
 PROJECT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 DEFAULT_SIZE = (1024, 768)
@@ -40,6 +42,17 @@ class YoloV8:
         )
         return metrics
 
+    def debug(self, image_file):
+        image = cv2.imread(image_file)
+        image_array = np.array(image)
+        result = self.model(image_array, iou=0.6)[0]
+
+        conf = result.boxes.conf.cpu().numpy()
+        boxes = result.boxes.xywh
+        masks = result.masks.xy
+
+        result.show()  # display to screen
+
 
 def tuple_type(arg_string):
     try:
@@ -64,18 +77,18 @@ if __name__ == "__main__":
     train_parser.add_argument(
         "--size", type=tuple_type, default=f"({DEFAULT_SIZE[0]}, {DEFAULT_SIZE[1]})"
     )
-    train_parser.add_argument(
-        "--weights_file", default=os.path.join(PROJECT_PATH, "models", "yolov8.pt")
-    )
+    train_parser.add_argument("--weights_file")
     train_parser.add_argument("--epochs", type=int, default=DEFAULT_EPOCHS)
 
     eval_parser = subparsers.add_parser("eval", help="Evaluate model performance")
     eval_parser.add_argument(
         "--dataset_yml", default=os.path.join(PROJECT_PATH, "dataset.yml")
     )
-    eval_parser.add_argument(
-        "--weights_file", default=os.path.join(PROJECT_PATH, "models", "yolov8.pt")
-    )
+    eval_parser.add_argument("--weights_file")
+
+    debug_parser = subparsers.add_parser("debug", help="Debug model predictions")
+    debug_parser.add_argument("--weights_file")
+    debug_parser.add_argument("--image_file", required=True)
 
     args = parser.parse_args()
 
@@ -100,5 +113,7 @@ if __name__ == "__main__":
             "mAP50-95 (seg)": metrics.seg.map,
         }
         print(json.dumps(summary))
+    elif args.command == "debug":
+        model.debug(args.image_file)
     else:
         print("Invalid command.")

@@ -7,9 +7,12 @@ import torch
 import torchvision
 import torchmetrics
 from torchvision.transforms import v2 as transforms
+import torchvision.transforms.functional as F
 from time import perf_counter
 from tqdm import tqdm
 import albumentations as A
+from functools import partial
+import matplotlib.pyplot as plt
 
 PROJECT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 DEFAULT_PREPARED_DATA_DIR = os.path.join(
@@ -167,7 +170,7 @@ class MaskRCNNDataset(torch.utils.data.Dataset):
 
 
 class MaskRCNN:
-    def __init__(self):
+    def __init__(self, size=DEFAULT_SIZE):
         self.device = (
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         )
@@ -196,6 +199,8 @@ class MaskRCNN:
 
         self.model.to(self.device)
 
+        self.size = size
+
     def load_weights(self, weights_file):
         self.model.load_state_dict(torch.load(weights_file))
         self.model.eval()
@@ -206,7 +211,6 @@ class MaskRCNN:
         images_dir,
         masks_dir,
         weights_file,
-        size=DEFAULT_SIZE,
         epochs=DEFAULT_EPOCHS,
         verbose=False,
     ):
@@ -214,7 +218,7 @@ class MaskRCNN:
             MaskRCNNDataset(
                 os.path.join(images_dir, "train"),
                 os.path.join(masks_dir, "train"),
-                size=size,
+                size=self.size,
             ),
             batch_size=2,
             shuffle=True,
@@ -226,7 +230,7 @@ class MaskRCNN:
             MaskRCNNDataset(
                 os.path.join(images_dir, "val"),
                 os.path.join(masks_dir, "val"),
-                size=size,
+                size=self.size,
             ),
             batch_size=2,
             shuffle=True,
@@ -321,12 +325,12 @@ class MaskRCNN:
                 torch.save(self.model.state_dict(), weights_file)
                 print(f"Saved weights file to {weights_file}")
 
-    def eval(self, images_dir, masks_dir, size=DEFAULT_SIZE):
+    def eval(self, images_dir, masks_dir):
         test_data = torch.utils.data.DataLoader(
             MaskRCNNDataset(
                 os.path.join(images_dir, "test"),
                 os.path.join(masks_dir, "test"),
-                size=size,
+                size=self.size,
             ),
             batch_size=1,
             shuffle=True,
@@ -365,6 +369,125 @@ class MaskRCNN:
                 metric_segm.update(preds_cpu, labels_cpu)
 
             return metric_bbox.compute(), metric_segm.compute()
+
+    def debug(self, image_file, mask_subdir=None, conf_threshold=0.25):
+        orig_img = cv2.imread(image_file)
+        img = cv2.resize(orig_img, self.size)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img_tensor = transforms.Compose(
+            [transforms.ToImage(), transforms.ToDtype(torch.float32, scale=True)]
+        )(img)[None].to(self.device)
+        self.model.eval()
+        with torch.no_grad():
+            result = self.model(img_tensor)
+
+        result = move_data_to_device(result, "cpu")[0]
+
+        # Filter the output based on the confidence threshold
+        conf_mask = result["scores"] > conf_threshold
+
+        # Confidence scores
+        conf = result["scores"][conf_mask]
+
+        # Calculate the scale between the source image and the resized image
+        min_img_scale = min(orig_img.shape[:-1]) / min(self.size)
+        # Scale the predicted bounding boxes to the source image
+        pred_bboxes = torchvision.tv_tensors.BoundingBoxes(
+            result["boxes"][conf_mask] * min_img_scale,
+            format="xyxy",
+            canvas_size=(self.size[1], self.size[0]),
+        )
+
+        # Scale and stack the predicted segmentation masks
+        pred_masks = torch.nn.functional.interpolate(
+            result["masks"][conf_mask], size=orig_img.shape[:-1]
+        )
+        pred_masks = torch.concat(
+            [
+                torchvision.tv_tensors.Mask(
+                    torch.where(mask >= conf_threshold, 1, 0), dtype=torch.bool
+                )
+                for mask in pred_masks
+            ]
+        )
+
+        # Annotate and display image with ground truth masks and predicted masks
+        def show(imgs):
+            if not isinstance(imgs, list):
+                imgs = [imgs]
+            fix, axes = plt.subplots(ncols=len(imgs), squeeze=False)
+            for i, img in enumerate(imgs):
+                img = img.detach()
+                img = F.to_pil_image(img)
+                axes[0, i].imshow(np.asarray(img))
+                axes[0, i].set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
+            plt.show()
+
+        img_tensor = transforms.Compose(
+            [transforms.ToImage(), transforms.ToDtype(torch.uint8, scale=True)]
+        )(cv2.cvtColor(orig_img, cv2.COLOR_BGR2RGB))
+        draw_bboxes = partial(
+            torchvision.utils.draw_bounding_boxes, fill=False, width=2
+        )
+
+        images_to_display = []
+        if mask_subdir is not None:
+            mask_paths = glob(os.path.join(mask_subdir, "*.jpg")) + glob(
+                os.path.join(mask_subdir, "*.png")
+            )
+            masks = np.zeros((0, orig_img.shape[0], orig_img.shape[1]))
+            for mask_path in mask_paths:
+                mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+                mask = cv2.resize(mask, (orig_img.shape[1], orig_img.shape[0]))
+                _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
+                # Don't include masks without any valid pixel values
+                if np.max(mask) < 255:
+                    continue
+
+                masks = np.concatenate((masks, mask[np.newaxis, :, :]), axis=0)
+            if len(masks) == 0:
+                gt_masks = torchvision.tv_tensors.Mask(
+                    torch.empty(
+                        (0, orig_img.shape[0], orig_img.shape[1]), dtype=torch.bool
+                    )
+                )
+            else:
+                gt_masks = torchvision.tv_tensors.Mask(masks > 0, dtype=torch.bool)
+
+            gt_bboxes = torchvision.tv_tensors.BoundingBoxes(
+                data=torchvision.ops.masks_to_boxes(gt_masks),
+                format="xyxy",
+                canvas_size=orig_img.shape[:-1],
+            )
+
+            # Annotate the image with the GT segmentation masks
+            gt_annotated_tensor = torchvision.utils.draw_segmentation_masks(
+                image=img_tensor, masks=gt_masks, alpha=0.3, colors="red"
+            )
+            # Annotate the image with the GT bounding boxes
+            gt_annotated_tensor = draw_bboxes(
+                image=gt_annotated_tensor,
+                boxes=gt_bboxes,
+                labels=["runner" for _ in range(gt_bboxes.size()[0])],
+                colors="red",
+            )
+            images_to_display.append(gt_annotated_tensor)
+
+        # Annotate the image with the predicted segmentation masks
+        pred_annotated_tensor = torchvision.utils.draw_segmentation_masks(
+            image=img_tensor, masks=pred_masks, alpha=0.3, colors="red"
+        )
+        # Annotate the image with the predicted labels and bounding boxes
+        pred_annotated_tensor = draw_bboxes(
+            image=pred_annotated_tensor,
+            boxes=pred_bboxes,
+            labels=[f"runner: {c:.2f}" for c in conf],
+            colors="red",
+        )
+        images_to_display.append(pred_annotated_tensor)
+
+        # Display GT (if available) and predictions
+        show(images_to_display)
 
 
 def move_data_to_device(
@@ -452,11 +575,21 @@ if __name__ == "__main__":
         "--size", type=tuple_type, default=f"({DEFAULT_SIZE[0]}, {DEFAULT_SIZE[1]})"
     )
 
+    debug_parser = subparsers.add_parser("debug", help="Debug model predictions")
+    debug_parser.add_argument(
+        "--weights_file", default=os.path.join(PROJECT_PATH, "maskrcnn", "maskrcnn.pt")
+    )
+    debug_parser.add_argument("--image_file", required=True)
+    debug_parser.add_argument("--mask_subdir")
+    debug_parser.add_argument(
+        "--size", type=tuple_type, default=f"({DEFAULT_SIZE[0]}, {DEFAULT_SIZE[1]})"
+    )
+
     args = parser.parse_args()
 
-    model = MaskRCNN()
+    model = MaskRCNN(size=args.size)
     weights_file = args.weights_file
-    if os.path.exists(weights_file):
+    if weights_file is not None and os.path.exists(weights_file):
         model.load_weights(weights_file)
 
     if args.command == "train":
@@ -464,14 +597,13 @@ if __name__ == "__main__":
             args.images_dir,
             args.masks_dir,
             weights_file,
-            size=args.size,
             epochs=args.epochs,
         )
     elif args.command == "eval":
-        metric_bbox, metric_segm = model.eval(
-            args.images_dir, args.masks_dir, size=args.size
-        )
+        metric_bbox, metric_segm = model.eval(args.images_dir, args.masks_dir)
         print(metric_bbox)
         print(metric_segm)
+    elif args.command == "debug":
+        model.debug(args.image_file, args.mask_subdir)
     else:
         print("Invalid command.")
