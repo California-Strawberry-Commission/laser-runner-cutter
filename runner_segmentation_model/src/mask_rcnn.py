@@ -370,7 +370,7 @@ class MaskRCNN:
 
             return metric_bbox.compute(), metric_segm.compute()
 
-    def debug(self, image_file, mask_subdir=None, conf_threshold=0.25):
+    def debug(self, image_file, mask_subdir=None, conf_threshold=0.5):
         orig_img = cv2.imread(image_file)
         img = cv2.resize(orig_img, self.size)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
