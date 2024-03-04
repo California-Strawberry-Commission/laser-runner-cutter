@@ -17,13 +17,9 @@ sns_topic_arn="arn:aws:sns:us-west-2:582853214798:CscMlModelTrainingStatus"
 if [[ $? -eq 0 ]]; then
   # Zip and upload results
   cd "$script_dir/.."
-  if [ -d "ultralytics" ]; then
-    zip -r "ultralytics.zip" "ultralytics"
-    aws s3 cp "ultralytics.zip" "s3://csc-runner-segmentation-dvc/out/ultralytics.zip"
-  fi
-  if [ -d "maskrcnn" ]; then
-    zip -r "maskrcnn.zip" "maskrcnn"
-    aws s3 cp "maskrcnn.zip" "s3://csc-runner-segmentation-dvc/out/maskrcnn.zip"
+  if [ -d "output" ]; then
+    zip -r "output.zip" "output"
+    aws s3 cp "output.zip" "s3://csc-runner-segmentation-dvc/out/output.zip"
   fi
 
   # Send notification to SNS

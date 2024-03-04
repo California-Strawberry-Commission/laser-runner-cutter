@@ -13,18 +13,19 @@ Note: the following steps are encapsulated in `scripts/env_setup.sh`.
         $ wget https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda-repo-ubuntu2004-11-8-local_11.8.0-520.61.05-1_amd64.deb
         $ sudo dpkg -i cuda-repo-ubuntu2004-11-8-local_11.8.0-520.61.05-1_amd64.deb
         $ sudo cp /var/cuda-repo-ubuntu2004-11-8-local/cuda-*-keyring.gpg /usr/share/keyrings/
-        $ sudo apt-get update
-        $ sudo apt-get -y install cuda
+        $ sudo apt update
+        $ sudo apt -y install cuda
 
 1.  Create and source into a venv
 
     Install Python 3.11:
 
         $ sudo apt update && sudo apt upgrade -y
-        $ sudo add-apt-repository ppa:deadsnakes/ppa
+        $ sudo add-apt-repository -y ppa:deadsnakes/ppa
         $ sudo apt update
-        $ sudo apt install python3.11
-        $ sudo apt install python3.11-venv
+        $ sudo apt -y install python3.11
+        $ sudo apt -y install python3.11-venv
+        $ sudo apt -y install python3.11-dev
 
     Create venv:
 

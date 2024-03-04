@@ -95,8 +95,10 @@ if __name__ == "__main__":
     settings.update(
         {
             "datasets_dir": PROJECT_PATH,
-            "runs_dir": os.path.join(PROJECT_PATH, "ultralytics", "runs"),
-            "weights_dir": os.path.join(PROJECT_PATH, "ultralytics", "weights"),
+            "runs_dir": os.path.join(PROJECT_PATH, "output", "ultralytics", "runs"),
+            "weights_dir": os.path.join(
+                PROJECT_PATH, "output", "ultralytics", "weights"
+            ),
         }
     )
 

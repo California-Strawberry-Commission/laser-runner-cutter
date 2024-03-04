@@ -74,8 +74,8 @@ class MaskRCNNDataset(torch.utils.data.Dataset):
         Args:
             img_dir (string): path to image directory
             mask_dir (string): path to mask directory. Note that this directory must
-                                contain subdirectories with names matching the image
-                                files in img_dir without the extension
+                               contain subdirectories with names matching the image
+                               files in img_dir without the extension
             size ((width, height)): width and height of images and masks. Images and
                                     masks will be resized to this size.
             transformer: transform generator
@@ -390,7 +390,7 @@ class MaskRCNN:
         conf = result["scores"][conf_mask]
 
         # Calculate the scale between the source image and the resized image
-        min_img_scale = min(orig_img.shape[:-1]) / min(self.size)
+        min_img_scale = min(orig_img.shape[:2]) / min(self.size)
         # Scale the predicted bounding boxes to the source image
         pred_bboxes = torchvision.tv_tensors.BoundingBoxes(
             result["boxes"][conf_mask] * min_img_scale,
@@ -400,7 +400,7 @@ class MaskRCNN:
 
         # Scale and stack the predicted segmentation masks
         pred_masks = torch.nn.functional.interpolate(
-            result["masks"][conf_mask], size=orig_img.shape[:-1]
+            result["masks"][conf_mask], size=orig_img.shape[:2]
         )
         pred_masks = torch.concat(
             [
@@ -457,7 +457,7 @@ class MaskRCNN:
             gt_bboxes = torchvision.tv_tensors.BoundingBoxes(
                 data=torchvision.ops.masks_to_boxes(gt_masks),
                 format="xyxy",
-                canvas_size=orig_img.shape[:-1],
+                canvas_size=orig_img.shape[:2],
             )
 
             # Annotate the image with the GT segmentation masks
@@ -552,7 +552,8 @@ if __name__ == "__main__":
         default=os.path.join(DEFAULT_PREPARED_DATA_DIR, "masks"),
     )
     train_parser.add_argument(
-        "--weights_file", default=os.path.join(PROJECT_PATH, "maskrcnn", "maskrcnn.pt")
+        "--weights_file",
+        default=os.path.join(PROJECT_PATH, "output", "maskrcnn", "maskrcnn.pt"),
     )
     train_parser.add_argument(
         "--size", type=tuple_type, default=f"({DEFAULT_SIZE[0]}, {DEFAULT_SIZE[1]})"
@@ -569,7 +570,8 @@ if __name__ == "__main__":
         default=os.path.join(DEFAULT_PREPARED_DATA_DIR, "masks"),
     )
     eval_parser.add_argument(
-        "--weights_file", default=os.path.join(PROJECT_PATH, "maskrcnn", "maskrcnn.pt")
+        "--weights_file",
+        default=os.path.join(PROJECT_PATH, "output", "maskrcnn", "maskrcnn.pt"),
     )
     eval_parser.add_argument(
         "--size", type=tuple_type, default=f"({DEFAULT_SIZE[0]}, {DEFAULT_SIZE[1]})"
@@ -577,7 +579,8 @@ if __name__ == "__main__":
 
     debug_parser = subparsers.add_parser("debug", help="Debug model predictions")
     debug_parser.add_argument(
-        "--weights_file", default=os.path.join(PROJECT_PATH, "maskrcnn", "maskrcnn.pt")
+        "--weights_file",
+        default=os.path.join(PROJECT_PATH, "output", "maskrcnn", "maskrcnn.pt"),
     )
     debug_parser.add_argument("--image_file", required=True)
     debug_parser.add_argument("--mask_subdir")
