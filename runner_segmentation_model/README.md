@@ -135,7 +135,12 @@ DVC abstracts cloud storage and versioning of data for machine learning. It allo
         $ python src/yolov8.py train
         $ python src/yolov8.py eval --weights_file <path to trained weights>
 
-1.  Train and evaluate the Mask R-CNN model locally:
+1.  Train and evaluate the PyTorch Mask R-CNN model locally:
 
         $ python src/mask_rcnn.py train
         $ python src/mask_rcnn.py eval --weights_file <path to trained weights>
+
+1.  Train and evaluate the Detectron2 Mask R-CNN model locally:
+
+        $ python src/detectron.py train
+        $ python src/detectron.py eval --weights_file <path to trained weights>
