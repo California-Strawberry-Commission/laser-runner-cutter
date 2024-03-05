@@ -10,6 +10,7 @@ from detectron2.engine import DefaultPredictor, DefaultTrainer
 from detectron2.evaluation import COCOEvaluator, inference_on_dataset
 from detectron2.utils.logger import setup_logger
 from detectron2.utils.visualizer import Visualizer, ColorMode
+from detectron2.projects import point_rend
 import cv2
 import numpy as np
 import pycocotools
@@ -96,21 +97,38 @@ def get_dataset(img_dir, mask_dir):
 
 
 class Detectron:
-    def __init__(self, output_dir=DEFAULT_OUTPUT_DIR):
+    def __init__(self, output_dir=DEFAULT_OUTPUT_DIR, use_point_rend=True):
         # Load default config
         # Config reference: https://detectron2.readthedocs.io/en/latest/modules/config.html#yaml-config-references
         cfg = get_cfg()
-        cfg.OUTPUT_DIR = output_dir
-        # See available models at https://github.com/facebookresearch/detectron2/tree/main/configs/COCO-InstanceSegmentation
-        cfg.merge_from_file(
-            model_zoo.get_config_file(
+
+        # Add PointRend-specific config
+        if use_point_rend:
+            point_rend.add_pointrend_config(cfg)
+            cfg.merge_from_file(
+                os.path.join(
+                    PROJECT_PATH,
+                    "configs",
+                    "PointRend",
+                    "InstanceSegmentation",
+                    "pointrend_rcnn_R_50_FPN_3x_coco.yaml",
+                )
+            )
+            # Initialize weights from pretrained model
+            cfg.MODEL.WEIGHTS = "detectron2://PointRend/InstanceSegmentation/pointrend_rcnn_R_50_FPN_3x_coco/164955410/model_final_edd263.pkl"
+            cfg.MODEL.POINT_HEAD.NUM_CLASSES = 1
+        else:
+            # See available models at https://github.com/facebookresearch/detectron2/tree/main/configs/COCO-InstanceSegmentation
+            cfg.merge_from_file(
+                model_zoo.get_config_file(
+                    "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"
+                )
+            )
+            # Initialize weights from pretrained model
+            cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(
                 "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"
             )
-        )
-        # Initialize weights from model zoo by default
-        cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(
-            "COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"
-        )
+
         # Only has one class (runner). Note that this config param does not include background as a class.
         # See https://detectron2.readthedocs.io/tutorials/datasets.html#update-the-config-for-new-datasets)
         cfg.MODEL.ROI_HEADS.NUM_CLASSES = 1
@@ -119,10 +137,12 @@ class Detectron:
         # Batch size
         cfg.SOLVER.IMS_PER_BATCH = 2
         # Learning rate
-        cfg.SOLVER.BASE_LR = 0.0001
+        cfg.SOLVER.BASE_LR = 0.00025
         # LR decay
-        cfg.SOLVER.GAMMA = 0.1
-        cfg.SOLVER.STEPS = np.arange(5000, 1000001, 5000).tolist()
+        # cfg.SOLVER.GAMMA = 0.1
+        # cfg.SOLVER.STEPS = np.arange(5000, 1000001, 5000).tolist()
+        cfg.SOLVER.STEPS = []
+        cfg.OUTPUT_DIR = output_dir
         self.cfg = cfg
 
     def load_weights(self, weights_file):
