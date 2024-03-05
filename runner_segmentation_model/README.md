@@ -43,6 +43,16 @@ Note: the following steps are encapsulated in `scripts/env_setup.sh`.
 
         $ pip install -r requirements.txt
 
+1.  Ensure opencv-python
+
+        $ pip list | grep opencv
+
+    If you see multiple versions (for example, both opencv-python and opencv-python-headless), you may need to reinstall opencv-python:
+
+        $ pip uninstall opencv-python-headless -y
+        $ pip uninstall opencv-python -y
+        $ pip install opencv-python
+
 ### On Jetson
 
 1.  Install CUDA, a package that allows for model training on GPU's. This is all from https://developer.nvidia.com/cuda-11-8-0-download-archive?target_os=Linux&target_arch=aarch64-jetson&Compilation=Native&Distribution=Ubuntu&target_version=20.04&target_type=deb_local

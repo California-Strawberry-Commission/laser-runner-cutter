@@ -96,7 +96,7 @@ class Detectron:
         # Load default config
         # Config reference: https://detectron2.readthedocs.io/en/latest/modules/config.html#yaml-config-references
         cfg = get_cfg()
-        cfg.OUTPUT_DIR = (output_dir,)
+        cfg.OUTPUT_DIR = output_dir
         # See available models at https://github.com/facebookresearch/detectron2/tree/main/configs/COCO-InstanceSegmentation
         cfg.merge_from_file(
             model_zoo.get_config_file(
@@ -118,7 +118,7 @@ class Detectron:
         cfg.SOLVER.BASE_LR = 0.0001
         # LR decay
         cfg.SOLVER.GAMMA = 0.1
-        cfg.SOLVER.STEPS = np.arange(5000, 1000001, 5000)
+        cfg.SOLVER.STEPS = np.arange(5000, 1000001, 5000).tolist()
         self.cfg = cfg
 
     def load_weights(self, weights_file):
@@ -160,14 +160,30 @@ class Detectron:
         )
         MetadataCatalog.get(f"runner_test").set(thing_classes=["runner"])
 
-        # Set a custom testing threshold
-        self.cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.7
-
         os.makedirs(self.cfg.OUTPUT_DIR, exist_ok=True)
         predictor = DefaultPredictor(self.cfg)
         evaluator = COCOEvaluator("runner_test", output_dir=self.cfg.OUTPUT_DIR)
         data_loader = build_detection_test_loader(self.cfg, "runner_test")
         print(inference_on_dataset(predictor.model, data_loader, evaluator))
+
+    def debug(self, image_file):
+        img = cv2.imread(image_file)
+        predictor = DefaultPredictor(self.cfg)
+        outputs = predictor(
+            img
+        )  # format is documented at https://detectron2.readthedocs.io/tutorials/models.html#model-output-format
+        MetadataCatalog.get("runner_debug").set(thing_classes=["runner"])
+        runner_metadata = MetadataCatalog.get("runner_debug")
+        vis = Visualizer(
+            img[:, :, ::-1],
+            metadata=runner_metadata,
+            scale=0.5,
+            instance_mode=ColorMode.IMAGE_BW,  # remove the colors of unsegmented pixels. This option is only available for segmentation models
+        )
+        out = vis.draw_instance_predictions(outputs["instances"].to("cpu"))
+        cv2.imshow("Predictions", out.get_image()[:, :, ::-1])
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
@@ -214,6 +230,13 @@ if __name__ == "__main__":
         default=DEFAULT_OUTPUT_DIR,
     )
 
+    debug_parser = subparsers.add_parser("debug", help="Debug model predictions")
+    debug_parser.add_argument(
+        "--weights_file",
+        default=os.path.join(DEFAULT_OUTPUT_DIR, "model_final.pth"),
+    )
+    debug_parser.add_argument("--image_file", required=True)
+
     args = parser.parse_args()
 
     model = Detectron(output_dir=args.output_dir)
@@ -231,5 +254,7 @@ if __name__ == "__main__":
         )
     elif args.command == "eval":
         model.eval(args.images_dir, args.masks_dir)
+    elif args.command == "debug":
+        model.debug(args.image_file)
     else:
         print("Invalid command.")
