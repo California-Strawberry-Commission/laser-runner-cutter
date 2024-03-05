@@ -11,5 +11,4 @@ natsort
 opencv-python
 albumentations
 torchmetrics
-PyQt5
 git+https://github.com/facebookresearch/detectron2.git

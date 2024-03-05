@@ -23,9 +23,7 @@ Note: the following steps are encapsulated in `scripts/env_setup.sh`.
         $ sudo apt update && sudo apt upgrade -y
         $ sudo add-apt-repository -y ppa:deadsnakes/ppa
         $ sudo apt update
-        $ sudo apt -y install python3.11
-        $ sudo apt -y install python3.11-venv
-        $ sudo apt -y install python3.11-dev
+        $ sudo apt -y install python3.11 python3.11-venv python3.11-dev python3.11-tk
 
     Create venv:
 

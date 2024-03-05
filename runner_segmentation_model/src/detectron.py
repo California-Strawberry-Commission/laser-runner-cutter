@@ -9,25 +9,68 @@ from detectron2.data import MetadataCatalog, DatasetCatalog, build_detection_tes
 from detectron2.engine import DefaultPredictor, DefaultTrainer
 from detectron2.evaluation import COCOEvaluator, inference_on_dataset
 from detectron2.utils.logger import setup_logger
-from detectron2.utils.visualizer import Visualizer
+from detectron2.utils.visualizer import Visualizer, ColorMode
 import cv2
 import numpy as np
 import pycocotools
 from tqdm import tqdm
+import matplotlib
+import matplotlib.pyplot as plt
 
 PROJECT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 DEFAULT_PREPARED_DATA_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "../data/prepared/runner1800",
 )
-DEFAULT_MODELS_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "../models",
-)
 DEFAULT_OUTPUT_DIR = os.path.join(PROJECT_PATH, "output", "detectron")
 DEFAULT_EPOCHS = 150
 
 setup_logger()
+matplotlib.use("tkagg")
+
+
+def get_record(img_path, mask_subdir):
+    record = {}
+
+    height, width = cv2.imread(img_path).shape[:2]
+    img_id = os.path.splitext(os.path.basename(img_path))[0]
+    record["file_name"] = img_path
+    record["image_id"] = img_id
+    record["height"] = height
+    record["width"] = width
+
+    # Create annotations from masks
+    annotations = []
+    mask_paths = glob(os.path.join(mask_subdir, "*.jpg")) + glob(
+        os.path.join(mask_subdir, "*.png")
+    )
+    for mask_path in mask_paths:
+        mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+        _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
+        # Don't include masks without any valid pixel values
+        if np.max(mask) < 255:
+            continue
+
+        # Calculate the bounding box
+        nonzero_indices = np.argwhere(mask > 0)
+        min_x = np.min(nonzero_indices[:, 1])
+        max_x = np.max(nonzero_indices[:, 1])
+        min_y = np.min(nonzero_indices[:, 0])
+        max_y = np.max(nonzero_indices[:, 0])
+        bbox = [min_x, min_y, max_x, max_y]
+
+        annotation = {
+            "bbox": bbox,
+            "bbox_mode": detectron2.structures.BoxMode.XYXY_ABS,
+            "segmentation": pycocotools.mask.encode(
+                np.asarray(mask > 0, dtype=np.uint8, order="F")
+            ),
+            "category_id": 0,
+        }
+        annotations.append(annotation)
+
+    record["annotations"] = annotations
+    return record
 
 
 def get_dataset(img_dir, mask_dir):
@@ -45,48 +88,9 @@ def get_dataset(img_dir, mask_dir):
 
     dataset_dicts = []
     for img_path in tqdm(img_paths, desc="Creating dataset"):
-        record = {}
-
-        height, width = cv2.imread(img_path).shape[:2]
         img_id = os.path.splitext(os.path.basename(img_path))[0]
-        record["file_name"] = img_path
-        record["image_id"] = img_id
-        record["height"] = height
-        record["width"] = width
-
-        # Create annotations from masks
-        annotations = []
         mask_subdir = os.path.join(mask_dir, img_id)
-        mask_paths = glob(os.path.join(mask_subdir, "*.jpg")) + glob(
-            os.path.join(mask_subdir, "*.png")
-        )
-        for mask_path in mask_paths:
-            mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-            _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
-            # Don't include masks without any valid pixel values
-            if np.max(mask) < 255:
-                continue
-
-            # Calculate the bounding box
-            nonzero_indices = np.argwhere(mask > 0)
-            min_x = np.min(nonzero_indices[:, 1])
-            max_x = np.max(nonzero_indices[:, 1])
-            min_y = np.min(nonzero_indices[:, 0])
-            max_y = np.max(nonzero_indices[:, 0])
-            bbox = [min_x, min_y, max_x, max_y]
-
-            annotation = {
-                "bbox": bbox,
-                "bbox_mode": detectron2.structures.BoxMode.XYXY_ABS,
-                "segmentation": pycocotools.mask.encode(
-                    np.asarray(mask > 0, dtype=np.uint8, order="F")
-                ),
-                "category_id": 0,
-            }
-            annotations.append(annotation)
-
-        record["annotations"] = annotations
-        dataset_dicts.append(record)
+        dataset_dicts.append(get_record(img_path, mask_subdir))
 
     return dataset_dicts
 
@@ -166,24 +170,43 @@ class Detectron:
         data_loader = build_detection_test_loader(self.cfg, "runner_test")
         print(inference_on_dataset(predictor.model, data_loader, evaluator))
 
-    def debug(self, image_file):
+    def debug(self, image_file, mask_subdir=None):
         img = cv2.imread(image_file)
+        # Custom confidence score threshold
+        self.cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5
         predictor = DefaultPredictor(self.cfg)
         outputs = predictor(
             img
         )  # format is documented at https://detectron2.readthedocs.io/tutorials/models.html#model-output-format
+
+        def show(imgs):
+            if not isinstance(imgs, list):
+                imgs = [imgs]
+            fix, axes = plt.subplots(ncols=len(imgs), squeeze=False)
+            for i, img in enumerate(imgs):
+                axes[0, i].imshow(np.asarray(img))
+                axes[0, i].set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
+            plt.show()
+
+        images_to_display = []
         MetadataCatalog.get("runner_debug").set(thing_classes=["runner"])
-        runner_metadata = MetadataCatalog.get("runner_debug")
-        vis = Visualizer(
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        visualizer = Visualizer(
             img[:, :, ::-1],
-            metadata=runner_metadata,
+            metadata=MetadataCatalog.get("runner_debug"),
             scale=0.5,
-            instance_mode=ColorMode.IMAGE_BW,  # remove the colors of unsegmented pixels. This option is only available for segmentation models
         )
-        out = vis.draw_instance_predictions(outputs["instances"].to("cpu"))
-        cv2.imshow("Predictions", out.get_image()[:, :, ::-1])
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        if mask_subdir is not None:
+            record = get_record(image_file, mask_subdir)
+            gt_img = visualizer.draw_dataset_dict(record)
+            gt_img = gt_img.get_image()[:, :, ::-1]
+            images_to_display.append(gt_img)
+
+        pred_img = visualizer.draw_instance_predictions(outputs["instances"].to("cpu"))
+        pred_img = pred_img.get_image()[:, :, ::-1]
+        images_to_display.append(pred_img)
+
+        show(images_to_display)
 
 
 if __name__ == "__main__":
@@ -236,10 +259,12 @@ if __name__ == "__main__":
         default=os.path.join(DEFAULT_OUTPUT_DIR, "model_final.pth"),
     )
     debug_parser.add_argument("--image_file", required=True)
+    debug_parser.add_argument("--mask_subdir")
 
     args = parser.parse_args()
 
-    model = Detectron(output_dir=args.output_dir)
+    output_dir = None if args.command == "debug" else args.output_dir
+    model = Detectron(output_dir=output_dir)
     weights_file = args.weights_file
     weights_file_exists = weights_file is not None and os.path.exists(weights_file)
     if weights_file_exists:
@@ -255,6 +280,6 @@ if __name__ == "__main__":
     elif args.command == "eval":
         model.eval(args.images_dir, args.masks_dir)
     elif args.command == "debug":
-        model.debug(args.image_file)
+        model.debug(args.image_file, mask_subdir=args.mask_subdir)
     else:
         print("Invalid command.")

@@ -12,6 +12,7 @@ from time import perf_counter
 from tqdm import tqdm
 import albumentations as A
 from functools import partial
+import matplotlib
 import matplotlib.pyplot as plt
 
 PROJECT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -21,6 +22,8 @@ DEFAULT_PREPARED_DATA_DIR = os.path.join(
 )
 DEFAULT_SIZE = (1024, 768)
 DEFAULT_EPOCHS = 150
+
+matplotlib.use("tkagg")
 
 
 class AlbumRandAugment:
