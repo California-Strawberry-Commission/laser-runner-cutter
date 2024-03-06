@@ -17,7 +17,7 @@ from yasmin import Blackboard, State, StateMachine
 from camera_control.camera_node_client import CameraNodeClient
 from control_node.calibration import Calibration
 from control_node.tracker import Tracker
-from laser_control.laser_node_client import LaserNodeClient
+from laser_control.laser_control_client import LaserControlClient
 from camera_control_interfaces.msg import Point
 
 
@@ -324,7 +324,7 @@ class MainNode(Node):
 
         # Set up dependencies
 
-        self.laser_client = LaserNodeClient(self, self.laser_node_name)
+        self.laser_client = LaserControlClient(self, self.laser_node_name)
         self.camera_client = CameraNodeClient(self, self.camera_node_name)
         self.calibration = Calibration(
             self.laser_client,

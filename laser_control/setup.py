@@ -25,7 +25,7 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "laser_control_node = laser_control.nodes.laser_control_node:main"
+            "laser_control_node = laser_control.laser_control_node:main"
         ],
     },
 )
