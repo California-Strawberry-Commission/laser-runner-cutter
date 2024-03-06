@@ -97,7 +97,7 @@ def get_dataset(img_dir, mask_dir):
 
 
 class Detectron:
-    def __init__(self, output_dir=DEFAULT_OUTPUT_DIR, use_point_rend=True):
+    def __init__(self, output_dir=DEFAULT_OUTPUT_DIR, use_point_rend=False):
         # Load default config
         # Config reference: https://detectron2.readthedocs.io/en/latest/modules/config.html#yaml-config-references
         cfg = get_cfg()
@@ -136,6 +136,8 @@ class Detectron:
         cfg.DATALOADER.NUM_WORKERS = 2
         # Batch size
         cfg.SOLVER.IMS_PER_BATCH = 2
+        # Save a checkpoint after every this number of iterations
+        cfg.SOLVER.CHECKPOINT_PERIOD = 10000
         # Learning rate
         cfg.SOLVER.BASE_LR = 0.00025
         # LR decay
