@@ -5,7 +5,14 @@ import math
 import detectron2
 from detectron2 import model_zoo
 from detectron2.config import get_cfg
-from detectron2.data import MetadataCatalog, DatasetCatalog, build_detection_test_loader
+from detectron2.data import (
+    DatasetCatalog,
+    DatasetMapper,
+    MetadataCatalog,
+    build_detection_train_loader,
+    build_detection_test_loader,
+)
+from detectron2.data import transforms as T
 from detectron2.engine import DefaultPredictor, DefaultTrainer
 from detectron2.evaluation import COCOEvaluator, inference_on_dataset
 from detectron2.utils.logger import setup_logger
@@ -96,6 +103,25 @@ def get_dataset(img_dir, mask_dir):
     return dataset_dicts
 
 
+class CustomTrainer(DefaultTrainer):
+    @classmethod
+    def build_train_loader(cls, cfg):
+        mapper = DatasetMapper(
+            cfg,
+            is_train=True,
+            augmentations=[
+                T.RandomBrightness(0.8, 1.8),
+                T.RandomContrast(0.6, 1.3),
+                T.RandomSaturation(0.8, 1.4),
+                T.RandomLighting(0.7),
+                T.RandomRotation(angle=[90, 90]),
+                T.RandomFlip(prob=0.5, horizontal=True, vertical=False),
+                T.RandomFlip(prob=0.5, horizontal=False, vertical=True),
+            ],
+        )
+        return build_detection_train_loader(cfg, mapper=mapper)
+
+
 class Detectron:
     def __init__(self, output_dir=DEFAULT_OUTPUT_DIR, use_point_rend=False):
         # Load default config
@@ -172,7 +198,7 @@ class Detectron:
         )
 
         os.makedirs(self.cfg.OUTPUT_DIR, exist_ok=True)
-        trainer = DefaultTrainer(self.cfg)
+        trainer = CustomTrainer(self.cfg)
         trainer.resume_or_load(resume=resume)
         trainer.train()
 
