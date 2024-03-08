@@ -27,6 +27,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Point.msg"
   "srv/AddPoint.srv"
   "srv/GetBounds.srv"
+  "srv/GetState.srv"
   "srv/SetColor.srv"
   "srv/SetPlaybackParams.srv"
   "srv/SetPoints.srv"
