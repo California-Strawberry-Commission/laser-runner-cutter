@@ -1,0 +1,5 @@
+uint8 DISCONNECTED=0
+uint8 STOPPED=1
+uint8 PLAYING=2
+
+uint8 data

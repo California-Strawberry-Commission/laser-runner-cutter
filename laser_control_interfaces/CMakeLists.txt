@@ -25,6 +25,7 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Point.msg"
+  "msg/State.msg"
   "srv/AddPoint.srv"
   "srv/GetBounds.srv"
   "srv/GetState.srv"
