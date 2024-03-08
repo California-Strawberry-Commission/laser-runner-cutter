@@ -124,23 +124,23 @@ DVC abstracts cloud storage and versioning of data for machine learning. It allo
         Remove existing split:
         $ rm -rf data/prepared
         Split the images first:
-        $ python src/split_data.py images
+        $ python runner_segmentation/split_data.py images
         Split the YOLO labels to match the image split:
-        $ python src/split_data.py yolo_labels
+        $ python runner_segmentation/split_data.py yolo_labels
         Split the instanced masks (used by Mask R-CNN) to match the image split:
-        $ python src/split_data.py masks
+        $ python runner_segmentation/split_data.py masks
 
 1.  Train and evaluate the YOLOv8 model locally:
 
-        $ python src/yolov8.py train
-        $ python src/yolov8.py eval --weights_file <path to trained weights>
+        $ python runner_segmentation/yolov8.py train
+        $ python runner_segmentation/yolov8.py eval --weights_file <path to trained weights>
 
 1.  Train and evaluate the PyTorch Mask R-CNN model locally:
 
-        $ python src/mask_rcnn.py train
-        $ python src/mask_rcnn.py eval --weights_file <path to trained weights>
+        $ python runner_segmentation/mask_rcnn.py train
+        $ python runner_segmentation/mask_rcnn.py eval --weights_file <path to trained weights>
 
 1.  Train and evaluate the Detectron2 Mask R-CNN model locally:
 
-        $ python src/detectron.py train
-        $ python src/detectron.py eval --weights_file <path to trained weights>
+        $ python runner_segmentation/detectron.py train
+        $ python runner_segmentation/detectron.py eval --weights_file <path to trained weights>

@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 
-package_name = "runner_segmentation_model"
+package_name = "runner_segmentation"
 
 setup(
     name=package_name,
