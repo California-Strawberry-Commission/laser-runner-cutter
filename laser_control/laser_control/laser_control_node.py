@@ -5,10 +5,11 @@ from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
 
 from laser_control.laser_dac import EtherDreamDAC, HeliosDAC
-from laser_control_interfaces.msg import Point
+from laser_control_interfaces.msg import Point, State
 from laser_control_interfaces.srv import (
     AddPoint,
     GetBounds,
+    GetState,
     SetColor,
     SetPlaybackParams,
     SetPoints,
@@ -75,6 +76,9 @@ class LaserControlNode(Node):
         )
         self.play_srv = self.create_service(Empty, "~/play", self._play_callback)
         self.stop_srv = self.create_service(Empty, "~/stop", self._stop_callback)
+        self.state_srv = self.create_service(
+            GetState, "~/get_state", self._get_state_callback
+        )
 
         # Pub/sub
 
@@ -148,6 +152,17 @@ class LaserControlNode(Node):
         if self.dac is not None:
             self.dac.stop()
             self._publish_playing()
+        return response
+
+    def _get_state_callback(self, request, response):
+        response.dac_type = self.dac_type
+        response.dac_index = self.dac_index
+        if self.dac is None:
+            response.state.data = State.DISCONNECTED
+        elif self.dac.playing:
+            response.state.data = State.PLAYING
+        else:
+            response.state.data = State.STOPPED
         return response
 
     def _publish_playing(self):
