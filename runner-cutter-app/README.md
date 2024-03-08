@@ -19,11 +19,15 @@ Web app for laser runner cutter control and automation, built with Next.js.
 
 ## Run
 
-1.  Run Rosbridge server
+1.  Run ROS2 nodes
+
+        ros2 launch runner_cutter_control launch.py
+
+1.  In another terminal, run Rosbridge server
 
         ros2 launch rosbridge_server rosbridge_websocket_launch.xml
 
-1.  In a separate terminal, run the web server
+1.  In yet another terminal, run the web server
 
         cd runner-cutter-app
 

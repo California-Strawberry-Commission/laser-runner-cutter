@@ -37,16 +37,15 @@ export default function Controls() {
 
   // Subscriptions
   useEffect(() => {
-    const playingSub = subscribe(
-      `${laserNodeName}/playing`,
-      "std_msgs/Bool",
+    const stateSub = subscribe(
+      `${laserNodeName}/state`,
+      "laser_control_interfaces/State",
       (message) => {
-        const playing = message.data;
-        setLaserState(message.data ? 2 : 1);
+        setLaserState(message.data);
       }
     );
     return () => {
-      playingSub.unsubscribe();
+      stateSub.unsubscribe();
     };
   }, [laserNodeName]);
 

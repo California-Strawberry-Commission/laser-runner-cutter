@@ -82,7 +82,7 @@ class LaserControlNode(Node):
 
         # Pub/sub
 
-        self.playing_pub = self.create_publisher(Bool, "~/playing", 5)
+        self.state_pub = self.create_publisher(State, "~/state", 5)
 
         # Initialize DAC
 
@@ -100,6 +100,14 @@ class LaserControlNode(Node):
         num_dacs = self.dac.initialize()
         self.get_logger().info(f"{num_dacs} DACs of type {self.dac_type} found")
         self.dac.connect(self.dac_index)
+
+    def get_state(self):
+        if self.dac is None:
+            return State.DISCONNECTED
+        elif self.dac.playing:
+            return State.PLAYING
+        else:
+            return State.STOPPED
 
     def _set_color_callback(self, request, response):
         if self.dac is not None:
@@ -145,30 +153,25 @@ class LaserControlNode(Node):
     def _play_callback(self, request, response):
         if self.dac is not None:
             self.dac.play(self.fps, self.pps, self.transition_duration_ms)
-            self._publish_playing()
+            self._publish_state()
         return response
 
     def _stop_callback(self, request, response):
         if self.dac is not None:
             self.dac.stop()
-            self._publish_playing()
+            self._publish_state()
         return response
 
     def _get_state_callback(self, request, response):
         response.dac_type = self.dac_type
         response.dac_index = self.dac_index
-        if self.dac is None:
-            response.state.data = State.DISCONNECTED
-        elif self.dac.playing:
-            response.state.data = State.PLAYING
-        else:
-            response.state.data = State.STOPPED
+        response.state.data = self.get_state()
         return response
 
-    def _publish_playing(self):
-        msg = Bool()
-        msg.data = self.dac.playing
-        self.playing_pub.publish(msg)
+    def _publish_state(self):
+        msg = State()
+        msg.data = self.get_state()
+        self.state_pub.publish(msg)
 
 
 def main(args=None):
