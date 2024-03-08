@@ -11,7 +11,7 @@ DEFAULT_SIZE = (1024, 768)
 DEFAULT_EPOCHS = 150
 
 
-class YoloV8:
+class Yolo:
     def __init__(self, weights_file=None):
         if weights_file is not None and os.path.exists(weights_file):
             self.model = YOLO(weights_file)
@@ -65,7 +65,7 @@ def tuple_type(arg_string):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Mask R-CNN training, evaluation, and inference"
+        description="YOLO training, evaluation, and inference"
     )
 
     subparsers = parser.add_subparsers(title="Available Commands", dest="command")
@@ -103,7 +103,7 @@ if __name__ == "__main__":
     )
 
     weights_file = args.weights_file
-    model = YoloV8(weights_file)
+    model = Yolo(weights_file)
     if args.command == "train":
         model.train(args.dataset_yml, args.size, args.epochs)
     elif args.command == "eval":

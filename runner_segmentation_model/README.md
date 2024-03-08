@@ -132,8 +132,8 @@ DVC abstracts cloud storage and versioning of data for machine learning. It allo
 
 1.  Train and evaluate the YOLOv8 model locally:
 
-        $ python runner_segmentation/yolov8.py train
-        $ python runner_segmentation/yolov8.py eval --weights_file <path to trained weights>
+        $ python runner_segmentation/yolo.py train
+        $ python runner_segmentation/yolo.py eval --weights_file <path to trained weights>
 
 1.  Train and evaluate the PyTorch Mask R-CNN model locally:
 
