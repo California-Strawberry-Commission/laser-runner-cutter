@@ -66,7 +66,7 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
 
 1.  Upload non-instanced runner mask images to the existing Labelbox dataset:
 
-        $ python src/labelbox_api import_images --images_dir <path to images dir>
+        $ python runner_mask_instancing/labelbox_api import_images --images_dir <path to images dir>
 
 1.  Annotate the images in Labelbox with one polyline for each runner instance
 
@@ -79,22 +79,22 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
 
 1.  Using the Labelbox polyline annotations, instance the mask images
 
-        $ python src/instance_mask_images.py -f <path to ndjson export>
+        $ python runner_mask_instancing/instance_mask_images.py -f <path to ndjson export>
 
 1.  Create YOLO label txt files from the instanced masks:
 
-        $ python src/create_yolo_labels.py
+        $ python runner_mask_instancing/create_yolo_labels.py
 
 1.  Run `split_data.py` to split the raw image and label data into training and validation datasets. Be sure to remove the existing train/val images and labels beforehand.
 
         $ rm -rf data/prepared/images
         $ rm -rf data/prepared/labels
-        $ python src/split_data.py
+        $ python runner_mask_instancing/split_data.py
 
 1.  Train the model locally:
 
-        $ python src/yolov8_train.py
+        $ python runner_mask_instancing/yolov8_train.py
 
 1.  Evaluate the trained model on the test dataset:
 
-        $ python src/yolov8_eval.py <path to model>
+        $ python runner_mask_instancing/yolov8_eval.py <path to model>

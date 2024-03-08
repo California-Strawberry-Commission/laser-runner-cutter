@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 
-package_name = "runner_mask_instancing_model"
+package_name = "runner_mask_instancing"
 
 setup(
     name=package_name,

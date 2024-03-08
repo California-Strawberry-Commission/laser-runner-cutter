@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 
-package_name = "laser_detection_model"
+package_name = "laser_detection"
 
 setup(
     name=package_name,

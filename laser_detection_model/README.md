@@ -64,13 +64,13 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
 
 ## Workflow
 
-1.  Obtain new training images. See `src/image_capture.py` for an example.
+1.  Obtain new training images. See `laser_detection/image_capture.py` for an example.
 
-        $ python src/image_capture --output_directory <directory>
+        $ python laser_detection/image_capture --output_directory <directory>
 
 1.  Upload new images to the existing Labelbox dataset:
 
-        $ python src/labelbox_api import_images --images_dir <directory>
+        $ python laser_detection/labelbox_api import_images --images_dir <directory>
 
 1.  Annotate the images in Labelbox
 
@@ -83,18 +83,18 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
 
 1.  Create YOLO label txt files from the Labelbox ndjson export file:
 
-        $ python src/labelbox_api create_labels --labelbox_export_file <ndjson export file path>
+        $ python laser_detection/labelbox_api create_labels --labelbox_export_file <ndjson export file path>
 
 1.  Run `split_data.py` to split the raw image and label data into training and validation datasets. Be sure to remove the existing train/val images and labels beforehand.
 
         $ rm -rf data/prepared/images
         $ rm -rf data/prepared/labels
-        $ python src/split_data.py
+        $ python laser_detection/split_data.py
 
 1.  Train the model locally:
 
-        $ python src/yolov8_train.py
+        $ python laser_detection/yolov8_train.py
 
 1.  Evaluate the trained model on the test dataset:
 
-        $ python src/yolov8_eval.py <path to model>
+        $ python laser_detection/yolov8_eval.py <path to model>
