@@ -5,6 +5,8 @@ import ROSContext from "@/lib/ros/ROSContext";
 export default function useROS() {
   const ros = useContext(ROSContext);
 
+  // TODO: add listener for rosbridge connection state
+
   async function getNodes(): Promise<string[]> {
     return new Promise<string[]>((resolve, reject) => {
       ros.getNodes(

@@ -7,22 +7,18 @@ import { Button } from "@/components/ui/button";
 const LASER_STATES = ["disconnected", "stopped", "playing"];
 
 export default function Controls() {
-  const { ros, getNodes, callService, subscribe } = useROS();
+  const { ros, callService, subscribe } = useROS();
   const [rosConnected, setRosConnected] = useState<boolean>(false);
-  const [nodes, setNodes] = useState<string[]>([]);
+  // TODO: add ability to select laser node name
   const [laserNodeName, setLaserNodeName] = useState<string>("/laser0");
   const [laserState, setLaserState] = useState<number>(0);
 
   useEffect(() => {
-    const loadNodes = async () => {
-      const nodes = await getNodes();
-      setNodes(nodes);
-    };
-    loadNodes();
-
+    // TODO: add listener for rosbridge connection state
     setRosConnected(ros.isConnected);
   }, []);
 
+  // Initial state
   useEffect(() => {
     const getState = async () => {
       const state = await callService(
@@ -48,6 +44,24 @@ export default function Controls() {
       stateSub.unsubscribe();
     };
   }, [laserNodeName]);
+
+  const onAddRandomPointClick = () => {
+    callService(
+      `${laserNodeName}/add_point`,
+      "laser_control_interfaces/AddPoint",
+      {
+        // TODO: normalize AddPoint x, y to [0, 1]. Just assume Helios for now
+        point: {
+          x: Math.floor(Math.random() * 4096),
+          y: Math.floor(Math.random() * 4096),
+        },
+      }
+    );
+  };
+
+  const onClearPointsClick = () => {
+    callService(`${laserNodeName}/clear_points`, "std_srvs/Empty", {});
+  };
 
   const onPlayClick = () => {
     callService(`${laserNodeName}/play`, "std_srvs/Empty", {});
@@ -79,6 +93,12 @@ export default function Controls() {
         <p className="text-center">{`Laser (${laserNodeName}): ${LASER_STATES[laserState]}`}</p>
       </div>
       <div className="flex flex-row gap-4">
+        <Button disabled={!rosConnected} onClick={onAddRandomPointClick}>
+          Add Random Point
+        </Button>
+        <Button disabled={!rosConnected} onClick={onClearPointsClick}>
+          Clear Points
+        </Button>
         <Button disabled={!rosConnected} onClick={onPlayClick}>
           Play
         </Button>
