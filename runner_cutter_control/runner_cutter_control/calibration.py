@@ -89,9 +89,8 @@ class Calibration:
         # Use least squares for an initial estimate, then use bundle adjustment to refine
         self._update_transform_least_squares()
         self.update_transform_bundle_adjustment()
-        # TODO: calculate reprojection error
-        self.is_calibrated = True
 
+        self.is_calibrated = True
         return True
 
     def camera_point_to_laser_pixel(self, camera_point):

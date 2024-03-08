@@ -1,6 +1,6 @@
-"""File: control_node.py
+"""File: runner_cutter_control_node.py
 
-Main ros2 control node for the Laser Runner Cutter. This 
+Main ROS2 control node for the Laser Runner Cutter. This 
 node uses a state machine to control the general objective of the 
 system. States are things like calibrating the camera laser system,
 finding a specific runner to burn, and burning said runner.  
@@ -14,9 +14,9 @@ from simple_node import Node
 from std_msgs.msg import String
 from yasmin import Blackboard, State, StateMachine
 
-from camera_control.camera_node_client import CameraNodeClient
-from control_node.calibration import Calibration
-from control_node.tracker import Tracker
+from camera_control.camera_control_client import CameraControlClient
+from runner_cutter_control.calibration import Calibration
+from runner_cutter_control.tracker import Tracker
 from laser_control.laser_control_client import LaserControlClient
 from camera_control_interfaces.msg import Point
 
@@ -325,7 +325,7 @@ class MainNode(Node):
         # Set up dependencies
 
         self.laser_client = LaserControlClient(self, self.laser_node_name)
-        self.camera_client = CameraNodeClient(self, self.camera_node_name)
+        self.camera_client = CameraControlClient(self, self.camera_node_name)
         self.calibration = Calibration(
             self.laser_client,
             self.camera_client,

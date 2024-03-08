@@ -1,5 +1,0 @@
-ultralytics
-opencv-contrib-python
-pyrealsense2
-shapely
-numpy

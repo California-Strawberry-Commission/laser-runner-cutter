@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 from glob import glob
 
 
-package_name = "control_node"
+package_name = "runner_cutter_control"
 
 setup(
     name=package_name,
@@ -22,14 +22,14 @@ setup(
     ],
     install_requires=["setuptools"],
     zip_safe=True,
-    maintainer="bobby",
-    maintainer_email="rvinson@calstrawberry.org",
+    maintainer="genki",
+    maintainer_email="kondo.genki@gmail.com",
     description="TODO: Package description",
     license="TODO: License declaration",
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "control_node = control_node.nodes.control_node:main",
+            "runner_cutter_control_node = runner_cutter_control.runner_cutter_control_node:main",
         ],
     },
 )

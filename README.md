@@ -2,6 +2,32 @@
 
 Laser Runner Cutter is a project by the California Strawberry Commission for automated detection and cutting of strawberry runners (also known as stolons).
 
+## Packages
+
+### ROS2
+
+- `runner_cutter_control`: node for laser runner cutter control and automation.
+- `laser_control`: node and client for controlling laser DACs. Currently supports Helios and Ether Dream DACs.
+- `laser_control_interfaces`: custom interface definitions used in `laser_control`.
+- `camera_control`: node and client for capturing camera frames and running runner and laser detection. Currently supports RealSense cameras.
+- `camera_control_interfaces`: custom interface definitions used in `camera_control`.
+
+### ML
+
+- `runner_segmentation_model`: ML pipeline and models for instance segmentation of runners
+- `laser_detection_model`: ML pipeline and models for object detection of lasers
+- `runner_mask_instancing_model`: ML pipeline and models for instace segmentation of semantic segmented runner masks. Goal: given a single binary mask that represents runners, segment it into separate instances of runners.
+
+### Apps
+
+- `runner_image_capture_amiga_kivy`: An application deployable to the Amiga brain, written using Kivy, for capturing runner images in the field.
+- `runner_image_capture_amiga_react`: An application deployable to the Amiga brain, written using React and FastAPI, for capturing runner images in the field.
+
+### Viz
+
+- `rqt_laser_runner_cutter`: rqt plugin for visualization and monitoring of relevant ROS2 topics.
+- `simulator`: Unity-based simulator.
+
 ## Environment setup
 
 1.  Install [ROS 2](https://docs.ros.org/en/foxy/Installation/Ubuntu-Install-Debians.html). Once installed, run:
@@ -64,7 +90,7 @@ Linux systems require udev rules to allow access to USB devices without root pri
         $ git clone https://github.com/California-Strawberry-Commission/laser-runner-cutter
 
         # Install dependencies
-        $ cd laser-runner-cutter/control_node/control_node
+        $ cd laser-runner-cutter/runner_cutter_control/runner_cutter_control
         $ pip3 install -r requirements.txt
 
 1.  Install [YASMIN](https://github.com/uleroboticsgroup/yasmin#installation)
@@ -77,7 +103,7 @@ Linux systems require udev rules to allow access to USB devices without root pri
 
 ## Run
 
-    $ ros2 launch control_node launch.py
+    $ ros2 launch runner_cutter_control launch.py
 
 ## rqt plugin
 

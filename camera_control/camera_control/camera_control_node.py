@@ -6,13 +6,6 @@ import cv2
 import numpy as np
 import rclpy
 from ament_index_python.packages import get_package_share_directory
-from cv_bridge import CvBridge
-from rclpy.node import Node
-from sensor_msgs.msg import Image
-from ultralytics import YOLO
-
-import camera_control.utils.cv_utils as cv_utils
-from camera_control.camera.realsense import RealSense
 from camera_control_interfaces.msg import Point, Pos, PosData
 from camera_control_interfaces.srv import (
     GetBool,
@@ -21,7 +14,13 @@ from camera_control_interfaces.srv import (
     SendEnable,
     SetExposure,
 )
-from ml_model.model_lookup import model_lookup
+from cv_bridge import CvBridge
+from rclpy.node import Node
+from runner_segmentation.yolo import Yolo
+from sensor_msgs.msg import Image
+
+import camera_control.utils.cv_utils as cv_utils
+from camera_control.camera.realsense import RealSense
 
 
 def milliseconds_to_ros_time(milliseconds):
@@ -49,11 +48,6 @@ class CameraControlNode(Node):
                 ("frame_period", 0.1),
                 ("rgb_size", [848, 480]),
                 ("depth_size", [848, 480]),
-                ("runner_model_type", "torch_mask_rcnn"),
-                ("runner_model_weights", "RunnerTorchMaskRCNN.pt"),
-                ("laser_model_type", "yolo_detections"),
-                ("laser_model_weights", "LaserYoloDetection.pt"),
-                ("weight_directory", None),
             ],
         )
 
@@ -81,31 +75,6 @@ class CameraControlNode(Node):
         self.depth_size = (
             self.get_parameter("depth_size").get_parameter_value().integer_array_value
         )
-        runner_model_type = (
-            self.get_parameter("runner_model_type").get_parameter_value().string_value
-        )
-        self.runner_model_cls = model_lookup(runner_model_type)
-        self.runner_model_weights = (
-            self.get_parameter("runner_model_weights")
-            .get_parameter_value()
-            .string_value
-        )
-        laser_model_type = (
-            self.get_parameter("laser_model_type").get_parameter_value().string_value
-        )
-        self.laser_model_cls = model_lookup(laser_model_type)
-        self.laser_model_weights = (
-            self.get_parameter("laser_model_weights").get_parameter_value().string_value
-        )
-        self.weights_dir = (
-            self.get_parameter("weight_directory").get_parameter_value().string_value
-        )
-
-        # This is currently not functioning correctly because of permission errors
-        if not os.path.isdir(self.video_dir) and self.rec_video_frame:
-            os.makedirs(self.video_dir)
-        if not os.path.isdir(self.debug_video_dir) and self.rec_debug_frame:
-            os.makedirs(self.debug_video_dir)
 
         # For converting numpy array to image msg
         self.cv_bridge = CvBridge()
@@ -121,7 +90,7 @@ class CameraControlNode(Node):
         )
         self.runner_point = None
 
-        self.frame_call = self.create_timer(self.frame_period, self.frame_callback)
+        self.frame_call = self.create_timer(self.frame_period, self._frame_callback)
 
         # Services
 
@@ -157,51 +126,42 @@ class CameraControlNode(Node):
         )
         self.runner_pub_control = False
 
+        # Camera
+
         self.curr_frames = None
         self.camera = RealSense(
             self.logger, self.rgb_size, self.depth_size, camera_index=self.camera_index
         )
-        self.background_image = None
-        self.initialize()
+        self.camera.initialize()
 
-    def initialize(self):
-        # Setup  model
-        if self.weights_dir == "":
-            """
-            Resource filename does not currently work because ./data_store is outside the
-            ml_model src folder of the package. I believe it would need to move down a level
-            to be included in ./site_packages/ml_models/*
-            """
-            package_share_directory = get_package_share_directory("camera_control")
-            self.logger.info(str(package_share_directory))
-            runner_weights_path = os.path.join(
-                package_share_directory, "model_weights", self.runner_model_weights
-            )
-            laser_weights_path = os.path.join(
-                package_share_directory, "model_weights", self.laser_model_weights
-            )
-        else:
-            runner_weights_path = os.path.join(
-                self.weights_dir, self.runner_model_weights
-            )
-            laser_weights_path = os.path.join(
-                self.weights_dir, self.laser_model_weights
-            )
-        self.runner_seg_model = self.runner_model_cls()
-        self.laser_detection_model = self.laser_model_cls()
-        self.logger.info(runner_weights_path)
-        self.runner_seg_model.load_weights(runner_weights_path)
-        self.laser_detection_model.load_weights(laser_weights_path)
+        # ML models
+
+        package_share_directory = get_package_share_directory("camera_control")
+        runner_weights_path = os.path.join(
+            package_share_directory, "models", "RunnerSegYoloV8m.pt"
+        )
+        self.runner_seg_model = Yolo(runner_weights_path)
+        laser_weights_path = os.path.join(
+            package_share_directory, "models", "LaserDetectionYoloV8n.pt"
+        )
+        self.laser_detection_model = Yolo(laser_weights_path)
 
         self._rpc_runner_point_list = []
         self._rpc_runner_score_list = []
         self._rpc_laser_point_list = []
         self._rpc_laser_score_list = []
 
-        self.camera.initialize()
+        # Video recording
+
         self.initialize_recording()
 
     def initialize_recording(self):
+        # This is currently not functioning correctly because of permission errors
+        if not os.path.isdir(self.video_dir) and self.rec_video_frame:
+            os.makedirs(self.video_dir)
+        if not os.path.isdir(self.debug_video_dir) and self.rec_debug_frame:
+            os.makedirs(self.debug_video_dir)
+
         # handle default log location
         ts = time.time()
         datetime_obj = datetime.fromtimestamp(ts)
@@ -229,7 +189,7 @@ class CameraControlNode(Node):
             rec_point = None
         self.runner_point = rec_point
 
-    def frame_callback(self):
+    def _frame_callback(self):
         frames = self.camera.get_frames()
         if not frames:
             return
@@ -254,9 +214,6 @@ class CameraControlNode(Node):
         if self.rec_video_frame:
             bgr_img = cv2.cvtColor(curr_image, cv2.COLOR_RGB2BGR)
             self.rec.write(bgr_img)
-
-        if self.background_image is None:
-            self.background_image = curr_image
 
         laser_point_list = []
         laser_score_list = []
@@ -399,7 +356,6 @@ class CameraControlNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    # find way to pass Emu into args
     node = CameraControlNode()
     rclpy.spin(node)
     rclpy.shutdown()
