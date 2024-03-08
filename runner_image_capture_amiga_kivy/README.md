@@ -1,6 +1,6 @@
 # Runner Image Capture Amiga App
 
-An application deployable to the Amiga brain, written using Kivy.
+An application deployable to the Amiga brain, written using Kivy, for capturing runner images in the field.
 
 ## Run from the command line
 
