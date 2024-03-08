@@ -5,6 +5,7 @@ from datetime import datetime
 import cv2
 import numpy as np
 import rclpy
+from cv_bridge import CvBridge
 from ament_index_python.packages import get_package_share_directory
 from camera_control_interfaces.msg import Point, Pos, PosData
 from camera_control_interfaces.srv import (
@@ -14,10 +15,9 @@ from camera_control_interfaces.srv import (
     SendEnable,
     SetExposure,
 )
-from cv_bridge import CvBridge
 from rclpy.node import Node
 from runner_segmentation.yolo import Yolo
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import CompressedImage
 
 import camera_control.utils.cv_utils as cv_utils
 from camera_control.camera.realsense import RealSense
@@ -76,13 +76,11 @@ class CameraControlNode(Node):
             self.get_parameter("depth_size").get_parameter_value().integer_array_value
         )
 
-        # For converting numpy array to image msg
-        self.cv_bridge = CvBridge()
-
         # Pub/sub
 
-        self.color_frame_pub = self.create_publisher(Image, "~/color_frame", 1)
-        self.depth_frame_pub = self.create_publisher(Image, "~/depth_frame", 1)
+        self.color_frame_pub = self.create_publisher(
+            CompressedImage, "~/color_frame", 1
+        )
         self.laser_pos_pub = self.create_publisher(PosData, "~/laser_pos_data", 5)
         self.runner_pos_pub = self.create_publisher(PosData, "~/runner_pos_data", 5)
         self.runner_point_sub = self.create_subscription(
@@ -125,6 +123,9 @@ class CameraControlNode(Node):
             self.control_runner_pub,
         )
         self.runner_pub_control = False
+
+        # For converting numpy array to image msg
+        self.cv_bridge = CvBridge()
 
         # Camera
 
@@ -196,8 +197,7 @@ class CameraControlNode(Node):
 
         self.curr_frames = frames
 
-        self.color_frame_pub.publish(self._get_color_frame_msg())
-        self.depth_frame_pub.publish(self._get_depth_frame_msg())
+        self.color_frame_pub.publish(self._get_color_frame_compressed_msg())
 
         # This is still using a realsense frame concept, for better multicamera
         # probability, all realsense based frame controls should move into the
@@ -335,11 +335,11 @@ class CameraControlNode(Node):
 
         color_frame = self.curr_frames["color"]
         color_array = np.asanyarray(color_frame.get_data())
-        color_frame_msg = self.cv_bridge.cv2_to_imgmsg(color_array, encoding="rgb8")
+        msg = self.cv_bridge.cv2_to_imgmsg(color_array, encoding="rgb8")
         sec, nanosec = milliseconds_to_ros_time(color_frame.get_timestamp())
-        color_frame_msg.header.stamp.sec = sec
-        color_frame_msg.header.stamp.nanosec = nanosec
-        return color_frame_msg
+        msg.header.stamp.sec = sec
+        msg.header.stamp.nanosec = nanosec
+        return msg
 
     def _get_depth_frame_msg(self):
         if self.curr_frames is None:
@@ -347,11 +347,28 @@ class CameraControlNode(Node):
 
         depth_frame = self.curr_frames["depth"]
         depth_array = np.asanyarray(depth_frame.get_data())
-        depth_frame_msg = self.cv_bridge.cv2_to_imgmsg(depth_array, encoding="mono16")
+        msg = self.cv_bridge.cv2_to_imgmsg(depth_array, encoding="mono16")
         sec, nanosec = milliseconds_to_ros_time(depth_frame.get_timestamp())
-        depth_frame_msg.header.stamp.sec = sec
-        depth_frame_msg.header.stamp.nanosec = nanosec
-        return depth_frame_msg
+        msg.header.stamp.sec = sec
+        msg.header.stamp.nanosec = nanosec
+        return msg
+
+    def _get_color_frame_compressed_msg(self):
+        if self.curr_frames is None:
+            return None
+
+        color_frame = self.curr_frames["color"]
+        color_array = np.asanyarray(color_frame.get_data())
+        color_array = cv2.cvtColor(color_array, cv2.COLOR_BGR2RGB)
+        sec, nanosec = milliseconds_to_ros_time(color_frame.get_timestamp())
+        _, jpeg_data = cv2.imencode(".jpg", color_array)
+        msg = CompressedImage()
+        msg.format = "jpeg"
+        msg.data = jpeg_data.tobytes()
+        msg.header.stamp.sec = sec
+        msg.header.stamp.nanosec = nanosec
+
+        return msg
 
 
 def main(args=None):

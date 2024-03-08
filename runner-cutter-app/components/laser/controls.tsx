@@ -92,7 +92,7 @@ export default function Controls() {
         }`}</p>
         <p className="text-center">{`Laser (${laserNodeName}): ${LASER_STATES[laserState]}`}</p>
       </div>
-      <div className="flex flex-row gap-4">
+      <div className="flex flex-row gap-4 items-center">
         <Button disabled={!rosConnected} onClick={onAddRandomPointClick}>
           Add Random Point
         </Button>
