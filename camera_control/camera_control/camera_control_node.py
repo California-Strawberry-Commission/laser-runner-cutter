@@ -12,9 +12,9 @@ from camera_control_interfaces.srv import (
     GetBool,
     GetFrame,
     GetPosData,
-    SendEnable,
     SetExposure,
 )
+from std_srvs.srv import Empty
 from rclpy.node import Node
 from runner_segmentation.yolo import Yolo
 from sensor_msgs.msg import CompressedImage
@@ -81,48 +81,56 @@ class CameraControlNode(Node):
         self.color_frame_pub = self.create_publisher(
             CompressedImage, "~/color_frame", 1
         )
+        self.debug_frame_pub = self.create_publisher(
+            CompressedImage, "~/debug_frame", 1
+        )
         self.laser_pos_pub = self.create_publisher(PosData, "~/laser_pos_data", 5)
         self.runner_pos_pub = self.create_publisher(PosData, "~/runner_pos_data", 5)
-        self.runner_point_sub = self.create_subscription(
-            Point, "~/runner_point", self.runner_point_cb, 1
-        )
-        self.runner_point = None
-
-        self.frame_call = self.create_timer(self.frame_period, self._frame_callback)
 
         # Services
 
-        self.frame_srv = self.create_service(GetFrame, "~/get_frame", self.get_frame)
+        self.frame_srv = self.create_service(GetFrame, "~/get_frame", self._get_frame)
         self.single_runner_srv = self.create_service(
             GetPosData,
             "~/get_runner_detection",
-            self.single_runner_detection,
+            self._single_runner_detection,
         )
         self.single_laser_srv = self.create_service(
             GetPosData,
             "~/get_laser_detection",
-            self.single_laser_detection,
+            self._single_laser_detection,
         )
         self.has_frames_srv = self.create_service(
-            GetBool, "~/has_frames", self.has_frames
+            GetBool, "~/has_frames", self._has_frames
         )
         self.set_exposure_srv = self.create_service(
-            SetExposure, "~/set_exposure", self.set_exposure
+            SetExposure, "~/set_exposure", self._set_exposure
+        )
+        self.laser_detection_enabled = False
+        self.start_laser_detection_srv = self.create_service(
+            Empty,
+            "~/start_laser_detection",
+            self._start_laser_detection,
+        )
+        self.stop_laser_detection_srv = self.create_service(
+            Empty,
+            "~/stop_laser_detection",
+            self._stop_laser_detection,
+        )
+        self.runner_detection_enabled = False
+        self.start_runner_detection_srv = self.create_service(
+            Empty,
+            "~/start_runner_detection",
+            self._start_runner_detection,
+        )
+        self.stop_runner_detection_srv = self.create_service(
+            Empty,
+            "~/stop_runner_detection",
+            self._stop_runner_detection,
         )
 
-        self.control_laser_pub_srv = self.create_service(
-            SendEnable,
-            "~/control_laser_pub",
-            self.control_laser_pub,
-        )
-        self.laser_pub_control = False
-
-        self.control_runner_pub_srv = self.create_service(
-            SendEnable,
-            "~/control_runner_pub",
-            self.control_runner_pub,
-        )
-        self.runner_pub_control = False
+        # Frame processing loop
+        self.frame_call = self.create_timer(self.frame_period, self._frame_callback)
 
         # For converting numpy array to image msg
         self.cv_bridge = CvBridge()
@@ -154,9 +162,9 @@ class CameraControlNode(Node):
 
         # Video recording
 
-        self.initialize_recording()
+        self._initialize_recording()
 
-    def initialize_recording(self):
+    def _initialize_recording(self):
         # This is currently not functioning correctly because of permission errors
         if not os.path.isdir(self.video_dir) and self.rec_video_frame:
             os.makedirs(self.video_dir)
@@ -183,86 +191,120 @@ class CameraControlNode(Node):
                 (self.rgb_size[0], self.rgb_size[1]),
             )
 
-    def runner_point_cb(self, msg):
-        # -1, -1 represents no point, if send instead set to None
-        rec_point = [int(msg.x), int(msg.y)]
-        if rec_point == [-1, -1]:
-            rec_point = None
-        self.runner_point = rec_point
-
     def _frame_callback(self):
         frames = self.camera.get_frames()
         if not frames:
             return
 
         self.curr_frames = frames
-
-        self.color_frame_pub.publish(self._get_color_frame_compressed_msg())
-
-        # This is still using a realsense frame concept, for better multicamera
-        # probability, all realsense based frame controls should move into the
-        # realsense module.
-        frame_ts = frames["color"].get_timestamp()
-        # convert from ms to seconds
-        frame_ts = frame_ts / 1000
-        self.logger.debug(
-            f"Publishing frame ts: {frame_ts}, current time:{time.time()}"
-        )
+        self.color_frame_pub.publish(self._get_color_frame_compressed_msg(frames))
 
         curr_image = np.asanyarray(frames["color"].get_data())
+        debug_image = np.copy(curr_image)
 
-        if self.rec_video_frame:
-            bgr_img = cv2.cvtColor(curr_image, cv2.COLOR_RGB2BGR)
-            self.rec.write(bgr_img)
+        if self.laser_detection_enabled:
+            laser_points, confs = self._get_laser_centroids(self.curr_frames)
+            debug_image = self._debug_draw_laser(debug_image, laser_points, confs)
 
-        laser_point_list = []
-        laser_score_list = []
-        runner_point_list = []
-        runner_score_list = []
+            self.laser_pos_pub.publish(self._create_pos_data_msg(laser_points, frames))
 
-        if self.laser_pub_control:
-            image = np.asanyarray(self.curr_frames["color"].get_data())
-            laser_scores, laser_point_list = self.laser_detection_model.get_centroids(
-                image
-            )
-            laser_msg = self.create_pos_data_msg(laser_point_list, frames)
-            self.laser_pos_pub.publish(laser_msg)
-        else:
-            laser_point_list = self._rpc_laser_point_list
-            laser_score_list = self._rpc_laser_score_list
-
-        if self.runner_pub_control:
+        if self.runner_detection_enabled:
+            """
             image = np.asanyarray(self.curr_frames["color"].get_data())
             runner_scores, runner_point_list = self.runner_seg_model.get_centroids(
                 image
             )
-            runner_msg = self.create_pos_data_msg(runner_point_list, frames)
+            runner_msg = self._create_pos_data_msg(runner_point_list, frames)
             self.runner_pos_pub.publish(runner_msg)
-        else:
-            runner_point_list = self._rpc_runner_point_list
-            runner_score_list = self._rpc_runner_score_list
+            """
+
+        self.debug_frame_pub.publish(
+            self._get_debug_frame_compressed_msg(frames, debug_image)
+        )
+
+        if self.rec_video_frame:
+            self.rec.write(cv2.cvtColor(curr_image, cv2.COLOR_RGB2BGR))
 
         if self.rec_debug_frame:
-            debug_frame = np.copy(curr_image)
-            debug_frame = cv2.cvtColor(debug_frame, cv2.COLOR_RGB2BGR)
-            debug_frame = cv_utils.draw_laser(
-                debug_frame, laser_point_list, laser_score_list
-            )
-            debug_frame = cv_utils.draw_runners(
-                debug_frame, runner_point_list, runner_score_list
-            )
-            if self.runner_point is not None:
-                debug_frame = cv2.drawMarker(
-                    debug_frame,
-                    self.runner_point,
-                    (0, 0, 255),
-                    cv2.MARKER_CROSS,
-                    thickness=5,
-                    markerSize=20,
-                )
-            self.rec_debug.write(debug_frame)
+            self.rec_debug.write(cv2.cvtColor(debug_image, cv2.COLOR_RGB2BGR))
 
-    def create_pos_data_msg(self, point_list, frames, timestamp=None):
+    def _get_laser_centroids(self, frames, conf_threshold=0.25):
+        image = np.asanyarray(frames["color"].get_data())
+        result = self.laser_detection_model.predict(image)
+        centroids = []
+        confs = []
+        for idx in range(result["conf"].size):
+            conf = result["conf"][idx]
+            if conf >= conf_threshold:
+                # bbox is in xyxy format
+                bbox = result["bboxes"][idx]
+                centroids.append(
+                    (round((bbox[0] + bbox[2]) * 0.5), round((bbox[1] + bbox[3]) * 0.5))
+                )
+                confs.append(conf)
+        return centroids, confs
+
+    ## region Service calls
+
+    def _get_frame(self, request, response):
+        if self.curr_frames is None:
+            return response
+
+        response.color_frame = self._get_color_frame_msg(self.curr_frames)
+        response.depth_frame = self._get_depth_frame_msg(self.curr_frames)
+        return response
+
+    def _has_frames(self, request, response):
+        response.data = self.curr_frames is not None
+        return response
+
+    def _set_exposure(self, request, response):
+        self.camera.set_exposure(request.exposure_ms)
+        return response
+
+    def _single_runner_detection(self, request, response):
+        image = np.asanyarray(self.curr_frames["color"].get_data())
+        runner_scores, runner_point_list = self.runner_seg_model.get_centroids(image)
+        response.pos_data = self._create_pos_data_msg(
+            runner_point_list, self.curr_frames
+        )
+        self.logger.debug(f"Camera runner msg:{response.pos_data}")
+        self._rpc_runner_point_list = runner_point_list
+        self._rpc_runner_score_list = runner_scores
+        return response
+
+    def _single_laser_detection(self, request, response):
+        image = np.asanyarray(self.curr_frames["color"].get_data())
+        laser_scores, laser_point_list = self.laser_detection_model.get_centroids(image)
+        response.pos_data = self._create_pos_data_msg(
+            laser_point_list, self.curr_frames
+        )
+        self.logger.debug(f"Camera laser msg:{response.pos_data}")
+        self._rpc_laser_point_list = laser_point_list
+        self._rpc_laser_score_list = laser_scores
+        return response
+
+    def _start_laser_detection(self, request, response):
+        self.laser_detection_enabled = True
+        return response
+
+    def _stop_laser_detection(self, request, response):
+        self.laser_detection_enabled = False
+        return response
+
+    def _start_runner_detection(self, request, response):
+        self.runner_detection_enabled = True
+        return response
+
+    def _stop_runner_detection(self, request, response):
+        self.runner_detection_enabled = False
+        return response
+
+    ## endregion
+
+    ## region Message builders
+
+    def _create_pos_data_msg(self, point_list, frames, timestamp=None):
         if timestamp is None:
             timestamp = frames["color"].get_timestamp() / 1000
         msg = PosData()
@@ -286,54 +328,11 @@ class CameraControlNode(Node):
                 msg.invalid_point_list.append(point_msg)
         return msg
 
-    ###Service Calls
-    def get_frame(self, request, response):
-        if self.curr_frames is None:
-            return response
-
-        response.color_frame = self._get_color_frame_msg()
-        response.depth_frame = self._get_depth_frame_msg()
-        return response
-
-    def has_frames(self, request, response):
-        response.data = self.curr_frames is not None
-        return response
-
-    def set_exposure(self, request, response):
-        self.camera.set_exposure(request.exposure_ms)
-        return response
-
-    def single_runner_detection(self, request, response):
-        image = np.asanyarray(self.curr_frames["color"].get_data())
-        runner_scores, runner_point_list = self.runner_seg_model.get_centroids(image)
-        response.pos_data = self.create_pos_data_msg(
-            runner_point_list, self.curr_frames
-        )
-        self.logger.debug(f"Camera runner msg:{response.pos_data}")
-        self._rpc_runner_point_list = runner_point_list
-        self._rpc_runner_score_list = runner_scores
-        return response
-
-    def single_laser_detection(self, request, response):
-        image = np.asanyarray(self.curr_frames["color"].get_data())
-        laser_scores, laser_point_list = self.laser_detection_model.get_centroids(image)
-        response.pos_data = self.create_pos_data_msg(laser_point_list, self.curr_frames)
-        self.logger.debug(f"Camera laser msg:{response.pos_data}")
-        self._rpc_laser_point_list = laser_point_list
-        self._rpc_laser_score_list = laser_scores
-        return response
-
-    def control_laser_pub(self, request, response):
-        self.laser_pub_control = request.enable
-
-    def control_runner_pub(self, request, response):
-        self.runner_pub_control = request.enable
-
-    def _get_color_frame_msg(self):
-        if self.curr_frames is None:
+    def _get_color_frame_msg(self, frames):
+        if frames is None:
             return None
 
-        color_frame = self.curr_frames["color"]
+        color_frame = frames["color"]
         color_array = np.asanyarray(color_frame.get_data())
         msg = self.cv_bridge.cv2_to_imgmsg(color_array, encoding="rgb8")
         sec, nanosec = milliseconds_to_ros_time(color_frame.get_timestamp())
@@ -341,11 +340,11 @@ class CameraControlNode(Node):
         msg.header.stamp.nanosec = nanosec
         return msg
 
-    def _get_depth_frame_msg(self):
-        if self.curr_frames is None:
+    def _get_depth_frame_msg(self, frames):
+        if frames is None:
             return None
 
-        depth_frame = self.curr_frames["depth"]
+        depth_frame = frames["depth"]
         depth_array = np.asanyarray(depth_frame.get_data())
         msg = self.cv_bridge.cv2_to_imgmsg(depth_array, encoding="mono16")
         sec, nanosec = milliseconds_to_ros_time(depth_frame.get_timestamp())
@@ -353,22 +352,78 @@ class CameraControlNode(Node):
         msg.header.stamp.nanosec = nanosec
         return msg
 
-    def _get_color_frame_compressed_msg(self):
-        if self.curr_frames is None:
+    def _get_color_frame_compressed_msg(self, frames):
+        if frames is None:
             return None
 
-        color_frame = self.curr_frames["color"]
+        color_frame = frames["color"]
         color_array = np.asanyarray(color_frame.get_data())
-        color_array = cv2.cvtColor(color_array, cv2.COLOR_BGR2RGB)
         sec, nanosec = milliseconds_to_ros_time(color_frame.get_timestamp())
-        _, jpeg_data = cv2.imencode(".jpg", color_array)
+        _, jpeg_data = cv2.imencode(
+            ".jpg", cv2.cvtColor(color_array, cv2.COLOR_RGB2BGR)
+        )
         msg = CompressedImage()
         msg.format = "jpeg"
         msg.data = jpeg_data.tobytes()
         msg.header.stamp.sec = sec
         msg.header.stamp.nanosec = nanosec
-
         return msg
+
+    def _get_debug_frame_compressed_msg(self, frames, debug_image):
+        if frames is None:
+            return None
+
+        color_frame = frames["color"]
+        sec, nanosec = milliseconds_to_ros_time(color_frame.get_timestamp())
+        _, jpeg_data = cv2.imencode(
+            ".jpg", cv2.cvtColor(debug_image, cv2.COLOR_RGB2BGR)
+        )
+        msg = CompressedImage()
+        msg.format = "jpeg"
+        msg.data = jpeg_data.tobytes()
+        msg.header.stamp.sec = sec
+        msg.header.stamp.nanosec = nanosec
+        return msg
+
+    ## endregion
+
+    def _debug_draw_laser(self, debug_image, laser_points, confs, draw_conf=True):
+        for laser, conf in zip(laser_points, confs):
+            pos = [int(laser[0]), int(laser[1])]
+            debug_image = cv2.drawMarker(
+                debug_image,
+                pos,
+                (255, 0, 255),
+                cv2.MARKER_CROSS,
+                thickness=1,
+                markerSize=20,
+            )
+            if draw_conf:
+                pos = [int(laser[0]) - 15, int(laser[1]) - 15]
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                debug_image = cv2.putText(
+                    debug_image, f"{conf:.2f}", pos, font, 0.25, (255, 0, 255)
+                )
+        return debug_image
+
+    def _debug_draw_runners(debug_image, runner_points, confs, draw_conf=True):
+        for runner, conf in zip(runner_points, confs):
+            pos = [int(runner[0]), int(runner[1])]
+            debug_image = cv2.drawMarker(
+                debug_image,
+                pos,
+                (255, 255, 255),
+                cv2.MARKER_STAR,
+                thickness=1,
+                markerSize=20,
+            )
+            if draw_conf:
+                pos = [int(runner[0]) + 15, int(runner[1]) - 15]
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                debug_image = cv2.putText(
+                    debug_image, f"{conf:.2f}", pos, font, 0.25, (255, 255, 255)
+                )
+        return debug_image
 
 
 def main(args=None):

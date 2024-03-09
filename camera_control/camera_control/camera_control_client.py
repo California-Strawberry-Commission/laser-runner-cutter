@@ -2,7 +2,6 @@ import functools
 import rclpy
 
 from camera_control_interfaces.srv import GetBool, GetPosData, SetExposure
-from laser_control_interfaces.msg import Point
 
 
 def add_sync_option(func):
@@ -34,9 +33,6 @@ class CameraControlClient:
         node.camera_has_frames = node.create_client(
             GetBool,
             f"/{camera_node_name}/has_frames",
-        )
-        node.runner_point_pub = node.create_publisher(
-            Point, f"/{camera_node_name}/runner_point", 1
         )
         self.node = node
 
@@ -71,12 +67,6 @@ class CameraControlClient:
         rclpy.spin_until_future_complete(self.node, response)
         res_data = response.result()
         return self._unpack_pos_data(res_data)
-
-    def pub_runner_point(self, point):
-        runner_msg = Point()
-        runner_msg.x = int(point[0])
-        runner_msg.y = int(point[1])
-        self.node.runner_point_pub.publish(runner_msg)
 
     def _unpack_pos_data(self, res_data):
         pos_data = res_data.pos_data

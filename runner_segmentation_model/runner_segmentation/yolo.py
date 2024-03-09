@@ -42,6 +42,16 @@ class Yolo:
         )
         return metrics
 
+    def predict(self, image, iou=0.6):
+        result = self.model(image, iou=iou)[0]
+        out = {}
+        out["conf"] = result.boxes.conf.cpu().numpy()
+        out["bboxes"] = result.boxes.xyxy.cpu().numpy()
+        if result.masks:
+            out["masks"] = result.masks.xy.cpu().numpy()
+
+        return out
+
     def debug(self, image_file):
         image = cv2.imread(image_file)
         image_array = np.array(image)

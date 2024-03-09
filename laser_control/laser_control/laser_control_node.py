@@ -15,7 +15,6 @@ from laser_control_interfaces.srv import (
     SetPoints,
 )
 from std_srvs.srv import Empty
-from std_msgs.msg import Bool
 
 
 class LaserControlNode(Node):

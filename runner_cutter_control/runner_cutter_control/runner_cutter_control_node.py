@@ -135,8 +135,6 @@ class Acquire(State):
     def _set_available_track(self, blackboard):
         if self.runner_tracker.has_active_tracks:
             blackboard.curr_track = self.runner_tracker.active_tracks[0]
-            # Publish the runner point we are attempting to cut for logging and image drawing
-            self.camera_client.pub_runner_point(blackboard.curr_track.point)
             return True
         else:
             return False
@@ -278,7 +276,6 @@ class Burn(State):
 
         self.laser_client.stop_laser()
         self.runner_tracker.deactivate(blackboard.curr_track)
-        self.camera_client.pub_runner_point([-1.0, -1.0])
         return "runner_removed"
 
 

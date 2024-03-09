@@ -9,8 +9,8 @@ camera0:
   ros__parameters:
     video_dir: "/opt/video_stream"
     debug_video_dir: "/opt/debug_video_stream"
-    save_video: True
-    save_debug: True
+    save_video: False
+    save_debug: False
     camera_index: 0
     frame_period: .1
     rgb_size: [848, 480]

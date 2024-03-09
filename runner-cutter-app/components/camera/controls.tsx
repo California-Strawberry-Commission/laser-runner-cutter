@@ -22,12 +22,13 @@ export default function Controls() {
   // Subscriptions
   useEffect(() => {
     const frameSub = subscribe(
-      `${cameraNodeName}/color_frame`,
+      `${cameraNodeName}/debug_frame`,
       "sensor_msgs/CompressedImage",
       (message) => {
         setFrameSrc(`data:image/jpeg;base64,${message.data}`);
       }
     );
+
     return () => {
       frameSub.unsubscribe();
     };
@@ -47,6 +48,18 @@ export default function Controls() {
       "camera_control_interfaces/SetExposure",
       { exposure_ms: -1.0 }
     );
+  };
+
+  const onStartLaserDetectionClick = () => {
+    callService(
+      `${cameraNodeName}/start_laser_detection`,
+      "std_srvs/Empty",
+      {}
+    );
+  };
+
+  const onStopLaserDetectionClick = () => {
+    callService(`${cameraNodeName}/stop_laser_detection`, "std_srvs/Empty", {});
   };
 
   return (
@@ -78,6 +91,14 @@ export default function Controls() {
         </Button>
         <Button disabled={!rosConnected} onClick={onAutoExposureClick}>
           Auto Exposure
+        </Button>
+      </div>
+      <div className="flex flex-row items-center gap-4">
+        <Button disabled={!rosConnected} onClick={onStartLaserDetectionClick}>
+          Start Laser Detection
+        </Button>
+        <Button disabled={!rosConnected} onClick={onStopLaserDetectionClick}>
+          Stop Laser Detection
         </Button>
       </div>
     </div>
