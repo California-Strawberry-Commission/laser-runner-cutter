@@ -48,7 +48,7 @@ class Yolo:
         out["conf"] = result.boxes.conf.cpu().numpy()
         out["bboxes"] = result.boxes.xyxy.cpu().numpy()
         if result.masks:
-            out["masks"] = result.masks.xy.cpu().numpy()
+            out["masks"] = result.masks.xy
 
         return out
 

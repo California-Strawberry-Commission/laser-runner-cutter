@@ -62,6 +62,22 @@ export default function Controls() {
     callService(`${cameraNodeName}/stop_laser_detection`, "std_srvs/Empty", {});
   };
 
+  const onStartRunnerDetectionClick = () => {
+    callService(
+      `${cameraNodeName}/start_runner_detection`,
+      "std_srvs/Empty",
+      {}
+    );
+  };
+
+  const onStopRunnerDetectionClick = () => {
+    callService(
+      `${cameraNodeName}/stop_runner_detection`,
+      "std_srvs/Empty",
+      {}
+    );
+  };
+
   return (
     <div className="flex flex-col gap-4 items-center">
       <div className="flex flex-col items-center">
@@ -99,6 +115,14 @@ export default function Controls() {
         </Button>
         <Button disabled={!rosConnected} onClick={onStopLaserDetectionClick}>
           Stop Laser Detection
+        </Button>
+      </div>
+      <div className="flex flex-row items-center gap-4">
+        <Button disabled={!rosConnected} onClick={onStartRunnerDetectionClick}>
+          Start Runner Detection
+        </Button>
+        <Button disabled={!rosConnected} onClick={onStopRunnerDetectionClick}>
+          Stop Runner Detection
         </Button>
       </div>
     </div>

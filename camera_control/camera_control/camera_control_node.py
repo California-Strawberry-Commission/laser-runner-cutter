@@ -5,21 +5,17 @@ from datetime import datetime
 import cv2
 import numpy as np
 import rclpy
-from cv_bridge import CvBridge
 from ament_index_python.packages import get_package_share_directory
 from camera_control_interfaces.msg import Point, Pos, PosData
-from camera_control_interfaces.srv import (
-    GetBool,
-    GetFrame,
-    GetPosData,
-    SetExposure,
-)
-from std_srvs.srv import Empty
+from camera_control_interfaces.srv import GetBool, GetFrame, GetPosData, SetExposure
+from cv_bridge import CvBridge
 from rclpy.node import Node
 from runner_segmentation.yolo import Yolo
 from sensor_msgs.msg import CompressedImage
+from shapely import Polygon
+from shapely.ops import nearest_points
+from std_srvs.srv import Empty
 
-import camera_control.utils.cv_utils as cv_utils
 from camera_control.camera.realsense import RealSense
 
 
@@ -89,13 +85,15 @@ class CameraControlNode(Node):
 
         # Services
 
-        self.frame_srv = self.create_service(GetFrame, "~/get_frame", self._get_frame)
-        self.single_runner_srv = self.create_service(
+        self.get_frame_srv = self.create_service(
+            GetFrame, "~/get_frame", self._get_frame
+        )
+        self.get_runner_detection_srv = self.create_service(
             GetPosData,
             "~/get_runner_detection",
             self._single_runner_detection,
         )
-        self.single_laser_srv = self.create_service(
+        self.get_laser_detection_srv = self.create_service(
             GetPosData,
             "~/get_laser_detection",
             self._single_laser_detection,
@@ -155,11 +153,6 @@ class CameraControlNode(Node):
         )
         self.laser_detection_model = Yolo(laser_weights_path)
 
-        self._rpc_runner_point_list = []
-        self._rpc_runner_score_list = []
-        self._rpc_laser_point_list = []
-        self._rpc_laser_score_list = []
-
         # Video recording
 
         self._initialize_recording()
@@ -203,20 +196,19 @@ class CameraControlNode(Node):
         debug_image = np.copy(curr_image)
 
         if self.laser_detection_enabled:
-            laser_points, confs = self._get_laser_centroids(self.curr_frames)
-            debug_image = self._debug_draw_laser(debug_image, laser_points, confs)
-
+            laser_points, confs = self._get_laser_points(self.curr_frames)
+            debug_image = self._debug_draw_lasers(debug_image, laser_points, confs)
             self.laser_pos_pub.publish(self._create_pos_data_msg(laser_points, frames))
 
         if self.runner_detection_enabled:
-            """
-            image = np.asanyarray(self.curr_frames["color"].get_data())
-            runner_scores, runner_point_list = self.runner_seg_model.get_centroids(
-                image
+            runner_masks, confs = self._get_runner_masks(self.curr_frames)
+            runner_centroids = self._get_runner_centroids(runner_masks)
+            debug_image = self._debug_draw_runners(
+                debug_image, runner_masks, runner_centroids, confs
             )
-            runner_msg = self._create_pos_data_msg(runner_point_list, frames)
-            self.runner_pos_pub.publish(runner_msg)
-            """
+            self.runner_pos_pub.publish(
+                self._create_pos_data_msg(runner_centroids, frames)
+            )
 
         self.debug_frame_pub.publish(
             self._get_debug_frame_compressed_msg(frames, debug_image)
@@ -228,21 +220,44 @@ class CameraControlNode(Node):
         if self.rec_debug_frame:
             self.rec_debug.write(cv2.cvtColor(debug_image, cv2.COLOR_RGB2BGR))
 
-    def _get_laser_centroids(self, frames, conf_threshold=0.25):
+    def _get_laser_points(self, frames, conf_threshold=0.4):
         image = np.asanyarray(frames["color"].get_data())
         result = self.laser_detection_model.predict(image)
-        centroids = []
+        laser_points = []
         confs = []
         for idx in range(result["conf"].size):
             conf = result["conf"][idx]
             if conf >= conf_threshold:
                 # bbox is in xyxy format
                 bbox = result["bboxes"][idx]
-                centroids.append(
+                laser_points.append(
                     (round((bbox[0] + bbox[2]) * 0.5), round((bbox[1] + bbox[3]) * 0.5))
                 )
                 confs.append(conf)
-        return centroids, confs
+        return laser_points, confs
+
+    def _get_runner_masks(self, frames, conf_threshold=0.4):
+        image = np.asanyarray(frames["color"].get_data())
+        result = self.runner_seg_model.predict(image)
+        runner_masks = []
+        confs = []
+        for idx in range(result["conf"].size):
+            conf = result["conf"][idx]
+            if conf >= conf_threshold:
+                mask = result["masks"][idx]
+                runner_masks.append(mask)
+                confs.append(conf)
+        return runner_masks, confs
+
+    def _get_runner_centroids(self, runner_masks):
+        centroids = []
+        for mask in runner_masks:
+            polygon = Polygon(mask)
+            closest_polygon_point, closest_point = nearest_points(
+                polygon, polygon.centroid
+            )
+            centroids.append((closest_polygon_point.x, closest_polygon_point.y))
+        return centroids
 
     ## region Service calls
 
@@ -262,26 +277,17 @@ class CameraControlNode(Node):
         self.camera.set_exposure(request.exposure_ms)
         return response
 
-    def _single_runner_detection(self, request, response):
-        image = np.asanyarray(self.curr_frames["color"].get_data())
-        runner_scores, runner_point_list = self.runner_seg_model.get_centroids(image)
-        response.pos_data = self._create_pos_data_msg(
-            runner_point_list, self.curr_frames
-        )
-        self.logger.debug(f"Camera runner msg:{response.pos_data}")
-        self._rpc_runner_point_list = runner_point_list
-        self._rpc_runner_score_list = runner_scores
+    def _single_laser_detection(self, request, response):
+        laser_points, conf = self._get_laser_points(self.curr_frames)
+        response.pos_data = self._create_pos_data_msg(laser_points, self.curr_frames)
         return response
 
-    def _single_laser_detection(self, request, response):
-        image = np.asanyarray(self.curr_frames["color"].get_data())
-        laser_scores, laser_point_list = self.laser_detection_model.get_centroids(image)
+    def _single_runner_detection(self, request, response):
+        runner_masks, confs = self._get_runner_masks(self.curr_frames)
+        runner_centroids = self._get_runner_centroids(runner_masks)
         response.pos_data = self._create_pos_data_msg(
-            laser_point_list, self.curr_frames
+            runner_centroids, self.curr_frames
         )
-        self.logger.debug(f"Camera laser msg:{response.pos_data}")
-        self._rpc_laser_point_list = laser_point_list
-        self._rpc_laser_score_list = laser_scores
         return response
 
     def _start_laser_detection(self, request, response):
@@ -387,41 +393,59 @@ class CameraControlNode(Node):
 
     ## endregion
 
-    def _debug_draw_laser(self, debug_image, laser_points, confs, draw_conf=True):
-        for laser, conf in zip(laser_points, confs):
-            pos = [int(laser[0]), int(laser[1])]
+    def _debug_draw_lasers(
+        self, debug_image, laser_points, confs, color=(255, 0, 255), draw_conf=True
+    ):
+        for laser_point, conf in zip(laser_points, confs):
+            pos = [int(laser_point[0]), int(laser_point[1])]
             debug_image = cv2.drawMarker(
                 debug_image,
                 pos,
-                (255, 0, 255),
-                cv2.MARKER_CROSS,
-                thickness=1,
-                markerSize=20,
-            )
-            if draw_conf:
-                pos = [int(laser[0]) - 15, int(laser[1]) - 15]
-                font = cv2.FONT_HERSHEY_SIMPLEX
-                debug_image = cv2.putText(
-                    debug_image, f"{conf:.2f}", pos, font, 0.25, (255, 0, 255)
-                )
-        return debug_image
-
-    def _debug_draw_runners(debug_image, runner_points, confs, draw_conf=True):
-        for runner, conf in zip(runner_points, confs):
-            pos = [int(runner[0]), int(runner[1])]
-            debug_image = cv2.drawMarker(
-                debug_image,
-                pos,
-                (255, 255, 255),
+                color,
                 cv2.MARKER_STAR,
                 thickness=1,
                 markerSize=20,
             )
             if draw_conf:
-                pos = [int(runner[0]) + 15, int(runner[1]) - 15]
+                pos = [int(laser_point[0]) - 15, int(laser_point[1]) - 15]
                 font = cv2.FONT_HERSHEY_SIMPLEX
                 debug_image = cv2.putText(
-                    debug_image, f"{conf:.2f}", pos, font, 0.25, (255, 255, 255)
+                    debug_image, f"{conf:.2f}", pos, font, 0.5, color
+                )
+        return debug_image
+
+    def _debug_draw_runners(
+        self,
+        debug_image,
+        runner_masks,
+        runner_centroids,
+        confs,
+        mask_color=(255, 255, 255),
+        centroid_color=(255, 0, 255),
+        draw_conf=True,
+    ):
+        for runner_mask, runner_centroid, conf in zip(
+            runner_masks, runner_centroids, confs
+        ):
+            debug_image = cv2.fillPoly(
+                debug_image,
+                pts=[np.array(runner_mask, dtype=np.int32)],
+                color=mask_color,
+            )
+            pos = [int(runner_centroid[0]), int(runner_centroid[1])]
+            debug_image = cv2.drawMarker(
+                debug_image,
+                pos,
+                centroid_color,
+                cv2.MARKER_TILTED_CROSS,
+                thickness=1,
+                markerSize=20,
+            )
+            if draw_conf:
+                pos = [int(runner_centroid[0]) + 15, int(runner_centroid[1]) - 15]
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                debug_image = cv2.putText(
+                    debug_image, f"{conf:.2f}", pos, font, 0.5, centroid_color
                 )
         return debug_image
 
