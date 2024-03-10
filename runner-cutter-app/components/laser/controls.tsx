@@ -3,8 +3,17 @@
 import { useEffect, useState } from "react";
 import useROS from "@/lib/ros/useROS";
 import { Button } from "@/components/ui/button";
+import ColorPicker from "@/components/laser/color-picker";
 
 const LASER_STATES = ["disconnected", "stopped", "playing"];
+
+function hexToRgb(hexColor: string) {
+  hexColor = hexColor.replace("#", "");
+  const r = parseInt(hexColor.substring(0, 2), 16) / 255.0;
+  const g = parseInt(hexColor.substring(2, 4), 16) / 255.0;
+  const b = parseInt(hexColor.substring(4, 6), 16) / 255.0;
+  return { r, g, b };
+}
 
 export default function Controls() {
   const { ros, callService, subscribe } = useROS();
@@ -12,13 +21,14 @@ export default function Controls() {
   // TODO: add ability to select laser node name
   const [laserNodeName, setLaserNodeName] = useState<string>("/laser0");
   const [laserState, setLaserState] = useState<number>(0);
+  const [color, setColor] = useState<string>("#ffffff");
 
   useEffect(() => {
     // TODO: add listener for rosbridge connection state
     setRosConnected(ros.isConnected);
   }, []);
 
-  // Initial state
+  // Initial node state
   useEffect(() => {
     const getState = async () => {
       const state = await callService(
@@ -71,14 +81,16 @@ export default function Controls() {
     callService(`${laserNodeName}/stop`, "std_srvs/Empty", {});
   };
 
-  const onRandomizeColorClick = () => {
+  const onColorChange = (color: string) => {
+    setColor(color);
+    const rgb = hexToRgb(color);
     callService(
       `${laserNodeName}/set_color`,
       "laser_control_interfaces/SetColor",
       {
-        r: Math.random(),
-        g: Math.random(),
-        b: Math.random(),
+        r: rgb.r,
+        g: rgb.g,
+        b: rgb.b,
         i: 0.0,
       }
     );
@@ -99,14 +111,16 @@ export default function Controls() {
         <Button disabled={!rosConnected} onClick={onClearPointsClick}>
           Clear Points
         </Button>
+      </div>
+      <div className="flex flex-row items-center gap-4">
+        <ColorPicker color={color} onColorChange={onColorChange} />
+      </div>
+      <div className="flex flex-row items-center gap-4">
         <Button disabled={!rosConnected} onClick={onPlayClick}>
-          Play
+          Start Laser
         </Button>
         <Button disabled={!rosConnected} onClick={onStopClick}>
-          Stop
-        </Button>
-        <Button disabled={!rosConnected} onClick={onRandomizeColorClick}>
-          Randomize Color
+          Stop Laser
         </Button>
       </div>
     </div>
