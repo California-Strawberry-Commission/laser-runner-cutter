@@ -1,9 +1,8 @@
-from .camera import Camera
 import pyrealsense2 as rs
 import numpy as np
 
 
-class RealSense(Camera):
+class RealSense:
     def __init__(
         self,
         logger,
@@ -108,12 +107,14 @@ class RealSense(Camera):
         # to cast back to depth_frame
         depth_frame = depth_frame.as_depth_frame()
 
-        return {"color": color_frame, "depth": depth_frame}
+        return {
+            "color": color_frame,
+            "depth": depth_frame,
+            "timestamp": color_frame.get_timestamp(),
+        }
 
-    def get_pos_location(self, x, y, frame):
+    def get_pos(self, color_pixel, depth_frame):
         """Given an x-y point in the color frame, return the x-y-z position with respect to the camera"""
-        color_pixel = (x, y)
-        depth_frame = frame["depth"]
         depth_pixel = self._color_pixel_to_depth_pixel(color_pixel, depth_frame)
         if not depth_pixel:
             return None
