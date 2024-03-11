@@ -38,7 +38,7 @@ class CameraControlNode(Node):
             parameters=[
                 ("video_dir", "~/Videos/runner-cutter-app"),
                 ("camera_index", 0),
-                ("frame_period", 0.1),
+                ("fps", 10),
                 ("rgb_size", [1280, 720]),
                 ("depth_size", [1280, 720]),
             ],
@@ -50,9 +50,7 @@ class CameraControlNode(Node):
         self.camera_index = (
             self.get_parameter("camera_index").get_parameter_value().integer_value
         )
-        self.frame_period = (
-            self.get_parameter("frame_period").get_parameter_value().double_value
-        )
+        self.fps = self.get_parameter("fps").get_parameter_value().double_value
         self.rgb_size = (
             self.get_parameter("rgb_size").get_parameter_value().integer_array_value
         )
@@ -117,7 +115,7 @@ class CameraControlNode(Node):
         )
 
         # Frame processing loop
-        self.frame_call = self.create_timer(self.frame_period, self._frame_callback)
+        self.frame_call = self.create_timer(1.0 / self.fps, self._frame_callback)
         self.video_writer = None
 
         # For converting numpy array to image msg
@@ -411,7 +409,7 @@ class CameraControlNode(Node):
         self.video_recorder = cv2.VideoWriter(
             os.path.join(self.video_dir, video_name),
             0,
-            1 / self.frame_period,
+            self.fps,
             (self.rgb_size[0], self.rgb_size[1]),
         )
 
