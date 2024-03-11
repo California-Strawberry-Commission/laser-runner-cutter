@@ -36,28 +36,16 @@ class CameraControlNode(Node):
         self.declare_parameters(
             namespace="",
             parameters=[
-                ("video_dir", "/opt/video_stream"),
-                ("debug_video_dir", "/opt/debug_video_stream"),
-                ("save_video", False),
-                ("save_debug", False),
+                ("video_dir", "~/Videos/runner-cutter-app"),
                 ("camera_index", 0),
                 ("frame_period", 0.1),
-                ("rgb_size", [848, 480]),
-                ("depth_size", [848, 480]),
+                ("rgb_size", [1280, 720]),
+                ("depth_size", [1280, 720]),
             ],
         )
 
         self.video_dir = (
             self.get_parameter("video_dir").get_parameter_value().string_value
-        )
-        self.debug_video_dir = (
-            self.get_parameter("debug_video_dir").get_parameter_value().string_value
-        )
-        self.rec_video_frame = (
-            self.get_parameter("save_video").get_parameter_value().bool_value
-        )
-        self.rec_debug_frame = (
-            self.get_parameter("save_debug").get_parameter_value().bool_value
         )
         self.camera_index = (
             self.get_parameter("camera_index").get_parameter_value().integer_value
@@ -84,6 +72,7 @@ class CameraControlNode(Node):
         self.runner_pos_pub = self.create_publisher(PosData, "~/runner_pos_data", 5)
 
         # Services
+        # TODO: add start_video, stop_video, save_image
 
         self.get_frame_srv = self.create_service(
             GetFrame, "~/get_frame", self._get_frame
@@ -129,6 +118,7 @@ class CameraControlNode(Node):
 
         # Frame processing loop
         self.frame_call = self.create_timer(self.frame_period, self._frame_callback)
+        self.video_writer = None
 
         # For converting numpy array to image msg
         self.cv_bridge = CvBridge()
@@ -152,37 +142,6 @@ class CameraControlNode(Node):
             package_share_directory, "models", "LaserDetectionYoloV8n.pt"
         )
         self.laser_detection_model = Yolo(laser_weights_path)
-
-        # Video recording
-
-        self._initialize_recording()
-
-    def _initialize_recording(self):
-        # This is currently not functioning correctly because of permission errors
-        if not os.path.isdir(self.video_dir) and self.rec_video_frame:
-            os.makedirs(self.video_dir)
-        if not os.path.isdir(self.debug_video_dir) and self.rec_debug_frame:
-            os.makedirs(self.debug_video_dir)
-
-        # handle default log location
-        ts = time.time()
-        datetime_obj = datetime.fromtimestamp(ts)
-        datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
-        if self.rec_video_frame:
-            video_name = f"{datetime_string}.avi"
-            rec_name = os.path.join(self.video_dir, video_name)
-            self.rec = cv2.VideoWriter(
-                rec_name, 0, 1 / self.frame_period, (self.rgb_size[0], self.rgb_size[1])
-            )
-        if self.rec_debug_frame:
-            debug_video_name = f"{datetime_string}_debug.avi"
-            debug_rec_name = os.path.join(self.debug_video_dir, debug_video_name)
-            self.rec_debug = cv2.VideoWriter(
-                debug_rec_name,
-                0,
-                1 / self.frame_period,
-                (self.rgb_size[0], self.rgb_size[1]),
-            )
 
     def _frame_callback(self):
         frames = self.camera.get_frames()
@@ -218,11 +177,8 @@ class CameraControlNode(Node):
             self._get_debug_frame_compressed_msg(debug_frame, timestamp_millis)
         )
 
-        if self.rec_video_frame:
-            self.rec.write(cv2.cvtColor(color_frame, cv2.COLOR_RGB2BGR))
-
-        if self.rec_debug_frame:
-            self.rec_debug.write(cv2.cvtColor(debug_frame, cv2.COLOR_RGB2BGR))
+        if self.video_writer is not None:
+            self.video_writer.write(cv2.cvtColor(debug_frame, cv2.COLOR_RGB2BGR))
 
     def _get_laser_points(self, color_frame, conf_threshold=0.4):
         result = self.laser_detection_model.predict(color_frame)
@@ -240,6 +196,9 @@ class CameraControlNode(Node):
         return laser_points, confs
 
     def _get_runner_masks(self, color_frame, conf_threshold=0.4):
+        # TODO: resolution should match what the model was trained on (1024x768)
+        # for the best performance. We could resize the image before prediction, then
+        # map the prediction points back to the original image.
         result = self.runner_seg_model.predict(color_frame)
         runner_masks = []
         confs = []
@@ -440,6 +399,25 @@ class CameraControlNode(Node):
                     debug_frame, f"{conf:.2f}", pos, font, 0.5, centroid_color
                 )
         return debug_frame
+
+    def _start_recording_video(self):
+        # TODO: call this as a service
+        os.makedirs(self.video_dir, exist_ok=True)
+
+        ts = time.time()
+        datetime_obj = datetime.fromtimestamp(ts)
+        datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
+        video_name = f"{datetime_string}.avi"
+        self.video_recorder = cv2.VideoWriter(
+            os.path.join(self.video_dir, video_name),
+            0,
+            1 / self.frame_period,
+            (self.rgb_size[0], self.rgb_size[1]),
+        )
+
+    def _stop_recording_video(self):
+        # TODO: call this as a service
+        self.video_writer = None
 
 
 def main(args=None):
