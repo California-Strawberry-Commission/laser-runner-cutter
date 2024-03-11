@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import useROS from "@/lib/ros/useROS";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import ColorPicker from "@/components/laser/color-picker";
 
 const LASER_STATES = ["disconnected", "stopped", "playing"];
@@ -21,7 +22,9 @@ export default function Controls() {
   // TODO: add ability to select laser node name
   const [laserNodeName, setLaserNodeName] = useState<string>("/laser0");
   const [laserState, setLaserState] = useState<number>(0);
-  const [color, setColor] = useState<string>("#ffffff");
+  const [color, setColor] = useState<string>("#ff0000");
+  const [x, setX] = useState<number>(0);
+  const [y, setY] = useState<number>(0);
 
   useEffect(() => {
     // TODO: add listener for rosbridge connection state
@@ -55,15 +58,14 @@ export default function Controls() {
     };
   }, [laserNodeName]);
 
-  const onAddRandomPointClick = () => {
+  const onAddPointClick = () => {
     callService(
       `${laserNodeName}/add_point`,
       "laser_control_interfaces/AddPoint",
       {
-        // TODO: normalize AddPoint x, y to [0, 1]. Just assume Helios for now
         point: {
-          x: Math.floor(Math.random() * 4096),
-          y: Math.floor(Math.random() * 4096),
+          x: x,
+          y: y,
         },
       }
     );
@@ -105,8 +107,34 @@ export default function Controls() {
         <p className="text-center">{`Laser (${laserNodeName}): ${LASER_STATES[laserState]}`}</p>
       </div>
       <div className="flex flex-row gap-4 items-center">
-        <Button disabled={!rosConnected} onClick={onAddRandomPointClick}>
-          Add Random Point
+        <Input
+          className="flex-none w-20"
+          type="number"
+          id="x"
+          name="x"
+          placeholder="x"
+          step={0.1}
+          value={x.toString()}
+          onChange={(event) => {
+            const value = Number(event.target.value);
+            setX(isNaN(value) ? 0 : value);
+          }}
+        />
+        <Input
+          className="flex-none w-20"
+          type="number"
+          id="y"
+          name="y"
+          placeholder="y"
+          step={0.1}
+          value={y.toString()}
+          onChange={(event) => {
+            const value = Number(event.target.value);
+            setY(isNaN(value) ? 0 : value);
+          }}
+        />
+        <Button disabled={!rosConnected} onClick={onAddPointClick}>
+          Add Point
         </Button>
         <Button disabled={!rosConnected} onClick={onClearPointsClick}>
           Clear Points

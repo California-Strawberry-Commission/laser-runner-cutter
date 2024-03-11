@@ -38,7 +38,7 @@ class CameraControlNode(Node):
             parameters=[
                 ("video_dir", "~/Videos/runner-cutter-app"),
                 ("camera_index", 0),
-                ("fps", 10),
+                ("fps", 10.0),
                 ("rgb_size", [1280, 720]),
                 ("depth_size", [1280, 720]),
             ],

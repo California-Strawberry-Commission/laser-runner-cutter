@@ -96,7 +96,7 @@ export default function Controls() {
           id="exposure"
           name="exposure"
           step={0.01}
-          value={exposureMs}
+          value={exposureMs.toString()}
           onChange={(event) => {
             const value = Number(event.target.value);
             setExposureMs(isNaN(value) ? 0 : value);
