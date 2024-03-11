@@ -6,8 +6,14 @@ import cv2
 import numpy as np
 import rclpy
 from ament_index_python.packages import get_package_share_directory
-from camera_control_interfaces.msg import Point, Pos, PosData
-from camera_control_interfaces.srv import GetBool, GetFrame, GetPosData, SetExposure
+from camera_control_interfaces.msg import Point, Pos, PosData, State
+from camera_control_interfaces.srv import (
+    GetBool,
+    GetFrame,
+    GetState,
+    GetPosData,
+    SetExposure,
+)
 from cv_bridge import CvBridge
 from rclpy.node import Node
 from runner_segmentation.yolo import Yolo
@@ -64,6 +70,7 @@ class CameraControlNode(Node):
 
         # Pub/sub
 
+        self.state_pub = self.create_publisher(State, "~/state", 5)
         self.color_frame_pub = self.create_publisher(
             CompressedImage, "~/color_frame", 1
         )
@@ -75,61 +82,46 @@ class CameraControlNode(Node):
 
         # Services
 
-        self.get_frame_srv = self.create_service(
-            GetFrame, "~/get_frame", self._get_frame
-        )
-        self.get_runner_detection_srv = self.create_service(
-            GetPosData,
-            "~/get_runner_detection",
-            self._single_runner_detection,
-        )
-        self.get_laser_detection_srv = self.create_service(
-            GetPosData,
-            "~/get_laser_detection",
-            self._single_laser_detection,
-        )
         self.has_frames_srv = self.create_service(
-            GetBool, "~/has_frames", self._has_frames
+            GetBool, "~/has_frames", self._has_frames_callback
+        )
+        self.get_frame_srv = self.create_service(
+            GetFrame, "~/get_frame", self._get_frame_callback
         )
         self.set_exposure_srv = self.create_service(
-            SetExposure, "~/set_exposure", self._set_exposure
+            SetExposure, "~/set_exposure", self._set_exposure_callback
+        )
+        self.get_laser_detection_srv = self.create_service(
+            GetPosData, "~/get_laser_detection", self._single_laser_detection_callback
+        )
+        self.get_runner_detection_srv = self.create_service(
+            GetPosData, "~/get_runner_detection", self._single_runner_detection_callback
         )
         self.laser_detection_enabled = False
         self.start_laser_detection_srv = self.create_service(
-            Empty,
-            "~/start_laser_detection",
-            self._start_laser_detection,
+            Empty, "~/start_laser_detection", self._start_laser_detection_callback
         )
         self.stop_laser_detection_srv = self.create_service(
-            Empty,
-            "~/stop_laser_detection",
-            self._stop_laser_detection,
+            Empty, "~/stop_laser_detection", self._stop_laser_detection_callback
         )
         self.runner_detection_enabled = False
         self.start_runner_detection_srv = self.create_service(
-            Empty,
-            "~/start_runner_detection",
-            self._start_runner_detection,
+            Empty, "~/start_runner_detection", self._start_runner_detection_callback
         )
         self.stop_runner_detection_srv = self.create_service(
-            Empty,
-            "~/stop_runner_detection",
-            self._stop_runner_detection,
+            Empty, "~/stop_runner_detection", self._stop_runner_detection_callback
         )
         self.start_recording_video_srv = self.create_service(
-            Empty,
-            "~/start_recording_video",
-            self._start_recording_video,
+            Empty, "~/start_recording_video", self._start_recording_video_callback
         )
         self.stop_recording_video_srv = self.create_service(
-            Empty,
-            "~/stop_recording_video",
-            self._stop_recording_video,
+            Empty, "~/stop_recording_video", self._stop_recording_video_callback
         )
         self.stop_recording_srv = self.create_service(
-            Empty,
-            "~/save_image",
-            self._save_image,
+            Empty, "~/save_image", self._save_image_callback
+        )
+        self.state_srv = self.create_service(
+            GetState, "~/get_state", self._get_state_callback
         )
 
         # Frame processing loop
@@ -158,6 +150,14 @@ class CameraControlNode(Node):
             package_share_directory, "models", "LaserDetectionYoloV8n.pt"
         )
         self.laser_detection_model = Yolo(laser_weights_path)
+
+    def get_state(self):
+        state = State()
+        state.connected = self.camera is not None
+        state.laser_detection_enabled = self.laser_detection_enabled
+        state.runner_detection_enabled = self.runner_detection_enabled
+        state.recording_video = self.video_writer is not None
+        return state
 
     def _frame_callback(self):
         frames = self.camera.get_frames()
@@ -236,9 +236,16 @@ class CameraControlNode(Node):
             centroids.append((closest_polygon_point.x, closest_polygon_point.y))
         return centroids
 
+    def _publish_state(self):
+        self.state_pub.publish(self.get_state())
+
     ## region Service calls
 
-    def _get_frame(self, request, response):
+    def _has_frames_callback(self, request, response):
+        response.data = self.curr_frames is not None
+        return response
+
+    def _get_frame_callback(self, request, response):
         if self.curr_frames is not None:
             color_frame = np.asanyarray(self.curr_frames["color"].get_data())
             depth_frame = np.asanyarray(self.curr_frames["depth"].get_data())
@@ -251,15 +258,11 @@ class CameraControlNode(Node):
             )
         return response
 
-    def _has_frames(self, request, response):
-        response.data = self.curr_frames is not None
-        return response
-
-    def _set_exposure(self, request, response):
+    def _set_exposure_callback(self, request, response):
         self.camera.set_exposure(request.exposure_ms)
         return response
 
-    def _single_laser_detection(self, request, response):
+    def _single_laser_detection_callback(self, request, response):
         if self.curr_frames is not None:
             color_frame = np.asanyarray(self.curr_frames["color"].get_data())
             laser_points, conf = self._get_laser_points(color_frame)
@@ -268,7 +271,7 @@ class CameraControlNode(Node):
             )
         return response
 
-    def _single_runner_detection(self, request, response):
+    def _single_runner_detection_callback(self, request, response):
         if self.curr_frames is not None:
             color_frame = np.asanyarray(self.curr_frames["color"].get_data())
             runner_masks, confs = self._get_runner_masks(color_frame)
@@ -278,23 +281,27 @@ class CameraControlNode(Node):
             )
         return response
 
-    def _start_laser_detection(self, request, response):
+    def _start_laser_detection_callback(self, request, response):
         self.laser_detection_enabled = True
+        self._publish_state()
         return response
 
-    def _stop_laser_detection(self, request, response):
+    def _stop_laser_detection_callback(self, request, response):
         self.laser_detection_enabled = False
+        self._publish_state()
         return response
 
-    def _start_runner_detection(self, request, response):
+    def _start_runner_detection_callback(self, request, response):
         self.runner_detection_enabled = True
+        self._publish_state()
         return response
 
-    def _stop_runner_detection(self, request, response):
+    def _stop_runner_detection_callback(self, request, response):
         self.runner_detection_enabled = False
+        self._publish_state()
         return response
 
-    def _start_recording_video(self, request, response):
+    def _start_recording_video_callback(self, request, response):
         os.makedirs(self.video_dir, exist_ok=True)
         ts = time.time()
         datetime_obj = datetime.fromtimestamp(ts)
@@ -306,13 +313,15 @@ class CameraControlNode(Node):
             self.fps,
             (self.rgb_size[0], self.rgb_size[1]),
         )
+        self._publish_state()
         return response
 
-    def _stop_recording_video(self, request, response):
+    def _stop_recording_video_callback(self, request, response):
         self.video_writer = None
+        self._publish_state()
         return response
 
-    def _save_image(self, request, response):
+    def _save_image_callback(self, request, response):
         os.makedirs(self.image_dir, exist_ok=True)
         ts = time.time()
         datetime_obj = datetime.fromtimestamp(ts)
@@ -326,6 +335,10 @@ class CameraControlNode(Node):
                 cv2.cvtColor(color_frame, cv2.COLOR_RGB2BGR),
             )
 
+        return response
+
+    def _get_state_callback(self, request, response):
+        response.state = self.get_state()
         return response
 
     ## endregion

@@ -20,7 +20,7 @@ export default function Controls() {
   const { ros, callService, subscribe } = useROS();
   const [rosConnected, setRosConnected] = useState<boolean>(false);
   // TODO: add ability to select laser node name
-  const [laserNodeName, setLaserNodeName] = useState<string>("/laser0");
+  const [nodeName, setNodeName] = useState<string>("/laser0");
   const [laserState, setLaserState] = useState<number>(0);
   const [color, setColor] = useState<string>("#ff0000");
   const [x, setX] = useState<number>(0);
@@ -34,20 +34,20 @@ export default function Controls() {
   // Initial node state
   useEffect(() => {
     const getState = async () => {
-      const state = await callService(
-        `${laserNodeName}/get_state`,
+      const result = await callService(
+        `${nodeName}/get_state`,
         "laser_control_interfaces/GetState",
         {}
       );
-      setLaserState(state.state.data);
+      setLaserState(result.state.data);
     };
     getState();
-  }, [laserNodeName]);
+  }, [nodeName]);
 
   // Subscriptions
   useEffect(() => {
     const stateSub = subscribe(
-      `${laserNodeName}/state`,
+      `${nodeName}/state`,
       "laser_control_interfaces/State",
       (message) => {
         setLaserState(message.data);
@@ -56,47 +56,54 @@ export default function Controls() {
     return () => {
       stateSub.unsubscribe();
     };
-  }, [laserNodeName]);
+  }, [nodeName]);
 
   const onAddPointClick = () => {
-    callService(
-      `${laserNodeName}/add_point`,
-      "laser_control_interfaces/AddPoint",
-      {
-        point: {
-          x: x,
-          y: y,
-        },
-      }
-    );
+    callService(`${nodeName}/add_point`, "laser_control_interfaces/AddPoint", {
+      point: {
+        x: x,
+        y: y,
+      },
+    });
   };
 
   const onClearPointsClick = () => {
-    callService(`${laserNodeName}/clear_points`, "std_srvs/Empty", {});
+    callService(`${nodeName}/clear_points`, "std_srvs/Empty", {});
   };
 
   const onPlayClick = () => {
-    callService(`${laserNodeName}/play`, "std_srvs/Empty", {});
+    callService(`${nodeName}/play`, "std_srvs/Empty", {});
   };
 
   const onStopClick = () => {
-    callService(`${laserNodeName}/stop`, "std_srvs/Empty", {});
+    callService(`${nodeName}/stop`, "std_srvs/Empty", {});
   };
 
   const onColorChange = (color: string) => {
     setColor(color);
     const rgb = hexToRgb(color);
-    callService(
-      `${laserNodeName}/set_color`,
-      "laser_control_interfaces/SetColor",
-      {
-        r: rgb.r,
-        g: rgb.g,
-        b: rgb.b,
-        i: 0.0,
-      }
-    );
+    callService(`${nodeName}/set_color`, "laser_control_interfaces/SetColor", {
+      r: rgb.r,
+      g: rgb.g,
+      b: rgb.b,
+      i: 0.0,
+    });
   };
+
+  let laserButton = null;
+  if (laserState === 1) {
+    laserButton = (
+      <Button disabled={!rosConnected} onClick={onPlayClick}>
+        Start Laser
+      </Button>
+    );
+  } else if (laserState === 2) {
+    laserButton = (
+      <Button disabled={!rosConnected} onClick={onStopClick}>
+        Stop Laser
+      </Button>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4 items-center">
@@ -104,7 +111,7 @@ export default function Controls() {
         <p className="text-center">{`Rosbridge: ${
           rosConnected ? "connected" : "disconnected"
         }`}</p>
-        <p className="text-center">{`Laser (${laserNodeName}): ${LASER_STATES[laserState]}`}</p>
+        <p className="text-center">{`Laser (${nodeName}): ${LASER_STATES[laserState]}`}</p>
       </div>
       <div className="flex flex-row gap-4 items-center">
         <Input
@@ -143,14 +150,7 @@ export default function Controls() {
       <div className="flex flex-row items-center gap-4">
         <ColorPicker color={color} onColorChange={onColorChange} />
       </div>
-      <div className="flex flex-row items-center gap-4">
-        <Button disabled={!rosConnected} onClick={onPlayClick}>
-          Start Laser
-        </Button>
-        <Button disabled={!rosConnected} onClick={onStopClick}>
-          Stop Laser
-        </Button>
-      </div>
+      <div className="flex flex-row items-center gap-4">{laserButton}</div>
     </div>
   );
 }

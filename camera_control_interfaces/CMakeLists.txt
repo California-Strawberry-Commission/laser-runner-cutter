@@ -28,9 +28,11 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Point.msg"
   "msg/Pos.msg"
   "msg/PosData.msg"
+  "msg/State.msg"
   "srv/GetBool.srv"
   "srv/GetFrame.srv"
   "srv/GetPosData.srv"
+  "srv/GetState.srv"
   "srv/SetExposure.srv"
   DEPENDENCIES sensor_msgs
 )

@@ -10,7 +10,13 @@ export default function Controls() {
   const { ros, callService, subscribe } = useROS();
   const [rosConnected, setRosConnected] = useState<boolean>(false);
   // TODO: add ability to select camera node name
-  const [cameraNodeName, setCameraNodeName] = useState<string>("/camera0");
+  const [nodeName, setNodeName] = useState<string>("/camera0");
+  const [nodeState, setNodeState] = useState({
+    connected: false,
+    laser_detection_enabled: false,
+    runner_detection_enabled: false,
+    recording_video: false,
+  });
   const [frameSrc, setFrameSrc] = useState<string>("");
   const [exposureMs, setExposureMs] = useState<number>(0.2);
 
@@ -19,10 +25,30 @@ export default function Controls() {
     setRosConnected(ros.isConnected);
   }, []);
 
+  // Initial node state
+  useEffect(() => {
+    const getState = async () => {
+      const result = await callService(
+        `${nodeName}/get_state`,
+        "camera_control_interfaces/GetState",
+        {}
+      );
+      setNodeState(result.state);
+    };
+    getState();
+  }, [nodeName]);
+
   // Subscriptions
   useEffect(() => {
+    const stateSub = subscribe(
+      `${nodeName}/state`,
+      "camera_control_interfaces/State",
+      (message) => {
+        setNodeState(message);
+      }
+    );
     const frameSub = subscribe(
-      `${cameraNodeName}/debug_frame`,
+      `${nodeName}/debug_frame`,
       "sensor_msgs/CompressedImage",
       (message) => {
         setFrameSrc(`data:image/jpeg;base64,${message.data}`);
@@ -30,13 +56,14 @@ export default function Controls() {
     );
 
     return () => {
+      stateSub.unsubscribe();
       frameSub.unsubscribe();
     };
-  }, [cameraNodeName]);
+  }, [nodeName]);
 
   const onSetExposureClick = () => {
     callService(
-      `${cameraNodeName}/set_exposure`,
+      `${nodeName}/set_exposure`,
       "camera_control_interfaces/SetExposure",
       { exposure_ms: exposureMs }
     );
@@ -44,68 +71,50 @@ export default function Controls() {
 
   const onAutoExposureClick = () => {
     callService(
-      `${cameraNodeName}/set_exposure`,
+      `${nodeName}/set_exposure`,
       "camera_control_interfaces/SetExposure",
       { exposure_ms: -1.0 }
     );
   };
 
   const onStartLaserDetectionClick = () => {
-    callService(
-      `${cameraNodeName}/start_laser_detection`,
-      "std_srvs/Empty",
-      {}
-    );
+    callService(`${nodeName}/start_laser_detection`, "std_srvs/Empty", {});
   };
 
   const onStopLaserDetectionClick = () => {
-    callService(`${cameraNodeName}/stop_laser_detection`, "std_srvs/Empty", {});
+    callService(`${nodeName}/stop_laser_detection`, "std_srvs/Empty", {});
   };
 
   const onStartRunnerDetectionClick = () => {
-    callService(
-      `${cameraNodeName}/start_runner_detection`,
-      "std_srvs/Empty",
-      {}
-    );
+    callService(`${nodeName}/start_runner_detection`, "std_srvs/Empty", {});
   };
 
   const onStopRunnerDetectionClick = () => {
-    callService(
-      `${cameraNodeName}/stop_runner_detection`,
-      "std_srvs/Empty",
-      {}
-    );
+    callService(`${nodeName}/stop_runner_detection`, "std_srvs/Empty", {});
   };
 
   const onStartRecordingVideoClick = () => {
-    callService(
-      `${cameraNodeName}/start_recording_video`,
-      "std_srvs/Empty",
-      {}
-    );
+    callService(`${nodeName}/start_recording_video`, "std_srvs/Empty", {});
   };
 
   const onStopRecordingVideoClick = () => {
-    callService(`${cameraNodeName}/stop_recording_video`, "std_srvs/Empty", {});
+    callService(`${nodeName}/stop_recording_video`, "std_srvs/Empty", {});
   };
 
   const onSaveImageClick = () => {
-    callService(`${cameraNodeName}/save_image`, "std_srvs/Empty", {});
+    callService(`${nodeName}/save_image`, "std_srvs/Empty", {});
   };
 
-  // TODO: for start/stop buttons, just merge into a single button based on
-  // current state. This will require calling a /get_state service to get the
-  // latest state (is laser detection enabled, is runner detection enabled, is
-  // video currently recording).
   return (
     <div className="flex flex-col gap-4 items-center">
       <div className="flex flex-col items-center">
         <p className="text-center">{`Rosbridge: ${
           rosConnected ? "connected" : "disconnected"
         }`}</p>
+        <p className="text-center">{`Camera (${nodeName}): ${JSON.stringify(
+          nodeState
+        )}`}</p>
       </div>
-      {frameSrc && <img src={frameSrc} alt="Camera Color Frame" />}
       <div className="flex flex-row items-center gap-4">
         <Label className="flex-none w-16" htmlFor="exposure">
           Exposure (ms):
@@ -130,30 +139,43 @@ export default function Controls() {
         </Button>
       </div>
       <div className="flex flex-row items-center gap-4">
-        <Button disabled={!rosConnected} onClick={onStartLaserDetectionClick}>
-          Start Laser Detection
-        </Button>
-        <Button disabled={!rosConnected} onClick={onStopLaserDetectionClick}>
-          Stop Laser Detection
-        </Button>
-        <Button disabled={!rosConnected} onClick={onStartRunnerDetectionClick}>
-          Start Runner Detection
-        </Button>
-        <Button disabled={!rosConnected} onClick={onStopRunnerDetectionClick}>
-          Stop Runner Detection
-        </Button>
+        {nodeState.laser_detection_enabled ? (
+          <Button disabled={!rosConnected} onClick={onStopLaserDetectionClick}>
+            Stop Laser Detection
+          </Button>
+        ) : (
+          <Button disabled={!rosConnected} onClick={onStartLaserDetectionClick}>
+            Start Laser Detection
+          </Button>
+        )}
+        {nodeState.runner_detection_enabled ? (
+          <Button disabled={!rosConnected} onClick={onStopRunnerDetectionClick}>
+            Stop Runner Detection
+          </Button>
+        ) : (
+          <Button
+            disabled={!rosConnected}
+            onClick={onStartRunnerDetectionClick}
+          >
+            Start Runner Detection
+          </Button>
+        )}
       </div>
       <div className="flex flex-row items-center gap-4">
-        <Button disabled={!rosConnected} onClick={onStartRecordingVideoClick}>
-          Start Recording Video
-        </Button>
-        <Button disabled={!rosConnected} onClick={onStopRecordingVideoClick}>
-          Stop Recording Video
-        </Button>
+        {nodeState.recording_video ? (
+          <Button disabled={!rosConnected} onClick={onStopRecordingVideoClick}>
+            Stop Recording Video
+          </Button>
+        ) : (
+          <Button disabled={!rosConnected} onClick={onStartRecordingVideoClick}>
+            Start Recording Video
+          </Button>
+        )}
         <Button disabled={!rosConnected} onClick={onSaveImageClick}>
           Save Image
         </Button>
       </div>
+      {frameSrc && <img src={frameSrc} alt="Camera Color Frame" />}
     </div>
   );
 }
