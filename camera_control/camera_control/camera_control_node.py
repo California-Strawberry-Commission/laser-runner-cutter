@@ -36,17 +36,15 @@ class CameraControlNode(Node):
         self.declare_parameters(
             namespace="",
             parameters=[
-                ("video_dir", "~/Videos/runner-cutter-app"),
                 ("camera_index", 0),
                 ("fps", 10.0),
                 ("rgb_size", [1280, 720]),
                 ("depth_size", [1280, 720]),
+                ("video_dir", "~/Videos/runner-cutter-app"),
+                ("image_dir", "~/Pictures/runner-cutter-app"),
             ],
         )
 
-        self.video_dir = (
-            self.get_parameter("video_dir").get_parameter_value().string_value
-        )
         self.camera_index = (
             self.get_parameter("camera_index").get_parameter_value().integer_value
         )
@@ -56,6 +54,12 @@ class CameraControlNode(Node):
         )
         self.depth_size = (
             self.get_parameter("depth_size").get_parameter_value().integer_array_value
+        )
+        self.video_dir = os.path.expanduser(
+            self.get_parameter("video_dir").get_parameter_value().string_value
+        )
+        self.image_dir = os.path.expanduser(
+            self.get_parameter("image_dir").get_parameter_value().string_value
         )
 
         # Pub/sub
@@ -70,7 +74,6 @@ class CameraControlNode(Node):
         self.runner_pos_pub = self.create_publisher(PosData, "~/runner_pos_data", 5)
 
         # Services
-        # TODO: add start_video, stop_video, save_image
 
         self.get_frame_srv = self.create_service(
             GetFrame, "~/get_frame", self._get_frame
@@ -112,6 +115,21 @@ class CameraControlNode(Node):
             Empty,
             "~/stop_runner_detection",
             self._stop_runner_detection,
+        )
+        self.start_recording_video_srv = self.create_service(
+            Empty,
+            "~/start_recording_video",
+            self._start_recording_video,
+        )
+        self.stop_recording_video_srv = self.create_service(
+            Empty,
+            "~/stop_recording_video",
+            self._stop_recording_video,
+        )
+        self.stop_recording_srv = self.create_service(
+            Empty,
+            "~/save_image",
+            self._save_image,
         )
 
         # Frame processing loop
@@ -276,6 +294,40 @@ class CameraControlNode(Node):
         self.runner_detection_enabled = False
         return response
 
+    def _start_recording_video(self, request, response):
+        os.makedirs(self.video_dir, exist_ok=True)
+        ts = time.time()
+        datetime_obj = datetime.fromtimestamp(ts)
+        datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
+        video_name = f"{datetime_string}.avi"
+        self.video_writer = cv2.VideoWriter(
+            os.path.join(self.video_dir, video_name),
+            cv2.VideoWriter_fourcc(*"XVID"),
+            self.fps,
+            (self.rgb_size[0], self.rgb_size[1]),
+        )
+        return response
+
+    def _stop_recording_video(self, request, response):
+        self.video_writer = None
+        return response
+
+    def _save_image(self, request, response):
+        os.makedirs(self.image_dir, exist_ok=True)
+        ts = time.time()
+        datetime_obj = datetime.fromtimestamp(ts)
+        datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
+        image_name = f"{datetime_string}.png"
+
+        if self.curr_frames is not None:
+            color_frame = np.asanyarray(self.curr_frames["color"].get_data())
+            cv2.imwrite(
+                os.path.join(self.image_dir, image_name),
+                cv2.cvtColor(color_frame, cv2.COLOR_RGB2BGR),
+            )
+
+        return response
+
     ## endregion
 
     ## region Message builders
@@ -397,25 +449,6 @@ class CameraControlNode(Node):
                     debug_frame, f"{conf:.2f}", pos, font, 0.5, centroid_color
                 )
         return debug_frame
-
-    def _start_recording_video(self):
-        # TODO: call this as a service
-        os.makedirs(self.video_dir, exist_ok=True)
-
-        ts = time.time()
-        datetime_obj = datetime.fromtimestamp(ts)
-        datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
-        video_name = f"{datetime_string}.avi"
-        self.video_recorder = cv2.VideoWriter(
-            os.path.join(self.video_dir, video_name),
-            0,
-            self.fps,
-            (self.rgb_size[0], self.rgb_size[1]),
-        )
-
-    def _stop_recording_video(self):
-        # TODO: call this as a service
-        self.video_writer = None
 
 
 def main(args=None):

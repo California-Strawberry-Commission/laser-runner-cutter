@@ -78,6 +78,26 @@ export default function Controls() {
     );
   };
 
+  const onStartRecordingVideoClick = () => {
+    callService(
+      `${cameraNodeName}/start_recording_video`,
+      "std_srvs/Empty",
+      {}
+    );
+  };
+
+  const onStopRecordingVideoClick = () => {
+    callService(`${cameraNodeName}/stop_recording_video`, "std_srvs/Empty", {});
+  };
+
+  const onSaveImageClick = () => {
+    callService(`${cameraNodeName}/save_image`, "std_srvs/Empty", {});
+  };
+
+  // TODO: for start/stop buttons, just merge into a single button based on
+  // current state. This will require calling a /get_state service to get the
+  // latest state (is laser detection enabled, is runner detection enabled, is
+  // video currently recording).
   return (
     <div className="flex flex-col gap-4 items-center">
       <div className="flex flex-col items-center">
@@ -116,13 +136,22 @@ export default function Controls() {
         <Button disabled={!rosConnected} onClick={onStopLaserDetectionClick}>
           Stop Laser Detection
         </Button>
-      </div>
-      <div className="flex flex-row items-center gap-4">
         <Button disabled={!rosConnected} onClick={onStartRunnerDetectionClick}>
           Start Runner Detection
         </Button>
         <Button disabled={!rosConnected} onClick={onStopRunnerDetectionClick}>
           Stop Runner Detection
+        </Button>
+      </div>
+      <div className="flex flex-row items-center gap-4">
+        <Button disabled={!rosConnected} onClick={onStartRecordingVideoClick}>
+          Start Recording Video
+        </Button>
+        <Button disabled={!rosConnected} onClick={onStopRecordingVideoClick}>
+          Stop Recording Video
+        </Button>
+        <Button disabled={!rosConnected} onClick={onSaveImageClick}>
+          Save Image
         </Button>
       </div>
     </div>
