@@ -1,5 +1,6 @@
 import functools
 import rclpy
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from std_srvs.srv import Empty
 
 from laser_control_interfaces.msg import Point
@@ -23,24 +24,29 @@ def add_sync_option(func):
 # Could make a mixin if desired
 class LaserControlClient:
     def __init__(self, node, laser_node_name):
+        self.node = node
+        callback_group = MutuallyExclusiveCallbackGroup()
         node.laser_get_bounds = node.create_client(
-            GetBounds, f"/{laser_node_name}/get_bounds"
+            GetBounds, f"/{laser_node_name}/get_bounds", callback_group=callback_group
         )
         node.laser_set_color = node.create_client(
-            SetColor, f"/{laser_node_name}/set_color"
+            SetColor, f"/{laser_node_name}/set_color", callback_group=callback_group
         )
         node.laser_add_point = node.create_client(
-            AddPoint, f"/{laser_node_name}/add_point"
+            AddPoint, f"/{laser_node_name}/add_point", callback_group=callback_group
         )
         node.laser_clear_points = node.create_client(
-            Empty, f"/{laser_node_name}/clear_points"
+            Empty, f"/{laser_node_name}/clear_points", callback_group=callback_group
         )
         node.laser_set_points = node.create_client(
-            SetPoints, f"/{laser_node_name}/set_points"
+            SetPoints, f"/{laser_node_name}/set_points", callback_group=callback_group
         )
-        node.laser_play = node.create_client(Empty, f"/{laser_node_name}/play")
-        node.laser_stop = node.create_client(Empty, f"/{laser_node_name}/stop")
-        self.node = node
+        node.laser_play = node.create_client(
+            Empty, f"/{laser_node_name}/play", callback_group=callback_group
+        )
+        node.laser_stop = node.create_client(
+            Empty, f"/{laser_node_name}/stop", callback_group=callback_group
+        )
 
     def wait_active(self):
         while not self.node.laser_get_bounds.wait_for_service(timeout_sec=1.0):

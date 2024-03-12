@@ -4,7 +4,7 @@
   <name>camera_control_interfaces</name>
   <version>0.0.0</version>
   <description>TODO: Package description</description>
-  <maintainer email="rvinson@calstrawberry.org">rvinson</maintainer>
+  <maintainer email="kondo.genki@gmail.com">genki</maintainer>
   <license>TODO: License declaration</license>
 
   <exec_depend>sensor_msgs</exec_depend>

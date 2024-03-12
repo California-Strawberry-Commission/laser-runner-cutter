@@ -1,6 +1,6 @@
 import functools
 import rclpy
-
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from camera_control_interfaces.srv import GetBool, GetPosData, SetExposure
 
 
@@ -21,20 +21,26 @@ def add_sync_option(func):
 # Could make a mixin if desired
 class CameraControlClient:
     def __init__(self, node, camera_node_name):
+        self.node = node
+        callback_group = MutuallyExclusiveCallbackGroup()
+        node.camera_has_frames = node.create_client(
+            GetBool, f"/{camera_node_name}/has_frames", callback_group=callback_group
+        )
         node.camera_set_exposure = node.create_client(
-            SetExposure, f"/{camera_node_name}/set_exposure"
+            SetExposure,
+            f"/{camera_node_name}/set_exposure",
+            callback_group=callback_group,
         )
         node.camera_get_lasers = node.create_client(
-            GetPosData, f"/{camera_node_name}/get_laser_detection"
+            GetPosData,
+            f"/{camera_node_name}/get_laser_detection",
+            callback_group=callback_group,
         )
         node.camera_get_runners = node.create_client(
-            GetPosData, f"/{camera_node_name}/get_runner_detection"
+            GetPosData,
+            f"/{camera_node_name}/get_runner_detection",
+            callback_group=callback_group,
         )
-        node.camera_has_frames = node.create_client(
-            GetBool,
-            f"/{camera_node_name}/has_frames",
-        )
-        self.node = node
 
     def wait_active(self):
         while not self.node.laser_scaled_frame_corners.wait_for_service(

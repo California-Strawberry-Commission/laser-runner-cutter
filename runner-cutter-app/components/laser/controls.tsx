@@ -5,8 +5,7 @@ import useROS from "@/lib/ros/useROS";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ColorPicker from "@/components/laser/color-picker";
-
-const LASER_STATES = ["disconnected", "stopped", "playing"];
+import useLaserNodeState, { LASER_STATES } from "@/lib/useLaserNode";
 
 function hexToRgb(hexColor: string) {
   hexColor = hexColor.replace("#", "");
@@ -17,12 +16,13 @@ function hexToRgb(hexColor: string) {
 }
 
 export default function Controls() {
-  const { ros, callService, subscribe } = useROS();
+  const { ros } = useROS();
   const [rosConnected, setRosConnected] = useState<boolean>(false);
   // TODO: add ability to select laser node name
   const [nodeName, setNodeName] = useState<string>("/laser0");
-  const [laserState, setLaserState] = useState<number>(0);
-  const [color, setColor] = useState<string>("#ff0000");
+  const { laserState, addPoint, clearPoints, play, stop, setColor } =
+    useLaserNodeState(nodeName);
+  const [laserColor, setLaserColor] = useState<string>("#ff0000");
   const [x, setX] = useState<number>(0);
   const [y, setY] = useState<number>(0);
 
@@ -31,75 +31,16 @@ export default function Controls() {
     setRosConnected(ros.isConnected);
   }, []);
 
-  // Initial node state
-  useEffect(() => {
-    const getState = async () => {
-      const result = await callService(
-        `${nodeName}/get_state`,
-        "laser_control_interfaces/GetState",
-        {}
-      );
-      setLaserState(result.state.data);
-    };
-    getState();
-  }, [nodeName]);
-
-  // Subscriptions
-  useEffect(() => {
-    const stateSub = subscribe(
-      `${nodeName}/state`,
-      "laser_control_interfaces/State",
-      (message) => {
-        setLaserState(message.data);
-      }
-    );
-    return () => {
-      stateSub.unsubscribe();
-    };
-  }, [nodeName]);
-
-  const onAddPointClick = () => {
-    callService(`${nodeName}/add_point`, "laser_control_interfaces/AddPoint", {
-      point: {
-        x: x,
-        y: y,
-      },
-    });
-  };
-
-  const onClearPointsClick = () => {
-    callService(`${nodeName}/clear_points`, "std_srvs/Empty", {});
-  };
-
-  const onPlayClick = () => {
-    callService(`${nodeName}/play`, "std_srvs/Empty", {});
-  };
-
-  const onStopClick = () => {
-    callService(`${nodeName}/stop`, "std_srvs/Empty", {});
-  };
-
-  const onColorChange = (color: string) => {
-    setColor(color);
-    const rgb = hexToRgb(color);
-    callService(`${nodeName}/set_color`, "laser_control_interfaces/SetColor", {
-      r: rgb.r,
-      g: rgb.g,
-      b: rgb.b,
-      i: 0.0,
-    });
-  };
-
   let laserButton = null;
   if (laserState === 1) {
     laserButton = (
-      <Button disabled={!rosConnected} onClick={onPlayClick}>
+      <Button disabled={!rosConnected} onClick={() => play()}>
         Start Laser
       </Button>
     );
   } else if (laserState === 2) {
     laserButton = (
-      <Button disabled={!rosConnected} onClick={onStopClick}>
+      <Button disabled={!rosConnected} onClick={() => stop()}>
         Stop Laser
       </Button>
     );
@@ -140,15 +81,22 @@ export default function Controls() {
             setY(isNaN(value) ? 0 : value);
           }}
         />
-        <Button disabled={!rosConnected} onClick={onAddPointClick}>
+        <Button disabled={!rosConnected} onClick={() => addPoint(x, y)}>
           Add Point
         </Button>
-        <Button disabled={!rosConnected} onClick={onClearPointsClick}>
+        <Button disabled={!rosConnected} onClick={() => clearPoints()}>
           Clear Points
         </Button>
       </div>
       <div className="flex flex-row items-center gap-4">
-        <ColorPicker color={color} onColorChange={onColorChange} />
+        <ColorPicker
+          color={laserColor}
+          onColorChange={(color: string) => {
+            setLaserColor(color);
+            const rgb = hexToRgb(color);
+            setColor(rgb.r, rgb.g, rgb.b);
+          }}
+        />
       </div>
       <div className="flex flex-row items-center gap-4">{laserButton}</div>
     </div>

@@ -43,18 +43,17 @@ class CameraControlNode(Node):
             namespace="",
             parameters=[
                 ("camera_index", 0),
-                ("fps", 10.0),
+                ("fps", 10),
                 ("rgb_size", [1280, 720]),
                 ("depth_size", [1280, 720]),
                 ("video_dir", "~/Videos/runner-cutter-app"),
                 ("image_dir", "~/Pictures/runner-cutter-app"),
             ],
         )
-
         self.camera_index = (
             self.get_parameter("camera_index").get_parameter_value().integer_value
         )
-        self.fps = self.get_parameter("fps").get_parameter_value().double_value
+        self.fps = self.get_parameter("fps").get_parameter_value().integer_value
         self.rgb_size = (
             self.get_parameter("rgb_size").get_parameter_value().integer_array_value
         )
@@ -353,8 +352,8 @@ class CameraControlNode(Node):
         msg.timestamp = frames["timestamp"] / 1000
         for point in point_list:
             point_msg = Point()
-            point_msg.x = point[0]
-            point_msg.y = point[1]
+            point_msg.x = float(point[0])
+            point_msg.y = float(point[1])
             pos = self.camera.get_pos((point[0], point[1]), frames["depth"])
             if pos is not None:
                 pos_msg = Pos()

@@ -4,7 +4,7 @@
   <name>camera_control</name>
   <version>0.0.0</version>
   <description>TODO: Package description</description>
-  <maintainer email="bobby@todo.todo">bobby</maintainer>
+  <maintainer email="kondo.genki@gmail.com">genki</maintainer>
   <license>TODO: License declaration</license>
 
   <exec_depend>rclpy</exec_depend>
