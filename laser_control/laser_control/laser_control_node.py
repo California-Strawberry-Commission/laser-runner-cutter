@@ -5,7 +5,8 @@ from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
 
 from laser_control.laser_dac import EtherDreamDAC, HeliosDAC
-from laser_control_interfaces.msg import Point, State
+from common_interfaces.msg import Vector2
+from laser_control_interfaces.msg import State
 from laser_control_interfaces.srv import (
     AddPoint,
     GetBounds,
@@ -116,9 +117,7 @@ class LaserControlNode(Node):
     def _get_bounds_callback(self, request, response):
         if self.dac is not None:
             points = self.dac.get_bounds(request.scale)
-            response.points = [
-                Point(x=int(point[0]), y=int(point[1])) for point in points
-            ]
+            response.points = [Vector2(x=point[0], y=point[1]) for point in points]
         return response
 
     def _add_point_callback(self, request, response):

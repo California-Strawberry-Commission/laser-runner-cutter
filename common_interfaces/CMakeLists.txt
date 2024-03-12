@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(laser_control_interfaces)
+project(common_interfaces)
 
 # Default to C99
 if(NOT CMAKE_C_STANDARD)
@@ -21,18 +21,11 @@ find_package(ament_cmake REQUIRED)
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
-find_package(common_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/State.msg"
-  "srv/AddPoint.srv"
-  "srv/GetBounds.srv"
-  "srv/GetState.srv"
-  "srv/SetColor.srv"
-  "srv/SetPlaybackParams.srv"
-  "srv/SetPoints.srv"
-  DEPENDENCIES common_interfaces
+  "msg/Vector2.msg"
+  "msg/Vector3.msg"
 )
 
 if(BUILD_TESTING)

@@ -3,7 +3,7 @@ import rclpy
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from std_srvs.srv import Empty
 
-from laser_control_interfaces.msg import Point
+from common_interfaces.msg import Vector2
 from laser_control_interfaces.srv import AddPoint, GetBounds, SetColor, SetPoints
 
 
@@ -102,7 +102,7 @@ class LaserControlClient:
             points: List((x, y)), in laser coordinates
         """
         request = SetPoints.Request()
-        request.points = [Point(x=int(point[0]), y=int(point[1])) for point in points]
+        request.points = [Vector2(x=point[0], y=point[1]) for point in points]
         return self.node.laser_set_points.call_async(request)
 
     @add_sync_option
@@ -122,7 +122,7 @@ class LaserControlClient:
             point: (x, y), in laser coordinates
         """
         request = AddPoint.Request()
-        request.point = Point(x=int(point[0]), y=int(point[1]))
+        request.point = Vector2(x=point[0], y=point[1])
         return self.node.laser_add_point.call_async(request)
 
     def get_bounds(self, scale=1.0):

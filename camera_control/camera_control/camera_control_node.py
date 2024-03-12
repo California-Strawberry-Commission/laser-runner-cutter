@@ -6,7 +6,8 @@ import cv2
 import numpy as np
 import rclpy
 from ament_index_python.packages import get_package_share_directory
-from camera_control_interfaces.msg import Point, Pos, PosData, State
+from common_interfaces.msg import Vector2, Vector3
+from camera_control_interfaces.msg import PosData, State
 from camera_control_interfaces.srv import (
     GetBool,
     GetFrame,
@@ -351,15 +352,10 @@ class CameraControlNode(Node):
         msg.invalid_point_list = []
         msg.timestamp = frames["timestamp"] / 1000
         for point in point_list:
-            point_msg = Point()
-            point_msg.x = float(point[0])
-            point_msg.y = float(point[1])
+            point_msg = Vector2(x=float(point[0]), y=float(point[1]))
             pos = self.camera.get_pos((point[0], point[1]), frames["depth"])
             if pos is not None:
-                pos_msg = Pos()
-                pos_msg.x = pos[0]
-                pos_msg.y = pos[1]
-                pos_msg.z = pos[2]
+                pos_msg = Vector3(x=pos[0], y=pos[1], z=pos[2])
                 msg.pos_list.append(pos_msg)
                 msg.point_list.append(point_msg)
             else:

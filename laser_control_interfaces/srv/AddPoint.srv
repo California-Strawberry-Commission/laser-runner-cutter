@@ -1,2 +1,2 @@
-laser_control_interfaces/Point point
+common_interfaces/Vector2 point
 ---

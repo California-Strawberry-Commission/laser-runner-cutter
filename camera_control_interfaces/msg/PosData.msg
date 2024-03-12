@@ -1,4 +1,4 @@
 float64 timestamp
-Pos[] pos_list
-Point[] point_list
-Point[] invalid_point_list 
+common_interfaces/Vector3[] pos_list
+common_interfaces/Vector2[] point_list
+common_interfaces/Vector2[] invalid_point_list

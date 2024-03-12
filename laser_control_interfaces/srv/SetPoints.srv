@@ -1,2 +1,2 @@
-laser_control_interfaces/Point[] points
+common_interfaces/Vector2[] points
 ---

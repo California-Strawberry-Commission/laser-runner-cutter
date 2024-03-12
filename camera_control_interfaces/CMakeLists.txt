@@ -22,11 +22,10 @@ find_package(ament_cmake REQUIRED)
 # find_package(<dependency> REQUIRED)
 
 find_package(sensor_msgs REQUIRED)
+find_package(common_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/Point.msg"
-  "msg/Pos.msg"
   "msg/PosData.msg"
   "msg/State.msg"
   "srv/GetBool.srv"
@@ -34,7 +33,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetPosData.srv"
   "srv/GetState.srv"
   "srv/SetExposure.srv"
-  DEPENDENCIES sensor_msgs
+  DEPENDENCIES sensor_msgs common_interfaces
 )
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
