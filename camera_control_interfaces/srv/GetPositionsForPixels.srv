@@ -1,0 +1,3 @@
+common_interfaces/Vector2[] pixels
+---
+common_interfaces/Vector3[] positions

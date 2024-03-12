@@ -12,7 +12,11 @@ function hexToRgb(hexColor: string) {
   const r = parseInt(hexColor.substring(0, 2), 16) / 255.0;
   const g = parseInt(hexColor.substring(2, 4), 16) / 255.0;
   const b = parseInt(hexColor.substring(4, 6), 16) / 255.0;
-  return { r, g, b };
+  if (isNaN(r) || isNaN(g) || isNaN(b)) {
+    return null;
+  } else {
+    return { r, g, b };
+  }
 }
 
 export default function Controls() {
@@ -44,6 +48,8 @@ export default function Controls() {
         Stop Laser
       </Button>
     );
+  } else {
+    laserButton = <Button disabled={true}>Laser Disconnected</Button>;
   }
 
   return (
@@ -94,7 +100,9 @@ export default function Controls() {
           onColorChange={(color: string) => {
             setLaserColor(color);
             const rgb = hexToRgb(color);
-            setColor(rgb.r, rgb.g, rgb.b);
+            if (rgb) {
+              setColor(rgb.r, rgb.g, rgb.b);
+            }
           }}
         />
       </div>

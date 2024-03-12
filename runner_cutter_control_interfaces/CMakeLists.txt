@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(camera_control_interfaces)
+project(runner_cutter_control_interfaces)
 
 # Default to C99
 if(NOT CMAKE_C_STANDARD)
@@ -21,21 +21,14 @@ find_package(ament_cmake REQUIRED)
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
-find_package(sensor_msgs REQUIRED)
 find_package(common_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/PosData.msg"
-  "msg/State.msg"
-  "srv/GetBool.srv"
-  "srv/GetFrame.srv"
-  "srv/GetPosData.srv"
-  "srv/GetPositionsForPixels.srv"
-  "srv/GetState.srv"
-  "srv/SetExposure.srv"
-  DEPENDENCIES sensor_msgs common_interfaces
+  "srv/AddCalibrationPoints.srv"
+  DEPENDENCIES common_interfaces
 )
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights

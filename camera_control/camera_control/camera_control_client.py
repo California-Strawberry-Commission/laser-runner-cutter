@@ -1,7 +1,13 @@
 import functools
 import rclpy
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
-from camera_control_interfaces.srv import GetBool, GetPosData, SetExposure
+from common_interfaces.msg import Vector2
+from camera_control_interfaces.srv import (
+    GetBool,
+    GetPosData,
+    GetPositionsForPixels,
+    SetExposure,
+)
 
 
 def add_sync_option(func):
@@ -41,6 +47,11 @@ class CameraControlClient:
             f"/{camera_node_name}/get_runner_detection",
             callback_group=callback_group,
         )
+        node.camera_get_positions_for_pixels = node.create_client(
+            GetPositionsForPixels,
+            f"/{camera_node_name}/get_positions_for_pixels",
+            callback_group=callback_group,
+        )
 
     def wait_active(self):
         while not self.node.laser_scaled_frame_corners.wait_for_service(
@@ -73,6 +84,16 @@ class CameraControlClient:
         rclpy.spin_until_future_complete(self.node, response)
         res_data = response.result()
         return self._unpack_pos_data(res_data)
+
+    def get_positions_for_pixels(self, pixels):
+        request = GetPositionsForPixels.Request()
+        request.pixels = [
+            Vector2(x=float(pixel[0]), y=float(pixel[1])) for pixel in pixels
+        ]
+        response = self.node.camera_get_positions_for_pixels.call_async(request)
+        rclpy.spin_until_future_complete(self.node, response)
+        result = response.result()
+        return [(position.x, position.y, position.z) for position in result.positions]
 
     def _unpack_pos_data(self, res_data):
         pos_data = res_data.pos_data

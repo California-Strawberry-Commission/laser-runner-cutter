@@ -10,15 +10,16 @@ import time
 
 import numpy as np
 import rclpy
-from simple_node import Node
+from rclpy.node import Node
+from rclpy.executors import MultiThreadedExecutor
 from std_msgs.msg import String
-from yasmin import Blackboard, State, StateMachine
 
 from camera_control.camera_control_client import CameraControlClient
 from runner_cutter_control.calibration import Calibration
 from runner_cutter_control.tracker import Tracker
 from laser_control.laser_control_client import LaserControlClient
-from camera_control_interfaces.msg import Point
+from std_srvs.srv import Empty
+from runner_cutter_control_interfaces.srv import AddCalibrationPoints
 
 
 class Runner:
@@ -28,22 +29,7 @@ class Runner:
         self.corrected_laser_point = None
 
 
-class Initialize(State):
-    """Initialization state for setting up resources needed by the system"""
-
-    def __init__(self, node, logger):
-        super().__init__(outcomes=["init_complete"])
-        self.node = node
-        self.logger = logger
-
-    def execute(self, blackboard):
-        self.logger.info("Entering State Initialize")
-        self.node.publish_state("Initialize")
-
-        return "init_complete"
-
-
-class ServiceWait(State):
+class ServiceWait:
     """State to wait for other services that need to come up"""
 
     def __init__(self, node, logger, laser_client, camera_client):
@@ -80,7 +66,7 @@ class ServiceWait(State):
         return "services_up"
 
 
-class Calibrate(State):
+class Calibrate:
     """Calibrate the laser to camera, creating a 3D pos to laser frame transform."""
 
     def __init__(self, node, logger, calibration):
@@ -97,7 +83,7 @@ class Calibrate(State):
         return "calibrated" if result else "failed_to_calibrate"
 
 
-class Acquire(State):
+class Acquire:
     """A transition phase, checks if calibration is needed, or if runners are present to be trimmed"""
 
     def __init__(self, node, logger, camera_client, calibration, runner_tracker):
@@ -140,7 +126,7 @@ class Acquire(State):
             return False
 
 
-class Correct(State):
+class Correct:
     def __init__(
         self,
         node,
@@ -243,7 +229,7 @@ class Correct(State):
         return True
 
 
-class Burn(State):
+class Burn:
     def __init__(
         self,
         node,
@@ -279,10 +265,9 @@ class Burn(State):
         return "runner_removed"
 
 
-class MainNode(Node):
+class RunnerCutterControlNode(Node):
     def __init__(self):
-        """State Machine that controls what the system is currently doing"""
-        super().__init__("main_node")
+        super().__init__("runner_cutter_control_node")
         self.logger = self.get_logger()
 
         # Parameters
@@ -294,7 +279,7 @@ class MainNode(Node):
                 ("camera_node_name", "camera"),
                 ("tracking_laser_color", [0.2, 0.0, 0.0]),
                 ("burn_color", [0.0, 0.0, 1.0]),
-                ("burn_time", 5),
+                ("burn_time_secs", 5),
             ],
         )
         self.laser_node_name = (
@@ -312,7 +297,18 @@ class MainNode(Node):
             self.get_parameter("burn_color").get_parameter_value().double_array_value
         )
         self.burn_time_secs = (
-            self.get_parameter("burn_time").get_parameter_value().integer_value
+            self.get_parameter("burn_time_secs").get_parameter_value().integer_value
+        )
+
+        # Services
+
+        self.calibrate_srv = self.create_service(
+            Empty, "~/calibrate", self._calibrate_callback
+        )
+        self.add_calibration_points_srv = self.create_service(
+            AddCalibrationPoints,
+            "~/add_calibration_points",
+            self._add_calibration_points_callback,
         )
 
         # Pub/sub
@@ -331,80 +327,37 @@ class MainNode(Node):
         )
         self.runner_tracker = Tracker(self.logger)
 
-        # Set up state machine
-
-        blackboard = Blackboard()
-        blackboard.curr_track = None
-
-        main_sm = StateMachine(outcomes=["Finished"])
-        main_sm.add_state(
-            "INIT", Initialize(self, self.logger), transitions={"init_complete": "WAIT"}
-        )
-        main_sm.add_state(
-            "WAIT",
-            ServiceWait(self, self.logger, self.laser_client, self.camera_client),
-            transitions={"services_up": "CALIB"},
-        )
-        main_sm.add_state(
-            "CALIB",
-            Calibrate(self, self.logger, self.calibration),
-            transitions={"failed_to_calibrate": "Finished", "calibrated": "ACQ"},
-        )
-        main_sm.add_state(
-            "ACQ",
-            Acquire(
-                self,
-                self.logger,
-                self.camera_client,
-                self.calibration,
-                self.runner_tracker,
-            ),
-            transitions={
-                "calibration_needed": "CALIB",
-                "target_acquired": "CORRECT",
-                "no_target_found": "ACQ",
-            },
-        )
-        main_sm.add_state(
-            "CORRECT",
-            Correct(
-                self,
-                self.logger,
-                self.laser_client,
-                self.camera_client,
-                self.calibration,
-                self.tracking_laser_color,
-                self.runner_tracker,
-            ),
-            transitions={"on_target": "BURN", "target_not_reached": "ACQ"},
-        )
-        main_sm.add_state(
-            "BURN",
-            Burn(
-                self,
-                self.logger,
-                self.laser_client,
-                self.camera_client,
-                self.burn_color,
-                self.burn_time_secs,
-                self.runner_tracker,
-            ),
-            transitions={"runner_removed": "ACQ"},
-        )
-
-        outcome = main_sm(blackboard)
-        self.logger.info(outcome)
-
     def publish_state(self, state_name):
         msg = String()
         msg.data = state_name
         self.state_publisher.publish(msg)
 
+    def _calibrate_callback(self, request, response):
+        self.calibration.calibrate()
+        return response
+
+    def _add_calibration_points_callback(self, request, response):
+        camera_pixels = [(pixel.x, pixel.y) for pixel in request.camera_pixels]
+        # For each camera pixel, find the 3D position wrt the camera
+        positions = self.camera_client.get_positions_for_pixels(camera_pixels)
+        # Filter out any invalid positions
+        positions = [p for p in positions if not all(x < 0 for x in p)]
+        # Convert camera positions to laser pixels
+        laser_pixels = [
+            self.calibration.camera_point_to_laser_pixel(position)
+            for position in positions
+        ]
+
+        self.calibration.add_calibration_points(laser_pixels)
+        return response
+
 
 def main(args=None):
     rclpy.init(args=args)
-    node = MainNode()
-    node.join_spin()
+    node = RunnerCutterControlNode()
+    executor = MultiThreadedExecutor()
+    rclpy.spin(node, executor)
+    node.destroy_node()
     rclpy.shutdown()
 
 

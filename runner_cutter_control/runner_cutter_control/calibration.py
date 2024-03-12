@@ -57,22 +57,7 @@ class Calibration:
         self.calibration_laser_pixels = []
         self.calibration_camera_points = []
 
-        # TODO: set exposure on camera node automatically when detecting laser
-        self.camera_client.set_exposure(0.001)
-        self.laser_client.start_laser(color=self.laser_color)
-
-        self.laser_client.set_color([0.0, 0.0, 0.0])
-        self.laser_client.start_laser()
-        for laser_pixel in pending_calibration_laser_pixels:
-            self.laser_client.set_point(laser_pixel)
-            self.laser_client.set_color(self.laser_color)
-            # Wait for galvo to settle and for camera frame capture
-            time.sleep(1)
-            self.add_point_correspondence(laser_pixel)
-            self.laser_client.set_color([0.0, 0.0, 0.0])
-
-        self.laser_client.stop_laser()
-        self.camera_client.set_exposure(-1.0)
+        self.add_calibration_points(pending_calibration_laser_pixels)
 
         if self.logger:
             self.logger.info(
@@ -93,6 +78,25 @@ class Calibration:
         self.is_calibrated = True
         return True
 
+    def add_calibration_points(self, laser_pixels):
+        # TODO: set exposure on camera node automatically when detecting laser
+        self.camera_client.set_exposure(0.001, sync=True)
+        self.laser_client.set_color((0.0, 0.0, 0.0), sync=True)
+        self.laser_client.start_laser(sync=True)
+        for laser_pixel in laser_pixels:
+            self.laser_client.set_point(laser_pixel, sync=True)
+            self.laser_client.set_color(self.laser_color, sync=True)
+            # Wait for galvo to settle and for camera frame capture
+            # TODO: increase frame capture rate and reduce this time
+            time.sleep(1)
+            self.add_point_correspondence(laser_pixel)
+            self.laser_client.set_color((0.0, 0.0, 0.0), sync=True)
+
+        self.laser_client.stop_laser(sync=True)
+        self.camera_client.set_exposure(-1.0)
+
+        self.update_transform_bundle_adjustment()
+
     def camera_point_to_laser_pixel(self, camera_point):
         homogeneous_camera_point = np.hstack((camera_point, 1))
         transformed_point = homogeneous_camera_point @ self.camera_to_laser_transform
@@ -110,8 +114,11 @@ class Calibration:
                 self.calibration_laser_pixels.append(laser_pixel)
                 self.calibration_camera_points.append(pos_data["pos_list"][0])
                 if self.logger:
+                    camera_pixel = (
+                        pos_data["point_list"][0] if pos_data["point_list"] else "None"
+                    )
                     self.logger.info(
-                        f"Added point correspondence. Total correspondences = {len(self.calibration_laser_pixels)}"
+                        f"Found point correspondence: laser_pixel = {laser_pixel}, camera_pixel = {camera_pixel}. {len(self.calibration_laser_pixels)} total correspondences."
                     )
                 return
 

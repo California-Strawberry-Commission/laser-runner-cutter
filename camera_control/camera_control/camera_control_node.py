@@ -11,8 +11,9 @@ from camera_control_interfaces.msg import PosData, State
 from camera_control_interfaces.srv import (
     GetBool,
     GetFrame,
-    GetState,
     GetPosData,
+    GetPositionsForPixels,
+    GetState,
     SetExposure,
 )
 from cv_bridge import CvBridge
@@ -122,6 +123,11 @@ class CameraControlNode(Node):
         )
         self.state_srv = self.create_service(
             GetState, "~/get_state", self._get_state_callback
+        )
+        self.get_positions_for_pixels_srv = self.create_service(
+            GetPositionsForPixels,
+            "~/get_positions_for_pixels",
+            self._get_positions_for_pixels_callback,
         )
 
         # Frame processing loop
@@ -339,6 +345,17 @@ class CameraControlNode(Node):
 
     def _get_state_callback(self, request, response):
         response.state = self.get_state()
+        return response
+
+    def _get_positions_for_pixels_callback(self, request, response):
+        response.positions = []
+        for pixel in request.pixels:
+            pos = self.camera.get_pos((pixel.x, pixel.y), self.curr_frames["depth"])
+            response.positions.append(
+                Vector3(x=pos[0], y=pos[1], z=pos[2])
+                if pos is not None
+                else Vector3(x=-1.0, y=-1.0, z=-1.0)
+            )
         return response
 
     ## endregion

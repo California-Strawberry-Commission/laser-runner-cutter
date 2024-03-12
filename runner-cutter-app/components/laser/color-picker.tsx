@@ -23,11 +23,11 @@ export default function ColorPicker({
     "#ff0000",
     "#00ff00",
     "#0000ff",
-    "#ffa647",
-    "#ffe83f",
-    "#9fff5b",
-    "#70e2ff",
-    "#cd93ff",
+    "#7f007f",
+    "#7f7f00",
+    "#007f7f",
+    "#555555",
+    "#000000",
   ];
 
   return (

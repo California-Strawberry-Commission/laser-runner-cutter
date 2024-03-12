@@ -4,7 +4,7 @@ control0:
     laser_node_name: "laser0"
     tracking_laser: [0.2, 0.0, 0.0]
     burn_color: [0.0, 0.0, 1.0]
-    burn_time: 5
+    burn_time_secs: 5
 camera0:
   ros__parameters:
     camera_index: 0

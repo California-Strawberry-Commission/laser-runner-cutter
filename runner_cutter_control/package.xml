@@ -9,6 +9,8 @@
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>common_interfaces</exec_depend>
+  <exec_depend>runner_cutter_control_interfaces</exec_depend>
   <exec_depend>camera_control</exec_depend>
   <exec_depend>camera_control_interfaces</exec_depend>
   <exec_depend>laser_control</exec_depend>

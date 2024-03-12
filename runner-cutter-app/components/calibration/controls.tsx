@@ -8,7 +8,7 @@ import useLaserNode, { LASER_STATES } from "@/lib/useLaserNode";
 import useControlNode from "@/lib/useControlNode";
 
 export default function Controls() {
-  const { ros, callService } = useROS();
+  const { ros } = useROS();
   const [rosConnected, setRosConnected] = useState<boolean>(false);
   // TODO: add ability to select node names
   const [cameraNodeName, setCameraNodeName] = useState<string>("/camera0");
@@ -20,14 +20,55 @@ export default function Controls() {
     runnerDetectionEnabled,
     recordingVideo,
     frameSrc,
+    setExposure,
   } = useCameraNode(cameraNodeName);
-  const { laserState } = useLaserNode(laserNodeName);
-  const { calibrate } = useControlNode(controlNodeName);
+  const { laserState, addPoint, clearPoints, play, stop, setColor } =
+    useLaserNode(laserNodeName);
+  const { calibrate, addCalibrationPoint } = useControlNode(controlNodeName);
 
   useEffect(() => {
     // TODO: add listener for rosbridge connection state
     setRosConnected(ros.isConnected);
   }, []);
+
+  const onImageClick = (event: any) => {
+    // TODO: don't do anything when calibration is happening
+    const boundingRect = event.target.getBoundingClientRect();
+    const x = Math.round(event.clientX - boundingRect.left);
+    const y = Math.round(event.clientY - boundingRect.top);
+    addCalibrationPoint(x, y);
+  };
+
+  // TODO: disable all buttons when calibration is happening
+  let laserButton = null;
+  if (laserState === 1) {
+    laserButton = (
+      <Button
+        disabled={!rosConnected}
+        onClick={() => {
+          setColor(1.0, 0.0, 0.0);
+          setExposure(0.001);
+          play();
+        }}
+      >
+        Start Laser
+      </Button>
+    );
+  } else if (laserState === 2) {
+    laserButton = (
+      <Button
+        disabled={!rosConnected}
+        onClick={() => {
+          stop();
+          setExposure(-1.0);
+        }}
+      >
+        Stop Laser
+      </Button>
+    );
+  } else {
+    laserButton = <Button disabled={true}>Laser Disconnected</Button>;
+  }
 
   return (
     <div className="flex flex-col gap-4 items-center">
@@ -47,8 +88,14 @@ export default function Controls() {
         >
           Start Calibration
         </Button>
+        {laserButton}
+        <Button disabled={!rosConnected} onClick={() => clearPoints()}>
+          Clear Points
+        </Button>
       </div>
-      {frameSrc && <img src={frameSrc} alt="Camera Color Frame" />}
+      {frameSrc && (
+        <img src={frameSrc} alt="Camera Color Frame" onClick={onImageClick} />
+      )}
     </div>
   );
 }
