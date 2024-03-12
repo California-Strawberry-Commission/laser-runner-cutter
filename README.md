@@ -7,10 +7,12 @@ Laser Runner Cutter is a project by the California Strawberry Commission for aut
 ### ROS2/
 
 - `runner_cutter_control`: node for laser runner cutter control and automation.
+- `runner_cutter_control_interfaces`: custom interface definitions used in `runner_cutter_control`.
 - `laser_control`: node and client for controlling laser DACs. Currently supports Helios and Ether Dream DACs.
 - `laser_control_interfaces`: custom interface definitions used in `laser_control`.
 - `camera_control`: node and client for capturing camera frames and running runner and laser detection. Currently supports RealSense cameras.
 - `camera_control_interfaces`: custom interface definitions used in `camera_control`.
+- `common_interfaces`: shared interface definitions
 - `rqt_laser_runner_cutter`: rqt plugin for visualization and monitoring of relevant ROS2 topics.
 
 ### ML/

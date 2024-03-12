@@ -2,7 +2,9 @@
 
 ## Setup
 
-1.  Install [ROS 2](https://docs.ros.org/en/foxy/Installation/Ubuntu-Install-Debians.html)
+1.  Install [ROS 2](https://docs.ros.org/en/foxy/Installation/Ubuntu-Install-Debians.html). Once installed, run:
+
+        $ source /opt/ros/foxy/setup.zsh
 
 1.  Create ROS workspace
 
