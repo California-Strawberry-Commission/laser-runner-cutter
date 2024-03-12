@@ -5,3 +5,4 @@ shapely
 numpy
 dvc
 dvc[s3]
+../../ml/runner_segmentation_model
