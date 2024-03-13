@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'furrow_preciever = furrow_preciever.furrow_preciever:main'
+            'furrow_preciever = furrow_preciever.furrow_preciever_node:main'
         ],
     },
 )
