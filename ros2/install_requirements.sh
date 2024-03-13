@@ -1,5 +1,6 @@
 #!/bin/bash
 
+sudo apt update && sudo apt install python3-pip
 script_dir=$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )
 
 # Find all requirement.txt files and iterate through them
