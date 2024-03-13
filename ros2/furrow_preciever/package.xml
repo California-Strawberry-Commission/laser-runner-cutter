@@ -3,7 +3,7 @@
 <package format="3">
   <name>furrow_preciever</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Processes depthmaps to detect position within furrows.</description>
   <maintainer email="45153623+DominicChm@users.noreply.github.com">ros</maintainer>
   <license>TODO: License declaration</license>
 
