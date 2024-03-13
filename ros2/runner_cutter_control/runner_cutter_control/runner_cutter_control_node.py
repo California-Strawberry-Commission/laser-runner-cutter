@@ -6,19 +6,22 @@ system. States are things like calibrating the camera laser system,
 finding a specific runner to burn, and burning said runner.  
 """
 
+import asyncio
+import threading
 import time
 
 import numpy as np
 import rclpy
-from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
+from rclpy.node import Node
 from std_msgs.msg import String
+from std_srvs.srv import Trigger
+from transitions import Machine
 
 from camera_control.camera_control_client import CameraControlClient
+from laser_control.laser_control_client import LaserControlClient
 from runner_cutter_control.calibration import Calibration
 from runner_cutter_control.tracker import Tracker
-from laser_control.laser_control_client import LaserControlClient
-from std_srvs.srv import Empty
 from runner_cutter_control_interfaces.srv import AddCalibrationPoints
 
 
@@ -29,7 +32,7 @@ class Runner:
         self.corrected_laser_point = None
 
 
-class ServiceWait:
+class ServiceWaitState:
     """State to wait for other services that need to come up"""
 
     def __init__(self, node, logger, laser_client, camera_client):
@@ -66,7 +69,7 @@ class ServiceWait:
         return "services_up"
 
 
-class Calibrate:
+class CalibrateState:
     """Calibrate the laser to camera, creating a 3D pos to laser frame transform."""
 
     def __init__(self, node, logger, calibration):
@@ -83,7 +86,7 @@ class Calibrate:
         return "calibrated" if result else "failed_to_calibrate"
 
 
-class Acquire:
+class AcquireState:
     """A transition phase, checks if calibration is needed, or if runners are present to be trimmed"""
 
     def __init__(self, node, logger, camera_client, calibration, runner_tracker):
@@ -126,7 +129,7 @@ class Acquire:
             return False
 
 
-class Correct:
+class CorrectState:
     def __init__(
         self,
         node,
@@ -212,7 +215,7 @@ class Correct:
             self.logger.debug(
                 f"Dist:{dist}, Correction{correction}, Old Point:{laser_send_point}, New Point{new_point}"
             )
-            # Need to add min max checks to dac or otherwise account for different scales
+            # TODO: Normalize dac points
             if np.any(
                 new_point[0] > 4095
                 or new_point[1] > 4095
@@ -229,7 +232,7 @@ class Correct:
         return True
 
 
-class Burn:
+class BurnState:
     def __init__(
         self,
         node,
@@ -302,8 +305,12 @@ class RunnerCutterControlNode(Node):
 
         # Services
 
+        # TODO: use action instead once there's a new release of roslib. Currently
+        # roslib does not support actions with ROS2
         self.calibrate_srv = self.create_service(
-            Empty, "~/calibrate", self._calibrate_callback
+            Trigger,
+            "~/calibrate",
+            self._calibrate_callback,
         )
         self.add_calibration_points_srv = self.create_service(
             AddCalibrationPoints,
@@ -327,13 +334,22 @@ class RunnerCutterControlNode(Node):
         )
         self.runner_tracker = Tracker(self.logger)
 
-    def publish_state(self, state_name):
-        msg = String()
-        msg.data = state_name
+        # State machine
+
+        self.state_machine = StateMachine(self.logger, self)
+        state_machine_thread = StateMachineThread(self.state_machine)
+        state_machine_thread.start()
+
+    def _publish_state(self, state_name):
+        msg = String(data=state_name)
         self.state_publisher.publish(msg)
 
     def _calibrate_callback(self, request, response):
-        self.calibration.calibrate()
+        try:
+            self.state_machine.run_calibration()
+            response.success = True
+        except Exception:
+            self.logger.info(f"Could not enter calibration state")
         return response
 
     def _add_calibration_points_callback(self, request, response):
@@ -349,14 +365,62 @@ class RunnerCutterControlNode(Node):
         ]
 
         self.calibration.add_calibration_points(laser_pixels)
+        response.success = True
         return response
+
+
+class StateMachine:
+
+    states = ["idle", "calibration", "add_calibration_points"]
+
+    def __init__(self, logger, node):
+        self.logger = logger
+        self.node = node
+        self.machine = Machine(model=self, states=StateMachine.states, initial="idle")
+        self.machine.add_transition("run_calibration", "idle", "calibration")
+        self.machine.add_transition("calibration_complete", "calibration", "idle")
+        self.machine.add_transition(
+            "run_add_calibration_points", "idle", "add_calibration_points"
+        )
+        self.machine.add_transition(
+            "add_calibration_points_complete", "add_calibration_points", "idle"
+        )
+
+    async def on_calibration(self):
+        await self.node.calibration.calibrate()
+        self.calibration_complete()
+
+    async def on_add_calibration_points(
+        self,
+    ):
+        pass
+
+
+class StateMachineThread(threading.Thread):
+
+    def __init__(self, state_machine):
+        super().__init__()
+        self.daemon = True
+        self.state_machine = state_machine
+
+    async def state_machine_task(self):
+        while True:
+            current_state = self.state_machine.state
+            if current_state == "calibration":
+                await self.state_machine.on_calibration()
+            time.sleep(0.1)
+
+    def run(self):
+        asyncio.run(self.state_machine_task())
 
 
 def main(args=None):
     rclpy.init(args=args)
     node = RunnerCutterControlNode()
     executor = MultiThreadedExecutor()
-    rclpy.spin(node, executor)
+    executor.add_node(node)
+    executor.spin()
+    executor.shutdown()
     node.destroy_node()
     rclpy.shutdown()
 

@@ -11,8 +11,8 @@ class TestNode(Node):
         self.laser_client = LaserControlClient(self, "laser_control_node")
         self.laser_client.wait_active()
         print("Laser node is active")
-        self.laser_client.set_color((0.0, 1.0, 0.0), sync=True)
-        self.laser_client.set_point((0.0, 0.0), sync=True)
+        self.laser_client.set_color((0.0, 1.0, 0.0))
+        self.laser_client.set_point((0.0, 0.0))
         self.laser_on = False
         timer = self.create_timer(0.1, self._keyboard_input)
 

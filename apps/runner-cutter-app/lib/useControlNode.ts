@@ -4,7 +4,7 @@ export default function useControlNode(nodeName: string) {
   const { callService } = useROS();
 
   const calibrate = () => {
-    callService(`${nodeName}/calibrate`, "std_srvs/Empty", {});
+    callService(`${nodeName}/calibrate`, "std_srvs/Trigger", {});
   };
 
   const addCalibrationPoint = (x: number, y: number) => {

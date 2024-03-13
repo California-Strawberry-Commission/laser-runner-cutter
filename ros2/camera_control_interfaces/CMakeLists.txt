@@ -28,7 +28,6 @@ find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PosData.msg"
   "msg/State.msg"
-  "srv/GetBool.srv"
   "srv/GetFrame.srv"
   "srv/GetPosData.srv"
   "srv/GetPositionsForPixels.srv"

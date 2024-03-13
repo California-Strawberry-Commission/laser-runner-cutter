@@ -56,31 +56,31 @@ export default function useCameraNode(nodeName: string) {
   };
 
   const startLaserDetection = () => {
-    callService(`${nodeName}/start_laser_detection`, "std_srvs/Empty", {});
+    callService(`${nodeName}/start_laser_detection`, "std_srvs/Trigger", {});
   };
 
   const stopLaserDetection = () => {
-    callService(`${nodeName}/stop_laser_detection`, "std_srvs/Empty", {});
+    callService(`${nodeName}/stop_laser_detection`, "std_srvs/Trigger", {});
   };
 
   const startRunnerDetection = () => {
-    callService(`${nodeName}/start_runner_detection`, "std_srvs/Empty", {});
+    callService(`${nodeName}/start_runner_detection`, "std_srvs/Trigger", {});
   };
 
   const stopRunnerDetection = () => {
-    callService(`${nodeName}/stop_runner_detection`, "std_srvs/Empty", {});
+    callService(`${nodeName}/stop_runner_detection`, "std_srvs/Trigger", {});
   };
 
   const startRecordingVideo = () => {
-    callService(`${nodeName}/start_recording_video`, "std_srvs/Empty", {});
+    callService(`${nodeName}/start_recording_video`, "std_srvs/Trigger", {});
   };
 
   const stopRecordingVideo = () => {
-    callService(`${nodeName}/stop_recording_video`, "std_srvs/Empty", {});
+    callService(`${nodeName}/stop_recording_video`, "std_srvs/Trigger", {});
   };
 
   const saveImage = () => {
-    callService(`${nodeName}/save_image`, "std_srvs/Empty", {});
+    callService(`${nodeName}/save_image`, "std_srvs/Trigger", {});
   };
 
   return {

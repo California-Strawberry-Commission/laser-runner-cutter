@@ -1,34 +1,19 @@
-import functools
-import rclpy
-from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
-from common_interfaces.msg import Vector2
+from rclpy.callback_groups import ReentrantCallbackGroup
+
 from camera_control_interfaces.srv import (
-    GetBool,
     GetPosData,
     GetPositionsForPixels,
     SetExposure,
 )
-
-
-def add_sync_option(func):
-    @functools.wraps(func)
-    def wrapper(self, *args, **kwargs):
-        sync = kwargs.pop("sync", False)
-        response = func(self, *args, **kwargs)
-        if sync:
-            rclpy.spin_until_future_complete(self.node, response)
-            return response.result()
-        else:
-            return response
-
-    return wrapper
+from common_interfaces.msg import Vector2
+from common_interfaces.srv import GetBool
 
 
 # Could make a mixin if desired
 class CameraControlClient:
     def __init__(self, node, camera_node_name):
         self.node = node
-        callback_group = MutuallyExclusiveCallbackGroup()
+        callback_group = ReentrantCallbackGroup()
         node.camera_has_frames = node.create_client(
             GetBool, f"/{camera_node_name}/has_frames", callback_group=callback_group
         )
@@ -59,40 +44,27 @@ class CameraControlClient:
         ):
             self.node.logger.info("laser service not available, waiting again...")
 
-    def has_frames(self):
-        request = GetBool.Request()
-        response = self.node.camera_has_frames.call_async(request)
-        rclpy.spin_until_future_complete(self.node, response)
-        return response.result().data
+    async def has_frames(self):
+        result = await self.node.camera_has_frames.call_async(GetBool.Request())
+        return result.data
 
-    @add_sync_option
-    def set_exposure(self, exposure_ms):
-        request = SetExposure.Request()
-        request.exposure_ms = exposure_ms
-        return self.node.camera_set_exposure.call_async(request)
+    async def set_exposure(self, exposure_ms):
+        request = SetExposure.Request(exposure_ms=exposure_ms)
+        return await self.node.camera_set_exposure.call_async(request)
 
-    def get_laser_pos(self):
-        request = GetPosData.Request()
-        response = self.node.camera_get_lasers.call_async(request)
-        rclpy.spin_until_future_complete(self.node, response)
-        res_data = response.result()
-        return self._unpack_pos_data(res_data)
+    async def get_laser_pos(self):
+        result = await self.node.camera_get_lasers.call_async(GetPosData.Request())
+        return self._unpack_pos_data(result)
 
-    def get_runner_pos(self):
-        request = GetPosData.Request()
-        response = self.node.camera_get_runners.call_async(request)
-        rclpy.spin_until_future_complete(self.node, response)
-        res_data = response.result()
-        return self._unpack_pos_data(res_data)
+    async def get_runner_pos(self):
+        result = await self.node.camera_get_runners.call_async(GetPosData.Request())
+        return self._unpack_pos_data(result)
 
-    def get_positions_for_pixels(self, pixels):
-        request = GetPositionsForPixels.Request()
-        request.pixels = [
-            Vector2(x=float(pixel[0]), y=float(pixel[1])) for pixel in pixels
-        ]
-        response = self.node.camera_get_positions_for_pixels.call_async(request)
-        rclpy.spin_until_future_complete(self.node, response)
-        result = response.result()
+    async def get_positions_for_pixels(self, pixels):
+        request = GetPositionsForPixels.Request(
+            pixels=[Vector2(x=float(pixel[0]), y=float(pixel[1])) for pixel in pixels]
+        )
+        result = await self.node.camera_get_positions_for_pixels.call_async(request)
         return [(position.x, position.y, position.z) for position in result.positions]
 
     def _unpack_pos_data(self, res_data):

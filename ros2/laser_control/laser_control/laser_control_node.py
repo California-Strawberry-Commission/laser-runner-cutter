@@ -15,7 +15,7 @@ from laser_control_interfaces.srv import (
     SetPlaybackParams,
     SetPoints,
 )
-from std_srvs.srv import Empty
+from std_srvs.srv import Trigger
 
 
 class LaserControlNode(Node):
@@ -64,18 +64,18 @@ class LaserControlNode(Node):
             SetPoints, "~/set_points", self._set_points_callback
         )
         self.remove_point_srv = self.create_service(
-            Empty, "~/remove_point", self._remove_point_callback
+            Trigger, "~/remove_point", self._remove_point_callback
         )
         self.clear_points_srv = self.create_service(
-            Empty, "~/clear_points", self._clear_points_callback
+            Trigger, "~/clear_points", self._clear_points_callback
         )
         self.set_playback_params_srv = self.create_service(
             SetPlaybackParams,
             "~/set_playback_params",
             self._set_playback_params_callback,
         )
-        self.play_srv = self.create_service(Empty, "~/play", self._play_callback)
-        self.stop_srv = self.create_service(Empty, "~/stop", self._stop_callback)
+        self.play_srv = self.create_service(Trigger, "~/play", self._play_callback)
+        self.stop_srv = self.create_service(Trigger, "~/stop", self._stop_callback)
         self.state_srv = self.create_service(
             GetState, "~/get_state", self._get_state_callback
         )
@@ -125,6 +125,7 @@ class LaserControlNode(Node):
     def _add_point_callback(self, request, response):
         if self.dac is not None:
             self.dac.add_point(request.point.x, request.point.y)
+            response.success = True
         return response
 
     def _set_points_callback(self, request, response):
@@ -132,34 +133,40 @@ class LaserControlNode(Node):
             self.dac.clear_points()
             for point in request.points:
                 self.dac.add_point(point.x, point.y)
+            response.success = True
         return response
 
     def _remove_point_callback(self, request, response):
         if self.dac is not None:
             self.dac.remove_point()
+            response.success = True
         return response
 
     def _clear_points_callback(self, request, response):
         if self.dac is not None:
             self.dac.clear_points()
+            response.success = True
         return response
 
     def _set_playback_params_callback(self, request, response):
         self.fps = request.fps
         self.pps = request.pps
         self.transition_duration_ms = request.transition_duration_ms
+        response.success = True
         return response
 
     def _play_callback(self, request, response):
         if self.dac is not None:
             self.dac.play(self.fps, self.pps, self.transition_duration_ms)
             self._publish_state()
+            response.success = True
         return response
 
     def _stop_callback(self, request, response):
         if self.dac is not None:
             self.dac.stop()
             self._publish_state()
+            response.success = True
         return response
 
     def _get_state_callback(self, request, response):
