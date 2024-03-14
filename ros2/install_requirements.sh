@@ -20,9 +20,8 @@ if [ -z "$ROS_DISTRO" ]; then
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
 
     sudo apt update
+    source /opt/ros/foxy/local_setup.bash # Get updated env vars so $ROS_DISTRO is populated for next installs
 fi
-
-
 
 sudo apt update
 sudo apt install -y $APT_DEPS
