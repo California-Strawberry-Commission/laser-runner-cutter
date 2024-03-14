@@ -78,7 +78,7 @@ class Calibration:
         self.is_calibrated = True
         return True
 
-    async def add_calibration_points(self, laser_pixels):
+    async def add_calibration_points(self, laser_pixels, update_transform=False):
         # TODO: set exposure on camera node automatically when detecting laser
         await self.camera_client.set_exposure(0.001)
         await self.laser_client.set_color((0.0, 0.0, 0.0))
@@ -95,7 +95,8 @@ class Calibration:
         await self.laser_client.stop_laser()
         await self.camera_client.set_exposure(-1.0)
 
-        self.update_transform_bundle_adjustment()
+        if update_transform:
+            self.update_transform_bundle_adjustment()
 
     def camera_point_to_laser_pixel(self, camera_point):
         homogeneous_camera_point = np.hstack((camera_point, 1))

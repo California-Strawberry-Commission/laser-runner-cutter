@@ -117,6 +117,7 @@ class RealSense:
         """Given an x-y point in the color frame, return the x-y-z position with respect to the camera"""
         depth_pixel = self._color_pixel_to_depth_pixel(color_pixel, depth_frame)
         if not depth_pixel:
+            self.logger.info("No depth pixel")
             return None
 
         if np.isnan(depth_pixel[0]) or np.isnan(depth_pixel[1]):
@@ -124,10 +125,12 @@ class RealSense:
             return None
 
         depth = depth_frame.get_distance(round(depth_pixel[0]), round(depth_pixel[1]))
-        return (
-            rs.rs2_deproject_pixel_to_point(self.color_intrinsics, color_pixel, depth)
-            if depth > 0
-            else None
+        if depth < 0:
+            self.logger.info("Calculated negative depth")
+            return None
+
+        return rs.rs2_deproject_pixel_to_point(
+            self.color_intrinsics, color_pixel, depth
         )
 
     def _color_pixel_to_depth_pixel(self, pixel, depth_frame):

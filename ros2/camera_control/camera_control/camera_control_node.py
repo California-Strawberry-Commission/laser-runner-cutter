@@ -202,7 +202,7 @@ class CameraControlNode(Node):
         if self.video_writer is not None:
             self.video_writer.write(cv2.cvtColor(debug_frame, cv2.COLOR_RGB2BGR))
 
-    def _get_laser_points(self, color_frame, conf_threshold=0.4):
+    def _get_laser_points(self, color_frame, conf_threshold=0.35):
         result = self.laser_detection_model.predict(color_frame)
         laser_points = []
         confs = []
@@ -215,9 +215,13 @@ class CameraControlNode(Node):
                     (round((bbox[0] + bbox[2]) * 0.5), round((bbox[1] + bbox[3]) * 0.5))
                 )
                 confs.append(conf)
+            else:
+                self.logger.info(
+                    f"Laser point prediction ignored due to low confidence: {conf} < {conf_threshold}"
+                )
         return laser_points, confs
 
-    def _get_runner_masks(self, color_frame, conf_threshold=0.4):
+    def _get_runner_masks(self, color_frame, conf_threshold=0.35):
         # TODO: resolution should match what the model was trained on (1024x768)
         # for the best performance. We could resize the image before prediction, then
         # map the prediction points back to the original image.
@@ -230,6 +234,10 @@ class CameraControlNode(Node):
                 mask = result["masks"][idx]
                 runner_masks.append(mask)
                 confs.append(conf)
+            else:
+                self.logger.info(
+                    f"Runner mask prediction ignored due to low confidence: {conf} < {conf_threshold}"
+                )
         return runner_masks, confs
 
     def _get_runner_centroids(self, runner_masks):

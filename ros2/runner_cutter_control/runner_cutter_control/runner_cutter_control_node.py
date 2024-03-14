@@ -388,6 +388,9 @@ class StateMachine:
             "add_calibration_points_complete", "add_calibration_points", "idle"
         )
 
+    async def on_enter_idle(self):
+        self.node.publish_state()
+
     async def on_enter_calibration(self):
         self.node.publish_state()
         await self.node.calibration.calibrate()
@@ -396,19 +399,20 @@ class StateMachine:
     async def on_enter_add_calibration_points(self, camera_pixels):
         self.node.publish_state()
         # For each camera pixel, find the 3D position wrt the camera
-        positions = await self.camera_client.get_positions_for_pixels(camera_pixels)
+        positions = await self.node.camera_client.get_positions_for_pixels(
+            camera_pixels
+        )
         # Filter out any invalid positions
         positions = [p for p in positions if not all(x < 0 for x in p)]
         # Convert camera positions to laser pixels
         laser_pixels = [
-            self.calibration.camera_point_to_laser_pixel(position)
+            self.node.calibration.camera_point_to_laser_pixel(position)
             for position in positions
         ]
-        await self.calibration.add_calibration_points(laser_pixels)
+        await self.node.calibration.add_calibration_points(
+            laser_pixels, update_transform=True
+        )
         await self.add_calibration_points_complete()
-
-    async def on_enter_idle(self):
-        self.node.publish_state()
 
 
 class StateMachineThread(threading.Thread):
