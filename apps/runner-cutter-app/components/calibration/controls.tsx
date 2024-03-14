@@ -20,10 +20,8 @@ export default function Controls() {
     runnerDetectionEnabled,
     recordingVideo,
     frameSrc,
-    setExposure,
   } = useCameraNode(cameraNodeName);
-  const { laserState, addPoint, clearPoints, play, stop, setColor } =
-    useLaserNode(laserNodeName);
+  const { laserState } = useLaserNode(laserNodeName);
   const { controlState, calibrate, addCalibrationPoint } =
     useControlNode(controlNodeName);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
@@ -52,36 +50,6 @@ export default function Controls() {
     addCalibrationPoint(scaledX, scaledY);
   };
 
-  let laserButton = null;
-  if (laserState === 1) {
-    laserButton = (
-      <Button
-        disabled={!rosConnected || controlState !== "idle"}
-        onClick={() => {
-          setColor(1.0, 0.0, 0.0);
-          setExposure(0.001);
-          play();
-        }}
-      >
-        Start Laser
-      </Button>
-    );
-  } else if (laserState === 2) {
-    laserButton = (
-      <Button
-        disabled={!rosConnected || controlState !== "idle"}
-        onClick={() => {
-          stop();
-          setExposure(-1.0);
-        }}
-      >
-        Stop Laser
-      </Button>
-    );
-  } else {
-    laserButton = <Button disabled={true}>Laser Disconnected</Button>;
-  }
-
   return (
     <div className="flex flex-col gap-4 items-center">
       <div className="flex flex-col items-center">
@@ -100,13 +68,6 @@ export default function Controls() {
           }}
         >
           Start Calibration
-        </Button>
-        {laserButton}
-        <Button
-          disabled={!rosConnected || controlState !== "idle"}
-          onClick={() => clearPoints()}
-        >
-          Clear Points
         </Button>
       </div>
       {frameSrc && (
