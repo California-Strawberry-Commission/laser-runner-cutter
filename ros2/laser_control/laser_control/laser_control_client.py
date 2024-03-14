@@ -2,16 +2,13 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from std_srvs.srv import Trigger
 
 from common_interfaces.msg import Vector2
-from laser_control_interfaces.srv import AddPoint, GetBounds, SetColor, SetPoints
+from laser_control_interfaces.srv import AddPoint, SetColor, SetPoints
 
 
 class LaserControlClient:
     def __init__(self, node, laser_node_name):
         self.node = node
         callback_group = ReentrantCallbackGroup()
-        node.laser_get_bounds = node.create_client(
-            GetBounds, f"/{laser_node_name}/get_bounds", callback_group=callback_group
-        )
         node.laser_set_color = node.create_client(
             SetColor, f"/{laser_node_name}/set_color", callback_group=callback_group
         )
@@ -91,13 +88,7 @@ class LaserControlClient:
         Add rendered point.
 
         Args:
-            point: (x, y), in laser coordinates
+            point: (x, y), where x and y are normalized to [0, 1]
         """
         request = AddPoint.Request(point=Vector2(x=point[0], y=point[1]))
         return await self.node.laser_add_point.call_async(request)
-
-    async def get_bounds(self, scale=1.0):
-        result = await self.node.laser_get_bounds.call_async(
-            GetBounds.Request(scale=scale)
-        )
-        return [(point.x, point.y) for point in result.points]

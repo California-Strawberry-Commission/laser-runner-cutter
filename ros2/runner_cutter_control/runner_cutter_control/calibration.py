@@ -30,27 +30,14 @@ class Calibration:
         # use a depth frame obtained when the laser is off
 
         # Get calibration points
-        x_bounds = [float("inf"), float("-inf")]
-        y_bounds = [float("inf"), float("-inf")]
-        laser_bounds = await self.laser_client.get_bounds(1.0)
-        for x, y in laser_bounds:
-            if x < x_bounds[0]:
-                x_bounds[0] = x
-            if x > x_bounds[1]:
-                x_bounds[1] = x
-            if y < y_bounds[0]:
-                y_bounds[0] = y
-            if y > y_bounds[1]:
-                y_bounds[1] = y
-
         grid_size = (5, 5)
-        x_step = (x_bounds[1] - x_bounds[0]) / (grid_size[0] - 1)
-        y_step = (y_bounds[1] - y_bounds[0]) / (grid_size[1] - 1)
+        x_step = 1.0 / (grid_size[0] - 1)
+        y_step = 1.0 / (grid_size[1] - 1)
         pending_calibration_laser_pixels = []
         for i in range(grid_size[0]):
             for j in range(grid_size[1]):
-                x = x_bounds[0] + i * x_step
-                y = y_bounds[0] + j * y_step
+                x = i * x_step
+                y = j * y_step
                 pending_calibration_laser_pixels.append((x, y))
 
         # Get image correspondences

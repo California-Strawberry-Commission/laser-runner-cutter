@@ -42,11 +42,11 @@ class EtherDreamDAC(LaserDAC):
       dac.connect(0)
 
       dac.set_color(1, 0, 0, 0.1)
-      dac.add_point(100, 200)
+      dac.add_point(0.1, 0.2)
       dac.play()
       ...
       dac.clear_points()
-      dac.add_point(300, 400)
+      dac.add_point(0.3, 0.4)
       ...
       dac.stop()
       dac.close()
@@ -86,30 +86,18 @@ class EtherDreamDAC(LaserDAC):
     def set_color(self, r=1, g=1, b=1, i=1):
         self.color = (r, g, b, i)
 
-    def get_bounds(self, scale=1.0):
-        """Return an array of points representing the corners of the outer bounds"""
-        # Ether Dream DAC uses 16 bits (signed) for x and y
-        x_offset = round((X_BOUNDS[1] - X_BOUNDS[0]) / 2 * (1.0 - scale))
-        y_offset = round((Y_BOUNDS[1] - Y_BOUNDS[0]) / 2 * (1.0 - scale))
-        return [
-            (X_BOUNDS[0] + x_offset, Y_BOUNDS[0] + y_offset),
-            (X_BOUNDS[0] + x_offset, Y_BOUNDS[1] - y_offset),
-            (X_BOUNDS[1] - x_offset, Y_BOUNDS[1] - y_offset),
-            (X_BOUNDS[1] - x_offset, Y_BOUNDS[0] + y_offset),
-        ]
-
-    def in_bounds(self, x, y):
-        return (
-            x >= X_BOUNDS[0]
-            and x <= X_BOUNDS[1]
-            and y >= Y_BOUNDS[0]
-            and y <= Y_BOUNDS[1]
-        )
-
     def add_point(self, x, y):
-        if self.in_bounds(x, y):
+        """Add a point to be rendered by the DAC.
+
+        :param x: x coordinate normalized to [0, 1]
+        :param y: y coordinate normalized to [0, 1]
+        """
+        if 0.0 <= x and x <= 1.0 and 0.0 <= y and y <= 1.0:
             with self.points_lock:
                 self.points.append((x, y))
+            return True
+        else:
+            return False
 
     def remove_point(self):
         """Remove the last added point."""
@@ -120,6 +108,11 @@ class EtherDreamDAC(LaserDAC):
     def clear_points(self):
         with self.points_lock:
             self.points.clear()
+
+    def _denormalize_point(self, x, y):
+        x_denorm = round((X_BOUNDS[1] - X_BOUNDS[0]) * x + X_BOUNDS[0])
+        y_denorm = round((Y_BOUNDS[1] - Y_BOUNDS[0]) * y + Y_BOUNDS[0])
+        return x_denorm, y_denorm
 
     def _get_frame(self, fps=30, pps=30000, transition_duration_ms=0.5):
         """Return an array of EtherDreamPoints representing the next frame that should be rendered.
@@ -162,9 +155,10 @@ class EtherDreamDAC(LaserDAC):
                             num_points > 1 and laxelIdx < laxels_per_transition
                         )
                         frameLaxelIdx = pointIdx * laxels_per_point + laxelIdx
+                        x, y = self._denormalize_point(point[0], point[1])
                         frame[frameLaxelIdx] = EtherDreamPoint(
-                            int(point[0]),
-                            int(point[1]),
+                            x,
+                            y,
                             0 if isTransition else int(self.color[0] * MAX_COLOR),
                             0 if isTransition else int(self.color[1] * MAX_COLOR),
                             0 if isTransition else int(self.color[2] * MAX_COLOR),

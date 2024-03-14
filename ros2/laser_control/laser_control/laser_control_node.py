@@ -5,11 +5,9 @@ from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
 
 from laser_control.laser_dac import EtherDreamDAC, HeliosDAC
-from common_interfaces.msg import Vector2
 from laser_control_interfaces.msg import State
 from laser_control_interfaces.srv import (
     AddPoint,
-    GetBounds,
     GetState,
     SetColor,
     SetPlaybackParams,
@@ -53,9 +51,6 @@ class LaserControlNode(Node):
 
         self.set_color_srv = self.create_service(
             SetColor, "~/set_color", self._set_color_callback
-        )
-        self.get_bounds_srv = self.create_service(
-            GetBounds, "~/get_bounds", self._get_bounds_callback
         )
         self.add_point_srv = self.create_service(
             AddPoint, "~/add_point", self._add_point_callback
@@ -112,14 +107,6 @@ class LaserControlNode(Node):
     def _set_color_callback(self, request, response):
         if self.dac is not None:
             self.dac.set_color(request.r, request.g, request.b, request.i)
-        return response
-
-    def _get_bounds_callback(self, request, response):
-        if self.dac is not None:
-            points = self.dac.get_bounds(request.scale)
-            response.points = [
-                Vector2(x=float(point[0]), y=float(point[1])) for point in points
-            ]
         return response
 
     def _add_point_callback(self, request, response):

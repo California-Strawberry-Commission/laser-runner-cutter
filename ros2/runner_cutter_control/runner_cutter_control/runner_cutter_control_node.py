@@ -49,16 +49,6 @@ class ServiceWaitState:
         # TODO: Check that laser connected correctly
         time.sleep(3)
         self.laser_client.wait_active()
-        # Cache laser bounds on blackboard
-        bounds = self.laser_client.get_bounds(1.0)
-        blackboard.laser_x_bounds = (
-            min(bounds, key=lambda point: point[0]),
-            max(bounds, key=lambda point: point[0]),
-        )
-        blackboard.laser_y_bounds = (
-            min(bounds, key=lambda point: point[1]),
-            max(bounds, key=lambda point: point[1]),
-        )
 
         # Check that the camera has frames
         self.logger.info("wait for frames")
@@ -215,12 +205,11 @@ class CorrectState:
             self.logger.debug(
                 f"Dist:{dist}, Correction{correction}, Old Point:{laser_send_point}, New Point{new_point}"
             )
-            # TODO: Normalize dac points
             if np.any(
-                new_point[0] > 4095
-                or new_point[1] > 4095
-                or new_point[0] < 0
-                or new_point[1] < 0
+                new_point[0] > 1.0
+                or new_point[1] > 1.0
+                or new_point[0] < 0.0
+                or new_point[1] < 0.0
             ):
                 self.logger.info("Failed to reach pos, outside of laser window")
                 return False
