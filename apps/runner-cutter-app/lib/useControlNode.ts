@@ -1,10 +1,40 @@
+import { useEffect, useState } from "react";
 import useROS from "@/lib/ros/useROS";
 
 export default function useControlNode(nodeName: string) {
-  const { callService } = useROS();
+  const { callService, subscribe } = useROS();
+  const [nodeState, setNodeState] = useState<string>("disconnected");
+
+  // Initial node state
+  useEffect(() => {
+    const getState = async () => {
+      const result = await callService(
+        `${nodeName}/get_state`,
+        "runner_cutter_control_interfaces/GetState",
+        {}
+      );
+      setNodeState(result.state);
+    };
+    getState();
+  }, [nodeName]);
+
+  // Subscriptions
+  useEffect(() => {
+    const stateSub = subscribe(
+      `${nodeName}/state`,
+      "std_msgs/String",
+      (message) => {
+        setNodeState(message.data);
+      }
+    );
+
+    return () => {
+      stateSub.unsubscribe();
+    };
+  }, [nodeName]);
 
   const calibrate = () => {
-    callService(`${nodeName}/calibrate`, "std_srvs/Empty", {});
+    callService(`${nodeName}/calibrate`, "std_srvs/Trigger", {});
   };
 
   const addCalibrationPoint = (x: number, y: number) => {
@@ -15,5 +45,5 @@ export default function useControlNode(nodeName: string) {
     );
   };
 
-  return { calibrate, addCalibrationPoint };
+  return { controlState: nodeState, calibrate, addCalibrationPoint };
 }

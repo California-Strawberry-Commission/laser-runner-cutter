@@ -48,8 +48,6 @@ Linux systems require udev rules to allow access to USB devices without root pri
         # Install dependencies
         $ laser-runner-cutter/ros2/install_requirements.sh
 
-1.  Install [YASMIN](https://github.com/uleroboticsgroup/yasmin#installation)
-
 1.  Build packages
 
         $ cd ~/ros2_ws

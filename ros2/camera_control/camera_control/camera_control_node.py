@@ -6,25 +6,25 @@ import cv2
 import numpy as np
 import rclpy
 from ament_index_python.packages import get_package_share_directory
-from common_interfaces.msg import Vector2, Vector3
-from camera_control_interfaces.msg import PosData, State
-from camera_control_interfaces.srv import (
-    GetBool,
-    GetFrame,
-    GetPosData,
-    GetPositionsForPixels,
-    GetState,
-    SetExposure,
-)
 from cv_bridge import CvBridge
 from rclpy.node import Node
 from runner_segmentation.yolo import Yolo
 from sensor_msgs.msg import CompressedImage
 from shapely import Polygon
 from shapely.ops import nearest_points
-from std_srvs.srv import Empty
+from std_srvs.srv import Trigger
 
 from camera_control.camera.realsense import RealSense
+from camera_control_interfaces.msg import PosData, State
+from camera_control_interfaces.srv import (
+    GetFrame,
+    GetPosData,
+    GetPositionsForPixels,
+    GetState,
+    SetExposure,
+)
+from common_interfaces.msg import Vector2, Vector3
+from common_interfaces.srv import GetBool
 
 
 def milliseconds_to_ros_time(milliseconds):
@@ -100,28 +100,28 @@ class CameraControlNode(Node):
         )
         self.laser_detection_enabled = False
         self.start_laser_detection_srv = self.create_service(
-            Empty, "~/start_laser_detection", self._start_laser_detection_callback
+            Trigger, "~/start_laser_detection", self._start_laser_detection_callback
         )
         self.stop_laser_detection_srv = self.create_service(
-            Empty, "~/stop_laser_detection", self._stop_laser_detection_callback
+            Trigger, "~/stop_laser_detection", self._stop_laser_detection_callback
         )
         self.runner_detection_enabled = False
         self.start_runner_detection_srv = self.create_service(
-            Empty, "~/start_runner_detection", self._start_runner_detection_callback
+            Trigger, "~/start_runner_detection", self._start_runner_detection_callback
         )
         self.stop_runner_detection_srv = self.create_service(
-            Empty, "~/stop_runner_detection", self._stop_runner_detection_callback
+            Trigger, "~/stop_runner_detection", self._stop_runner_detection_callback
         )
         self.start_recording_video_srv = self.create_service(
-            Empty, "~/start_recording_video", self._start_recording_video_callback
+            Trigger, "~/start_recording_video", self._start_recording_video_callback
         )
         self.stop_recording_video_srv = self.create_service(
-            Empty, "~/stop_recording_video", self._stop_recording_video_callback
+            Trigger, "~/stop_recording_video", self._stop_recording_video_callback
         )
         self.stop_recording_srv = self.create_service(
-            Empty, "~/save_image", self._save_image_callback
+            Trigger, "~/save_image", self._save_image_callback
         )
-        self.state_srv = self.create_service(
+        self.get_state_srv = self.create_service(
             GetState, "~/get_state", self._get_state_callback
         )
         self.get_positions_for_pixels_srv = self.create_service(
@@ -266,6 +266,7 @@ class CameraControlNode(Node):
 
     def _set_exposure_callback(self, request, response):
         self.camera.set_exposure(request.exposure_ms)
+        response.success = True
         return response
 
     def _single_laser_detection_callback(self, request, response):
@@ -290,21 +291,25 @@ class CameraControlNode(Node):
     def _start_laser_detection_callback(self, request, response):
         self.laser_detection_enabled = True
         self._publish_state()
+        response.success = True
         return response
 
     def _stop_laser_detection_callback(self, request, response):
         self.laser_detection_enabled = False
         self._publish_state()
+        response.success = True
         return response
 
     def _start_runner_detection_callback(self, request, response):
         self.runner_detection_enabled = True
         self._publish_state()
+        response.success = True
         return response
 
     def _stop_runner_detection_callback(self, request, response):
         self.runner_detection_enabled = False
         self._publish_state()
+        response.success = True
         return response
 
     def _start_recording_video_callback(self, request, response):
@@ -320,26 +325,28 @@ class CameraControlNode(Node):
             (self.rgb_size[0], self.rgb_size[1]),
         )
         self._publish_state()
+        response.success = True
         return response
 
     def _stop_recording_video_callback(self, request, response):
         self.video_writer = None
         self._publish_state()
+        response.success = True
         return response
 
     def _save_image_callback(self, request, response):
-        os.makedirs(self.image_dir, exist_ok=True)
-        ts = time.time()
-        datetime_obj = datetime.fromtimestamp(ts)
-        datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
-        image_name = f"{datetime_string}.png"
-
         if self.curr_frames is not None:
+            os.makedirs(self.image_dir, exist_ok=True)
+            ts = time.time()
+            datetime_obj = datetime.fromtimestamp(ts)
+            datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
+            image_name = f"{datetime_string}.png"
             color_frame = np.asanyarray(self.curr_frames["color"].get_data())
             cv2.imwrite(
                 os.path.join(self.image_dir, image_name),
                 cv2.cvtColor(color_frame, cv2.COLOR_RGB2BGR),
             )
+            response.success = True
 
         return response
 

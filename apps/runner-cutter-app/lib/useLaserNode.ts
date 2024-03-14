@@ -44,15 +44,15 @@ export default function useLaserNode(nodeName: string) {
   };
 
   const clearPoints = () => {
-    callService(`${nodeName}/clear_points`, "std_srvs/Empty", {});
+    callService(`${nodeName}/clear_points`, "std_srvs/Trigger", {});
   };
 
   const play = () => {
-    callService(`${nodeName}/play`, "std_srvs/Empty", {});
+    callService(`${nodeName}/play`, "std_srvs/Trigger", {});
   };
 
   const stop = () => {
-    callService(`${nodeName}/stop`, "std_srvs/Empty", {});
+    callService(`${nodeName}/stop`, "std_srvs/Trigger", {});
   };
 
   const setColor = (r: number, g: number, b: number) => {

@@ -24,7 +24,8 @@ export default function Controls() {
   } = useCameraNode(cameraNodeName);
   const { laserState, addPoint, clearPoints, play, stop, setColor } =
     useLaserNode(laserNodeName);
-  const { calibrate, addCalibrationPoint } = useControlNode(controlNodeName);
+  const { controlState, calibrate, addCalibrationPoint } =
+    useControlNode(controlNodeName);
 
   useEffect(() => {
     // TODO: add listener for rosbridge connection state
@@ -78,6 +79,7 @@ export default function Controls() {
         }`}</p>
         <p className="text-center">{`Camera (${cameraNodeName}): connected=${connected}, laserDetectionEnabled=${laserDetectionEnabled}, runnerDetectionEnabled=${runnerDetectionEnabled}, recordingVideo=${recordingVideo}`}</p>
         <p className="text-center">{`Laser (${laserNodeName}): ${LASER_STATES[laserState]}`}</p>
+        <p className="text-center">{`Control (${controlNodeName}): ${controlState}`}</p>
       </div>
       <div className="flex flex-row items-center gap-4">
         <Button

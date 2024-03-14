@@ -1,5 +1,6 @@
+import asyncio
+
 import numpy as np
-import time
 from scipy.optimize import minimize
 
 
@@ -16,7 +17,7 @@ class Calibration:
         self.is_calibrated = False
         self.camera_to_laser_transform = np.zeros((4, 3))
 
-    def calibrate(self):
+    async def calibrate(self):
         """Use image correspondences to compute the transformation matrix from camera to laser
 
         1. Shoot the laser at predetermined points
@@ -31,8 +32,7 @@ class Calibration:
         # Get calibration points
         x_bounds = [float("inf"), float("-inf")]
         y_bounds = [float("inf"), float("-inf")]
-        laser_bounds = self.laser_client.get_bounds(1.0)
-
+        laser_bounds = await self.laser_client.get_bounds(1.0)
         for x, y in laser_bounds:
             if x < x_bounds[0]:
                 x_bounds[0] = x
@@ -57,7 +57,7 @@ class Calibration:
         self.calibration_laser_pixels = []
         self.calibration_camera_points = []
 
-        self.add_calibration_points(pending_calibration_laser_pixels)
+        await self.add_calibration_points(pending_calibration_laser_pixels)
 
         if self.logger:
             self.logger.info(
@@ -78,22 +78,22 @@ class Calibration:
         self.is_calibrated = True
         return True
 
-    def add_calibration_points(self, laser_pixels):
+    async def add_calibration_points(self, laser_pixels):
         # TODO: set exposure on camera node automatically when detecting laser
-        self.camera_client.set_exposure(0.001, sync=True)
-        self.laser_client.set_color((0.0, 0.0, 0.0), sync=True)
-        self.laser_client.start_laser(sync=True)
+        await self.camera_client.set_exposure(0.001)
+        await self.laser_client.set_color((0.0, 0.0, 0.0))
+        await self.laser_client.start_laser()
         for laser_pixel in laser_pixels:
-            self.laser_client.set_point(laser_pixel, sync=True)
-            self.laser_client.set_color(self.laser_color, sync=True)
+            await self.laser_client.set_point(laser_pixel)
+            await self.laser_client.set_color(self.laser_color)
             # Wait for galvo to settle and for camera frame capture
             # TODO: increase frame capture rate and reduce this time
-            time.sleep(1)
-            self.add_point_correspondence(laser_pixel)
-            self.laser_client.set_color((0.0, 0.0, 0.0), sync=True)
+            await asyncio.sleep(1)
+            await self.add_point_correspondence(laser_pixel)
+            await self.laser_client.set_color((0.0, 0.0, 0.0))
 
-        self.laser_client.stop_laser(sync=True)
-        self.camera_client.set_exposure(-1.0)
+        await self.laser_client.stop_laser()
+        await self.camera_client.set_exposure(-1.0)
 
         self.update_transform_bundle_adjustment()
 
@@ -103,12 +103,12 @@ class Calibration:
         transformed_point = transformed_point / transformed_point[2]
         return transformed_point[:2]
 
-    def add_point_correspondence(self, laser_pixel):
+    async def add_point_correspondence(self, laser_pixel):
         attempts = 0
-        while attempts < 50:
+        while attempts < 20:
             self.logger.info(f"attempt = {attempts}")
             attempts += 1
-            pos_data = self.camera_client.get_laser_pos()
+            pos_data = await self.camera_client.get_laser_pos()
             if pos_data["pos_list"]:
                 # can add error if len greater then 1
                 self.calibration_laser_pixels.append(laser_pixel)
@@ -121,11 +121,9 @@ class Calibration:
                         f"Found point correspondence: laser_pixel = {laser_pixel}, camera_pixel = {camera_pixel}. {len(self.calibration_laser_pixels)} total correspondences."
                     )
                 return
-
-            # Should be a ros way to sleep
-            time.sleep(0.2)
+            await asyncio.sleep(0.2)
         self.logger.info(
-            f"Failed to find point. Total correspondences = {len(self.calibration_laser_pixels)}"
+            f"Failed to find point. {len(self.calibration_laser_pixels)} total correspondences."
         )
 
     def update_transform_bundle_adjustment(self):
