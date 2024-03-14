@@ -1,5 +1,6 @@
+import asyncio
+
 import numpy as np
-import time
 from scipy.optimize import minimize
 
 
@@ -56,7 +57,7 @@ class Calibration:
         self.calibration_laser_pixels = []
         self.calibration_camera_points = []
 
-        self.add_calibration_points(pending_calibration_laser_pixels)
+        await self.add_calibration_points(pending_calibration_laser_pixels)
 
         if self.logger:
             self.logger.info(
@@ -77,22 +78,22 @@ class Calibration:
         self.is_calibrated = True
         return True
 
-    def add_calibration_points(self, laser_pixels):
+    async def add_calibration_points(self, laser_pixels):
         # TODO: set exposure on camera node automatically when detecting laser
-        self.camera_client.set_exposure(0.001)
-        self.laser_client.set_color((0.0, 0.0, 0.0))
-        self.laser_client.start_laser()
+        await self.camera_client.set_exposure(0.001)
+        await self.laser_client.set_color((0.0, 0.0, 0.0))
+        await self.laser_client.start_laser()
         for laser_pixel in laser_pixels:
-            self.laser_client.set_point(laser_pixel)
-            self.laser_client.set_color(self.laser_color)
+            await self.laser_client.set_point(laser_pixel)
+            await self.laser_client.set_color(self.laser_color)
             # Wait for galvo to settle and for camera frame capture
             # TODO: increase frame capture rate and reduce this time
-            time.sleep(1)
-            self.add_point_correspondence(laser_pixel)
-            self.laser_client.set_color((0.0, 0.0, 0.0))
+            await asyncio.sleep(1)
+            await self.add_point_correspondence(laser_pixel)
+            await self.laser_client.set_color((0.0, 0.0, 0.0))
 
-        self.laser_client.stop_laser()
-        self.camera_client.set_exposure(-1.0)
+        await self.laser_client.stop_laser()
+        await self.camera_client.set_exposure(-1.0)
 
         self.update_transform_bundle_adjustment()
 
@@ -120,7 +121,7 @@ class Calibration:
                         f"Found point correspondence: laser_pixel = {laser_pixel}, camera_pixel = {camera_pixel}. {len(self.calibration_laser_pixels)} total correspondences."
                     )
                 return
-            time.sleep(0.2)
+            await asyncio.sleep(0.2)
         self.logger.info(
             f"Failed to find point. {len(self.calibration_laser_pixels)} total correspondences."
         )

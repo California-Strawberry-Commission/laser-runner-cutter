@@ -16,13 +16,13 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
-from transitions import Machine
+from transitions.extensions.asyncio import AsyncMachine
 
 from camera_control.camera_control_client import CameraControlClient
 from laser_control.laser_control_client import LaserControlClient
 from runner_cutter_control.calibration import Calibration
 from runner_cutter_control.tracker import Tracker
-from runner_cutter_control_interfaces.srv import AddCalibrationPoints
+from runner_cutter_control_interfaces.srv import AddCalibrationPoints, GetState
 
 
 class Runner:
@@ -317,6 +317,9 @@ class RunnerCutterControlNode(Node):
             "~/add_calibration_points",
             self._add_calibration_points_callback,
         )
+        self.get_state_srv = self.create_service(
+            GetState, "~/get_state", self._get_state_callback
+        )
 
         # Pub/sub
 
@@ -336,36 +339,33 @@ class RunnerCutterControlNode(Node):
 
         # State machine
 
+        # We run the state machine on a separate thread. Note that we cannot directly call
+        # triggers on self.state_machine from service callbacks, as there are long running
+        # tasks that run on certain states. So, in service callbacks, we queue triggers
+        # on the state machine thread.
         self.state_machine = StateMachine(self.logger, self)
-        state_machine_thread = StateMachineThread(self.state_machine)
-        state_machine_thread.start()
+        self.state_machine_thread = StateMachineThread(self.state_machine, self.logger)
+        self.state_machine_thread.start()
 
-    def _publish_state(self, state_name):
-        msg = String(data=state_name)
+    def publish_state(self):
+        msg = String(data=self.state_machine.state)
         self.state_publisher.publish(msg)
 
     def _calibrate_callback(self, request, response):
-        try:
-            self.state_machine.run_calibration()
+        if self.state_machine.state == "idle":
+            self.state_machine_thread.queue("run_calibration")
             response.success = True
-        except Exception:
-            self.logger.info(f"Could not enter calibration state")
         return response
 
     def _add_calibration_points_callback(self, request, response):
-        camera_pixels = [(pixel.x, pixel.y) for pixel in request.camera_pixels]
-        # For each camera pixel, find the 3D position wrt the camera
-        positions = self.camera_client.get_positions_for_pixels(camera_pixels)
-        # Filter out any invalid positions
-        positions = [p for p in positions if not all(x < 0 for x in p)]
-        # Convert camera positions to laser pixels
-        laser_pixels = [
-            self.calibration.camera_point_to_laser_pixel(position)
-            for position in positions
-        ]
+        if self.state_machine.state == "idle":
+            camera_pixels = [(pixel.x, pixel.y) for pixel in request.camera_pixels]
+            self.state_machine_thread.queue("run_add_calibration_points", camera_pixels)
+            response.success = True
+        return response
 
-        self.calibration.add_calibration_points(laser_pixels)
-        response.success = True
+    def _get_state_callback(self, request, response):
+        response.state = self.state_machine.state
         return response
 
 
@@ -376,7 +376,9 @@ class StateMachine:
     def __init__(self, logger, node):
         self.logger = logger
         self.node = node
-        self.machine = Machine(model=self, states=StateMachine.states, initial="idle")
+        self.machine = AsyncMachine(
+            model=self, states=StateMachine.states, initial="idle"
+        )
         self.machine.add_transition("run_calibration", "idle", "calibration")
         self.machine.add_transition("calibration_complete", "calibration", "idle")
         self.machine.add_transition(
@@ -386,32 +388,64 @@ class StateMachine:
             "add_calibration_points_complete", "add_calibration_points", "idle"
         )
 
-    async def on_calibration(self):
+    async def on_enter_calibration(self):
+        self.node.publish_state()
         await self.node.calibration.calibrate()
-        self.calibration_complete()
+        await self.calibration_complete()
 
-    async def on_add_calibration_points(
-        self,
-    ):
-        pass
+    async def on_enter_add_calibration_points(self, camera_pixels):
+        self.node.publish_state()
+        # For each camera pixel, find the 3D position wrt the camera
+        positions = await self.camera_client.get_positions_for_pixels(camera_pixels)
+        # Filter out any invalid positions
+        positions = [p for p in positions if not all(x < 0 for x in p)]
+        # Convert camera positions to laser pixels
+        laser_pixels = [
+            self.calibration.camera_point_to_laser_pixel(position)
+            for position in positions
+        ]
+        await self.calibration.add_calibration_points(laser_pixels)
+        await self.add_calibration_points_complete()
+
+    async def on_enter_idle(self):
+        self.node.publish_state()
 
 
 class StateMachineThread(threading.Thread):
 
-    def __init__(self, state_machine):
+    def __init__(self, state_machine, logger):
         super().__init__()
         self.daemon = True
         self.state_machine = state_machine
+        self.logger = logger
+        self._queued_trigger = None
+        self._queued_args = None
+        self._queued_kwargs = None
+        self._lock = threading.Lock()
 
-    async def state_machine_task(self):
+    def queue(self, trigger, *args, **kwargs):
+        with self._lock:
+            self._queued_trigger = trigger
+            self._queued_args = args
+            self._queued_kwargs = kwargs
+
+    async def _state_machine_task(self):
         while True:
-            current_state = self.state_machine.state
-            if current_state == "calibration":
-                await self.state_machine.on_calibration()
-            time.sleep(0.1)
+            trigger = None
+            with self._lock:
+                if self._queued_trigger is not None:
+                    trigger = self._queued_trigger
+                    args = self._queued_args
+                    kwargs = self._queued_kwargs
+                    self._queued_trigger = None
+                    self._queued_args = None
+                    self._queued_kwargs = None
+            if trigger is not None:
+                await self.state_machine.trigger(trigger, *args, **kwargs)
+            await asyncio.sleep(0.1)
 
     def run(self):
-        asyncio.run(self.state_machine_task())
+        asyncio.run(self._state_machine_task())
 
 
 def main(args=None):

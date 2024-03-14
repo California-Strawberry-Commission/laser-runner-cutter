@@ -76,7 +76,7 @@ class LaserControlNode(Node):
         )
         self.play_srv = self.create_service(Trigger, "~/play", self._play_callback)
         self.stop_srv = self.create_service(Trigger, "~/stop", self._stop_callback)
-        self.state_srv = self.create_service(
+        self.get_state_srv = self.create_service(
             GetState, "~/get_state", self._get_state_callback
         )
 

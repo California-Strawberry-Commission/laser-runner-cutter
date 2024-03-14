@@ -121,7 +121,7 @@ class CameraControlNode(Node):
         self.stop_recording_srv = self.create_service(
             Trigger, "~/save_image", self._save_image_callback
         )
-        self.state_srv = self.create_service(
+        self.get_state_srv = self.create_service(
             GetState, "~/get_state", self._get_state_callback
         )
         self.get_positions_for_pixels_srv = self.create_service(
