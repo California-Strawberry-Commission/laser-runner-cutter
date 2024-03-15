@@ -1,18 +1,22 @@
+import logging
+
 from rclpy.callback_groups import ReentrantCallbackGroup
 
-from camera_control_interfaces.srv import (
-    GetPosData,
-    GetPositionsForPixels,
-    SetExposure,
-)
+from camera_control_interfaces.srv import GetPosData, GetPositionsForPixels, SetExposure
 from common_interfaces.msg import Vector2
 from common_interfaces.srv import GetBool
 
 
 # Could make a mixin if desired
 class CameraControlClient:
-    def __init__(self, node, camera_node_name):
+    def __init__(self, node, camera_node_name, logger=None):
         self.node = node
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = logging.getLogger(__name__)
+            self.logger.setLevel(logging.DEBUG)
+
         callback_group = ReentrantCallbackGroup()
         node.camera_has_frames = node.create_client(
             GetBool, f"/{camera_node_name}/has_frames", callback_group=callback_group
@@ -40,7 +44,7 @@ class CameraControlClient:
 
     def wait_active(self):
         while not self.node.camera_has_frames.wait_for_service(timeout_sec=1.0):
-            self.node.logger.info("Camera service not available, waiting again...")
+            self.logger.info("Camera service not available, waiting again...")
 
     async def has_frames(self):
         result = await self.node.camera_has_frames.call_async(GetBool.Request())

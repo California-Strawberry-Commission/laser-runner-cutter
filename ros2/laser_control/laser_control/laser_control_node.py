@@ -19,6 +19,7 @@ from std_srvs.srv import Trigger
 class LaserControlNode(Node):
     def __init__(self):
         super().__init__("laser_control_node")
+        self.logger = self.get_logger()
 
         # Parameters
 
@@ -93,7 +94,7 @@ class LaserControlNode(Node):
             raise Exception(f"Unknown dac_type: {self.dac_type}")
 
         num_dacs = self.dac.initialize()
-        self.get_logger().info(f"{num_dacs} DACs of type {self.dac_type} found")
+        self.logger.info(f"{num_dacs} DACs of type {self.dac_type} found")
         self.dac.connect(self.dac_index)
 
     def get_state(self):

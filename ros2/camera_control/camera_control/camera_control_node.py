@@ -141,7 +141,10 @@ class CameraControlNode(Node):
 
         self.curr_frames = None
         self.camera = RealSense(
-            self.logger, self.rgb_size, self.depth_size, camera_index=self.camera_index
+            self.rgb_size,
+            self.depth_size,
+            camera_index=self.camera_index,
+            logger=self.logger,
         )
         self.camera.initialize()
 

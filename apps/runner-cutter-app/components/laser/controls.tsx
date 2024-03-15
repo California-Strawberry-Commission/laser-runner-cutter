@@ -27,8 +27,8 @@ export default function Controls() {
   const { laserState, addPoint, clearPoints, play, stop, setColor } =
     useLaserNodeState(nodeName);
   const [laserColor, setLaserColor] = useState<string>("#ff0000");
-  const [x, setX] = useState<number>(0);
-  const [y, setY] = useState<number>(0);
+  const [x, setX] = useState<string>("0");
+  const [y, setY] = useState<string>("0");
 
   useEffect(() => {
     // TODO: add listener for rosbridge connection state
@@ -68,10 +68,12 @@ export default function Controls() {
           name="x"
           placeholder="x"
           step={0.1}
-          value={x.toString()}
+          value={x}
           onChange={(event) => {
             const value = Number(event.target.value);
-            setX(isNaN(value) ? 0 : value);
+            if (!isNaN(value)) {
+              setX(event.target.value);
+            }
           }}
         />
         <Input
@@ -81,13 +83,18 @@ export default function Controls() {
           name="y"
           placeholder="y"
           step={0.1}
-          value={y.toString()}
+          value={y}
           onChange={(event) => {
             const value = Number(event.target.value);
-            setY(isNaN(value) ? 0 : value);
+            if (!isNaN(value)) {
+              setY(event.target.value);
+            }
           }}
         />
-        <Button disabled={!rosConnected} onClick={() => addPoint(x, y)}>
+        <Button
+          disabled={!rosConnected}
+          onClick={() => addPoint(Number(x), Number(y))}
+        >
           Add Point
         </Button>
         <Button disabled={!rosConnected} onClick={() => clearPoints()}>

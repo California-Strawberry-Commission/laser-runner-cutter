@@ -1,21 +1,27 @@
-import pyrealsense2 as rs
+import logging
+
 import numpy as np
+import pyrealsense2 as rs
 
 
 class RealSense:
     def __init__(
         self,
-        logger,
         color_frame_size,
         depth_frame_size,
         align_depth_to_color_frame=True,
         camera_index=0,
+        logger=None,
     ):
-        self.logger = logger
         self.color_frame_size = color_frame_size
         self.depth_frame_size = depth_frame_size
         self.align_depth_to_color_frame = align_depth_to_color_frame
         self.camera_index = camera_index
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = logging.getLogger(__name__)
+            self.logger.setLevel(logging.DEBUG)
 
     def initialize(self):
         # Setup code based on https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/align-depth2color.py
