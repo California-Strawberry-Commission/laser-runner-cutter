@@ -1,4 +1,4 @@
 ---
-laser_control_interfaces/State state
+State state
 string dac_type
 int32 dac_index

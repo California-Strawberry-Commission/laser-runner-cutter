@@ -39,10 +39,8 @@ class CameraControlClient:
         )
 
     def wait_active(self):
-        while not self.node.laser_scaled_frame_corners.wait_for_service(
-            timeout_sec=1.0
-        ):
-            self.node.logger.info("laser service not available, waiting again...")
+        while not self.node.camera_has_frames.wait_for_service(timeout_sec=1.0):
+            self.node.logger.info("Camera service not available, waiting again...")
 
     async def has_frames(self):
         result = await self.node.camera_has_frames.call_async(GetBool.Request())

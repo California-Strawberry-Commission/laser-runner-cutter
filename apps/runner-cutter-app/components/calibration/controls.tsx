@@ -71,12 +71,18 @@ export default function Controls() {
         </Button>
       </div>
       {frameSrc && (
-        <img
-          src={frameSrc}
-          alt="Camera Color Frame"
-          onLoad={onImageLoad}
-          onClick={onImageClick}
-        />
+        <>
+          <p className="text-center">
+            Click on the image below to fire the laser at that point and add a
+            calibration point
+          </p>
+          <img
+            src={frameSrc}
+            alt="Camera Color Frame"
+            onLoad={onImageLoad}
+            onClick={onImageClick}
+          />
+        </>
       )}
     </div>
   );

@@ -379,9 +379,6 @@ class CameraControlNode(Node):
 
     def _create_pos_data_msg(self, point_list, frames):
         msg = PosData()
-        msg.pos_list = []
-        msg.point_list = []
-        msg.invalid_point_list = []
         msg.timestamp = frames["timestamp"] / 1000
         for point in point_list:
             point_msg = Vector2(x=float(point[0]), y=float(point[1]))

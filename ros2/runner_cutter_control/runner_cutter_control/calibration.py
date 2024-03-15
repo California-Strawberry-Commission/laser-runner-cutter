@@ -91,10 +91,11 @@ class Calibration:
         transformed_point = transformed_point / transformed_point[2]
         return transformed_point[:2]
 
-    async def add_point_correspondence(self, laser_pixel):
+    async def add_point_correspondence(self, laser_pixel, num_attempts=3):
         attempts = 0
-        while attempts < 20:
-            self.logger.info(f"attempt = {attempts}")
+        while attempts < num_attempts:
+            if self.logger:
+                self.logger.info(f"attempt = {attempts}")
             attempts += 1
             pos_data = await self.camera_client.get_laser_pos()
             if pos_data["pos_list"]:
@@ -110,9 +111,10 @@ class Calibration:
                     )
                 return
             await asyncio.sleep(0.2)
-        self.logger.info(
-            f"Failed to find point. {len(self.calibration_laser_pixels)} total correspondences."
-        )
+        if self.logger:
+            self.logger.info(
+                f"Failed to find point. {len(self.calibration_laser_pixels)} total correspondences."
+            )
 
     def update_transform_bundle_adjustment(self):
         def cost_function(parameters, camera_points, laser_pixels):

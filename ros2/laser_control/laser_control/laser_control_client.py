@@ -30,7 +30,7 @@ class LaserControlClient:
 
     def wait_active(self):
         while not self.node.laser_play.wait_for_service(timeout_sec=1.0):
-            self.node.get_logger().info("laser service not available, waiting again...")
+            self.node.get_logger().info("Laser service not available, waiting again...")
 
     async def start_laser(self, point=None, color=None):
         if point is not None:

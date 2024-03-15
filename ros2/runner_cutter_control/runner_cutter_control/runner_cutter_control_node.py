@@ -32,50 +32,6 @@ class Runner:
         self.corrected_laser_point = None
 
 
-class ServiceWaitState:
-    """State to wait for other services that need to come up"""
-
-    def __init__(self, node, logger, laser_client, camera_client):
-        super().__init__(outcomes=["services_up"])
-        self.node = node
-        self.logger = logger
-        self.laser_client = laser_client
-        self.camera_client = camera_client
-
-    def execute(self, blackboard):
-        self.logger.info("Entering State ServiceWait")
-        self.node.publish_state("ServiceWait")
-
-        # TODO: Check that laser connected correctly
-        time.sleep(3)
-        self.laser_client.wait_active()
-
-        # Check that the camera has frames
-        self.logger.info("wait for frames")
-        has_frames = False
-        while not has_frames:
-            has_frames = self.camera_client.has_frames()
-
-        return "services_up"
-
-
-class CalibrateState:
-    """Calibrate the laser to camera, creating a 3D pos to laser frame transform."""
-
-    def __init__(self, node, logger, calibration):
-        super().__init__(outcomes=["failed_to_calibrate", "calibrated"])
-        self.node = node
-        self.logger = logger
-        self.calibration = calibration
-
-    def execute(self, blackboard):
-        self.logger.info("Entering State Calibrate")
-        self.node.publish_state("Calibrate")
-
-        result = self.calibration.calibrate()
-        return "calibrated" if result else "failed_to_calibrate"
-
-
 class AcquireState:
     """A transition phase, checks if calibration is needed, or if runners are present to be trimmed"""
 
@@ -318,6 +274,8 @@ class RunnerCutterControlNode(Node):
 
         self.laser_client = LaserControlClient(self, self.laser_node_name)
         self.camera_client = CameraControlClient(self, self.camera_node_name)
+        self.laser_client.wait_active()
+        self.camera_client.wait_active()
         self.calibration = Calibration(
             self.laser_client,
             self.camera_client,
