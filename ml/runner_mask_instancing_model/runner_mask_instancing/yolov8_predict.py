@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 from PIL import Image, ImageDraw
-from segment_utils import convert_mask_to_line_segments
+from ml_utils.segment_utils import convert_mask_to_line_segments
 
 
 DATA_DIR = os.path.join(
