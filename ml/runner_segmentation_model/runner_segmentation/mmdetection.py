@@ -29,8 +29,8 @@ class MMDetection:
                 PROJECT_PATH,
                 "configs",
                 "mmdetection",
-                "mask_rcnn",
-                "mask-rcnn_r50_fpn_1x_coco.py",
+                "albu_example",
+                "mask-rcnn_r50_fpn_albu-1x_coco.py",
             )
         )
 
@@ -65,6 +65,20 @@ class MMDetection:
             self.cfg.val_evaluator.ann_file = os.path.join(data_dir, "coco_val.json")
             self.cfg.test_evaluator.ann_file = os.path.join(data_dir, "coco_test.json")
 
+        # Set up working dir to save files and logs
+        if output_dir is not None:
+            self.cfg.work_dir = output_dir
+
+    def load_weights(self, weights_file):
+        self.cfg.load_from = weights_file
+
+    def train(self, epochs=DEFAULT_EPOCHS, resume=False):
+        self.cfg.train_cfg.max_epochs = epochs
+        self.cfg.default_hooks.checkpoint.interval = int(epochs / 10)
+        self.cfg.default_hooks.checkpoint.max_keep_ckpts = 5
+        self.cfg.default_hooks.checkpoint.save_best = "segm_mAP"
+        self.cfg.resume = resume
+
         # Enable automatic-mixed-precision (AMP) training
         self.cfg.optim_wrapper.type = "AmpOptimWrapper"
         self.cfg.optim_wrapper.loss_scale = "dynamic"
@@ -81,19 +95,6 @@ class MMDetection:
                 'Cannot find "auto_scale_lr" or "auto_scale_lr.enable" or "auto_scale_lr.base_batch_size" in your configuration file.'
             )
 
-        # Set up working dir to save files and logs
-        if output_dir is not None:
-            self.cfg.work_dir = output_dir
-
-    def load_weights(self, weights_file):
-        self.cfg.load_from = weights_file
-
-    def train(self, epochs=DEFAULT_EPOCHS, resume=False):
-        self.cfg.train_cfg.max_epochs = epochs
-        self.cfg.default_hooks.checkpoint.interval = int(epochs / 10)
-        self.cfg.default_hooks.checkpoint.max_keep_ckpts = 5
-        self.cfg.default_hooks.checkpoint.save_best = "segm_mAP"
-        self.cfg.resume = resume
         self.cfg.param_scheduler = [
             # Linear learning rate warm-up scheduler
             dict(type="LinearLR", start_factor=0.001, by_epoch=False, begin=0, end=500),
