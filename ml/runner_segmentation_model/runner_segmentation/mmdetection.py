@@ -21,15 +21,21 @@ DATASET_METAINFO = {
 }
 CUSTOM_MODELS_DIR = os.path.join(PROJECT_PATH, "configs", "mmdetection", "runner")
 MODELS = {
-    "mask-rcnn_r50_fpn_1x_coco",
-    os.path.join(CUSTOM_MODELS_DIR, "mask-rcnn_r50_fpn_1x_coco.py"),
+    "mask-rcnn_r50_fpn_1x_coco": os.path.join(
+        CUSTOM_MODELS_DIR, "mask-rcnn_r50_fpn_1x_coco.py"
+    ),
 }
 
 
 class MMDetection:
-    def __init__(self, data_dir=DEFAULT_DATA_DIR, output_dir=DEFAULT_OUTPUT_DIR):
+    def __init__(
+        self,
+        model_name="mask-rcnn_r50_fpn_1x_coco",
+        data_dir=DEFAULT_DATA_DIR,
+        output_dir=DEFAULT_OUTPUT_DIR,
+    ):
         # Base config
-        self.cfg = Config.fromfile(MODELS["mask-rcnn_r50_fpn_1x_coco"])
+        self.cfg = Config.fromfile(MODELS[model_name])
 
         # Modify dataset
         if data_dir is not None:
