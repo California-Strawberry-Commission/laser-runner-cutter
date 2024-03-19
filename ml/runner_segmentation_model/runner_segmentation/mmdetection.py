@@ -3,7 +3,7 @@ import argparse
 from mmengine.config import Config
 from mmengine.registry import RUNNERS
 from mmengine.runner import Runner
-
+from mmdet.apis import DetInferencer
 
 PROJECT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 DEFAULT_DATA_DIR = os.path.join(
@@ -39,30 +39,31 @@ class MMDetection:
         self.cfg.model.roi_head.mask_head.num_classes = 1
 
         # Modify dataset
-        self.cfg.dataset_type = DATASET_TYPE
-        self.cfg.data_root = data_dir
+        if data_dir is not None:
+            self.cfg.dataset_type = DATASET_TYPE
+            self.cfg.data_root = data_dir
 
-        self.cfg.train_dataloader.dataset.type = DATASET_TYPE
-        self.cfg.train_dataloader.dataset.metainfo = DATASET_METAINFO
-        self.cfg.train_dataloader.dataset.data_root = data_dir
-        self.cfg.train_dataloader.dataset.ann_file = "coco_train.json"
-        self.cfg.train_dataloader.dataset.data_prefix = dict(img="images/train")
+            self.cfg.train_dataloader.dataset.type = DATASET_TYPE
+            self.cfg.train_dataloader.dataset.metainfo = DATASET_METAINFO
+            self.cfg.train_dataloader.dataset.data_root = data_dir
+            self.cfg.train_dataloader.dataset.ann_file = "coco_train.json"
+            self.cfg.train_dataloader.dataset.data_prefix = dict(img="images/train")
 
-        self.cfg.val_dataloader.dataset.type = DATASET_TYPE
-        self.cfg.val_dataloader.dataset.metainfo = DATASET_METAINFO
-        self.cfg.val_dataloader.dataset.data_root = data_dir
-        self.cfg.val_dataloader.dataset.ann_file = "coco_val.json"
-        self.cfg.val_dataloader.dataset.data_prefix = dict(img="images/val")
+            self.cfg.val_dataloader.dataset.type = DATASET_TYPE
+            self.cfg.val_dataloader.dataset.metainfo = DATASET_METAINFO
+            self.cfg.val_dataloader.dataset.data_root = data_dir
+            self.cfg.val_dataloader.dataset.ann_file = "coco_val.json"
+            self.cfg.val_dataloader.dataset.data_prefix = dict(img="images/val")
 
-        self.cfg.test_dataloader.dataset.type = DATASET_TYPE
-        self.cfg.test_dataloader.dataset.metainfo = DATASET_METAINFO
-        self.cfg.test_dataloader.dataset.data_root = data_dir
-        self.cfg.test_dataloader.dataset.ann_file = "coco_test.json"
-        self.cfg.test_dataloader.dataset.data_prefix = dict(img="images/test")
+            self.cfg.test_dataloader.dataset.type = DATASET_TYPE
+            self.cfg.test_dataloader.dataset.metainfo = DATASET_METAINFO
+            self.cfg.test_dataloader.dataset.data_root = data_dir
+            self.cfg.test_dataloader.dataset.ann_file = "coco_test.json"
+            self.cfg.test_dataloader.dataset.data_prefix = dict(img="images/test")
 
-        # Modify evaluator
-        self.cfg.val_evaluator.ann_file = os.path.join(data_dir, "coco_val.json")
-        self.cfg.test_evaluator.ann_file = os.path.join(data_dir, "coco_test.json")
+            # Modify evaluator
+            self.cfg.val_evaluator.ann_file = os.path.join(data_dir, "coco_val.json")
+            self.cfg.test_evaluator.ann_file = os.path.join(data_dir, "coco_test.json")
 
         # Enable automatic-mixed-precision (AMP) training
         self.cfg.optim_wrapper.type = "AmpOptimWrapper"
@@ -81,14 +82,32 @@ class MMDetection:
             )
 
         # Set up working dir to save files and logs
-        self.cfg.work_dir = output_dir
+        if output_dir is not None:
+            self.cfg.work_dir = output_dir
 
     def load_weights(self, weights_file):
         self.cfg.load_from = weights_file
 
     def train(self, epochs=DEFAULT_EPOCHS, resume=False):
         self.cfg.train_cfg.max_epochs = epochs
+        self.cfg.default_hooks.checkpoint.interval = int(epochs / 10)
+        self.cfg.default_hooks.checkpoint.max_keep_ckpts = 5
+        self.cfg.default_hooks.checkpoint.save_best = "segm_mAP"
         self.cfg.resume = resume
+        self.cfg.param_scheduler = [
+            # Linear learning rate warm-up scheduler
+            dict(type="LinearLR", start_factor=0.001, by_epoch=False, begin=0, end=500),
+            dict(
+                type="MultiStepLR",
+                by_epoch=True,
+                begin=0,
+                end=epochs,
+                milestones=[int(epochs * 0.67), int(epochs * 0.92)],
+                gamma=0.1,
+            ),
+        ]
+
+        # print(f"Config:\n{self.cfg.pretty_text}")
 
         # Build the runner from config
         if "runner_type" not in self.cfg:
@@ -111,6 +130,11 @@ class MMDetection:
 
         runner.test()
 
+    def debug(self, image_file, mask_subdir=None):
+        # TODO: if mask_subdir is provided, show ground truth and predictions side-by-side
+        inferencer = DetInferencer(weights=self.cfg.load_from)
+        inferencer(image_file, show=True)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -124,10 +148,7 @@ if __name__ == "__main__":
         "--data_dir",
         default=DEFAULT_DATA_DIR,
     )
-    train_parser.add_argument(
-        "--weights_file",
-        default=os.path.join(DEFAULT_OUTPUT_DIR, "model_final.pth"),
-    )
+    train_parser.add_argument("--weights_file")
     train_parser.add_argument("--epochs", type=int, default=DEFAULT_EPOCHS)
     train_parser.add_argument(
         "--output_dir",
@@ -141,17 +162,26 @@ if __name__ == "__main__":
     )
     eval_parser.add_argument(
         "--weights_file",
-        default=os.path.join(DEFAULT_OUTPUT_DIR, "model_final.pth"),
+        required=True,
     )
     eval_parser.add_argument(
         "--output_dir",
         default=DEFAULT_OUTPUT_DIR,
     )
 
+    debug_parser = subparsers.add_parser("debug", help="Debug model predictions")
+    debug_parser.add_argument(
+        "--weights_file",
+        required=True,
+    )
+    debug_parser.add_argument("--image_file", required=True)
+    debug_parser.add_argument("--mask_subdir")
+
     args = parser.parse_args()
 
+    data_dir = None if args.command == "debug" else args.data_dir
     output_dir = None if args.command == "debug" else args.output_dir
-    model = MMDetection(data_dir=args.data_dir, output_dir=output_dir)
+    model = MMDetection(data_dir=data_dir, output_dir=output_dir)
     weights_file = args.weights_file
     weights_file_exists = weights_file is not None and os.path.exists(weights_file)
     if weights_file_exists:
@@ -164,5 +194,7 @@ if __name__ == "__main__":
         )
     elif args.command == "eval":
         model.eval()
+    elif args.command == "debug":
+        model.debug(args.image_file, mask_subdir=args.mask_subdir)
     else:
         print("Invalid command.")

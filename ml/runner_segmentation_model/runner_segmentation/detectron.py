@@ -276,10 +276,7 @@ if __name__ == "__main__":
         "--masks_dir",
         default=os.path.join(DEFAULT_PREPARED_DATA_DIR, "masks"),
     )
-    train_parser.add_argument(
-        "--weights_file",
-        default=os.path.join(DEFAULT_OUTPUT_DIR, "model_final.pth"),
-    )
+    train_parser.add_argument("--weights_file")
     train_parser.add_argument("--epochs", type=int, default=DEFAULT_EPOCHS)
     train_parser.add_argument(
         "--output_dir",
@@ -297,7 +294,7 @@ if __name__ == "__main__":
     )
     eval_parser.add_argument(
         "--weights_file",
-        default=os.path.join(DEFAULT_OUTPUT_DIR, "model_final.pth"),
+        required=True,
     )
     eval_parser.add_argument(
         "--output_dir",
@@ -307,7 +304,7 @@ if __name__ == "__main__":
     debug_parser = subparsers.add_parser("debug", help="Debug model predictions")
     debug_parser.add_argument(
         "--weights_file",
-        default=os.path.join(DEFAULT_OUTPUT_DIR, "model_final.pth"),
+        required=True,
     )
     debug_parser.add_argument("--image_file", required=True)
     debug_parser.add_argument("--mask_subdir")
