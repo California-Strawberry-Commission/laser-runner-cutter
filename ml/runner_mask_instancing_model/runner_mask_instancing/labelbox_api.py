@@ -16,7 +16,7 @@ import torch.nn.functional as F
 import cv2
 from dotenv import load_dotenv
 from natsort import natsorted
-from segment_utils import convert_mask_to_line_segments
+from ml_utils.segment_utils import convert_mask_to_line_segments
 from ultralytics import YOLO
 from PIL import Image
 

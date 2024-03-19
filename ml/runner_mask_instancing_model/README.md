@@ -66,7 +66,7 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
 
 1.  Upload non-instanced runner mask images to the existing Labelbox dataset:
 
-        $ python runner_mask_instancing/labelbox_api import_images --images_dir <path to images dir>
+        $ python runner_mask_instancing/labelbox_api.py import_images --images_dir <path to images dir>
 
 1.  Annotate the images in Labelbox with one polyline for each runner instance
 
@@ -83,13 +83,16 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
 
 1.  Create YOLO label txt files from the instanced masks:
 
-        $ python runner_mask_instancing/create_yolo_labels.py
+        $ python ../ml_utils/ml_utils/create_yolo_labels.py --input_dir data/raw/masks --output_dir data/raw/labels
 
-1.  Run `split_data.py` to split the raw image and label data into training and validation datasets. Be sure to remove the existing train/val images and labels beforehand.
+1.  Run `split_data.py` in the `ml_utils` package to split the raw image and label data into training and validation datasets. Be sure to remove the existing train/val images and labels beforehand.
 
-        $ rm -rf data/prepared/images
-        $ rm -rf data/prepared/labels
-        $ python runner_mask_instancing/split_data.py
+        Remove existing split:
+        $ rm -rf data/prepared
+        Split the images first:
+        $ python ../ml_utils/ml_utils/split_data.py images --input_dir data/raw/images --output_dir data/prepared/images
+        Split the YOLO labels to match the image split:
+        $ python ../ml_utils/ml_utils/split_data.py yolo_labels --input_dir data/raw/labels --output_dir data/prepared/labels
 
 1.  Train the model locally:
 

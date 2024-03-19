@@ -27,8 +27,10 @@ import matplotlib.pyplot as plt
 
 PROJECT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 DEFAULT_PREPARED_DATA_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "../data/prepared/runner1800",
+    PROJECT_PATH,
+    "data",
+    "prepared",
+    "runner1800",
 )
 DEFAULT_OUTPUT_DIR = os.path.join(PROJECT_PATH, "output", "detectron")
 DEFAULT_EPOCHS = 150
@@ -135,6 +137,7 @@ class Detectron:
                 os.path.join(
                     PROJECT_PATH,
                     "configs",
+                    "detectron2",
                     "PointRend",
                     "InstanceSegmentation",
                     "pointrend_rcnn_R_50_FPN_3x_coco.yaml",

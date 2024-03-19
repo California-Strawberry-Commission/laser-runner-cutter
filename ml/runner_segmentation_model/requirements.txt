@@ -11,4 +11,6 @@ natsort
 opencv-python
 albumentations
 torchmetrics
+tqdm
 git+https://github.com/facebookresearch/detectron2.git
+../ml_utils
