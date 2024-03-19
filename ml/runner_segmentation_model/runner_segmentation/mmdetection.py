@@ -4,6 +4,7 @@ from mmengine.config import Config
 from mmengine.registry import RUNNERS
 from mmengine.runner import Runner
 from mmdet.apis import DetInferencer
+from time import perf_counter
 
 PROJECT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 DEFAULT_DATA_DIR = os.path.join(
@@ -75,7 +76,7 @@ class MMDetection:
         self.cfg.train_cfg.max_epochs = epochs
         self.cfg.default_hooks.checkpoint.interval = int(epochs / 10)
         self.cfg.default_hooks.checkpoint.max_keep_ckpts = 5
-        self.cfg.default_hooks.checkpoint.save_best = "segm_mAP"
+        self.cfg.default_hooks.checkpoint.save_best = "coco/segm_mAP"
         self.cfg.resume = resume
 
         # Enable automatic-mixed-precision (AMP) training
@@ -133,6 +134,16 @@ class MMDetection:
     def debug(self, image_file, mask_subdir=None):
         # TODO: if mask_subdir is provided, show ground truth and predictions side-by-side
         inferencer = DetInferencer(weights=self.cfg.load_from)
+
+        # Measure inference time
+        # Warmup
+        for i in range(5):
+            inferencer(image_file)
+        inference_start = perf_counter()
+        inferencer(image_file)
+        inference_stop = perf_counter()
+        print(f"Inference took {inference_stop - inference_start} seconds.")
+
         inferencer(image_file, show=True)
 
 
