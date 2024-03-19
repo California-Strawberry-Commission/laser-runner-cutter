@@ -1,4 +1,5 @@
 #!/bin/bash
+
 script_dir=$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )
 
 # https://github.com/IntelRealSense/librealsense/blob/master/doc/distribution_linux.md#installing-the-packages
@@ -27,5 +28,5 @@ git submodule update --init --recursive
 cp -r realsense-ros/realsense2_* "$script_dir"
 
 # Setup for ROS
-sudo rosdep init --include-eol-distros      # "sudo rosdep init --include-eol-distros" for Foxy and earlier
-rosdep update --include-eol-distros         # "sudo rosdep update --include-eol-distros" for Foxy and earlier
+# sudo rosdep init --include-eol-distros      # "sudo rosdep init --include-eol-distros" for Foxy and earlier
+# rosdep update --include-eol-distros         # "sudo rosdep update --include-eol-distros" for Foxy and earlier

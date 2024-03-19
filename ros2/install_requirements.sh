@@ -1,4 +1,5 @@
 #!/bin/bash
+
 # Install python deps of subpackages
 # (Don't bother using ROS's dep management for py)
 script_dir=$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )

@@ -1,4 +1,5 @@
 #!/bin/bash
+
 script_dir=$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )
 
 APT_DEPS="ros-foxy-desktop python3-argcomplete python3-pip python3-rosdep2 python3-colcon-common-extensions ros-foxy-diagnostic-updater"
@@ -10,7 +11,6 @@ sudo apt upgrade -y
 
 # ROS install
 # Follow: https://docs.ros.org/en/foxy/Installation/Ubuntu-Install-Debians.html
-echo "!!!!!!!!!!! ROS is not installed - installing FOXY !!!!!!!!!!!"
 sudo apt install software-properties-common
 sudo add-apt-repository universe
 
