@@ -1,17 +1,22 @@
+import logging
+
 from rclpy.callback_groups import ReentrantCallbackGroup
 from std_srvs.srv import Trigger
 
 from common_interfaces.msg import Vector2
-from laser_control_interfaces.srv import AddPoint, GetBounds, SetColor, SetPoints
+from laser_control_interfaces.srv import AddPoint, SetColor, SetPoints
 
 
 class LaserControlClient:
-    def __init__(self, node, laser_node_name):
+    def __init__(self, node, laser_node_name, logger=None):
         self.node = node
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = logging.getLogger(__name__)
+            self.logger.setLevel(logging.DEBUG)
+
         callback_group = ReentrantCallbackGroup()
-        node.laser_get_bounds = node.create_client(
-            GetBounds, f"/{laser_node_name}/get_bounds", callback_group=callback_group
-        )
         node.laser_set_color = node.create_client(
             SetColor, f"/{laser_node_name}/set_color", callback_group=callback_group
         )
@@ -33,14 +38,14 @@ class LaserControlClient:
 
     def wait_active(self):
         while not self.node.laser_play.wait_for_service(timeout_sec=1.0):
-            self.node.get_logger().info("laser service not available, waiting again...")
+            self.logger.info("Laser service not available, waiting again...")
 
     async def start_laser(self, point=None, color=None):
         if point is not None:
-            self.set_point(point)
+            await self.set_point(point)
 
         if color is not None:
-            self.set_color(color)
+            await self.set_color(color)
 
         return await self.node.laser_play.call_async(Trigger.Request())
 
@@ -91,13 +96,7 @@ class LaserControlClient:
         Add rendered point.
 
         Args:
-            point: (x, y), in laser coordinates
+            point: (x, y), where x and y are normalized to [0, 1]
         """
         request = AddPoint.Request(point=Vector2(x=point[0], y=point[1]))
         return await self.node.laser_add_point.call_async(request)
-
-    async def get_bounds(self, scale=1.0):
-        result = await self.node.laser_get_bounds.call_async(
-            GetBounds.Request(scale=scale)
-        )
-        return [(point.x, point.y) for point in result.points]

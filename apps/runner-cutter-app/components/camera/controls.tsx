@@ -27,7 +27,7 @@ export default function Controls() {
     stopRecordingVideo,
     saveImage,
   } = useCameraNode(nodeName);
-  const [exposureMs, setExposureMs] = useState<number>(0.2);
+  const [exposureMs, setExposureMs] = useState<string>("0.2");
 
   useEffect(() => {
     // TODO: add listener for rosbridge connection state
@@ -55,13 +55,15 @@ export default function Controls() {
           value={exposureMs.toString()}
           onChange={(event) => {
             const value = Number(event.target.value);
-            setExposureMs(isNaN(value) ? 0 : value);
+            if (!isNaN(value)) {
+              setExposureMs(event.target.value);
+            }
           }}
         />
         <Button
           disabled={!rosConnected}
           onClick={() => {
-            setExposure(exposureMs);
+            setExposure(Number(exposureMs));
           }}
         >
           Set Exposure

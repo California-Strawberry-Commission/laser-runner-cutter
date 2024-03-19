@@ -1,21 +1,27 @@
-import pyrealsense2 as rs
+import logging
+
 import numpy as np
+import pyrealsense2 as rs
 
 
 class RealSense:
     def __init__(
         self,
-        logger,
         color_frame_size,
         depth_frame_size,
         align_depth_to_color_frame=True,
         camera_index=0,
+        logger=None,
     ):
-        self.logger = logger
         self.color_frame_size = color_frame_size
         self.depth_frame_size = depth_frame_size
         self.align_depth_to_color_frame = align_depth_to_color_frame
         self.camera_index = camera_index
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = logging.getLogger(__name__)
+            self.logger.setLevel(logging.DEBUG)
 
     def initialize(self):
         # Setup code based on https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/align-depth2color.py
@@ -117,6 +123,7 @@ class RealSense:
         """Given an x-y point in the color frame, return the x-y-z position with respect to the camera"""
         depth_pixel = self._color_pixel_to_depth_pixel(color_pixel, depth_frame)
         if not depth_pixel:
+            self.logger.info("No depth pixel")
             return None
 
         if np.isnan(depth_pixel[0]) or np.isnan(depth_pixel[1]):
@@ -124,10 +131,12 @@ class RealSense:
             return None
 
         depth = depth_frame.get_distance(round(depth_pixel[0]), round(depth_pixel[1]))
-        return (
-            rs.rs2_deproject_pixel_to_point(self.color_intrinsics, color_pixel, depth)
-            if depth > 0
-            else None
+        if depth < 0:
+            self.logger.info("Calculated negative depth")
+            return None
+
+        return rs.rs2_deproject_pixel_to_point(
+            self.color_intrinsics, color_pixel, depth
         )
 
     def _color_pixel_to_depth_pixel(self, pixel, depth_frame):

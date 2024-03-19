@@ -33,15 +33,22 @@ Note: the following steps are encapsulated in `scripts/env_setup.sh`.
 
 1.  Install specific version of PyTorch to match the CUDA version
 
-        $ pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+        $ pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu118
 
     NOTE: If you have any existing installs of touch torchvision or torchaudio in the venv, this will cause errors and they should be uninstalled.
+
+1.  Install MMDetection
+
+        $ pip install -U openmim
+        $ mim install mmengine
+        $ mim install mmcv
+        $ mim install mmdet
 
 1.  Install necessary requirements
 
         $ pip install -r requirements.txt
 
-1.  Ensure opencv-python
+1.  Check opencv-python
 
         $ pip list | grep opencv
 
@@ -124,11 +131,11 @@ DVC abstracts cloud storage and versioning of data for machine learning. It allo
         Remove existing split:
         $ rm -rf data/prepared
         Split the images first:
-        $ python runner_segmentation/split_data.py images
+        $ python runner_segmentation/split_data.py images --input_dir data/raw/runner1800/images --output_dir data/prepared/runner1800/images
         Split the YOLO labels to match the image split:
-        $ python runner_segmentation/split_data.py yolo_labels
+        $ python runner_segmentation/split_data.py yolo_labels --input_dir data/raw/runner1800/labels --output_dir data/prepared/runner1800/labels
         Split the instanced masks (used by Mask R-CNN) to match the image split:
-        $ python runner_segmentation/split_data.py masks
+        $ python runner_segmentation/split_data.py masks --input_dir data/raw/runner1800/masks --output_dir data/prepared/runner1800/masks
 
 1.  Train and evaluate the YOLOv8 model locally:
 
@@ -140,7 +147,12 @@ DVC abstracts cloud storage and versioning of data for machine learning. It allo
         $ python runner_segmentation/mask_rcnn.py train
         $ python runner_segmentation/mask_rcnn.py eval --weights_file <path to trained weights>
 
-1.  Train and evaluate the Detectron2 Mask R-CNN model locally:
+1.  Train and evaluate a Detectron2 model locally:
 
         $ python runner_segmentation/detectron.py train
         $ python runner_segmentation/detectron.py eval --weights_file <path to trained weights>
+
+1.  Train and evaluate a MMDetection model locally:
+
+        $ python runner_segmentation/mmdetection.py train
+        $ python runner_segmentation/mmdetection.py eval --weights_file <path to trained weights>
