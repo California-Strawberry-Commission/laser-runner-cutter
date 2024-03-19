@@ -19,24 +19,17 @@ DATASET_TYPE = "CocoDataset"
 DATASET_METAINFO = {
     "classes": ("runner",),
 }
+CUSTOM_MODELS_DIR = os.path.join(PROJECT_PATH, "configs", "mmdetection", "runner")
+MODELS = {
+    "mask-rcnn_r50_fpn_1x_coco",
+    os.path.join(CUSTOM_MODELS_DIR, "mask-rcnn_r50_fpn_1x_coco.py"),
+}
 
 
 class MMDetection:
     def __init__(self, data_dir=DEFAULT_DATA_DIR, output_dir=DEFAULT_OUTPUT_DIR):
         # Base config
-        self.cfg = Config.fromfile(
-            os.path.join(
-                PROJECT_PATH,
-                "configs",
-                "mmdetection",
-                "albu_example",
-                "mask-rcnn_r50_fpn_albu-1x_coco.py",
-            )
-        )
-
-        # Modify model
-        self.cfg.model.roi_head.bbox_head.num_classes = 1
-        self.cfg.model.roi_head.mask_head.num_classes = 1
+        self.cfg = Config.fromfile(MODELS["mask-rcnn_r50_fpn_1x_coco"])
 
         # Modify dataset
         if data_dir is not None:
