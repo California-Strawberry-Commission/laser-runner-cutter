@@ -147,7 +147,12 @@ DVC abstracts cloud storage and versioning of data for machine learning. It allo
         $ python runner_segmentation/mask_rcnn.py train
         $ python runner_segmentation/mask_rcnn.py eval --weights_file <path to trained weights>
 
-1.  Train and evaluate the Detectron2 Mask R-CNN model locally:
+1.  Train and evaluate a Detectron2 model locally:
 
         $ python runner_segmentation/detectron.py train
         $ python runner_segmentation/detectron.py eval --weights_file <path to trained weights>
+
+1.  Train and evaluate a MMDetection model locally:
+
+        $ python runner_segmentation/mmdetection.py train
+        $ python runner_segmentation/mmdetection.py eval --weights_file <path to trained weights>

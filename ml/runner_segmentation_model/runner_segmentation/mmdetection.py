@@ -135,7 +135,7 @@ if __name__ == "__main__":
     )
 
     eval_parser = subparsers.add_parser("eval", help="Evaluate model performance")
-    train_parser.add_argument(
+    eval_parser.add_argument(
         "--data_dir",
         default=DEFAULT_DATA_DIR,
     )
