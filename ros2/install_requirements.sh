@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Install python deps of subpackages
 # (Don't bother using ROS's dep management for py)
