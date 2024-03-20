@@ -2,41 +2,21 @@
 This project uses **Ubuntu 20.04 (Focal Fossa)**! Newer versions of ROS are not currently supported!
 
 ## Auto-Install 
-Auto-Installation assumes a fresh version of Ubuntu 20.04 on a dedicated deployment or development machine. 
+Auto-Installation assumes a fresh version of **Ubuntu 20.04 desktop/server** on a dedicated deployment or development PC. 
 
 1. Clone this repository into your home directory
-        
+
+        $ cd ~
         $ git clone https://github.com/California-Strawberry-Commission/laser-runner-cutter
 
-2. Run the install script in `laser-runner-cutter/ros2`
+1. Run the install script in `laser-runner-cutter/ros2`
         
         $ cd laser-runner-cutter/ros2
         $ bash install.sh
 
-3. Set up your environment. If clone elsewhere, use that directory. Optionally, add this line to the end of your `.bashrc` to automagically activate the environment on every login (useful for deployed systems)
+1. Set up your environment. If you cloned somewhere other than home, use that directory instead of `~`. Optionally, also add this line to the end of your `.bashrc` to automagically activate the environment on every login (useful for deployed/dev systems)
 
         $ source ~/laser-runner-cutter/setup.bash
-
-
-## Setup
-1.  Install [ROS 2](https://docs.ros.org/en/foxy/Installation/Ubuntu-Install-Debians.html). Once installed, run:
-
-        $ source /opt/ros/foxy/setup.zsh
-
-1.  Create ROS workspace
-
-        $ mkdir -p ~/ros2_ws/src
-        $ cd ~/ros2_ws
-
-1.  Create Python virtual environment
-
-        $ python3 -m venv venv  --system-site-packages --symlinks
-        $ touch venv/COLCON_IGNORE
-        $ source venv/bin/activate
-
-1.  If using VS Code, install the ROS extension for VS Code. Then, add the following to `.vscode/settings.json` in your project directory:
-
-        "~/ros2_ws/venv/lib/python3.8/site-packages"
 
 ### Using Helios DAC on Linux
 
@@ -55,20 +35,7 @@ Linux systems require udev rules to allow access to USB devices without root pri
 
 1.  Issue the command `sudo udevadm control --reload` (or restart the computer).
 
-## Install
 
-1.  Clone project and install dependencies
-
-        $ cd ~/ros2_ws/src
-        $ git clone https://github.com/California-Strawberry-Commission/laser-runner-cutter
-
-        # Install dependencies
-        $ laser-runner-cutter/ros2/install_requirements.sh
-
-1.  Build packages
-
-        $ cd ~/ros2_ws
-        $ colcon build
 
 ## Run
 
