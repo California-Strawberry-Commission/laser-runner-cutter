@@ -10,7 +10,10 @@ from glob import glob
 from natsort import natsorted
 import cv2
 import json
-from segment_utils import convert_mask_to_rle
+from segment_utils import (
+    convert_mask_to_coco_rle_segment,
+    convert_mask_to_coco_poly_segment,
+)
 from tqdm import tqdm
 
 
@@ -25,7 +28,7 @@ class NpEncoder(json.JSONEncoder):
         return super(NpEncoder, self).default(obj)
 
 
-def create_coco_labels(images_dir, masks_dir, output_filepath):
+def create_coco_labels(images_dir, masks_dir, output_filepath, poly=False):
     output_dir = os.path.dirname(output_filepath)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
@@ -70,14 +73,19 @@ def create_coco_labels(images_dir, masks_dir, output_filepath):
             # Calculate the area
             area = np.sum(mask > 0)
 
-            rle_counts, rle_size = convert_mask_to_rle(mask)
+            if poly:
+                segmentation = [convert_mask_to_coco_poly_segment(mask)]
+            else:
+                rle_counts, rle_size = convert_mask_to_coco_rle_segment(mask)
+                segmentation = {"size": rle_size, "counts": rle_counts}
+
             annotation = {
                 "image_id": idx,
                 "id": obj_count,
                 "category_id": 0,
                 "bbox": bbox,
                 "area": area,
-                "segmentation": {"size": rle_size, "counts": rle_counts},
+                "segmentation": segmentation,
                 "iscrowd": 0,
             }
             annotations.append(annotation)
@@ -115,5 +123,13 @@ if __name__ == "__main__":
         required=True,
         help="Output COCO label JSON file path",
     )
+    parser.add_argument(
+        "-p",
+        "--poly",
+        action="store_true",
+        help="Use polygon format (as opposed to RLE) for segmentation annotations",
+    )
     args = parser.parse_args()
-    create_coco_labels(args.images_dir, args.masks_dir, args.output_file)
+    create_coco_labels(
+        args.images_dir, args.masks_dir, args.output_file, poly=args.poly
+    )
