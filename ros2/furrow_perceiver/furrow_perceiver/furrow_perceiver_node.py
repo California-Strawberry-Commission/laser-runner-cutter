@@ -3,9 +3,9 @@ from rclpy.node import Node
 from example_interfaces.srv import SetBool
 
 
-class FurrowPrecieverNode(Node):
+class FurrowPerceiverNode(Node):
     def __init__(self):
-        super().__init__("furrow_preciever")
+        super().__init__("furrow_perceiver")
         self.activated_ = False
         self.service_ = self.create_service(
             SetBool, "activate_robot", self.callback_activate_robot)
@@ -26,7 +26,7 @@ class FurrowPrecieverNode(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    node = FurrowPrecieverNode()
+    node = FurrowPerceiverNode()
     rclpy.spin(node)
 
     node.on_shutdown()
