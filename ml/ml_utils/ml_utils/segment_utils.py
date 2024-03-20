@@ -59,7 +59,7 @@ def convert_mask_to_coco_poly_segment(mask):
         )
 
     else:
-        return np.array(polygons[0]).reshape(-1, 2).reshape(-1).tolist()
+        return polygons[0]
 
 
 def merge_multi_segment(segments):
