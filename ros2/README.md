@@ -2,14 +2,14 @@
 This project uses **Ubuntu 20.04 (Focal Fossa)**! Newer versions of ROS are not currently supported!
 
 ## Auto-Install 
-Auto-Installation assumes a fresh version of **Ubuntu 20.04 desktop/server** on a dedicated deployment or development PC. 
+Auto-Installation assumes a fresh version of **Ubuntu 20.04 desktop/server** on a dedicated deployment or development PC. Following these steps 
 
 1. Clone this repository into your home directory
 
         $ cd ~
         $ git clone https://github.com/California-Strawberry-Commission/laser-runner-cutter
 
-1. Run the install script in `laser-runner-cutter/ros2`
+1. Run the install script in `laser-runner-cutter/ros2`. This will take a while.
         
         $ cd laser-runner-cutter/ros2
         $ bash install.sh
@@ -17,6 +17,10 @@ Auto-Installation assumes a fresh version of **Ubuntu 20.04 desktop/server** on 
 1. Set up your environment. If you cloned somewhere other than home, use that directory instead of `~`. Optionally, also add this line to the end of your `.bashrc` to automagically activate the environment on every login (useful for deployed/dev systems)
 
         $ source ~/laser-runner-cutter/setup.bash
+
+1. Build the project to make sure everything installed correctly
+
+        $ bash build.sh
 
 ### Using Helios DAC on Linux
 
