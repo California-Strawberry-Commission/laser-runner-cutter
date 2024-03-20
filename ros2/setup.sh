@@ -3,6 +3,6 @@ source $script_dir/env.sh
 
 source $VENV_DIR/bin/activate
 source /opt/ros/foxy/setup.sh
-source ~/ros2_ws/install/local_setup.sh
+source $script_dir/install/local_setup.sh
 
 export PYTHONPATH=$PYTHONPATH:$VENV_DIR/lib/python3.8/site-packages
