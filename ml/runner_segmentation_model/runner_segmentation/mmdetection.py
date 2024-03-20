@@ -22,6 +22,9 @@ DATASET_METAINFO = {
 CUSTOM_MODELS_DIR = os.path.join(PROJECT_PATH, "configs", "mmdetection", "runner")
 MODELS = {
     "mask-rcnn_r50": os.path.join(CUSTOM_MODELS_DIR, "mask-rcnn_r50_fpn_1x_coco.py"),
+    "mask-rcnn_r50_albu": os.path.join(
+        CUSTOM_MODELS_DIR, "mask-rcnn_r50_fpn_albu_1x_coco.py"
+    ),
     "mask-rcnn_r101": os.path.join(CUSTOM_MODELS_DIR, "mask-rcnn_r101_fpn_1x_coco.py"),
     "point-rend_r50": os.path.join(
         CUSTOM_MODELS_DIR, "point-rend_r50-caffe_fpn_ms-1x_coco.py"
@@ -97,6 +100,23 @@ class MMDetection:
             and "base_batch_size" in self.cfg.auto_scale_lr
         ):
             self.cfg.auto_scale_lr.enable = True
+
+        """
+        # Models already define num epochs and learning rate, but we can customize it if we want.
+        self.cfg.train_cfg.max_epochs = epochs
+        self.cfg.param_scheduler = [
+            # Linear learning rate warm-up scheduler
+            dict(type="LinearLR", start_factor=0.001, by_epoch=False, begin=0, end=500),
+            dict(
+                type="MultiStepLR",
+                by_epoch=True,
+                begin=0,
+                end=epochs,
+                milestones=[int(epochs * 0.67), int(epochs * 0.92)],
+                gamma=0.1,
+            ),
+        ]
+        """
 
         print(f"Config:\n{self.cfg.pretty_text}")
 
