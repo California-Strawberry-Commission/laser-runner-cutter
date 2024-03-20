@@ -12,4 +12,7 @@ if [ ! -f "installed" ]; then
     bash ./install_realsense_ros.sh
     bash ./install_requirements.sh
     touch installed
+
+    echo "Building!"
+    bash ./build.sh
 fi

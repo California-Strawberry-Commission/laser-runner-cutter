@@ -16,7 +16,7 @@ Auto-Installation assumes a fresh version of **Ubuntu 20.04 desktop/server** on 
 
 1. Set up your environment. If you cloned somewhere other than home, use that directory instead of `~`. Optionally, also add this line to the end of your `.bashrc` to automagically activate the environment on every login (useful for deployed/dev systems)
 
-        $ source ~/laser-runner-cutter/setup.bash
+        $ source ~/laser-runner-cutter/ros2/setup.sh
 
 1. Build the project to make sure everything installed correctly
 
