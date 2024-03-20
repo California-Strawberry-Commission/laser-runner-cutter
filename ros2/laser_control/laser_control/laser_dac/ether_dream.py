@@ -56,9 +56,12 @@ class EtherDreamDAC(LaserDAC):
         self.points = []
         self.points_lock = threading.Lock()
         self.color = (1, 1, 1, 1)  # (r, g, b, i)
-        self.playing = False
-        self.connected_dac_id = 0
+        self.connected_dac_id = -1
         self.lib = ctypes.cdll.LoadLibrary(lib_file)
+        self.playing = False
+        self.playback_thread = None
+        self.check_connection = False
+        self.check_connection_thread = None
 
     def initialize(self):
         """Initialize the native library and search for online DACs"""
@@ -82,6 +85,19 @@ class EtherDreamDAC(LaserDAC):
             raise EtherDreamError(f"Could not connect to DAC [{hex(dac_id)}]")
         self.connected_dac_id = dac_id
         print(f"Connected to DAC with ID: {hex(dac_id)}")
+
+        def check_connection_thread():
+            while self.check_connection:
+                if self.lib.etherdream_is_connected(self.connected_dac_id) == 0:
+                    print(f"DAC connection error. Attempting to reconnect.")
+                time.sleep(2)
+
+        if self.check_connection_thread is None:
+            self.check_connection = True
+            self.check_connection_thread = threading.Thread(
+                target=check_connection_thread, daemon=True
+            )
+            self.check_connection_thread.start()
 
     def set_color(self, r=1, g=1, b=1, i=1):
         self.color = (r, g, b, i)
@@ -206,6 +222,11 @@ class EtherDreamDAC(LaserDAC):
             self.playback_thread = None
 
     def close(self):
+        self.stop()
+        if self.check_connection:
+            self.check_connection = False
+            self.check_connection_thread.join()
+            self.check_connection_thread = None
         if self.connected_dac_id:
             self.lib.etherdream_stop(self.connected_dac_id)
             self.lib.etherdream_disconnect(self.connected_dac_id)
