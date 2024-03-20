@@ -17,6 +17,6 @@ find "$script_dir" -name 'requirements.txt' -type f | while read -r file; do
     # Navigate to the directory containing the requirements.txt file
     echo "Installing requirements from $file"
     pushd "$dir_path" || exit
-    pip install -r "$(basename "$file")"
+    $VENV_DIR/bin/pip3 install -r "$(basename "$file")"
     popd || exit
 done

@@ -2,7 +2,21 @@
 This project uses **Ubuntu 20.04 (Focal Fossa)**! Newer versions of ROS are not currently supported!
 
 ## Auto-Install 
-Auto-Installation assumes a fresh version of Ubuntu 20.04 on a dedicated deployment or development machine.
+Auto-Installation assumes a fresh version of Ubuntu 20.04 on a dedicated deployment or development machine. 
+
+1. Clone this repository into your home directory
+        
+        $ git clone https://github.com/California-Strawberry-Commission/laser-runner-cutter
+
+2. Run the install script in `laser-runner-cutter/ros2`
+        
+        $ cd laser-runner-cutter/ros2
+        $ bash install.sh
+
+3. Set up your environment. If clone elsewhere, use that directory. Optionally, add this line to the end of your `.bashrc` to automagically activate the environment on every login (useful for deployed systems)
+
+        $ source ~/laser-runner-cutter/setup.bash
+
 
 ## Setup
 1.  Install [ROS 2](https://docs.ros.org/en/foxy/Installation/Ubuntu-Install-Debians.html). Once installed, run:
@@ -77,3 +91,7 @@ install_realsense_ros.sh
 install_requirements.sh
 install_ros.sh
 ```
+
+## Troubleshooting
+### No space left on device
+Make sure you have at least 32GB of available disk space. If installed using an LVM (Ubuntu server's default), expand your root (`/`) partition to at least 32GB.
