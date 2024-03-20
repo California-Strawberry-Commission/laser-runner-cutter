@@ -1,7 +1,10 @@
 # Laser Runner Cutter ROS2 Nodes
+This project uses **Ubuntu 20.04 (Focal Fossa)**! Newer versions of ROS are not currently supported!
+
+## Auto-Install 
+Auto-Installation assumes a fresh version of Ubuntu 20.04 on a dedicated deployment or development machine.
 
 ## Setup
-
 1.  Install [ROS 2](https://docs.ros.org/en/foxy/Installation/Ubuntu-Install-Debians.html). Once installed, run:
 
         $ source /opt/ros/foxy/setup.zsh
@@ -66,3 +69,11 @@ C/C++ libraries included were compiled for linux-x86_64 from the following sourc
 
 - Helios DAC: https://github.com/Grix/helios_dac
 - Ether Dream 4 DAC: https://github.com/genkikondo/ether-dream-sdk
+
+
+This will install [ROS 2 - Foxy](https://docs.ros.org/en/foxy/index.html), [realsense-ros](https://github.com/IntelRealSense/realsense-ros), and all python dependencies. This guide assumes a clean install of Ubuntu 20.04. If you already have ROS installed, you can manually install components using the scripts
+```sh
+install_realsense_ros.sh
+install_requirements.sh
+install_ros.sh
+```

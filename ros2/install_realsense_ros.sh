@@ -1,6 +1,7 @@
 #!/bin/bash
 
 script_dir=$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )
+source $script_dir/env.sh
 
 # https://github.com/IntelRealSense/librealsense/blob/master/doc/distribution_linux.md#installing-the-packages
 sudo apt-get install -y apt-transport-https

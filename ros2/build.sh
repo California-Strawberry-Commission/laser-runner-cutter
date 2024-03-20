@@ -7,6 +7,7 @@ cd $script_dir
 bash install.sh
 
 # Set up ROS workspace
+source 
 source /opt/ros/foxy/local_setup.bash
 source install/local_setup.bash
 

@@ -3,6 +3,8 @@
 # Install python deps of subpackages
 # (Don't bother using ROS's dep management for py)
 script_dir=$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )
+source $script_dir/env.sh
+source $VENV_DIR/bin/activate
 
 # Temporarily expand tmp to prevent install fails
 sudo mount -o remount,size=10G /tmp
