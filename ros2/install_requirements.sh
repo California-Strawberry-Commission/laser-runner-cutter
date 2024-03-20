@@ -7,9 +7,6 @@ script_dir=$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )
 source $script_dir/env.sh
 source $VENV_DIR/bin/activate
 
-# Temporarily expand tmp to prevent install fails
-sudo mount -o remount,size=10G /tmp
-
 # Find all requirement.txt files and iterate through them
 find "$script_dir" -name 'requirements.txt' -type f | while read -r file; do
     # Extract directory path of the requirements.txt file
