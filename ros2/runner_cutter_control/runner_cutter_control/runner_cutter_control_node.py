@@ -208,7 +208,10 @@ class StateMachine:
         self.machine.add_transition("run_calibration", "idle", "calibration")
         self.machine.add_transition("calibration_complete", "calibration", "idle")
         self.machine.add_transition(
-            "run_add_calibration_points", "idle", "add_calibration_points"
+            "run_add_calibration_points",
+            "idle",
+            "add_calibration_points",
+            conditions=["is_calibrated"],
         )
         self.machine.add_transition(
             "add_calibration_points_complete", "add_calibration_points", "idle"
@@ -308,20 +311,21 @@ class StateMachine:
             target.state = TrackState.FAILED
             await self.aim_failed()
 
-    async def _get_laser_pixel(self, max_attempts=3):
+    async def _get_laser_pixel_and_pos(self, max_attempts=3):
         attempt = 0
         while attempt < max_attempts:
             laser_pos = await self.camera_client.get_laser_pos()
             points = laser_pos["point_list"]
+            positions = laser_pos["pos_list"]
             if points:
                 if len(points) > 1:
                     self.logger.info("Found more than 1 laser during correction")
                 # TODO: better handle case where more than 1 laser detected
-                return points[0]
+                return points[0], positions[0]
             # No lasers detected. Try again.
             await asyncio.sleep(0.2)
             attempt += 1
-        return None
+        return None, None
 
     async def _correct_laser(
         self,
@@ -335,7 +339,7 @@ class StateMachine:
             await self.laser_client.set_point(current_laser_coord)
             # Wait for galvo to settle and for camera frame capture
             await asyncio.sleep(0.1)
-            laser_pixel = await self._get_laser_pixel()
+            laser_pixel, laser_pos = await self._get_laser_pixel_and_pos()
             if laser_pixel is None:
                 self.logger.info("Could not detect laser.")
                 return None
@@ -347,8 +351,12 @@ class StateMachine:
             if dist <= dist_threshold:
                 return current_laser_coord
             else:
-                # TODO: use this opportunity to add to calibration points since we have the laser
+                # Use this opportunity to add to calibration points since we have the laser
                 # coord and associated position in camera space
+                await self.calibration.add_point_correspondence(
+                    current_laser_coord, laser_pos, update_transform=True
+                )
+
                 # TODO: scale correction by camera frame size
                 correction = (target_pixel - laser_pixel) / 10
                 # Invert Y axis as laser coord Y is flipped from camera frame Y
