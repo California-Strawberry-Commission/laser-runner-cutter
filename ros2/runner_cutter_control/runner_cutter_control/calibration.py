@@ -1,5 +1,7 @@
 import asyncio
+import functools
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 from scipy.optimize import minimize
@@ -64,7 +66,7 @@ class Calibration:
 
         # Use least squares for an initial estimate, then use bundle adjustment to refine
         self._update_transform_least_squares()
-        self.update_transform_bundle_adjustment()
+        await self.update_transform_bundle_adjustment()
 
         self.is_calibrated = True
         return True
@@ -88,7 +90,7 @@ class Calibration:
         await self.camera_client.auto_exposure()
 
         if update_transform:
-            self.update_transform_bundle_adjustment()
+            await self.update_transform_bundle_adjustment()
 
     def camera_point_to_laser_coord(self, camera_point):
         homogeneous_camera_point = np.hstack((camera_point, 1))
@@ -120,7 +122,7 @@ class Calibration:
                 f"Failed to find point. {len(self.calibration_laser_coords)} total correspondences."
             )
 
-    def update_transform_bundle_adjustment(self):
+    async def update_transform_bundle_adjustment(self):
         def cost_function(parameters, camera_positions, laser_coords):
             homogeneous_camera_positions = np.hstack(
                 (camera_positions, np.ones((camera_positions.shape[0], 1)))
@@ -137,17 +139,25 @@ class Calibration:
 
         laser_coords = np.array(self.calibration_laser_coords)
         camera_positions = np.array(self.calibration_camera_positions)
-        # TODO: run on separate thread using loop.run_in_executor()
-        result = minimize(
-            cost_function,
-            self.camera_to_laser_transform,
-            args=(camera_positions, laser_coords),
-            method="L-BFGS-B",
-        )
+
+        with ThreadPoolExecutor() as executor:
+            result = await asyncio.get_event_loop().run_in_executor(
+                executor,
+                functools.partial(
+                    minimize,
+                    cost_function,
+                    self.camera_to_laser_transform,
+                    args=(camera_positions, laser_coords),
+                    method="L-BFGS-B",
+                ),
+            )
+
         self.camera_to_laser_transform = result.x.reshape((4, 3))
 
         if self.logger:
-            self.logger.info("Updated camera to laser transform")
+            self.logger.info(
+                "Updated camera to laser transform using bundle adjustment"
+            )
             self.logger.info(f"Laser coords:\n{laser_coords}")
             homogeneous_camera_positions = np.hstack(
                 (camera_positions, np.ones((camera_positions.shape[0], 1)))
@@ -187,7 +197,7 @@ class Calibration:
         )[0]
 
         if self.logger:
-            self.logger.info("Updated camera to laser transform")
+            self.logger.info("Updated camera to laser transform using least squares")
             self.logger.info(f"Laser coords:\n{laser_coords}")
             transformed_points = np.dot(
                 homogeneous_camera_positions, self.camera_to_laser_transform
