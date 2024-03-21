@@ -3,7 +3,10 @@ import useROS from "@/lib/ros/useROS";
 
 export default function useControlNode(nodeName: string) {
   const { callService, subscribe } = useROS();
-  const [nodeState, setNodeState] = useState<string>("disconnected");
+  const [nodeState, setNodeState] = useState({
+    calibrated: false,
+    state: "disconnected",
+  });
 
   // Initial node state
   useEffect(() => {
@@ -22,9 +25,9 @@ export default function useControlNode(nodeName: string) {
   useEffect(() => {
     const stateSub = subscribe(
       `${nodeName}/state`,
-      "std_msgs/String",
+      "runner_cutter_control_interfaces/State",
       (message) => {
-        setNodeState(message.data);
+        setNodeState(message);
       }
     );
 
@@ -54,7 +57,8 @@ export default function useControlNode(nodeName: string) {
   };
 
   return {
-    controlState: nodeState,
+    calibrated: nodeState.calibrated,
+    controlState: nodeState.state,
     calibrate,
     addCalibrationPoint,
     startRunnerCutter,

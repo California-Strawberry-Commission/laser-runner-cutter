@@ -25,6 +25,7 @@ find_package(common_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/State.msg"
   "srv/AddCalibrationPoints.srv"
   "srv/GetState.srv"
   DEPENDENCIES common_interfaces

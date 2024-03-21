@@ -22,7 +22,7 @@ export default function Controls() {
     frameSrc,
   } = useCameraNode(cameraNodeName);
   const { laserState } = useLaserNode(laserNodeName);
-  const { controlState, calibrate, addCalibrationPoint } =
+  const { calibrated, controlState, calibrate, addCalibrationPoint } =
     useControlNode(controlNodeName);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
 
@@ -58,7 +58,7 @@ export default function Controls() {
         }`}</p>
         <p className="text-center">{`Camera (${cameraNodeName}): connected=${connected}, laserDetectionEnabled=${laserDetectionEnabled}, runnerDetectionEnabled=${runnerDetectionEnabled}, recordingVideo=${recordingVideo}`}</p>
         <p className="text-center">{`Laser (${laserNodeName}): ${LASER_STATES[laserState]}`}</p>
-        <p className="text-center">{`Control (${controlNodeName}): ${controlState}`}</p>
+        <p className="text-center">{`Control (${controlNodeName}): calibrated=${calibrated}, controlState=${controlState}`}</p>
       </div>
       <div className="flex flex-row items-center gap-4">
         <Button

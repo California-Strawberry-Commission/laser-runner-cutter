@@ -13,7 +13,6 @@ import numpy as np
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from transitions.extensions.asyncio import AsyncMachine
 
@@ -21,6 +20,7 @@ from camera_control.camera_control_client import CameraControlClient
 from laser_control.laser_control_client import LaserControlClient
 from runner_cutter_control.calibration import Calibration
 from runner_cutter_control.tracker import Tracker, TrackState
+from runner_cutter_control_interfaces.msg import State
 from runner_cutter_control_interfaces.srv import AddCalibrationPoints, GetState
 
 
@@ -91,7 +91,7 @@ class RunnerCutterControlNode(Node):
 
         # Pub/sub
 
-        self.state_publisher = self.create_publisher(String, "~/state", 5)
+        self.state_publisher = self.create_publisher(State, "~/state", 5)
 
         # Set up dependencies
 
@@ -129,9 +129,13 @@ class RunnerCutterControlNode(Node):
         self.state_machine_thread = StateMachineThread(self.state_machine, self.logger)
         self.state_machine_thread.start()
 
+    def get_state(self):
+        return State(
+            calibrated=self.state_machine.is_calibrated, state=self.state_machine.state
+        )
+
     def publish_state(self):
-        msg = String(data=self.state_machine.state)
-        self.state_publisher.publish(msg)
+        self.state_publisher.publish(self.get_state())
 
     def _calibrate_callback(self, request, response):
         if self.state_machine.state == "idle":
@@ -159,7 +163,7 @@ class RunnerCutterControlNode(Node):
         return response
 
     def _get_state_callback(self, request, response):
-        response.state = self.state_machine.state
+        response.state = self.get_state()
         return response
 
 
