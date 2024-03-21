@@ -333,9 +333,8 @@ class StateMachine:
 
         while True:
             await self.laser_client.set_point(current_laser_coord)
-            # TODO: should we wait some time for the galvo to settle?
-            # TODO: use this opportunity to add to calibration points since we have the laser
-            # coord and associated position in camera space
+            # Wait for galvo to settle and for camera frame capture
+            await asyncio.sleep(0.1)
             laser_pixel = await self._get_laser_pixel()
             if laser_pixel is None:
                 self.logger.info("Could not detect laser.")
@@ -348,9 +347,11 @@ class StateMachine:
             if dist <= dist_threshold:
                 return current_laser_coord
             else:
+                # TODO: use this opportunity to add to calibration points since we have the laser
+                # coord and associated position in camera space
                 # TODO: scale correction by camera frame size
                 correction = (target_pixel - laser_pixel) / 10
-                # invert Y axis as laser coord Y is flipped from camera frame Y
+                # Invert Y axis as laser coord Y is flipped from camera frame Y
                 correction[1] *= -1
                 new_laser_coord = current_laser_coord + correction
                 self.logger.debug(

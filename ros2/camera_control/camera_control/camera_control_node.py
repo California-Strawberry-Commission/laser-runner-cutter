@@ -45,7 +45,7 @@ class CameraControlNode(Node):
             namespace="",
             parameters=[
                 ("camera_index", 0),
-                ("fps", 10),
+                ("fps", 30),
                 ("rgb_size", [1280, 720]),
                 ("depth_size", [1280, 720]),
                 ("video_dir", "~/Videos/runner-cutter-app"),
@@ -143,6 +143,7 @@ class CameraControlNode(Node):
         self.camera = RealSense(
             self.rgb_size,
             self.depth_size,
+            fps=self.fps,
             camera_index=self.camera_index,
             logger=self.logger,
         )

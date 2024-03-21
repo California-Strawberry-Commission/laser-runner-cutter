@@ -11,12 +11,19 @@ class RealSense:
         self,
         color_frame_size,
         depth_frame_size,
+        fps=30,
         align_depth_to_color_frame=True,
         camera_index=0,
         logger=None,
     ):
+        # Note: when connected via USB2, RealSense cameras are limited to:
+        # - 1280x720 @ 6fps
+        # - 640x480 @ 30fps
+        # - 480x270 @ 60fps
+        # See https://www.intelrealsense.com/usb2-support-for-intel-realsense-technology/
         self.color_frame_size = color_frame_size
         self.depth_frame_size = depth_frame_size
+        self.fps = fps
         self.align_depth_to_color_frame = align_depth_to_color_frame
         self.camera_index = camera_index
         if logger:
@@ -49,14 +56,14 @@ class RealSense:
             self.depth_frame_size[0],
             self.depth_frame_size[1],
             rs.format.z16,
-            30,
+            int(self.fps),
         )
         self.config.enable_stream(
             rs.stream.color,
             self.color_frame_size[0],
             self.color_frame_size[1],
             rs.format.rgb8,
-            30,
+            int(self.fps),
         )
 
         # Start pipeline

@@ -80,8 +80,7 @@ class Calibration:
             await self.laser_client.set_point(laser_coord)
             await self.laser_client.set_color(self.laser_color)
             # Wait for galvo to settle and for camera frame capture
-            # TODO: increase frame capture rate and reduce this time
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.1)
             await self.add_point_correspondence(laser_coord)
             # We use set_color instead of stop_laser as it is faster to temporarily turn off the laser
             await self.laser_client.set_color((0.0, 0.0, 0.0))
