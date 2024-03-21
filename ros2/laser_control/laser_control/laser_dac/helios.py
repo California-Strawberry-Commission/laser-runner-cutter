@@ -1,6 +1,7 @@
 import ctypes
 from .laser_dac import LaserDAC
 import threading
+import time
 
 
 # Helios DAC uses 12 bits (unsigned) for x and y
@@ -47,9 +48,12 @@ class HeliosDAC(LaserDAC):
         self.points = []
         self.points_lock = threading.Lock()
         self.color = (1, 1, 1, 1)  # (r, g, b, i)
-        self.playing = False
-        self.dac_idx = 0
+        self.dac_idx = -1
         self.lib = ctypes.cdll.LoadLibrary(lib_file)
+        self.playing = False
+        self.playback_thread = None
+        self.check_connection = False
+        self.check_connection_thread = None
 
     def initialize(self):
         print("Initializing Helios DAC")
@@ -59,6 +63,22 @@ class HeliosDAC(LaserDAC):
 
     def connect(self, dac_idx):
         self.dac_idx = dac_idx
+
+        def check_connection_thread():
+            while self.check_connection:
+                if self._get_status() < 0:
+                    print(f"DAC error {self._get_status()}. Attempting to reconnect.")
+                    self.stop()
+                    self.lib.CloseDevices()
+                    self.initialize()
+                time.sleep(1)
+
+        if self.check_connection_thread is None:
+            self.check_connection = True
+            self.check_connection_thread = threading.Thread(
+                target=check_connection_thread, daemon=True
+            )
+            self.check_connection_thread.start()
 
     def set_color(self, r=1.0, g=1.0, b=1.0, i=1.0):
         self.color = (r, g, b, i)
@@ -184,4 +204,15 @@ class HeliosDAC(LaserDAC):
             self.playback_thread = None
 
     def close(self):
+        self.stop()
+        if self.check_connection:
+            self.check_connection = False
+            self.check_connection_thread.join()
+            self.check_connection_thread = None
         self.lib.CloseDevices()
+
+    def _get_status(self):
+        # 1 means ready to receive frame
+        # 0 means not ready to receive frame
+        # Any negative status means error
+        return self.lib.GetStatus(self.dac_idx)

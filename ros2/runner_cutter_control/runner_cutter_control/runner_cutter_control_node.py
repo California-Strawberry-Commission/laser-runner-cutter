@@ -36,7 +36,7 @@ class RunnerCutterControlNode(Node):
             parameters=[
                 ("laser_node_name", "laser"),
                 ("camera_node_name", "camera"),
-                ("tracking_laser_color", [0.2, 0.0, 0.0]),
+                ("tracking_laser_color", [0.15, 0.0, 0.0]),
                 ("burn_laser_color", [0.0, 0.0, 1.0]),
                 ("burn_time_secs", 5),
             ],
