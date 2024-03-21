@@ -2,6 +2,8 @@ import logging
 
 import numpy as np
 import pyrealsense2 as rs
+import time
+import threading
 
 
 class RealSense:
@@ -22,21 +24,24 @@ class RealSense:
         else:
             self.logger = logging.getLogger(__name__)
             self.logger.setLevel(logging.DEBUG)
+        self.check_connection = False
+        self.check_connection_thread = None
+        self.connected_devices = []
 
     def initialize(self):
         # Setup code based on https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/align-depth2color.py
         self.config = rs.config()
 
         # Connect to specific camera
-        context = rs.context()
-        devices = context.query_devices()
-        if self.camera_index < 0 or self.camera_index >= len(devices):
+        self.connected_devices = [
+            device.get_info(rs.camera_info.serial_number)
+            for device in rs.context().query_devices()
+        ]
+        if self.camera_index < 0 or self.camera_index >= len(self.connected_devices):
             raise Exception("camera_index is out of bounds")
 
-        serial_number = devices[self.camera_index].get_info(
-            rs.camera_info.serial_number
-        )
-        self.config.enable_device(serial_number)
+        self.serial_number = self.connected_devices[self.camera_index]
+        self.config.enable_device(self.serial_number)
 
         # Configure streams
         self.config.enable_stream(
@@ -82,6 +87,33 @@ class RealSense:
         # self.spatial_filter = rs.spatial_filter()  # Doesn't seem to help much. Disabling for now.
         self.hole_filling_filter = rs.hole_filling_filter()
 
+        def check_connection_thread():
+            while self.check_connection:
+                prev_devices = set(self.connected_devices)
+                self.connected_devices = [
+                    device.get_info(rs.camera_info.serial_number)
+                    for device in rs.context().query_devices()
+                ]
+                curr_devices = set(self.connected_devices)
+                disconnected_devices = prev_devices - curr_devices
+                connected_devices = curr_devices - prev_devices
+
+                if self.serial_number in connected_devices:
+                    self.logger.info(f"Camera connected")
+                    self.initialize()
+                elif self.serial_number in disconnected_devices:
+                    self.logger.info(f"Camera disconnected")
+                    self.pipeline.stop()
+
+                time.sleep(1)
+
+        if self.check_connection_thread is None:
+            self.check_connection = True
+            self.check_connection_thread = threading.Thread(
+                target=check_connection_thread, daemon=True
+            )
+            self.check_connection_thread.start()
+
     def set_exposure(self, exposure_ms):
         color_sensor = self.profile.get_device().first_color_sensor()
         if exposure_ms < 0:
@@ -92,7 +124,14 @@ class RealSense:
             color_sensor.set_option(rs.option.exposure, exposure_us)
 
     def get_frames(self):
-        frames = self.pipeline.poll_for_frames()
+        if not self._is_connected():
+            return None
+
+        try:
+            frames = self.pipeline.poll_for_frames()
+        except:
+            return None
+
         if not frames:
             return None
 
@@ -159,3 +198,6 @@ class RealSense:
             )
 
             return None if depth_pixel[0] < 0 or depth_pixel[1] < 0 else depth_pixel
+
+    def _is_connected(self):
+        return self.serial_number in self.connected_devices
