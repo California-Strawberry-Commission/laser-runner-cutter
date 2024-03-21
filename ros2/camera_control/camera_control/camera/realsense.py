@@ -87,6 +87,9 @@ class RealSense:
         # self.spatial_filter = rs.spatial_filter()  # Doesn't seem to help much. Disabling for now.
         self.hole_filling_filter = rs.hole_filling_filter()
 
+        # Exposure setting persists on device, so reset it to auto-exposure
+        self.set_exposure(-1)
+
         def check_connection_thread():
             while self.check_connection:
                 prev_devices = set(self.connected_devices)

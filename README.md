@@ -23,6 +23,7 @@ Laser Runner Cutter is a project by the California Strawberry Commission for aut
 
 ### Apps/
 
+- `runner-cutter-app`: Web app for laser runner cutter control and automation.
 - `runner_image_capture_amiga_kivy`: An application deployable to the Amiga brain, written using Kivy, for capturing runner images in the field.
 - `runner_image_capture_amiga_react`: An application deployable to the Amiga brain, written using React and FastAPI, for capturing runner images in the field.
 

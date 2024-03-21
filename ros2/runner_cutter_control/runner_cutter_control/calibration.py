@@ -81,10 +81,11 @@ class Calibration:
             # TODO: increase frame capture rate and reduce this time
             await asyncio.sleep(1)
             await self.add_point_correspondence(laser_coord)
+            # We use set_color instead of stop_laser as it is faster to temporarily turn off the laser
             await self.laser_client.set_color((0.0, 0.0, 0.0))
 
         await self.laser_client.stop_laser()
-        await self.camera_client.set_exposure(-1.0)
+        await self.camera_client.auto_exposure()
 
         if update_transform:
             self.update_transform_bundle_adjustment()
@@ -136,6 +137,7 @@ class Calibration:
 
         laser_coords = np.array(self.calibration_laser_coords)
         camera_positions = np.array(self.calibration_camera_positions)
+        # TODO: run on separate thread using loop.run_in_executor()
         result = minimize(
             cost_function,
             self.camera_to_laser_transform,

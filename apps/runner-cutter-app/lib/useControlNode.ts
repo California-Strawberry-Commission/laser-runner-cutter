@@ -45,5 +45,19 @@ export default function useControlNode(nodeName: string) {
     );
   };
 
-  return { controlState: nodeState, calibrate, addCalibrationPoint };
+  const startRunnerCutter = () => {
+    callService(`${nodeName}/start_runner_cutter`, "std_srvs/Trigger", {});
+  };
+
+  const stop = () => {
+    callService(`${nodeName}/stop`, "std_srvs/Trigger", {});
+  };
+
+  return {
+    controlState: nodeState,
+    calibrate,
+    addCalibrationPoint,
+    startRunnerCutter,
+    stop,
+  };
 }
