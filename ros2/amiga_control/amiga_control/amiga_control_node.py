@@ -4,15 +4,19 @@ from amiga_control_interfaces.srv import SetTwist
 from enum import Enum
 import dataclasses
 
+# TODO: flesh this out.
 getter_map = {
     str: "string_value",
     int: "integer_value",
 }
 
+# Future note: dataclass requires type annotations to work
 @dataclasses.dataclass
 class Params:
     host: str = "127.0.0.1"
     port_canbus: int = 6001
+
+
 
 class AmigaControlNode(rclpy.node.Node):
     def register_params_dataclass(self, dclass):
@@ -20,6 +24,9 @@ class AmigaControlNode(rclpy.node.Node):
         # passed dataclass.
         for f in dataclasses.fields(dclass):
             self.declare_parameter(f.name, f.default)
+
+            # Map dataclass type to a ROS value attribute
+            # IE int -> get_parameter_value().integer_value
             getter = getter_map[f.type]
 
             if getter is None:
