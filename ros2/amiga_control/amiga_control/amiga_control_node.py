@@ -1,3 +1,4 @@
+import asyncio
 import rclpy
 import rclpy.node
 from amiga_control_interfaces.srv import SetTwist
@@ -57,12 +58,19 @@ class AmigaControlNode(rclpy.node.Node):
         return res
 
 
-def main():
-    print("Starting amiga control")
-    rclpy.init()
-    node = AmigaControlNode()
-    rclpy.spin(node)
+async def ros_loop(node):
+    print("Ros node starting up")
+    while rclpy.ok():
+        rclpy.spin_once(node, timeout_sec=0)
+        await asyncio.sleep(1e-4)
 
+
+def main():
+    rclpy.init()   
+    node = AmigaControlNode()
+    
+    future = asyncio.wait([ros_loop(node)])
+    asyncio.get_event_loop().run_until_complete(future)
 
 if __name__ == "__main__":
     main()
