@@ -1,15 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import useROS from "@/lib/ros/useROS";
-import { Button } from "@/components/ui/button";
+import { useContext, useEffect, useState } from "react";
+import ROSContext from "@/lib/ros/ROSContext";
 import useCameraNode from "@/lib/useCameraNode";
 import useLaserNode, { LASER_STATES } from "@/lib/useLaserNode";
 import useControlNode from "@/lib/useControlNode";
+import { Button } from "@/components/ui/button";
 
 export default function Controls() {
-  const { ros } = useROS();
-  const [rosConnected, setRosConnected] = useState<boolean>(false);
+  const ros = useContext(ROSContext);
+  const [rosConnected, setRosConnected] = useState<boolean>(
+    ros.ros.isConnected
+  );
   // TODO: add ability to select node names
   const [cameraNodeName, setCameraNodeName] = useState<string>("/camera0");
   const [laserNodeName, setLaserNodeName] = useState<string>("/laser0");
@@ -26,9 +28,10 @@ export default function Controls() {
     useControlNode(controlNodeName);
 
   useEffect(() => {
-    // TODO: add listener for rosbridge connection state
-    setRosConnected(ros.isConnected);
-  }, []);
+    ros.onStateChange(() => {
+      setRosConnected(ros.ros.isConnected);
+    });
+  }, [setRosConnected]);
 
   return (
     <div className="flex flex-col gap-4 items-center">

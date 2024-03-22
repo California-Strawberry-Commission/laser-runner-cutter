@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import useROS from "@/lib/ros/useROS";
+import { useContext, useEffect, useState } from "react";
+import ROSContext from "@/lib/ros/ROSContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import useCameraNode from "@/lib/useCameraNode";
 
 export default function Controls() {
-  const { ros } = useROS();
+  const ros = useContext(ROSContext);
   const [rosConnected, setRosConnected] = useState<boolean>(false);
   // TODO: add ability to select camera node name
   const [nodeName, setNodeName] = useState<string>("/camera0");
@@ -30,9 +30,10 @@ export default function Controls() {
   const [exposureMs, setExposureMs] = useState<string>("0.2");
 
   useEffect(() => {
-    // TODO: add listener for rosbridge connection state
-    setRosConnected(ros.isConnected);
-  }, []);
+    ros.onStateChange(() => {
+      setRosConnected(ros.ros.isConnected);
+    });
+  }, [setRosConnected]);
 
   return (
     <div className="flex flex-col gap-4 items-center">

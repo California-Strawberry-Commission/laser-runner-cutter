@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
-import useROS from "@/lib/ros/useROS";
+import { useContext, useEffect, useState } from "react";
+import ROSContext from "@/lib/ros/ROSContext";
 
 export default function useCameraNode(nodeName: string) {
-  const { callService, subscribe } = useROS();
+  const ros = useContext(ROSContext);
   const [nodeState, setNodeState] = useState({
     connected: false,
     laser_detection_enabled: false,
@@ -14,7 +14,7 @@ export default function useCameraNode(nodeName: string) {
   // Initial node state
   useEffect(() => {
     const getState = async () => {
-      const result = await callService(
+      const result = await ros.callService(
         `${nodeName}/get_state`,
         "camera_control_interfaces/GetState",
         {}
@@ -26,14 +26,14 @@ export default function useCameraNode(nodeName: string) {
 
   // Subscriptions
   useEffect(() => {
-    const stateSub = subscribe(
+    const stateSub = ros.subscribe(
       `${nodeName}/state`,
       "camera_control_interfaces/State",
       (message) => {
         setNodeState(message);
       }
     );
-    const frameSub = subscribe(
+    const frameSub = ros.subscribe(
       `${nodeName}/debug_frame`,
       "sensor_msgs/CompressedImage",
       (message) => {
@@ -48,7 +48,7 @@ export default function useCameraNode(nodeName: string) {
   }, [nodeName]);
 
   const setExposure = (exposureMs: number) => {
-    callService(
+    ros.callService(
       `${nodeName}/set_exposure`,
       "camera_control_interfaces/SetExposure",
       { exposure_ms: exposureMs }
@@ -56,31 +56,47 @@ export default function useCameraNode(nodeName: string) {
   };
 
   const startLaserDetection = () => {
-    callService(`${nodeName}/start_laser_detection`, "std_srvs/Trigger", {});
+    ros.callService(
+      `${nodeName}/start_laser_detection`,
+      "std_srvs/Trigger",
+      {}
+    );
   };
 
   const stopLaserDetection = () => {
-    callService(`${nodeName}/stop_laser_detection`, "std_srvs/Trigger", {});
+    ros.callService(`${nodeName}/stop_laser_detection`, "std_srvs/Trigger", {});
   };
 
   const startRunnerDetection = () => {
-    callService(`${nodeName}/start_runner_detection`, "std_srvs/Trigger", {});
+    ros.callService(
+      `${nodeName}/start_runner_detection`,
+      "std_srvs/Trigger",
+      {}
+    );
   };
 
   const stopRunnerDetection = () => {
-    callService(`${nodeName}/stop_runner_detection`, "std_srvs/Trigger", {});
+    ros.callService(
+      `${nodeName}/stop_runner_detection`,
+      "std_srvs/Trigger",
+      {}
+    );
   };
 
   const startRecordingVideo = () => {
-    callService(`${nodeName}/start_recording_video`, "std_srvs/Trigger", {});
+    ros.callService(
+      `${nodeName}/start_recording_video`,
+      "std_srvs/Trigger",
+      {}
+    );
   };
 
   const stopRecordingVideo = () => {
-    callService(`${nodeName}/stop_recording_video`, "std_srvs/Trigger", {});
+    ros.callService(`${nodeName}/stop_recording_video`, "std_srvs/Trigger", {});
   };
 
   const saveImage = () => {
-    callService(`${nodeName}/save_image`, "std_srvs/Trigger", {});
+    ros.callService(`${nodeName}/save_image`, "std_srvs/Trigger", {});
   };
 
   return {

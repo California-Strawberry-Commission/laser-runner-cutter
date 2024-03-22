@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
-import useROS from "@/lib/ros/useROS";
+import { useContext, useEffect, useState } from "react";
+import ROSContext from "@/lib/ros/ROSContext";
 
 export default function useControlNode(nodeName: string) {
-  const { callService, subscribe } = useROS();
+  const ros = useContext(ROSContext);
   const [nodeState, setNodeState] = useState({
     calibrated: false,
     state: "disconnected",
@@ -11,7 +11,7 @@ export default function useControlNode(nodeName: string) {
   // Initial node state
   useEffect(() => {
     const getState = async () => {
-      const result = await callService(
+      const result = await ros.callService(
         `${nodeName}/get_state`,
         "runner_cutter_control_interfaces/GetState",
         {}
@@ -23,7 +23,7 @@ export default function useControlNode(nodeName: string) {
 
   // Subscriptions
   useEffect(() => {
-    const stateSub = subscribe(
+    const stateSub = ros.subscribe(
       `${nodeName}/state`,
       "runner_cutter_control_interfaces/State",
       (message) => {
@@ -37,11 +37,11 @@ export default function useControlNode(nodeName: string) {
   }, [nodeName]);
 
   const calibrate = () => {
-    callService(`${nodeName}/calibrate`, "std_srvs/Trigger", {});
+    ros.callService(`${nodeName}/calibrate`, "std_srvs/Trigger", {});
   };
 
   const addCalibrationPoint = (x: number, y: number) => {
-    callService(
+    ros.callService(
       `${nodeName}/add_calibration_points`,
       "runner_cutter_control_interfaces/AddCalibrationPoints",
       { camera_pixels: [{ x, y }] }
@@ -49,11 +49,11 @@ export default function useControlNode(nodeName: string) {
   };
 
   const startRunnerCutter = () => {
-    callService(`${nodeName}/start_runner_cutter`, "std_srvs/Trigger", {});
+    ros.callService(`${nodeName}/start_runner_cutter`, "std_srvs/Trigger", {});
   };
 
   const stop = () => {
-    callService(`${nodeName}/stop`, "std_srvs/Trigger", {});
+    ros.callService(`${nodeName}/stop`, "std_srvs/Trigger", {});
   };
 
   return {

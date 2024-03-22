@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import useROS from "@/lib/ros/useROS";
+import { useContext, useEffect, useState } from "react";
+import ROSContext from "@/lib/ros/ROSContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import ColorPicker from "@/components/laser/color-picker";
@@ -20,8 +20,10 @@ function hexToRgb(hexColor: string) {
 }
 
 export default function Controls() {
-  const { ros } = useROS();
-  const [rosConnected, setRosConnected] = useState<boolean>(false);
+  const ros = useContext(ROSContext);
+  const [rosConnected, setRosConnected] = useState<boolean>(
+    ros.ros.isConnected
+  );
   // TODO: add ability to select laser node name
   const [nodeName, setNodeName] = useState<string>("/laser0");
   const { laserState, addPoint, clearPoints, play, stop, setColor } =
@@ -31,9 +33,10 @@ export default function Controls() {
   const [y, setY] = useState<string>("0");
 
   useEffect(() => {
-    // TODO: add listener for rosbridge connection state
-    setRosConnected(ros.isConnected);
-  }, []);
+    ros.onStateChange(() => {
+      setRosConnected(ros.ros.isConnected);
+    });
+  }, [setRosConnected]);
 
   let laserButton = null;
   if (laserState === 1) {
