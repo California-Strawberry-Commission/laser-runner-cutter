@@ -9,29 +9,35 @@ import { Button } from "@/components/ui/button";
 
 export default function Controls() {
   const ros = useContext(ROSContext);
-  const [rosConnected, setRosConnected] = useState<boolean>(
-    ros.ros.isConnected
-  );
+  const [rosConnected, setRosConnected] = useState<boolean>(false);
   // TODO: add ability to select node names
   const [cameraNodeName, setCameraNodeName] = useState<string>("/camera0");
   const [laserNodeName, setLaserNodeName] = useState<string>("/laser0");
   const [controlNodeName, setControlNodeName] = useState<string>("/control0");
   const {
-    connected,
+    nodeConnected: cameraNodeConnected,
+    cameraConnected,
     laserDetectionEnabled,
     runnerDetectionEnabled,
     recordingVideo,
     frameSrc,
   } = useCameraNode(cameraNodeName);
-  const { laserState } = useLaserNode(laserNodeName);
-  const { calibrated, controlState, calibrate, addCalibrationPoint } =
-    useControlNode(controlNodeName);
+  const { nodeConnected: laserNodeConnected, laserState } =
+    useLaserNode(laserNodeName);
+  const {
+    nodeConnected: controlNodeConnected,
+    calibrated,
+    controlState,
+    calibrate,
+    addCalibrationPoint,
+  } = useControlNode(controlNodeName);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
 
   useEffect(() => {
     ros.onStateChange(() => {
       setRosConnected(ros.ros.isConnected);
     });
+    setRosConnected(ros.ros.isConnected);
   }, [setRosConnected]);
 
   const onImageLoad = (event: any) => {
@@ -59,13 +65,21 @@ export default function Controls() {
         <p className="text-center">{`Rosbridge: ${
           rosConnected ? "connected" : "disconnected"
         }`}</p>
-        <p className="text-center">{`Camera (${cameraNodeName}): connected=${connected}, laserDetectionEnabled=${laserDetectionEnabled}, runnerDetectionEnabled=${runnerDetectionEnabled}, recordingVideo=${recordingVideo}`}</p>
-        <p className="text-center">{`Laser (${laserNodeName}): ${LASER_STATES[laserState]}`}</p>
-        <p className="text-center">{`Control (${controlNodeName}): calibrated=${calibrated}, controlState=${controlState}`}</p>
+        <p className="text-center">{`Camera (${cameraNodeName}) [${
+          cameraNodeConnected ? "connected" : "disconnected"
+        }]: cameraConnected=${cameraConnected}, laserDetectionEnabled=${laserDetectionEnabled}, runnerDetectionEnabled=${runnerDetectionEnabled}, recordingVideo=${recordingVideo}`}</p>
+        <p className="text-center">{`Laser (${laserNodeName}) [${
+          laserNodeConnected ? "connected" : "disconnected"
+        }]: ${LASER_STATES[laserState]}`}</p>
+        <p className="text-center">{`Control (${controlNodeName}) [${
+          controlNodeConnected ? "connected" : "disconnected"
+        }]: calibrated=${calibrated}, controlState=${controlState}`}</p>
       </div>
       <div className="flex flex-row items-center gap-4">
         <Button
-          disabled={!rosConnected || controlState !== "idle"}
+          disabled={
+            !rosConnected || !controlNodeConnected || controlState !== "idle"
+          }
           onClick={() => {
             calibrate();
           }}

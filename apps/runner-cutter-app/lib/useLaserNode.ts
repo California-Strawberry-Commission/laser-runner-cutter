@@ -5,23 +5,36 @@ export const LASER_STATES = ["disconnected", "stopped", "playing"];
 
 export default function useLaserNode(nodeName: string) {
   const ros = useContext(ROSContext);
+  const [nodeConnected, setNodeConnected] = useState<boolean>(false);
   const [laserState, setLaserState] = useState<number>(0);
+
+  const getState = async () => {
+    const result = await ros.callService(
+      `${nodeName}/get_state`,
+      "laser_control_interfaces/GetState",
+      {}
+    );
+    setLaserState(result.state.data);
+  };
 
   // Initial node state
   useEffect(() => {
-    const getState = async () => {
-      const result = await ros.callService(
-        `${nodeName}/get_state`,
-        "laser_control_interfaces/GetState",
-        {}
-      );
-      setLaserState(result.state.data);
-    };
-    getState();
+    const connected = ros.nodes.includes(nodeName);
+    if (connected) {
+      getState();
+    }
+    setNodeConnected(connected);
   }, [nodeName]);
 
   // Subscriptions
   useEffect(() => {
+    ros.onNodeConnected(nodeName, (connected) => {
+      setNodeConnected(connected);
+      if (connected) {
+        getState();
+      }
+    });
+
     const stateSub = ros.subscribe(
       `${nodeName}/state`,
       "laser_control_interfaces/State",
@@ -29,7 +42,9 @@ export default function useLaserNode(nodeName: string) {
         setLaserState(message.data);
       }
     );
+
     return () => {
+      // TODO: unsubscribe from ros.onNodeConnected
       stateSub.unsubscribe();
     };
   }, [nodeName]);
@@ -72,5 +87,13 @@ export default function useLaserNode(nodeName: string) {
     );
   };
 
-  return { laserState, addPoint, clearPoints, play, stop, setColor };
+  return {
+    nodeConnected,
+    laserState,
+    addPoint,
+    clearPoints,
+    play,
+    stop,
+    setColor,
+  };
 }

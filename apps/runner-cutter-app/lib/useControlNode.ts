@@ -3,26 +3,39 @@ import ROSContext from "@/lib/ros/ROSContext";
 
 export default function useControlNode(nodeName: string) {
   const ros = useContext(ROSContext);
+  const [nodeConnected, setNodeConnected] = useState<boolean>(false);
   const [nodeState, setNodeState] = useState({
     calibrated: false,
     state: "disconnected",
   });
 
+  const getState = async () => {
+    const result = await ros.callService(
+      `${nodeName}/get_state`,
+      "runner_cutter_control_interfaces/GetState",
+      {}
+    );
+    setNodeState(result.state);
+  };
+
   // Initial node state
   useEffect(() => {
-    const getState = async () => {
-      const result = await ros.callService(
-        `${nodeName}/get_state`,
-        "runner_cutter_control_interfaces/GetState",
-        {}
-      );
-      setNodeState(result.state);
-    };
-    getState();
+    const connected = ros.nodes.includes(nodeName);
+    if (connected) {
+      getState();
+    }
+    setNodeConnected(connected);
   }, [nodeName]);
 
   // Subscriptions
   useEffect(() => {
+    ros.onNodeConnected(nodeName, (connected) => {
+      setNodeConnected(connected);
+      if (connected) {
+        getState();
+      }
+    });
+
     const stateSub = ros.subscribe(
       `${nodeName}/state`,
       "runner_cutter_control_interfaces/State",
@@ -32,6 +45,7 @@ export default function useControlNode(nodeName: string) {
     );
 
     return () => {
+      // TODO: unsubscribe from ros.onNodeConnected
       stateSub.unsubscribe();
     };
   }, [nodeName]);
@@ -57,6 +71,7 @@ export default function useControlNode(nodeName: string) {
   };
 
   return {
+    nodeConnected,
     calibrated: nodeState.calibrated,
     controlState: nodeState.state,
     calibrate,
