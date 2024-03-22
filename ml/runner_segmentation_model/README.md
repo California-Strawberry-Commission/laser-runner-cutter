@@ -154,5 +154,5 @@ DVC abstracts cloud storage and versioning of data for machine learning. It allo
 
 1.  Train and evaluate a MMDetection model locally:
 
-        $ python runner_segmentation/mmdetection.py train
-        $ python runner_segmentation/mmdetection.py eval --weights_file <path to trained weights>
+        $ python runner_segmentation/mmdetection.py train --model_name "mask-rcnn_r50"
+        $ python runner_segmentation/mmdetection.py eval --model_name "mask-rcnn_r50" --weights_file <path to trained weights>

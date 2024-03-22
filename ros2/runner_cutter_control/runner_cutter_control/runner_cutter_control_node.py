@@ -13,7 +13,6 @@ import numpy as np
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from transitions.extensions.asyncio import AsyncMachine
 
@@ -21,6 +20,7 @@ from camera_control.camera_control_client import CameraControlClient
 from laser_control.laser_control_client import LaserControlClient
 from runner_cutter_control.calibration import Calibration
 from runner_cutter_control.tracker import Tracker, TrackState
+from runner_cutter_control_interfaces.msg import State
 from runner_cutter_control_interfaces.srv import AddCalibrationPoints, GetState
 
 
@@ -36,7 +36,7 @@ class RunnerCutterControlNode(Node):
             parameters=[
                 ("laser_node_name", "laser"),
                 ("camera_node_name", "camera"),
-                ("tracking_laser_color", [0.2, 0.0, 0.0]),
+                ("tracking_laser_color", [0.15, 0.0, 0.0]),
                 ("burn_laser_color", [0.0, 0.0, 1.0]),
                 ("burn_time_secs", 5),
             ],
@@ -75,13 +75,23 @@ class RunnerCutterControlNode(Node):
             "~/add_calibration_points",
             self._add_calibration_points_callback,
         )
+        self.start_runner_cutter_srv = self.create_service(
+            Trigger,
+            "~/start_runner_cutter",
+            self._start_runner_cutter_callback,
+        )
+        self.start_runner_cutter_srv = self.create_service(
+            Trigger,
+            "~/stop",
+            self._stop_callback,
+        )
         self.get_state_srv = self.create_service(
             GetState, "~/get_state", self._get_state_callback
         )
 
         # Pub/sub
 
-        self.state_publisher = self.create_publisher(String, "~/state", 5)
+        self.state_publisher = self.create_publisher(State, "~/state", 5)
 
         # Set up dependencies
 
@@ -101,10 +111,10 @@ class RunnerCutterControlNode(Node):
 
         # State machine
 
-        # We run the state machine on a separate thread. Note that we cannot directly call
-        # triggers on self.state_machine from service callbacks, as there are long running
-        # tasks that run on certain states. So, in service callbacks, we queue triggers
-        # on the state machine thread.
+        # We run the state machine on a separate thread that runs an asyncio event loop.
+        # Note that we cannot directly call triggers on self.state_machine from service callbacks,
+        # as there are long running tasks that run on certain states. So, from service callbacks,
+        # we queue triggers that will be processed on the state machine thread.
         self.state_machine = StateMachine(
             self,
             self.laser_client,
@@ -119,9 +129,13 @@ class RunnerCutterControlNode(Node):
         self.state_machine_thread = StateMachineThread(self.state_machine, self.logger)
         self.state_machine_thread.start()
 
+    def get_state(self):
+        return State(
+            calibrated=self.state_machine.is_calibrated, state=self.state_machine.state
+        )
+
     def publish_state(self):
-        msg = String(data=self.state_machine.state)
-        self.state_publisher.publish(msg)
+        self.state_publisher.publish(self.get_state())
 
     def _calibrate_callback(self, request, response):
         if self.state_machine.state == "idle":
@@ -136,8 +150,20 @@ class RunnerCutterControlNode(Node):
             response.success = True
         return response
 
+    def _start_runner_cutter_callback(self, request, response):
+        if self.state_machine.state == "idle":
+            self.state_machine_thread.queue("run_runner_cutter")
+            response.success = True
+        return response
+
+    def _stop_callback(self, request, response):
+        if self.state_machine.state != "idle":
+            self.state_machine_thread.queue("stop")
+            response.success = True
+        return response
+
     def _get_state_callback(self, request, response):
-        response.state = self.state_machine.state
+        response.state = self.get_state()
         return response
 
 
@@ -149,6 +175,7 @@ class StateMachine:
         "add_calibration_points",
         "acquire_target",
         "aim_laser",
+        "burn_target",
     ]
 
     def __init__(
@@ -176,18 +203,21 @@ class StateMachine:
         self.calibrated = False
 
         self.machine = AsyncMachine(
-            model=self, states=StateMachine.states, initial="idle"
+            model=self, states=StateMachine.states, initial="idle", queued=False
         )
         self.machine.add_transition("run_calibration", "idle", "calibration")
         self.machine.add_transition("calibration_complete", "calibration", "idle")
         self.machine.add_transition(
-            "run_add_calibration_points", "idle", "add_calibration_points"
+            "run_add_calibration_points",
+            "idle",
+            "add_calibration_points",
+            conditions=["is_calibrated"],
         )
         self.machine.add_transition(
             "add_calibration_points_complete", "add_calibration_points", "idle"
         )
         self.machine.add_transition(
-            "run_runner_cutter", "idle", "acquire_target", conditions="is_calibrated"
+            "run_runner_cutter", "idle", "acquire_target", conditions=["is_calibrated"]
         )
         self.machine.add_transition("target_acquired", "acquire_target", "aim_laser")
         self.machine.add_transition(
@@ -196,15 +226,21 @@ class StateMachine:
         self.machine.add_transition("aim_successful", "aim_laser", "burn_target")
         self.machine.add_transition("aim_failed", "aim_laser", "acquire_target")
         self.machine.add_transition("burn_complete", "burn_target", "acquire_target")
+        self.machine.add_transition("stop", "*", "idle")
 
-    async def is_calibrated(self):
-        self.calibrated
+    @property
+    def is_calibrated(self):
+        return self.calibrated
 
     async def on_enter_idle(self):
         self.node.publish_state()
+        await self.laser_client.stop_laser()
+        await self.laser_client.clear_points()
+        await self.camera_client.auto_exposure()
 
     async def on_enter_calibration(self):
         self.node.publish_state()
+        self.calibrated = False
         await self.calibration.calibrate()
         self.calibrated = True
         await self.calibration_complete()
@@ -267,7 +303,7 @@ class StateMachine:
             target.pixel, initial_laser_coord
         )
         await self.laser_client.stop_laser()
-        await self.camera_client.set_exposure(-1.0)
+        await self.camera_client.auto_exposure()
         if corrected_laser_coord is not None:
             await self.aim_successful(target, corrected_laser_coord)
         else:
@@ -275,20 +311,21 @@ class StateMachine:
             target.state = TrackState.FAILED
             await self.aim_failed()
 
-    async def _get_laser_pixel(self, max_attempts=3):
+    async def _get_laser_pixel_and_pos(self, max_attempts=3):
         attempt = 0
         while attempt < max_attempts:
             laser_pos = await self.camera_client.get_laser_pos()
             points = laser_pos["point_list"]
+            positions = laser_pos["pos_list"]
             if points:
                 if len(points) > 1:
                     self.logger.info("Found more than 1 laser during correction")
                 # TODO: better handle case where more than 1 laser detected
-                return points[0]
+                return points[0], positions[0]
             # No lasers detected. Try again.
             await asyncio.sleep(0.2)
             attempt += 1
-        return None
+        return None, None
 
     async def _correct_laser(
         self,
@@ -300,10 +337,9 @@ class StateMachine:
 
         while True:
             await self.laser_client.set_point(current_laser_coord)
-            # TODO: should we wait some time for the galvo to settle?
-            # TODO: use this opportunity to add to calibration points since we have the laser
-            # coord and associated position in camera space
-            laser_pixel = await self._get_laser_pixel()
+            # Wait for galvo to settle and for camera frame capture
+            await asyncio.sleep(0.1)
+            laser_pixel, laser_pos = await self._get_laser_pixel_and_pos()
             if laser_pixel is None:
                 self.logger.info("Could not detect laser.")
                 return None
@@ -315,9 +351,15 @@ class StateMachine:
             if dist <= dist_threshold:
                 return current_laser_coord
             else:
+                # Use this opportunity to add to calibration points since we have the laser
+                # coord and associated position in camera space
+                await self.calibration.add_point_correspondence(
+                    current_laser_coord, laser_pos, update_transform=True
+                )
+
                 # TODO: scale correction by camera frame size
                 correction = (target_pixel - laser_pixel) / 10
-                # invert Y axis as laser coord Y is flipped from camera frame Y
+                # Invert Y axis as laser coord Y is flipped from camera frame Y
                 correction[1] *= -1
                 new_laser_coord = current_laser_coord + correction
                 self.logger.debug(
@@ -377,7 +419,10 @@ class StateMachineThread(threading.Thread):
                     self._queued_args = None
                     self._queued_kwargs = None
             if trigger is not None:
-                await self.state_machine.trigger(trigger, *args, **kwargs)
+                # Create a task so we don't block the queue processing loop
+                task = asyncio.create_task(
+                    self.state_machine.trigger(trigger, *args, **kwargs)
+                )
             await asyncio.sleep(0.1)
 
     def run(self):

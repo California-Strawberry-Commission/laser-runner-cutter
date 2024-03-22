@@ -1,19 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import useROS from "@/lib/ros/useROS";
+import { useContext, useEffect, useState } from "react";
+import ROSContext from "@/lib/ros/ROSContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import useCameraNode from "@/lib/useCameraNode";
 
 export default function Controls() {
-  const { ros } = useROS();
+  const ros = useContext(ROSContext);
   const [rosConnected, setRosConnected] = useState<boolean>(false);
   // TODO: add ability to select camera node name
   const [nodeName, setNodeName] = useState<string>("/camera0");
   const {
-    connected,
+    nodeConnected,
+    cameraConnected,
     laserDetectionEnabled,
     runnerDetectionEnabled,
     recordingVideo,
@@ -30,9 +31,11 @@ export default function Controls() {
   const [exposureMs, setExposureMs] = useState<string>("0.2");
 
   useEffect(() => {
-    // TODO: add listener for rosbridge connection state
-    setRosConnected(ros.isConnected);
-  }, []);
+    ros.onStateChange(() => {
+      setRosConnected(ros.ros.isConnected);
+    });
+    setRosConnected(ros.ros.isConnected);
+  }, [setRosConnected]);
 
   return (
     <div className="flex flex-col gap-4 items-center">
@@ -40,7 +43,7 @@ export default function Controls() {
         <p className="text-center">{`Rosbridge: ${
           rosConnected ? "connected" : "disconnected"
         }`}</p>
-        <p className="text-center">{`Camera (${nodeName}): connected=${connected}, laserDetectionEnabled=${laserDetectionEnabled}, runnerDetectionEnabled=${runnerDetectionEnabled}, recordingVideo=${recordingVideo}`}</p>
+        <p className="text-center">{`Camera (${nodeName}): cameraConnected=${cameraConnected}, laserDetectionEnabled=${laserDetectionEnabled}, runnerDetectionEnabled=${runnerDetectionEnabled}, recordingVideo=${recordingVideo}`}</p>
       </div>
       <div className="flex flex-row items-center gap-4">
         <Label className="flex-none w-16" htmlFor="exposure">
@@ -61,7 +64,7 @@ export default function Controls() {
           }}
         />
         <Button
-          disabled={!rosConnected}
+          disabled={!rosConnected || !nodeConnected}
           onClick={() => {
             setExposure(Number(exposureMs));
           }}
@@ -69,7 +72,7 @@ export default function Controls() {
           Set Exposure
         </Button>
         <Button
-          disabled={!rosConnected}
+          disabled={!rosConnected || !nodeConnected}
           onClick={() => {
             setExposure(-1.0);
           }}
@@ -80,7 +83,7 @@ export default function Controls() {
       <div className="flex flex-row items-center gap-4">
         {laserDetectionEnabled ? (
           <Button
-            disabled={!rosConnected}
+            disabled={!rosConnected || !nodeConnected}
             onClick={() => {
               stopLaserDetection();
             }}
@@ -89,7 +92,7 @@ export default function Controls() {
           </Button>
         ) : (
           <Button
-            disabled={!rosConnected}
+            disabled={!rosConnected || !nodeConnected}
             onClick={() => {
               startLaserDetection();
             }}
@@ -99,7 +102,7 @@ export default function Controls() {
         )}
         {runnerDetectionEnabled ? (
           <Button
-            disabled={!rosConnected}
+            disabled={!rosConnected || !nodeConnected}
             onClick={() => {
               stopRunnerDetection();
             }}
@@ -108,7 +111,7 @@ export default function Controls() {
           </Button>
         ) : (
           <Button
-            disabled={!rosConnected}
+            disabled={!rosConnected || !nodeConnected}
             onClick={() => {
               startRunnerDetection();
             }}
@@ -120,7 +123,7 @@ export default function Controls() {
       <div className="flex flex-row items-center gap-4">
         {recordingVideo ? (
           <Button
-            disabled={!rosConnected}
+            disabled={!rosConnected || !nodeConnected}
             onClick={() => {
               stopRecordingVideo();
             }}
@@ -129,7 +132,7 @@ export default function Controls() {
           </Button>
         ) : (
           <Button
-            disabled={!rosConnected}
+            disabled={!rosConnected || !nodeConnected}
             onClick={() => {
               startRecordingVideo();
             }}
@@ -138,7 +141,7 @@ export default function Controls() {
           </Button>
         )}
         <Button
-          disabled={!rosConnected}
+          disabled={!rosConnected || !nodeConnected}
           onClick={() => {
             saveImage();
           }}

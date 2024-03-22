@@ -29,9 +29,9 @@ export default function Controls() {
     calibrated,
     controlState,
     calibrate,
-    addCalibrationPoint,
+    startRunnerCutter,
+    stop,
   } = useControlNode(controlNodeName);
-  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
 
   useEffect(() => {
     ros.onStateChange(() => {
@@ -39,25 +39,6 @@ export default function Controls() {
     });
     setRosConnected(ros.ros.isConnected);
   }, [setRosConnected]);
-
-  const onImageLoad = (event: any) => {
-    const { naturalWidth: width, naturalHeight: height } = event.target;
-    setImageSize({ width, height });
-  };
-
-  const onImageClick = (event: any) => {
-    if (controlState !== "idle") {
-      return;
-    }
-
-    const boundingRect = event.target.getBoundingClientRect();
-    const x = Math.round(event.clientX - boundingRect.left);
-    const y = Math.round(event.clientY - boundingRect.top);
-    // Scale x, y from rendered size to actual image size
-    const scaledX = (imageSize.width / boundingRect.width) * x;
-    const scaledY = (imageSize.height / boundingRect.height) * y;
-    addCalibrationPoint(scaledX, scaledY);
-  };
 
   return (
     <div className="flex flex-col gap-4 items-center">
@@ -84,23 +65,31 @@ export default function Controls() {
             calibrate();
           }}
         >
-          Start Calibration
+          Calibrate
+        </Button>
+        <Button
+          disabled={
+            !rosConnected || !controlNodeConnected || controlState !== "idle"
+          }
+          onClick={() => {
+            startRunnerCutter();
+          }}
+        >
+          Start Cutter
+        </Button>
+        <Button
+          disabled={
+            !rosConnected || !controlNodeConnected || controlState === "idle"
+          }
+          variant="destructive"
+          onClick={() => {
+            stop();
+          }}
+        >
+          Stop
         </Button>
       </div>
-      {frameSrc && (
-        <>
-          <p className="text-center">
-            Click on the image below to fire the laser at that point and add a
-            calibration point
-          </p>
-          <img
-            src={frameSrc}
-            alt="Camera Color Frame"
-            onLoad={onImageLoad}
-            onClick={onImageClick}
-          />
-        </>
-      )}
+      {frameSrc && <img src={frameSrc} alt="Camera Color Frame" />}
     </div>
   );
 }

@@ -1,49 +1,82 @@
-import { useEffect, useState } from "react";
-import useROS from "@/lib/ros/useROS";
+import { useContext, useEffect, useState } from "react";
+import ROSContext from "@/lib/ros/ROSContext";
 
 export default function useControlNode(nodeName: string) {
-  const { callService, subscribe } = useROS();
-  const [nodeState, setNodeState] = useState<string>("disconnected");
+  const ros = useContext(ROSContext);
+  const [nodeConnected, setNodeConnected] = useState<boolean>(false);
+  const [nodeState, setNodeState] = useState({
+    calibrated: false,
+    state: "disconnected",
+  });
+
+  const getState = async () => {
+    const result = await ros.callService(
+      `${nodeName}/get_state`,
+      "runner_cutter_control_interfaces/GetState",
+      {}
+    );
+    setNodeState(result.state);
+  };
 
   // Initial node state
   useEffect(() => {
-    const getState = async () => {
-      const result = await callService(
-        `${nodeName}/get_state`,
-        "runner_cutter_control_interfaces/GetState",
-        {}
-      );
-      setNodeState(result.state);
-    };
-    getState();
+    const connected = ros.nodes.includes(nodeName);
+    if (connected) {
+      getState();
+    }
+    setNodeConnected(connected);
   }, [nodeName]);
 
   // Subscriptions
   useEffect(() => {
-    const stateSub = subscribe(
+    ros.onNodeConnected(nodeName, (connected) => {
+      setNodeConnected(connected);
+      if (connected) {
+        getState();
+      }
+    });
+
+    const stateSub = ros.subscribe(
       `${nodeName}/state`,
-      "std_msgs/String",
+      "runner_cutter_control_interfaces/State",
       (message) => {
-        setNodeState(message.data);
+        setNodeState(message);
       }
     );
 
     return () => {
+      // TODO: unsubscribe from ros.onNodeConnected
       stateSub.unsubscribe();
     };
   }, [nodeName]);
 
   const calibrate = () => {
-    callService(`${nodeName}/calibrate`, "std_srvs/Trigger", {});
+    ros.callService(`${nodeName}/calibrate`, "std_srvs/Trigger", {});
   };
 
   const addCalibrationPoint = (x: number, y: number) => {
-    callService(
+    ros.callService(
       `${nodeName}/add_calibration_points`,
       "runner_cutter_control_interfaces/AddCalibrationPoints",
       { camera_pixels: [{ x, y }] }
     );
   };
 
-  return { controlState: nodeState, calibrate, addCalibrationPoint };
+  const startRunnerCutter = () => {
+    ros.callService(`${nodeName}/start_runner_cutter`, "std_srvs/Trigger", {});
+  };
+
+  const stop = () => {
+    ros.callService(`${nodeName}/stop`, "std_srvs/Trigger", {});
+  };
+
+  return {
+    nodeConnected,
+    calibrated: nodeState.calibrated,
+    controlState: nodeState.state,
+    calibrate,
+    addCalibrationPoint,
+    startRunnerCutter,
+    stop,
+  };
 }

@@ -29,7 +29,7 @@ def convert_mask_to_yolo_segment(mask):
         )
 
 
-def convert_mask_to_rle(mask):
+def convert_mask_to_coco_rle_segment(mask):
     """
     Convert a mask to RLE (column-major), used in the COCO annotation format.
 
@@ -43,6 +43,23 @@ def convert_mask_to_rle(mask):
             counts.append(0)
         counts.append(len(list(elements)))
     return counts, size
+
+
+def convert_mask_to_coco_poly_segment(mask):
+    """
+    Convert a mask to a COCO polygon segment (a single polygon with raw coordinates)
+
+    Args:
+        mask (numpy.ndarray)
+    """
+    polygons = convert_mask_to_polygons(mask)
+    if len(polygons) > 1:
+        return (
+            np.concatenate(merge_multi_segment(polygons), axis=0).reshape(-1).tolist()
+        )
+
+    else:
+        return polygons[0]
 
 
 def merge_multi_segment(segments):

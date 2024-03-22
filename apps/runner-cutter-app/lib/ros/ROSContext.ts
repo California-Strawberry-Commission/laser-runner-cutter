@@ -1,7 +1,5 @@
 import { createContext } from "react";
-import ROSLIB from "roslib";
+import ROS from "@/lib/ros/ROS";
 
-const ROSContext = createContext(
-  new ROSLIB.Ros({ url: "ws://localhost:9090" })
-);
+const ROSContext = createContext(new ROS("ws://localhost:9090"));
 export default ROSContext;

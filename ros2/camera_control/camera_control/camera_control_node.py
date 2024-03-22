@@ -45,7 +45,7 @@ class CameraControlNode(Node):
             namespace="",
             parameters=[
                 ("camera_index", 0),
-                ("fps", 10),
+                ("fps", 30),
                 ("rgb_size", [1280, 720]),
                 ("depth_size", [1280, 720]),
                 ("video_dir", "~/Videos/runner-cutter-app"),
@@ -143,6 +143,7 @@ class CameraControlNode(Node):
         self.camera = RealSense(
             self.rgb_size,
             self.depth_size,
+            fps=self.fps,
             camera_index=self.camera_index,
             logger=self.logger,
         )
@@ -155,10 +156,12 @@ class CameraControlNode(Node):
             package_share_directory, "models", "RunnerSegYoloV8m.pt"
         )
         self.runner_seg_model = Yolo(runner_weights_path)
+        self.runner_seg_size = (1024, 768)
         laser_weights_path = os.path.join(
             package_share_directory, "models", "LaserDetectionYoloV8n.pt"
         )
         self.laser_detection_model = Yolo(laser_weights_path)
+        self.laser_detection_size = (640, 480)
 
     def get_state(self):
         state = State()
@@ -205,8 +208,17 @@ class CameraControlNode(Node):
         if self.video_writer is not None:
             self.video_writer.write(cv2.cvtColor(debug_frame, cv2.COLOR_RGB2BGR))
 
-    def _get_laser_points(self, color_frame, conf_threshold=0.35):
+    def _get_laser_points(self, color_frame, conf_threshold=0.0):
+        # Scale image before prediction to improve accuracy
+        frame_width = color_frame.shape[1]
+        frame_height = color_frame.shape[0]
+        result_width = self.laser_detection_size[0]
+        result_height = self.laser_detection_size[1]
+        color_frame = cv2.resize(
+            color_frame, self.laser_detection_size, interpolation=cv2.INTER_LINEAR
+        )
         result = self.laser_detection_model.predict(color_frame)
+
         laser_points = []
         confs = []
         for idx in range(result["conf"].size):
@@ -214,8 +226,12 @@ class CameraControlNode(Node):
             if conf >= conf_threshold:
                 # bbox is in xyxy format
                 bbox = result["bboxes"][idx]
+                # Scale the result coords to frame coords
                 laser_points.append(
-                    (round((bbox[0] + bbox[2]) * 0.5), round((bbox[1] + bbox[3]) * 0.5))
+                    (
+                        round((bbox[0] + bbox[2]) * 0.5 * frame_width / result_width),
+                        round((bbox[1] + bbox[3]) * 0.5 * frame_height / result_height),
+                    )
                 )
                 confs.append(conf)
             else:
@@ -224,17 +240,26 @@ class CameraControlNode(Node):
                 )
         return laser_points, confs
 
-    def _get_runner_masks(self, color_frame, conf_threshold=0.35):
-        # TODO: resolution should match what the model was trained on (1024x768)
-        # for the best performance. We could resize the image before prediction, then
-        # map the prediction points back to the original image.
+    def _get_runner_masks(self, color_frame, conf_threshold=0.0):
+        # Scale image before prediction to improve accuracy
+        frame_width = color_frame.shape[1]
+        frame_height = color_frame.shape[0]
+        result_width = self.runner_seg_size[0]
+        result_height = self.runner_seg_size[1]
+        color_frame = cv2.resize(
+            color_frame, self.runner_seg_size, interpolation=cv2.INTER_LINEAR
+        )
         result = self.runner_seg_model.predict(color_frame)
+
         runner_masks = []
         confs = []
         for idx in range(result["conf"].size):
             conf = result["conf"][idx]
             if conf >= conf_threshold:
                 mask = result["masks"][idx]
+                # Scale the result coords to frame coords
+                mask[:, 0] *= frame_width / result_width
+                mask[:, 1] *= frame_height / result_height
                 runner_masks.append(mask)
                 confs.append(conf)
             else:

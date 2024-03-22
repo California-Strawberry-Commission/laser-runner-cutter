@@ -1,0 +1,2 @@
+bool calibrated
+string state
