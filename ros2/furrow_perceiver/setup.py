@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'furrow_preciever'
+package_name = 'furrow_perceiver'
 
 setup(
     name=package_name,
@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'furrow_preciever = furrow_preciever.furrow_preciever_node:main'
+            'furrow_perceiver = furrow_perceiver.furrow_perceiver_node:main'
         ],
     },
 )

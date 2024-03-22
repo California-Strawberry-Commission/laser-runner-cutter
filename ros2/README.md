@@ -1,25 +1,26 @@
 # Laser Runner Cutter ROS2 Nodes
+This project uses **Ubuntu 20.04 (Focal Fossa)**! Newer versions of ROS are not currently supported!
 
-## Setup
+## Auto-Install 
+Auto-Installation assumes a fresh version of **Ubuntu 20.04 desktop/server** on a dedicated deployment or development PC.
 
-1.  Install [ROS 2](https://docs.ros.org/en/foxy/Installation/Ubuntu-Install-Debians.html). Once installed, run:
+1. Clone this repository into your home directory
 
-        $ source /opt/ros/foxy/setup.zsh
+        $ cd ~
+        $ git clone https://github.com/California-Strawberry-Commission/laser-runner-cutter
 
-1.  Create ROS workspace
+1. Run the install script in `laser-runner-cutter/ros2`. This will take a while.
+        
+        $ cd laser-runner-cutter/ros2
+        $ bash install.sh
 
-        $ mkdir -p ~/ros2_ws/src
-        $ cd ~/ros2_ws
+1. Set up your environment. If you cloned somewhere other than home, use that directory instead of `~`. Optionally, also add this line to the end of your `.bashrc` to automagically activate the environment on every login (useful for deployed/dev systems)
 
-1.  Create Python virtual environment
+        $ source ~/laser-runner-cutter/ros2/setup.sh
 
-        $ python3 -m venv venv  --system-site-packages --symlinks
-        $ touch venv/COLCON_IGNORE
-        $ source venv/bin/activate
+1. Build the project to make sure everything installed correctly
 
-1.  If using VS Code, install the ROS extension for VS Code. Then, add the following to `.vscode/settings.json` in your project directory:
-
-        "~/ros2_ws/venv/lib/python3.8/site-packages"
+        $ bash build.sh
 
 ### Using Helios DAC on Linux
 
@@ -38,20 +39,6 @@ Linux systems require udev rules to allow access to USB devices without root pri
 
 1.  Issue the command `sudo udevadm control --reload` (or restart the computer).
 
-## Install
-
-1.  Clone project and install dependencies
-
-        $ cd ~/ros2_ws/src
-        $ git clone https://github.com/California-Strawberry-Commission/laser-runner-cutter
-
-        # Install dependencies
-        $ laser-runner-cutter/ros2/install_requirements.sh
-
-1.  Build packages
-
-        $ cd ~/ros2_ws
-        $ colcon build
 
 ## Run
 
@@ -65,4 +52,8 @@ Linux systems require udev rules to allow access to USB devices without root pri
 C/C++ libraries included were compiled for linux-x86_64 from the following sources:
 
 - Helios DAC: https://github.com/Grix/helios_dac
-- Ether Dream 4 DAC: https://github.com/genkikondo/ether-dream-sdk
+- Ether Dream 4 DAC: https://github.com/genkikondo/ether-dream-sdk 
+
+## Troubleshooting
+### No space left on device
+Make sure you have at least 32GB of available disk space. If installed using an LVM (Ubuntu server's default), expand your root (`/`) partition to at least 32GB.
