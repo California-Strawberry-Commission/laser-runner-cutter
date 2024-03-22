@@ -2,7 +2,7 @@
 This project uses **Ubuntu 20.04 (Focal Fossa)**! Newer versions of ROS are not currently supported!
 
 ## Auto-Install 
-Auto-Installation assumes a fresh version of **Ubuntu 20.04 desktop/server** on a dedicated deployment or development PC. Following these steps 
+Auto-Installation assumes a fresh version of **Ubuntu 20.04 desktop/server** on a dedicated deployment or development PC.
 
 1. Clone this repository into your home directory
 
@@ -40,7 +40,6 @@ Linux systems require udev rules to allow access to USB devices without root pri
 1.  Issue the command `sudo udevadm control --reload` (or restart the computer).
 
 
-
 ## Run
 
 1.  Launch ROS2 nodes using the launch file
@@ -53,15 +52,7 @@ Linux systems require udev rules to allow access to USB devices without root pri
 C/C++ libraries included were compiled for linux-x86_64 from the following sources:
 
 - Helios DAC: https://github.com/Grix/helios_dac
-- Ether Dream 4 DAC: https://github.com/genkikondo/ether-dream-sdk
-
-
-This will install [ROS 2 - Foxy](https://docs.ros.org/en/foxy/index.html), [realsense-ros](https://github.com/IntelRealSense/realsense-ros), and all python dependencies. This guide assumes a clean install of Ubuntu 20.04. If you already have ROS installed, you can manually install components using the scripts
-```sh
-install_realsense_ros.sh
-install_requirements.sh
-install_ros.sh
-```
+- Ether Dream 4 DAC: https://github.com/genkikondo/ether-dream-sdk 
 
 ## Troubleshooting
 ### No space left on device
