@@ -24,10 +24,8 @@ echo "Installing ROS realsense"
 # Install dependancies
 sudo apt install -y "ros-$ROS_DISTRO-librealsense2*"
 
-# cp realsense ROS packages into source dir
-cd "$script_dir/.."
+# Init realsense submodule
 git submodule update --init --recursive
-cp -r realsense-ros/realsense2_* "$script_dir"
 
 # Setup for ROS
 # sudo rosdep init --include-eol-distros      # "sudo rosdep init --include-eol-distros" for Foxy and earlier
