@@ -39,10 +39,10 @@ export default function Controls() {
 
   useEffect(() => {
     ros.onStateChange(() => {
-      setRosConnected(ros.ros.isConnected);
+      setRosConnected(ros.isConnected());
     });
-    setRosConnected(ros.ros.isConnected);
-  }, [setRosConnected]);
+    setRosConnected(ros.isConnected());
+  }, [ros, setRosConnected]);
 
   let laserButton = null;
   if (laserState === 1) {

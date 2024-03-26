@@ -52,13 +52,20 @@ export default class ROS {
     this.nodeMonitorInterval = null;
   }
 
-  onStateChange(callback: (state: string) => void) {
+  isConnected(): boolean {
+    return this.ros.isConnected;
+  }
+
+  onStateChange(callback: (state: string) => void): void {
     this.ros.on("connection", () => callback("connection"));
     this.ros.on("error", () => callback("error"));
     this.ros.on("close", () => callback("close"));
   }
 
-  onNodeConnected(nodeName: string, callback: (connected: boolean) => void) {
+  onNodeConnected(
+    nodeName: string,
+    callback: (connected: boolean) => void
+  ): void {
     if (nodeName in this.nodeListeners) {
       this.nodeListeners[nodeName].push(callback);
     } else {
@@ -95,7 +102,7 @@ export default class ROS {
     name: string,
     messageType: string,
     callback: (message: any) => void
-  ) {
+  ): ROSLIB.Topic<ROSLIB.Message> {
     const listener = new ROSLIB.Topic({ ros: this.ros, name, messageType });
     listener.subscribe(callback);
     return listener;
@@ -113,7 +120,7 @@ export default class ROS {
   private setupNodeMonitor(): void {
     if (this.nodeMonitorInterval === null) {
       this.nodeMonitorInterval = setInterval(async () => {
-        if (!this.ros.isConnected) {
+        if (!this.isConnected()) {
           return;
         }
 
