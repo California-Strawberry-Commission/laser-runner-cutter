@@ -1,76 +1,60 @@
-import asyncio
-import rclpy
-import rclpy.node
+from typing import AsyncGenerator
 from amiga_control_interfaces.srv import SetTwist
-from enum import Enum
-import dataclasses
+from dataclasses import dataclass
+from .ros_asyncio import AsyncNode, action, serve_nodes, service, timer, param, ros_params
+from rcl_interfaces.msg import ParameterDescriptor
 
-# TODO: flesh this out.
-getter_map = {
-    str: "string_value",
-    int: "integer_value",
-}
 
 # Future note: dataclass requires type annotations to work
-@dataclasses.dataclass
-class Params:
+@dataclass
+class AmigaParams:
     host: str = "127.0.0.1"
     port_canbus: int = 6001
+    # read_me: str = (
+    #     "A test value",
+    #     ParameterDescriptor(description="test", read_only=True),
+    # )
 
 
+class AmigaControlNode(AsyncNode("amiga_control_node", AmigaParams)):
+    @param(AmigaParams.host)
+    async def set_host_param(self, host):
+        self.params.host = host
+        # Do something else...
 
-class AmigaControlNode(rclpy.node.Node):
-    def register_params_dataclass(self, dclass):
-        # Declare and update all parameters present in the
-        # passed dataclass.
-        for f in dataclasses.fields(dclass):
-            self.declare_parameter(f.name, f.default)
+    @timer(1) # Server only
+    async def task(self):
+        await self.publish()
 
-            # Map dataclass type to a ROS value attribute
-            # IE int -> get_parameter_value().integer_value
-            getter = getter_map[f.type]
+    @service("~/set_twist", SetTwist)
+    async def set_twist(self, twist) -> bool:
+        print(twist)
+        return True
 
-            if getter is None:
-                raise RuntimeError(f"No getter for type {f.type}")
-
-            current_val = getattr(
-                self.get_parameter(f.name).get_parameter_value(), getter
-            )
-            setattr(dclass, f.name, current_val)
-
-        # TODO: Figure out some kind of notification system ://
-        # self.add_on_set_parameters_callback(self.parameter_callback)
-
-        return dclass
-    
-    def __init__(self):
-        super().__init__("amiga_control_node")
-
-        self.params = self.register_params_dataclass(Params())
-
-        # Init services
-        self.create_service(SetTwist, "~/set_twist", self.cb_set_twist)
-
-    def cb_set_twist(self, req, res):
-        print(req.twist)
-
-        res.success = True
-        return res
-
-
-async def ros_loop(node):
-    print("Ros node starting up")
-    while rclpy.ok():
-        rclpy.spin_once(node, timeout_sec=0)
-        await asyncio.sleep(1e-4)
+    @action("~/test", SetTwist)
+    async def act(self, twist) -> AsyncGenerator[int, None]:
+        for i in range(10):
+            yield i
+        return
 
 
 def main():
-    rclpy.init()   
-    node = AmigaControlNode()
-    
-    future = asyncio.wait([ros_loop(node)])
-    asyncio.get_event_loop().run_until_complete(future)
+    serve_nodes(a := AmigaControlNode())
 
 if __name__ == "__main__":
     main()
+
+# CLIENT BELOW HERE
+n = AmigaControlNode().client()
+
+@n.on("topic")
+async def handler():
+    print("Got message on topic")
+
+async def main():
+    await n.set_twist({x: 1, y: 1})
+    
+    # Problem: async generators don't have return values (...). Important?
+    # There are workarounds but not super pretty.
+    async for progress in n.act({x: 1, y: 1}):
+        print(f"Got progress {progress}")
