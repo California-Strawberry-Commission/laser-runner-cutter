@@ -1,5 +1,3 @@
-set -e
-
 source env.sh
 
 source $VENV_DIR/bin/activate
