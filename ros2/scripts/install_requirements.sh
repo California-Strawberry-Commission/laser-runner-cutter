@@ -1,9 +1,13 @@
 #!/bin/bash
+set -e
 
-script_dir=$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )
+# Install python deps of subpackages
+# (Don't bother using ROS's dep management for py)
+source env.sh
+source $VENV_DIR/bin/activate
 
 # Find all requirement.txt files and iterate through them
-find "$script_dir" -name 'requirements.txt' -type f | while read -r file; do
+find "$WS_DIR" -name 'requirements.txt' -type f | while read -r file; do
     # Extract directory path of the requirements.txt file
     dir_path=$(dirname "$file")
 
