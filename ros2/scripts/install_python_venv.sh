@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 
-source env.sh
+script_dir=$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )
+source $script_dir/env.sh
 
 if [ ! -d $VENV_DIR ]; then
     echo "ROS venv not created - creating"

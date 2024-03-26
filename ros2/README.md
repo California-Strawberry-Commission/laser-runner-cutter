@@ -1,26 +1,24 @@
 # Laser Runner Cutter ROS2 Nodes
+
 This project uses **Ubuntu 20.04 (Focal Fossa)**! Newer versions of ROS are not currently supported!
 
-## Auto-Install 
+## Auto-Install
+
 Auto-Installation assumes a fresh version of **Ubuntu 20.04 desktop/server** on a dedicated deployment or development PC.
 
-1. Clone this repository into your home directory
+1.  Clone this repository into your home directory
 
         $ cd ~
         $ git clone https://github.com/California-Strawberry-Commission/laser-runner-cutter
 
-1. Run the install script in `laser-runner-cutter/ros2/scripts`. This will take a while.
-        
+1.  Run the install script in `laser-runner-cutter/ros2/scripts`. This will take a while.
+
         $ cd laser-runner-cutter/ros2/scripts
         $ bash install.sh
 
-1. Set up your environment. If you cloned somewhere other than home, use that directory instead of `~`. Optionally, also add this line to the end of your `.bashrc` to automagically activate the environment on every login (useful for deployed/dev systems)
+1.  Set up your environment. If you cloned somewhere other than home, use that directory instead of `~`. Optionally, also add this line to the end of your `.bashrc` to automagically activate the environment on every login (useful for deployed/dev systems)
 
         $ source ~/laser-runner-cutter/ros2/scripts/setup.sh
-
-1. Build the project to make sure everything installed correctly
-
-        $ bash build.sh
 
 ### Using Helios DAC on Linux
 
@@ -39,12 +37,11 @@ Linux systems require udev rules to allow access to USB devices without root pri
 
 1.  Issue the command `sudo udevadm control --reload` (or restart the computer).
 
-
 ## Run
 
 1.  Launch ROS2 nodes using the launch file
 
-        $ source laser-runner-cutter/ros2/setup.sh  # or setup.zsh in Z shell
+        $ source laser-runner-cutter/ros2/scripts/setup.sh  # or setup.zsh in Z shell
         $ ros2 launch runner_cutter_control launch.py
 
 ## Native libraries
@@ -52,8 +49,10 @@ Linux systems require udev rules to allow access to USB devices without root pri
 C/C++ libraries included were compiled for linux-x86_64 from the following sources:
 
 - Helios DAC: https://github.com/Grix/helios_dac
-- Ether Dream 4 DAC: https://github.com/genkikondo/ether-dream-sdk 
+- Ether Dream 4 DAC: https://github.com/genkikondo/ether-dream-sdk
 
 ## Troubleshooting
+
 ### No space left on device
+
 Make sure you have at least 32GB of available disk space. If installed using an LVM (Ubuntu server's default), expand your root (`/`) partition to at least 32GB.

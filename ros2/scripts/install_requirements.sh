@@ -3,7 +3,8 @@ set -e
 
 # Install python deps of subpackages
 # (Don't bother using ROS's dep management for py)
-source env.sh
+script_dir=$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )
+source $script_dir/env.sh
 source $VENV_DIR/bin/activate
 
 # Find all requirement.txt files and iterate through them

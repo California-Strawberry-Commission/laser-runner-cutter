@@ -1,8 +1,10 @@
 #!/bin/bash
 set -e
 
-source env.sh
-cd $SCRIPT_DIR
+script_dir=$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )
+source $script_dir/env.sh
+
+cd $script_dir
 
 # Install - cache if already installed.
 if [ ! -f "$INSTALLED_F" ]; then

@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 
-source env.sh
+script_dir=$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )
+source $script_dir/env.sh
 
 # perform all commands in workspace dir
 cd $WS_DIR
