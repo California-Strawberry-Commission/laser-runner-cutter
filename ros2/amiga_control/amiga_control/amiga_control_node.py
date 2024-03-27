@@ -36,8 +36,8 @@ class AmigaControlNode(AsyncNode):
     @action("~/test", Run)
     async def act(self, respond, feedback, fast) -> AsyncGenerator[int, None]:
         for i in range(10):
-            yield feedback(progress=i)
-            await asyncio.sleep(1)
+            yield feedback(progress=float(i))
+            await asyncio.sleep(0.1 if fast else 1)
         
         # LAST YIELD MUST BE RESPONSE!!
         yield respond(success=True)

@@ -4,6 +4,7 @@ import re
 from typing import Optional
 import rclpy
 import rclpy.node
+from rclpy.action import ActionServer
 import atexit
 import inspect
 
@@ -21,14 +22,14 @@ def to_snake(camel_str):
     return re.sub("([a-z0-9])([A-Z])", r"\1_\2", camel_str).lower()
 
 
-async def ros_spin_nodes(nodes):
+async def _ros_spin_nodes(nodes):
     print("Ros starting up...")
 
     # TODO: Tune thread counts. Might be limitations - not sure what ROS behavior when running out.
     executor = rclpy.executors.MultiThreadedExecutor(num_threads=10)
 
-    for n in nodes:
-        executor.add_node(n)
+    for node in nodes:
+        executor.add_node(node)
 
     print("Ros event loop running!")
     while rclpy.ok():
@@ -42,7 +43,7 @@ def serve_nodes(*nodes):
     servers = [n.server() for n in nodes]
     tasks = [task for s in servers for task in s.tasks()]
 
-    tasks = asyncio.wait(tasks + [ros_spin_nodes(servers)])
+    tasks = asyncio.wait(tasks + [_ros_spin_nodes(servers)])
     asyncio.get_event_loop().run_until_complete(tasks)
 
 
@@ -217,6 +218,8 @@ class AsyncServerNode(rclpy.node.Node):
         for handler in self._n._get_ros_handlers():
             if handler._ros_type == "service":
                 self._attach_service(handler)
+            elif handler._ros_type == "action":
+                self._attach_action(handler)
             else:
                 pass
                 # raise RuntimeError("Unsupported type")
@@ -248,10 +251,12 @@ class AsyncServerNode(rclpy.node.Node):
         return dataclass
 
     def _attach_service(self, service_handler):
+        print(f"Attach service {service_handler.__name__}")
+
         handler_name = service_handler.__name__
         idl = service_handler._ros_idl
         namespace = service_handler._ros_namespace
-        
+
         def cb(req, res):
             print(f"SERVICE HANDLER {namespace} START", req)
 
@@ -265,15 +270,64 @@ class AsyncServerNode(rclpy.node.Node):
 
             # Prevent ROS hang if return value is invalid
             if not isinstance(result, idl.Response):
-                print(f"!!!WARN!!!: Service handler {handler_name} did not return `respond(...)`. Expected {idl.Response}, got {result}")
+                print(
+                    f"!!!WARN!!!: Service handler {handler_name} did not return `respond(...)`. "
+                    "Expected {idl.Response}, got {result}"
+                )
                 result = res
-            
+
             print(f"SERVICE HANDLER {namespace} FINISH", result)
 
             return result
 
         self.create_service(idl, namespace, cb)
 
+    def _attach_action(self, action_handler):
+        print(f"Attach action {action_handler.__name__}")
+        handler_name = action_handler.__name__
+        idl = action_handler._ros_idl
+        namespace = action_handler._ros_namespace
+
+        def cb(goal):
+            print(f"ACTION HANDLER {namespace} START", goal)
+            req = goal.request
+            goal_keys = req.get_fields_and_field_types().keys()
+
+            kwargs = {k: getattr(req, k) for k in goal_keys}
+
+            gen = action_handler(respond=idl.Result, feedback=idl.Feedback, **kwargs)
+            
+            result = None
+            while True:
+                try:
+                    result = asyncio.run_coroutine_threadsafe(
+                        gen.__anext__(),
+                        loop=self._loop,
+                    ).result()
+                    
+                    print(f"ACTION HANDLER {namespace} FEEDBACK", result)
+                    
+                    if isinstance(result, idl.Feedback):
+                        goal.publish_feedback(result)
+                    elif isinstance(result, idl.Result):
+                        break
+                    else:
+                        print("WARN: YIELDED NON-FEEDBACK VALUE")
+                except StopAsyncIteration:
+                    break
+            
+            # Prevent ROS hang if return value is invalid
+            if not isinstance(result, idl.Result):
+                print(
+                    f"!!!WARN!!!: Service handler {handler_name} did not return `respond(...)`. Expected {idl.Result}, got {result}"
+                )
+                result = idl.Result()
+
+            print(f"ACTION HANDLER {namespace} FINISH", result)
+            goal.succeed()
+            return result
+
+        setattr(self, f"__{action_handler.__name__}", ActionServer(self, idl, namespace, cb)) 
 
 # TODO: Wrap dataclass w/ a setattr trap to trigger notifications
 ros_params = dataclasses.dataclass
