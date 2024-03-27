@@ -91,6 +91,8 @@ class RunnerImageCaptureApp(MDApp):
         self.file_manager = FileManager()
         self.log_queue = deque(maxlen=100)
         self.camera = None
+        if len(RealSense.get_devices()) > 0:
+            self.connect_to_camera(0)
 
         # KivyMD theme
         self.theme_cls.theme_style = "Dark"
@@ -137,24 +139,30 @@ class RunnerImageCaptureApp(MDApp):
         )
         self.config_manager.write_config()
 
-    def callback_for_camera_menu_items(self, device):
-        camera_index = RealSense.get_devices().index(device)
+    def connect_to_camera(self, camera_index):
         if self.camera is not None:
             self.camera.stop()
             self.camera = None
         self.camera = RealSense(camera_index=camera_index)
         self.camera.initialize()
         self.camera.set_exposure(self.config_manager.get(CONFIG_KEY_EXPOSURE_MS))
+
+    def callback_for_camera_menu_items(self, device):
+        self.log(f"Connecting to camera {device}")
+        camera_index = RealSense.get_devices().index(device)
+        self.connect_to_camera(camera_index)
         self.menu.dismiss()
 
     def open_camera_menu(self, caller):
+        devices = RealSense.get_devices()
+        self.log(f"Connected cameras: {devices}")
         self.menu_items = [
             {
                 "viewclass": "OneLineListItem",
                 "text": device,
                 "on_release": partial(self.callback_for_camera_menu_items, device),
             }
-            for device in RealSense.get_devices()
+            for device in devices
         ]
         self.menu = MDDropdownMenu(caller=caller, items=self.menu_items, width_mult=4)
         self.menu.open()
