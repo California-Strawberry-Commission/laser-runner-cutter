@@ -12,6 +12,15 @@ class RealSense:
         self.frame_size = frame_size
         self.camera_index = camera_index
         self.fps = fps
+        self.pipeline = None
+
+    @classmethod
+    def get_devices(cls):
+        serial_numbers = [
+            device.get_info(rs.camera_info.serial_number)
+            for device in rs.context().query_devices()
+        ]
+        return serial_numbers
 
     def initialize(self):
         # Setup code based on https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/align-depth2color.py
@@ -55,6 +64,10 @@ class RealSense:
             )
             self.profile = self.pipeline.start(self.config)
 
+    def stop(self):
+        if self.pipeline is not None:
+            self.pipeline.stop()
+
     def set_exposure(self, exposure_ms):
         color_sensor = self.profile.get_device().first_color_sensor()
         if exposure_ms < 0:
@@ -65,6 +78,9 @@ class RealSense:
             color_sensor.set_option(rs.option.exposure, exposure_us)
 
     def get_frame(self):
+        if self.pipeline is None:
+            return None
+
         frames = self.pipeline.wait_for_frames()
         if not frames:
             return None
