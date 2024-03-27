@@ -8,7 +8,7 @@ source $script_dir/env.sh
 source $VENV_DIR/bin/activate
 
 # Find all requirement.txt files and iterate through them
-find "$WS_DIR" -name 'requirements.txt' -type f | while read -r file; do
+find "$ROS_WS_DIR" -name 'requirements.txt' -type f | while read -r file; do
     # Extract directory path of the requirements.txt file
     dir_path=$(dirname "$file")
 

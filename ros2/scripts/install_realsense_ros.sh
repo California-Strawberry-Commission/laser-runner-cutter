@@ -5,7 +5,7 @@ script_dir="$(dirname "$(realpath "${BASH_SOURCE[-1]:-${(%):-%x}}")")"
 source $script_dir/env.sh
 
 # perform all commands in workspace dir
-cd $WS_DIR
+cd $ROS_WS_DIR
 
 # https://github.com/IntelRealSense/librealsense/blob/master/doc/distribution_linux.md#installing-the-packages
 sudo apt-get install -y apt-transport-https
