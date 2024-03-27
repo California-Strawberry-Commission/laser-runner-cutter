@@ -29,19 +29,23 @@ class AmigaControlNode(AsyncNode):
         await self.publish()
 
     @service("~/set_twist", SetTwist)
-    async def set_twist(self, twist) -> bool:
+    async def set_twist(self, respond, twist) -> bool:
         print(twist)
-        return True
+        return respond(success=True)
 
-    @action("~/test", SetTwist)
-    async def act(self, twist) -> AsyncGenerator[int, None]:
+    @action("~/test", Run)
+    async def act(self, respond, feedback, fast) -> AsyncGenerator[int, None]:
         for i in range(10):
-            yield i
+            yield feedback(progress=i)
             await asyncio.sleep(1)
-        return
+        
+        # LAST YIELD MUST BE RESPONSE!!
+        yield respond(success=True)
+        
 
 
 def main():
+    print(dir(Run))
     serve_nodes(a := AmigaControlNode())
 
 if __name__ == "__main__":

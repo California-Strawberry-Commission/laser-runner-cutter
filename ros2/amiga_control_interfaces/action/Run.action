@@ -1,9 +1,8 @@
 # Define a goal of washing all dishes
-bool heavy_duty  # Spend extra time cleaning
+bool fast  # Spend extra time cleaning
 ---
 # Define the result that will be published after the action execution ends.
-uint32 total_dishes_cleaned
+uint32 success
 ---
 # Define a feedback message that will be published during action execution.
-float32 percent_complete
-uint32 number_dishes_cleaned
+float32 progress

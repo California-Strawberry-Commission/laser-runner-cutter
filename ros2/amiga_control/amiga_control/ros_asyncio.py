@@ -47,22 +47,68 @@ def serve_nodes(*nodes):
 
 
 # TODO: Check types, check annotated return value if exists.
-def _check_service_function_signature(fn, srv):
+def _check_service_handler_signature(fn, srv):
     fn_inspection = inspect.signature(fn)
-    print(fn_inspection)
+
     fn_dict = fn_inspection.parameters
     fn_params = set(fn_dict)
-    fn_params.discard("self")
+
+    if not "respond" in fn_params:
+        raise RuntimeError(
+            f"PROBLEM WITH {fn.__name__}\n"
+            f"Service handlers MUST take a parameter called `respond` that is called and returned with the IDL result.\n"
+            f"Add a parameter called `respond` to {fn.__name__} to fix this issue\n"
+            f"IE: `def {fn.__name__}(respond): return respond(success=True)`"
+        )
 
     idl_dict = srv.Request.get_fields_and_field_types()
     idl_params = set(idl_dict.keys())
+
+    fn_params.discard("self")
+    fn_params.discard("respond")
+
+    if fn_params != idl_params:
+        raise RuntimeError(
+            f"PROBLEM WITH SERVICE >{fn.__name__}<\n"
+            f"Service handler parameters do not match those in the IDL format!\n"
+            f"Make sure that the function parameter names match those in the IDL!\n"
+            f"Handler: {fn.__name__} -> \t{fn_params if len(fn_params) else 'NO ARGUMENTS'}\n"
+            f"    IDL: {srv.__name__} -> \t{idl_params}"
+        )
+
+
+def _check_action_handler_signature(fn, act):
+    # ['Feedback', 'Goal', 'Impl', 'Result']
+    fn_inspection = inspect.signature(fn)
+
+    fn_dict = fn_inspection.parameters
+    fn_params = set(fn_dict)
+
+    if not "feedback" in fn_params or not "respond" in fn_params:
+        raise RuntimeError(
+            f"PROBLEM WITH ACTION >{fn.__name__}<\n"
+            f"Action handlers MUST take a parameter called `feedback` that is yielded with feedback results.\n"
+            f"Action handlers MUST take a parameter called `respond` that is last yielded with the result of the action.\n"
+            f"Add parameters called `feedback`and 'respond` to {fn.__name__} to fix this issue\n"
+            f"EXAMPLE:\n"
+            f"def {fn.__name__}(feedback, respond):\n"
+            f"\tyield feedback(prog=10)\n"
+            f"\tyield respond(succeeded=True)\n"
+        )
+
+    idl_dict = act.Goal.get_fields_and_field_types()
+    idl_params = set(idl_dict.keys())
+
+    fn_params.discard("self")
+    fn_params.discard("respond")
+    fn_params.discard("feedback")
 
     if fn_params != idl_params:
         raise RuntimeError(
             "Service handler parameters do not match those in the IDL format! "
             "Make sure that the function parameter names match those in the IDL!\n"
             f"Handler: {fn.__name__} -> \t{fn_params if len(fn_params) else 'NO ARGUMENTS'}\n"
-            f"    IDL: {srv.__name__} -> \t{idl_params}"
+            f"    IDL: {act.__name__} -> \t{idl_params}"
         )
 
 
@@ -75,7 +121,7 @@ def decorate_handler(handler, ros_type, ros_namespace=None, ros_idl=None):
 # https://stackoverflow.com/questions/11731136/class-method-decorator-with-self-arguments
 def service(namespace, srv_idl):
     def _service(fn):
-        _check_service_function_signature(fn, srv_idl)
+        _check_service_handler_signature(fn, srv_idl)
         decorate_handler(fn, "service", ros_idl=srv_idl, ros_namespace=namespace)
         return fn
 
@@ -84,7 +130,7 @@ def service(namespace, srv_idl):
 
 def action(namespace, act_idl):
     def _action(fn):
-        _check_service_function_signature(fn, act_idl)
+        _check_action_handler_signature(fn, act_idl)
         decorate_handler(fn, "action", ros_idl=act_idl, ros_namespace=namespace)
 
         return fn
@@ -202,22 +248,31 @@ class AsyncServerNode(rclpy.node.Node):
         return dataclass
 
     def _attach_service(self, service_handler):
+        handler_name = service_handler.__name__
+        idl = service_handler._ros_idl
+        namespace = service_handler._ros_namespace
+        
         def cb(req, res):
-            print("SERVICE HANDLER START", req)
-            
-            msg_keys = req.get_fields_and_field_types().keys()
-            
-            kwargs = { k:getattr(req, k) for k in msg_keys }
-            
-            result = asyncio.run_coroutine_threadsafe(service_handler(**kwargs), loop=self._loop).result()
-            
-            print("SERVICE HANDLER RUN", result)
-            res.success = result
-            return res
+            print(f"SERVICE HANDLER {namespace} START", req)
 
-        self.create_service(
-            service_handler._ros_idl, service_handler._ros_namespace, cb
-        )
+            msg_keys = req.get_fields_and_field_types().keys()
+
+            kwargs = {k: getattr(req, k) for k in msg_keys}
+
+            result = asyncio.run_coroutine_threadsafe(
+                service_handler(respond=idl.Response, **kwargs), loop=self._loop
+            ).result()
+
+            # Prevent ROS hang if return value is invalid
+            if not isinstance(result, idl.Response):
+                print(f"!!!WARN!!!: Service handler {handler_name} did not return `respond(...)`. Expected {idl.Response}, got {result}")
+                result = res
+            
+            print(f"SERVICE HANDLER {namespace} FINISH", result)
+
+            return result
+
+        self.create_service(idl, namespace, cb)
 
 
 # TODO: Wrap dataclass w/ a setattr trap to trigger notifications
