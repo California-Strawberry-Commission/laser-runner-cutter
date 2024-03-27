@@ -4,6 +4,8 @@ Web app for laser runner cutter control and automation, built with Next.js.
 
 ## Setup
 
+1.  Follow setup steps in [ros2/README.md](../../ros2/README.md)
+
 1.  Install Rosbridge
 
         $ sudo apt install ros-foxy-rosbridge-suite
@@ -48,7 +50,11 @@ Web app for laser runner cutter control and automation, built with Next.js.
 
 ## Install and run on Amiga brain
 
-SSH into the Amiga brain and clone the repo there. Then,
+1.  SSH into the Amiga brain and clone the repo there.
 
-    $ cd laser-runner-cutter/apps/runner-cutter-app
-    $ npm run build
+1.  Run Setup steps above.
+
+1.  Finally, run:
+
+        $ cd laser-runner-cutter/apps/runner-cutter-app
+        $ ./install.sh

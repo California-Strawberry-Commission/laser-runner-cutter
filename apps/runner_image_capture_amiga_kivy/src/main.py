@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 from datetime import datetime
 from collections import deque
+from functools import partial
 
 
 os.environ["KIVY_NO_ARGS"] = "1"
@@ -22,6 +23,7 @@ Config.set("input", "mouse", "mouse,disable_on_activity")
 Config.set("kivy", "keyboard_mode", "systemanddock")
 
 from kivymd.app import MDApp
+from kivymd.uix.menu import MDDropdownMenu
 from kivy.graphics.texture import Texture  # noqa: E402
 from kivy.lang.builder import Builder  # noqa: E402
 
@@ -52,13 +54,10 @@ DEFAULT_CONFIG = {
                 "log_level": "INFO",
                 "subscriptions": [
                     {
-                        "uri": {
-                            "path": "/pvt",
-                            "query": "service_name=gps"
-                        },
-                        "every_n": 1
+                        "uri": {"path": "/pvt", "query": "service_name=gps"},
+                        "every_n": 1,
                     },
-                ]
+                ],
             },
             {
                 "name": "filter",
@@ -67,16 +66,13 @@ DEFAULT_CONFIG = {
                 "log_level": "INFO",
                 "subscriptions": [
                     {
-                        "uri": {
-                            "path": "/state",
-                            "query": "service_name=filter"
-                        },
-                        "every_n": 1
+                        "uri": {"path": "/state", "query": "service_name=filter"},
+                        "every_n": 1,
                     }
-                ]
-            }
+                ],
+            },
         ]
-    }
+    },
 }
 
 
@@ -88,13 +84,13 @@ class RunnerImageCaptureApp(MDApp):
 
     def build(self):
         self.config_manager = ConfigManager(CONFIG_FILE, DEFAULT_CONFIG)
-        self.amiga_client = AmigaClient(self.config_manager.get(CONFIG_KEY_METADATA_SERVICES))
+        self.amiga_client = AmigaClient(
+            self.config_manager.get(CONFIG_KEY_METADATA_SERVICES)
+        )
         self.metadata_provider = MetadataProvider(self.amiga_client, self.logger)
         self.file_manager = FileManager()
         self.log_queue = deque(maxlen=100)
-        self.camera = RealSense()
-        self.camera.initialize()
-        self.camera.set_exposure(self.config_manager.get(CONFIG_KEY_EXPOSURE_MS))
+        self.camera = None
 
         # KivyMD theme
         self.theme_cls.theme_style = "Dark"
@@ -124,7 +120,7 @@ class RunnerImageCaptureApp(MDApp):
         self.root.ids["interval_s"].text = str(
             self.config_manager.get(CONFIG_KEY_INTERVAL_S)
         )
-        
+
         self.amiga_client.init_clients()
 
     def on_stop(self) -> None:
@@ -141,7 +137,32 @@ class RunnerImageCaptureApp(MDApp):
         )
         self.config_manager.write_config()
 
+    def callback_for_camera_menu_items(self, device):
+        camera_index = RealSense.get_devices().index(device)
+        if self.camera is not None:
+            self.camera.stop()
+            self.camera = None
+        self.camera = RealSense(camera_index=camera_index)
+        self.camera.initialize()
+        self.camera.set_exposure(self.config_manager.get(CONFIG_KEY_EXPOSURE_MS))
+        self.menu.dismiss()
+
+    def open_camera_menu(self, caller):
+        self.menu_items = [
+            {
+                "viewclass": "OneLineListItem",
+                "text": device,
+                "on_release": partial(self.callback_for_camera_menu_items, device),
+            }
+            for device in RealSense.get_devices()
+        ]
+        self.menu = MDDropdownMenu(caller=caller, items=self.menu_items, width_mult=4)
+        self.menu.open()
+
     def capture_frame(self) -> None:
+        if self.camera is None:
+            return
+
         frame = self.camera.get_frame()
         if frame:
             save_dir = self.root.ids["save_dir"].text
@@ -153,6 +174,9 @@ class RunnerImageCaptureApp(MDApp):
             self.log(f"Frame captured: {file_path}")
 
     def on_exposure_apply_click(self) -> None:
+        if self.camera is None:
+            return
+
         exposure_ms = float(self.root.ids["exposure_ms"].text)
         self.camera.set_exposure(exposure_ms)
         self.log(f"Exposure set to {exposure_ms}ms")
@@ -203,6 +227,10 @@ class RunnerImageCaptureApp(MDApp):
             await asyncio.sleep(0.01)
 
         while True:
+            if self.camera is None:
+                await asyncio.sleep(1.0)
+                continue
+
             await asyncio.sleep(1.0 / self.camera.fps)
 
             frame = self.camera.get_frame()
