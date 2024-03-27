@@ -14,7 +14,7 @@ Auto-Installation assumes a fresh version of **Ubuntu 20.04 desktop/server** on 
 1.  Run the install script in `laser-runner-cutter/ros2/scripts`. This will take a while.
 
         $ cd laser-runner-cutter/ros2/scripts
-        $ bash install.sh
+        $ ./install.sh
 
 1.  Set up your environment. If you cloned somewhere other than home, use that directory instead of `~`. Optionally, also add this line to the end of your `.bashrc` to automagically activate the environment on every login (useful for deployed/dev systems)
 

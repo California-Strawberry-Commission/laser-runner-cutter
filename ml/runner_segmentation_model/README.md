@@ -40,9 +40,7 @@ Note: the following steps are encapsulated in `scripts/env_setup.sh`.
 1.  Install MMDetection
 
         $ pip install -U openmim
-        $ mim install mmengine
-        $ mim install mmcv
-        $ mim install mmdet
+        $ mim install mmengine mmcv mmdet
 
 1.  Install necessary requirements
 
@@ -82,10 +80,9 @@ Note: the following steps are encapsulated in `scripts/env_setup.sh`.
 
     PyTorch:
 
-        $ wget https://developer.download.nvidia.cn/compute/redist/jp/v512/pytorch/torch-2.1.0a0+41361538.nv23.06-cp38-cp38-linux_aarch64.whl ~/Downloads/torch-2.1.0a0+41361538.nv23.06-cp38-cp38-linux_aarch64.whl
+        $ wget https://developer.download.nvidia.cn/compute/redist/jp/v512/pytorch/torch-2.1.0a0+41361538.nv23.06-cp38-cp38-linux_aarch64.whl torch-2.1.0a0+41361538.nv23.06-cp38-cp38-linux_aarch64.whl
         $ sudo apt-get install python3-pip libopenblas-base libopenmpi-dev libomp-dev
-        $ pip install 'Cython<3'
-        $ pip install numpy ~/Downloads/torch-2.1.0a0+41361538.nv23.06-cp38-cp38-linux_aarch64.whl
+        $ pip install 'Cython<3' numpy torch-2.1.0a0+41361538.nv23.06-cp38-cp38-linux_aarch64.whl
 
     torchvision:
 

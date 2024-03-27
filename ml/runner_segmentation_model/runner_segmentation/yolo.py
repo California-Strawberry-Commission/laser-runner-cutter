@@ -55,11 +55,22 @@ class Yolo:
     def debug(self, image_file):
         image = cv2.imread(image_file)
         image_array = np.array(image)
+
+        # Measure inference time
+        # Warmup
+        for i in range(5):
+            self.model(image_array, iou=0.6)
+        inference_start = perf_counter()
+        self.model(image_array, iou=0.6)
+        inference_stop = perf_counter()
+        print(f"Inference took {inference_stop - inference_start} seconds.")
+
         result = self.model(image_array, iou=0.6)[0]
 
         conf = result.boxes.conf.cpu().numpy()
         boxes = result.boxes.xywh
-        masks = result.masks.xy
+        if result.masks:
+            masks = result.masks.xy
 
         result.show()  # display to screen
 
