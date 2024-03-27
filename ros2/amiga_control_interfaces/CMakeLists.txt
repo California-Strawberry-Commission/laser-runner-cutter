@@ -24,10 +24,12 @@ find_package(ament_cmake REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(common_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
+find_package(action_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SetTwist.srv"
-  DEPENDENCIES sensor_msgs common_interfaces
+  "action/Run.action"
+  DEPENDENCIES sensor_msgs common_interfaces action_msgs
 )
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
