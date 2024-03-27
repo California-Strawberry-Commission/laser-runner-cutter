@@ -44,6 +44,11 @@ MDBoxLayout:  # Root
                     font_style: "Button"
                     pos_hint: {"center_x": 0.5, "center_y": 0.5}
                     on_release: app.on_exposure_apply_click()
+                MDFillRoundFlatButton:
+                    text: "Auto Exposure"
+                    font_style: "Button"
+                    pos_hint: {"center_x": 0.5, "center_y": 0.5}
+                    on_release: app.on_auto_exposure_click()
             MDBoxLayout:  # Spacer
                 size_hint_y: None
                 height: 10

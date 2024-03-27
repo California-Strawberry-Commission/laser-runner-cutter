@@ -189,6 +189,13 @@ class RunnerImageCaptureApp(MDApp):
         self.camera.set_exposure(exposure_ms)
         self.log(f"Exposure set to {exposure_ms}ms")
 
+    def on_auto_exposure_click(self) -> None:
+        if self.camera is None:
+            return
+
+        self.camera.set_exposure(-1)
+        self.log(f"Auto-exposure set")
+
     def on_manual_capture_click(self) -> None:
         self.log(f"Manual capture")
         self.capture_frame()
