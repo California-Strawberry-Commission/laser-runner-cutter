@@ -35,10 +35,10 @@ export default function Controls() {
 
   useEffect(() => {
     ros.onStateChange(() => {
-      setRosConnected(ros.ros.isConnected);
+      setRosConnected(ros.isConnected());
     });
-    setRosConnected(ros.ros.isConnected);
-  }, [setRosConnected]);
+    setRosConnected(ros.isConnected());
+  }, [ros, setRosConnected]);
 
   return (
     <div className="flex flex-col gap-4 items-center">

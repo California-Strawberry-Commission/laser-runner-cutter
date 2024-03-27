@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
 import ROSContext from "@/lib/ros/ROSContext";
 
 export default function useCameraNode(nodeName: string) {
@@ -12,14 +12,14 @@ export default function useCameraNode(nodeName: string) {
   });
   const [frameSrc, setFrameSrc] = useState<string>("");
 
-  const getState = async () => {
+  const getState = useCallback(async () => {
     const result = await ros.callService(
       `${nodeName}/get_state`,
       "camera_control_interfaces/GetState",
       {}
     );
     setNodeState(result.state);
-  };
+  }, [ros, nodeName, setNodeState]);
 
   // Initial node state
   useEffect(() => {
@@ -28,7 +28,7 @@ export default function useCameraNode(nodeName: string) {
       getState();
     }
     setNodeConnected(connected);
-  }, [nodeName]);
+  }, [ros, nodeName, getState, setNodeConnected]);
 
   // Subscriptions
   useEffect(() => {
@@ -60,7 +60,7 @@ export default function useCameraNode(nodeName: string) {
       stateSub.unsubscribe();
       frameSub.unsubscribe();
     };
-  }, [nodeName]);
+  }, [ros, nodeName, getState, setNodeConnected, setNodeState, setFrameSrc]);
 
   const setExposure = (exposureMs: number) => {
     ros.callService(

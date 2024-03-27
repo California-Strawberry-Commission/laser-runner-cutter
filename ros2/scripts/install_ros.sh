@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-script_dir=$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )
+script_dir="$(dirname "$(realpath "${BASH_SOURCE[-1]:-${(%):-%x}}")")"
 source $script_dir/env.sh
 
 # IMPORTANT: Some ROS versions need an upgrade 
@@ -21,5 +21,5 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-a
 
 # Install APT deps
 sudo apt update
-sudo apt install -y $ROS_DEPS
+sudo apt install -y ros-foxy-desktop ros-foxy-diagnostic-updater python3-rosdep2 python3-colcon-common-extensions python3-argcomplete
 

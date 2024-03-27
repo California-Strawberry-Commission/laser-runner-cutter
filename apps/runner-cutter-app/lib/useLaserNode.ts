@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
 import ROSContext from "@/lib/ros/ROSContext";
 
 export const LASER_STATES = ["disconnected", "stopped", "playing"];
@@ -8,14 +8,14 @@ export default function useLaserNode(nodeName: string) {
   const [nodeConnected, setNodeConnected] = useState<boolean>(false);
   const [laserState, setLaserState] = useState<number>(0);
 
-  const getState = async () => {
+  const getState = useCallback(async () => {
     const result = await ros.callService(
       `${nodeName}/get_state`,
       "laser_control_interfaces/GetState",
       {}
     );
     setLaserState(result.state.data);
-  };
+  }, [ros, nodeName, setLaserState]);
 
   // Initial node state
   useEffect(() => {
@@ -24,7 +24,7 @@ export default function useLaserNode(nodeName: string) {
       getState();
     }
     setNodeConnected(connected);
-  }, [nodeName]);
+  }, [ros, nodeName, getState, setNodeConnected]);
 
   // Subscriptions
   useEffect(() => {
@@ -47,7 +47,7 @@ export default function useLaserNode(nodeName: string) {
       // TODO: unsubscribe from ros.onNodeConnected
       stateSub.unsubscribe();
     };
-  }, [nodeName]);
+  }, [ros, nodeName, getState, setNodeConnected, setLaserState]);
 
   const addPoint = (x: number, y: number) => {
     ros.callService(

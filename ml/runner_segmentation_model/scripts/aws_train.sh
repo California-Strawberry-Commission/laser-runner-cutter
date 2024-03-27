@@ -1,5 +1,7 @@
 #!/bin/bash
-# Be careful, note the shutdown command at the end
+# When training on AWS EC2, make sure to set the proper IAM role on the instance
+# and set the Shutdown Behavior to Terminate.
+# Be careful: note the shutdown command at the end of this script.
 
 if [ $# -eq 0 ]; then
   echo "Usage: $0 <train command>"

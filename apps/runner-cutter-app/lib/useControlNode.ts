@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
 import ROSContext from "@/lib/ros/ROSContext";
 
 export default function useControlNode(nodeName: string) {
@@ -9,14 +9,14 @@ export default function useControlNode(nodeName: string) {
     state: "disconnected",
   });
 
-  const getState = async () => {
+  const getState = useCallback(async () => {
     const result = await ros.callService(
       `${nodeName}/get_state`,
       "runner_cutter_control_interfaces/GetState",
       {}
     );
     setNodeState(result.state);
-  };
+  }, [ros, nodeName, setNodeState]);
 
   // Initial node state
   useEffect(() => {
@@ -25,7 +25,7 @@ export default function useControlNode(nodeName: string) {
       getState();
     }
     setNodeConnected(connected);
-  }, [nodeName]);
+  }, [ros, nodeName, getState, setNodeConnected]);
 
   // Subscriptions
   useEffect(() => {
@@ -48,7 +48,7 @@ export default function useControlNode(nodeName: string) {
       // TODO: unsubscribe from ros.onNodeConnected
       stateSub.unsubscribe();
     };
-  }, [nodeName]);
+  }, [ros, nodeName, getState, setNodeConnected, setNodeState]);
 
   const calibrate = () => {
     ros.callService(`${nodeName}/calibrate`, "std_srvs/Trigger", {});
