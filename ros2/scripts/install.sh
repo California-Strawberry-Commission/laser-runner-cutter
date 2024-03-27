@@ -1,13 +1,14 @@
 #!/bin/bash
 set -e
 
-script_dir=$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )
+script_dir="$(dirname "$(realpath "${BASH_SOURCE[-1]:-${(%):-%x}}")")"
 source $script_dir/env.sh
 
 cd $script_dir
 
 # Install - cache if already installed.
-if [ ! -f "$INSTALLED_F" ]; then
+installed_file=".installed"
+if [ ! -f "$installed_file" ]; then
     echo "Not installed - installing"
     bash ./install_python_venv.sh
     bash ./install_ros.sh
@@ -17,5 +18,5 @@ if [ ! -f "$INSTALLED_F" ]; then
     echo "Building!"
     bash ./build.sh
 
-    touch "$INSTALLED_F"
+    touch "$installed_file"
 fi
