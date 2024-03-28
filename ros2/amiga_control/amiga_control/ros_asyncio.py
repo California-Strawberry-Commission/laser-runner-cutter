@@ -12,6 +12,26 @@ import inspect
 # https://robotics.stackexchange.com/questions/106026/ros2-multi-nodes-each-on-a-thread-in-same-process
 
 
+"""
+Done:
+Action Server
+Service Server
+
+Service Client
+
+
+Todo:
+Action Client
+Topic Publisher
+Topic Subscriber
+Server background tasks
+Namespace linking
+Server param change subscriptions
+Client param sets
+Server param side effects
+Server timer tasks
+
+"""
 def to_camel_case(snake_str):
     # https://stackoverflow.com/questions/19053707/converting-snake-case-to-lower-camel-case-lowercamelcase
     return "".join(x.capitalize() for x in snake_str.lower().split("_"))
@@ -171,11 +191,38 @@ def rosnode(params_class):
 
 class AsyncClientNode(rclpy.node.Node):
     def __init__(self, async_node):
-        super().__init__(async_node.node_name + "_client")
+        rclpy.init()
+        super().__init__(async_node.node_name)
         self._n = async_node
         self._n.params = self._attach_params_dataclass(self._n.params)
         self._loop = asyncio.get_event_loop()
+        
+        self._create_impl()
 
+    def _create_impl(self):
+        for fn in self._n._get_ros_handlers():
+            if fn._ros_type == "service":
+                self._create_service_impl(fn)
+    
+    def _create_service_impl(self, handler):
+        async def _impl(*args, **kwargs):
+            req = handler._ros_idl.Request(*args, **kwargs)
+            return await self._loop.run_in_executor(None, self._dispatch_service_req, _impl, req)
+        
+        _impl._ros_client = self.create_client(handler._ros_idl, handler._ros_namespace)
+        setattr(self, handler.__name__, _impl)
+    
+    def _dispatch_service_req(self, impl, request):
+        cli = impl._ros_client
+        
+        if not impl._ros_client.wait_for_service(timeout_sec=2.0):
+            self.get_logger().error("Service not available")
+            return None
+        
+        fut = cli.call_async(request)
+        rclpy.spin_until_future_complete(self, fut)
+        return fut.result()
+        
     def _attach_params_dataclass(self, dataclass):
         # Declare and update all parameters present in the
         # passed dataclass.
@@ -204,6 +251,7 @@ class AsyncClientNode(rclpy.node.Node):
 class AsyncServerNode(rclpy.node.Node):
     def __init__(self, async_node):
         super().__init__(async_node.node_name)
+        self.log = self.get_logger()
         self._n = async_node
         self._n.params = self._attach_params_dataclass(self._n.params)
         self._loop = asyncio.get_event_loop()
@@ -251,7 +299,7 @@ class AsyncServerNode(rclpy.node.Node):
         return dataclass
 
     def _attach_service(self, service_handler):
-        print(f"Attach service {service_handler.__name__}")
+        self.log.info(f"Attach service {service_handler.__name__}")
 
         handler_name = service_handler.__name__
         idl = service_handler._ros_idl
@@ -270,8 +318,8 @@ class AsyncServerNode(rclpy.node.Node):
 
             # Prevent ROS hang if return value is invalid
             if not isinstance(result, idl.Response):
-                print(
-                    f"!!!WARN!!!: Service handler {handler_name} did not return `respond(...)`. "
+                self.log.warn(
+                    f"Service handler {handler_name} did not return `respond(...)`. "
                     "Expected {idl.Response}, got {result}"
                 )
                 result = res
@@ -283,7 +331,7 @@ class AsyncServerNode(rclpy.node.Node):
         self.create_service(idl, namespace, cb)
 
     def _attach_action(self, action_handler):
-        print(f"Attach action {action_handler.__name__}")
+        self.log.info(f"Attach action {action_handler.__name__}")
         handler_name = action_handler.__name__
         idl = action_handler._ros_idl
         namespace = action_handler._ros_namespace
@@ -296,7 +344,7 @@ class AsyncServerNode(rclpy.node.Node):
             kwargs = {k: getattr(req, k) for k in goal_keys}
 
             gen = action_handler(respond=idl.Result, feedback=idl.Feedback, **kwargs)
-            
+
             result = None
             while True:
                 try:
@@ -304,30 +352,34 @@ class AsyncServerNode(rclpy.node.Node):
                         gen.__anext__(),
                         loop=self._loop,
                     ).result()
-                    
+
                     print(f"ACTION HANDLER {namespace} FEEDBACK", result)
-                    
+
                     if isinstance(result, idl.Feedback):
                         goal.publish_feedback(result)
                     elif isinstance(result, idl.Result):
+                        goal.succeed()
                         break
                     else:
-                        print("WARN: YIELDED NON-FEEDBACK VALUE")
+                        self.log.error("WARN: YIELDED NON-FEEDBACK, NON-RESPOND VALUE")
                 except StopAsyncIteration:
                     break
-            
+
             # Prevent ROS hang if return value is invalid
             if not isinstance(result, idl.Result):
-                print(
-                    f"!!!WARN!!!: Service handler {handler_name} did not return `respond(...)`. Expected {idl.Result}, got {result}"
+                self.log.warn(
+                    f"Service handler {handler_name} did not yield `respond(...)`. "
+                    f"Expected {idl.Result}, got {result}. Aborting action."
                 )
                 result = idl.Result()
 
             print(f"ACTION HANDLER {namespace} FINISH", result)
-            goal.succeed()
             return result
 
-        setattr(self, f"__{action_handler.__name__}", ActionServer(self, idl, namespace, cb)) 
+        setattr(
+            self, f"__{action_handler.__name__}", ActionServer(self, idl, namespace, cb)
+        )
+
 
 # TODO: Wrap dataclass w/ a setattr trap to trigger notifications
 ros_params = dataclasses.dataclass

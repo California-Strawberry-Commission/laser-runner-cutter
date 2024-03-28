@@ -1,34 +1,17 @@
-import rclpy
-import rclpy.node
-from amiga_control_interfaces.srv import SetTwist
-from enum import Enum
-import dataclasses
+from .amiga_control_node import AmigaControlNode
+import asyncio
+from common_interfaces.msg import Vector2
 
-class AmigaControlClient(rclpy.node.Node):
-    def __init__(self):
-        super().__init__("amiga_control_client")
 
-        self.cli_set_twist = self.create_client(SetTwist, "/amiga_control_node/set_twist")
-        while not self.cli_set_twist.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('service not available, waiting again...')
-        print("connected")
 
-    def set_twist(self, linear_vel, angular_vel):
-        req = SetTwist.Request()
-        req.twist.x = 1.
-        req.twist.y = 1.
-        f = self.cli_set_twist.call_async(req)
-        rclpy.spin_until_future_complete(self, f)
-        return f.result()
+async def _main():
+    n = AmigaControlNode().client()
+    print("Starting amiga control client")
+    await n.set_twist(twist=Vector2(x=1., y=1.))
 
 
 def main():
-    print("Starting amiga control client")
-    rclpy.init()
-    node = AmigaControlClient()
-    node.set_twist(0, 0)
-    rclpy.spin(node)
-
+    asyncio.run(_main())
 
 if __name__ == "__main__":
     main()

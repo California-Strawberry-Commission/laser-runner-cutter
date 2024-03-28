@@ -38,15 +38,13 @@ class AmigaControlNode(AsyncNode):
         for i in range(10):
             yield feedback(progress=float(i))
             await asyncio.sleep(0.1 if fast else 1)
-        
         # LAST YIELD MUST BE RESPONSE!!
         yield respond(success=True)
         
 
 
 def main():
-    print(dir(Run))
-    serve_nodes(a := AmigaControlNode())
+    serve_nodes(AmigaControlNode())
 
 if __name__ == "__main__":
     main()
