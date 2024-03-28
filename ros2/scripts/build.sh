@@ -1,5 +1,5 @@
 #!/bin/bash
-script_dir="$(dirname "$(realpath "${BASH_SOURCE[-1]:-${(%):-%x}}")")"
+script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source $script_dir/env.sh
 
 source $VENV_DIR/bin/activate
