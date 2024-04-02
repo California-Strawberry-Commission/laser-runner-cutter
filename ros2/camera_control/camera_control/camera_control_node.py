@@ -218,6 +218,8 @@ class CameraControlNode(Node):
             color_frame, self.laser_detection_size, interpolation=cv2.INTER_LINEAR
         )
         result = self.laser_detection_model.predict(color_frame)
+        result_conf = result["conf"]
+        self.logger.info(f"Laser point prediction found {result_conf.size} objects.")
 
         laser_points = []
         confs = []
@@ -250,11 +252,13 @@ class CameraControlNode(Node):
             color_frame, self.runner_seg_size, interpolation=cv2.INTER_LINEAR
         )
         result = self.runner_seg_model.predict(color_frame)
+        result_conf = result["conf"]
+        self.logger.info(f"Runner mask prediction found {result_conf.size} objects.")
 
         runner_masks = []
         confs = []
-        for idx in range(result["conf"].size):
-            conf = result["conf"][idx]
+        for idx in range(result_conf.size):
+            conf = result_conf[idx]
             if conf >= conf_threshold:
                 mask = result["masks"][idx]
                 # Scale the result coords to frame coords

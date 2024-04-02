@@ -43,7 +43,12 @@ class Yolo:
         return metrics
 
     def predict(self, image, iou=0.6):
-        result = self.model(image, iou=iou)[0]
+        """
+        Args:
+            image (np.ndarray): color image in RGB8 format
+        """
+        # YOLO prediction takes an numpy array with BGR8 format
+        result = self.model(cv2.cvtColor(image, cv2.COLOR_RGB2BGR), iou=iou)[0]
         out = {}
         out["conf"] = result.boxes.conf.cpu().numpy()
         out["bboxes"] = result.boxes.xyxy.cpu().numpy()
@@ -52,20 +57,20 @@ class Yolo:
 
         return out
 
-    def debug(self, image_file):
+    def debug(self, image_file, iou=0.6):
         image = cv2.imread(image_file)
         image_array = np.array(image)
 
         # Measure inference time
         # Warmup
         for i in range(5):
-            self.model(image_array, iou=0.6)
+            self.model(image_array, iou=iou)
         inference_start = perf_counter()
         self.model(image_array, iou=0.6)
         inference_stop = perf_counter()
         print(f"Inference took {inference_stop - inference_start} seconds.")
 
-        result = self.model(image_array, iou=0.6)[0]
+        result = self.model(image_array, iou=iou)[0]
 
         conf = result.boxes.conf.cpu().numpy()
         boxes = result.boxes.xywh
