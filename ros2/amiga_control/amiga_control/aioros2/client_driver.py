@@ -66,6 +66,7 @@ class ClientDriver(AsyncDriver):
         _impl._ros_client = ActionClient(self, handler._ros_idl, handler._ros_namespace)
         setattr(self, handler.__name__, _impl)
     
+    # TODO: Gracefully handle action rejections
     def _dispatch_action_req(self, impl, request):
         """Dispatches a ROS action request and yields feedback as it is received
         side note: wow is the ROS api for this horrible or what???
@@ -101,8 +102,6 @@ class ClientDriver(AsyncDriver):
             if not goal_handle.accepted:
                 self.log.warn('Goal rejected')
                 return
-
-            print('Goal accepted')
             
             # Attach goal callbacks
             self._get_result_future = goal_handle.get_result_async()

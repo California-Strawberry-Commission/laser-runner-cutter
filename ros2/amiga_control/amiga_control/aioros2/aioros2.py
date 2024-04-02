@@ -7,6 +7,7 @@ import rclpy.node
 from rclpy.action import ActionServer
 import atexit
 import inspect
+from .server_driver import ServerDriver
 
 # https://stackoverflow.com/questions/338101/python-function-attributes-uses-and-abuses
 # https://robotics.stackexchange.com/questions/106026/ros2-multi-nodes-each-on-a-thread-in-same-process
@@ -50,7 +51,7 @@ async def _ros_spin_nodes(nodes):
 def serve_nodes(*nodes):
     rclpy.init()
 
-    servers = [n.server() for n in nodes]
+    servers = [ServerDriver(n) for n in nodes]
     tasks = [task for s in servers for task in s.tasks()]
 
     tasks = asyncio.wait(tasks + [_ros_spin_nodes(servers)])

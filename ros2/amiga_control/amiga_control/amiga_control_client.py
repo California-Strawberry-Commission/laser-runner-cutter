@@ -1,3 +1,4 @@
+from amiga_control.aioros2.client_driver import ClientDriver
 from .amiga_control_node import AmigaControlNode
 import asyncio
 from common_interfaces.msg import Vector2
@@ -5,7 +6,8 @@ from common_interfaces.msg import Vector2
 
 
 async def _main():
-    n = AmigaControlNode().client()
+    n = ClientDriver(AmigaControlNode())
+
     print("Starting amiga control client")
     
     print("Calling service")

@@ -17,11 +17,6 @@ def node(params_class: PARAMS_T) -> Callable[[CLASS_T], CLASS_T]:
                 self.params = params
                 cls.__init__(self)
 
-            def client(self) -> ClientDriver:
-                return ClientDriver(self)
-
-            def server(self) -> ServerDriver:
-                return ServerDriver(self)
         _RosNode.__name__ = cls.__name__
         return _RosNode
 
