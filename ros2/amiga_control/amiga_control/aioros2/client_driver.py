@@ -27,7 +27,13 @@ class AsyncActionClient:
         if self._action_complete:
             raise StopAsyncIteration
         
-        val = await self._loop.run_in_executor(None, self._gen.__next__)
+        def _wrap():
+            try:
+                return self._gen.__next__()
+            except StopIteration:
+                raise StopAsyncIteration
+        
+        val = await self._loop.run_in_executor(None, _wrap)
         
         if isinstance(val, self._idl.Result):
             self.result = val
@@ -98,9 +104,12 @@ class ClientDriver(AsyncDriver):
             
         def on_action_response(future):
             """Entrypoint for initial action response"""
+            nonlocal action_complete
+            
             goal_handle = future.result()
             if not goal_handle.accepted:
                 self.log.warn('Goal rejected')
+                action_complete = True
                 return
             
             # Attach goal callbacks
