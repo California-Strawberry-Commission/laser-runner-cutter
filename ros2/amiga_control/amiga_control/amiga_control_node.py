@@ -3,8 +3,8 @@ from typing import AsyncGenerator
 from amiga_control_interfaces.srv import SetTwist
 from amiga_control_interfaces.action import Run
 from dataclasses import dataclass
-from .ros_asyncio import AsyncNode, action, serve_nodes, service, timer, param, ros_params, rosnode
 from rcl_interfaces.msg import ParameterDescriptor
+from .aioros2 import node, param, timer, service, action, serve_nodes, result, feedback
 
 
 # Future note: dataclass requires type annotations to work
@@ -17,8 +17,20 @@ class AmigaParams:
     #     ParameterDescriptor(description="test", read_only=True),
     # )
 
-@rosnode(AmigaParams)
-class AmigaControlNode(AsyncNode):
+@node()
+class AnotherNode:
+    topic1 = topic("~/topic", message_idl)
+    
+otherNodeInstance = anotherNode("customName")
+
+@node(AmigaParams)
+class AmigaControlNode:
+    myTopic = topic("~/topic_ns", idl)
+    
+    @on(otherNodeInstance.topic1)
+    async def onTopic1(self):
+        self.myTopic(message="test message")
+    
     @param(AmigaParams.host)
     async def set_host_param(self, host):
         self.params.host = host
@@ -29,17 +41,17 @@ class AmigaControlNode(AsyncNode):
         await self.publish()
 
     @service("~/set_twist", SetTwist)
-    async def set_twist(self, respond, twist) -> bool:
+    async def set_twist(self, twist) -> bool:
         print(twist)
-        return respond(success=True)
+        return result(success=True)
 
     @action("~/test", Run)
-    async def act(self, respond, feedback, fast) -> AsyncGenerator[int, None]:
+    async def act(self, fast) -> AsyncGenerator[int, None]:
         for i in range(10):
             yield feedback(progress=float(i))
             await asyncio.sleep(0.1 if fast else 1)
         # LAST YIELD MUST BE RESPONSE!!
-        yield respond(success=True)
+        yield result(success=True)
         
 
 
