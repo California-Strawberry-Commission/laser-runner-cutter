@@ -1,13 +1,15 @@
 # aioros2
-The point of this library is to make working with ROS2/`rclpy` more bearable (and maybe even enjoyable). Its usage is heavily inspired by `python-socketio`.
+The point of this library is to make working with ROS2/`rclpy` bearable (and possibly even enjoyable). Its syntax is heavily inspired by `python-socketio`.
 
-### Features
-- Huge boilerplate reduction
+## Features
+- Massive boilerplate reduction
 - First-class asyncio compatibility.
+- Generators instead of callbacks
 - Transparent clients (use the same class as both client and server)
 
 
-For reference, here's a comparison between the [example ROS2 action client/server](https://docs.ros.org/en/foxy/Tutorials/Intermediate/Writing-an-Action-Server-Client/Py.html) and fully-featured equivalent using `aioros2`:
+## Why?
+Here's a comparison between the [example ROS2 action client/server](https://docs.ros.org/en/foxy/Tutorials/Intermediate/Writing-an-Action-Server-Client/Py.html) and a fully-featured equivalent using `aioros2`:
 
 <table>
 <tr>
@@ -24,6 +26,7 @@ from aioros2 import node, action, serve_nodes, result, feedback
 
 @node()
 class Fibonacci:
+
     @action("~/fibonacci", Fibonacci)
     async def action_fib(self, order):
         sequence = [0, 1]
@@ -183,4 +186,4 @@ if __name__ == '__main__':
 </td>
 </table>
 
-1/2 the lines, 10x the readability. Enough said.
+1/2 the lines, 10x the readability. Enough said :)
