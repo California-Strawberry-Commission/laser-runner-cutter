@@ -5,6 +5,8 @@ from time import perf_counter
 import json
 import cv2
 import numpy as np
+from glob import glob
+from natsort import natsorted
 
 PROJECT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 DEFAULT_SIZE = (1024, 768)
@@ -57,27 +59,36 @@ class Yolo:
 
         return out
 
-    def debug(self, image_file, iou=0.6):
-        image = cv2.imread(image_file)
-        image_array = np.array(image)
+    def debug(self, image_path, iou=0.6):
+        if os.path.isfile(image_path):
+            image_paths = [image_path]
+        else:
+            image_paths = natsorted(
+                glob(os.path.join(image_path, "*.jpg"))
+                + glob(os.path.join(image_path, "*.png"))
+            )
 
-        # Measure inference time
-        # Warmup
-        for i in range(5):
-            self.model(image_array, iou=iou)
-        inference_start = perf_counter()
-        self.model(image_array, iou=0.6)
-        inference_stop = perf_counter()
-        print(f"Inference took {inference_stop - inference_start} seconds.")
+        for path in image_paths:
+            image = cv2.imread(path)
+            image_array = np.array(image)
 
-        result = self.model(image_array, iou=iou)[0]
+            # Measure inference time
+            # Warmup
+            for i in range(5):
+                self.model(image_array, iou=iou)
+            inference_start = perf_counter()
+            self.model(image_array, iou=0.6)
+            inference_stop = perf_counter()
+            print(f"Inference took {inference_stop - inference_start} seconds.")
 
-        conf = result.boxes.conf.cpu().numpy()
-        boxes = result.boxes.xywh
-        if result.masks:
-            masks = result.masks.xy
+            result = self.model(image_array, iou=iou)[0]
 
-        result.show()  # display to screen
+            conf = result.boxes.conf.cpu().numpy()
+            boxes = result.boxes.xywh
+            if result.masks:
+                masks = result.masks.xy
+
+            result.show()  # display to screen
 
 
 def tuple_type(arg_string):
@@ -114,7 +125,9 @@ if __name__ == "__main__":
 
     debug_parser = subparsers.add_parser("debug", help="Debug model predictions")
     debug_parser.add_argument("--weights_file")
-    debug_parser.add_argument("--image_file", required=True)
+    debug_parser.add_argument(
+        "--image_path", required=True, help="Image file or dir path"
+    )
 
     args = parser.parse_args()
 
@@ -142,6 +155,6 @@ if __name__ == "__main__":
         }
         print(json.dumps(summary))
     elif args.command == "debug":
-        model.debug(args.image_file)
+        model.debug(args.image_path)
     else:
         print("Invalid command.")
