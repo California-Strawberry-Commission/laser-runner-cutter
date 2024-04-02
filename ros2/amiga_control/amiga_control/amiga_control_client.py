@@ -7,8 +7,8 @@ from common_interfaces.msg import Vector2
 async def _main():
     n = AmigaControlNode().client()
     print("Starting amiga control client")
-    await n.set_twist(twist=Vector2(x=1., y=1.))
-
+    res = await n.set_twist(twist=Vector2(x=1., y=1.))
+    print("Result", res)
 
 def main():
     asyncio.run(_main())

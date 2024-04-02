@@ -1,15 +1,29 @@
 import asyncio
+import dataclasses
 import rclpy
 
+getter_map = {
+    str: "string_value",
+    int: "integer_value",
+    bool: "bool_value",
+    float: "double_value",
+    "list[int]": "byte_array_value",
+    "list[bool]": "bool_array_value",
+    "list[int]": "integer_array_value",
+    "list[float]": "double_array_value",
+    "list[str]": "string_array_value",
+}
 
 class AsyncDriver(rclpy.node.Node):
     """Base class for all adapters"""
     
     def __init__(self, async_node):
-        self._n = async_node
+        super().__init__(async_node.__class__.__name__)
+        # rclpy.init()
 
-        rclpy.init()
-        super().__init__(self._n.node_name)
+        self._n = async_node
+        self.log = self.get_logger()
+
         self._n.params = self._attach_params_dataclass(self._n.params)
         self._loop = asyncio.get_event_loop()
     

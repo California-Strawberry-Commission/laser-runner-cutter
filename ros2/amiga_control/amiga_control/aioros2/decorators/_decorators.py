@@ -7,6 +7,7 @@ class ros_type_e(Enum):
     ACTION="action"
     TIMER="timer"
     PARAM="param"
+    TOPIC_SUBSCRIBER="topic_subscriber"
 
 class handler_t(Callable):
     _ros_type: ros_type_e

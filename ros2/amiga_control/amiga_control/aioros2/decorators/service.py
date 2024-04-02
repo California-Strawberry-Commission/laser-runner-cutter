@@ -8,7 +8,8 @@ def _check_service_handler_signature(fn, srv):
     fn_inspection = inspect.signature(fn)
     fn_dict = fn_inspection.parameters
     fn_params = set(fn_dict)
-
+    fn_params.discard("self")
+    
     idl_dict = srv.Request.get_fields_and_field_types()
     idl_params = set(idl_dict.keys())
 

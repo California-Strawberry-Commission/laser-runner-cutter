@@ -4,7 +4,7 @@ from amiga_control_interfaces.srv import SetTwist
 from amiga_control_interfaces.action import Run
 from dataclasses import dataclass
 from rcl_interfaces.msg import ParameterDescriptor
-from .aioros2 import node, param, timer, service, action, serve_nodes, result, feedback
+from .aioros2 import node, param, timer, service, action, serve_nodes, result, feedback, on
 
 
 # Future note: dataclass requires type annotations to work
@@ -17,20 +17,13 @@ class AmigaParams:
     #     ParameterDescriptor(description="test", read_only=True),
     # )
 
-@node()
-class AnotherNode:
-    topic1 = topic("~/topic", message_idl)
-    
-otherNodeInstance = anotherNode("customName")
 
 @node(AmigaParams)
 class AmigaControlNode:
-    myTopic = topic("~/topic_ns", idl)
-    
-    @on(otherNodeInstance.topic1)
-    async def onTopic1(self):
-        self.myTopic(message="test message")
-    
+    @on("test")
+    def on_topic(self, val):
+        print(val)
+        
     @param(AmigaParams.host)
     async def set_host_param(self, host):
         self.params.host = host

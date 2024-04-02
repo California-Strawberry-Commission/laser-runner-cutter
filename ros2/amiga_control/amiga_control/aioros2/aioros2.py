@@ -55,36 +55,3 @@ def serve_nodes(*nodes):
 
     tasks = asyncio.wait(tasks + [_ros_spin_nodes(servers)])
     asyncio.get_event_loop().run_until_complete(tasks)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# TODO: Wrap dataclass w/ a setattr trap to trigger notifications
-ros_params = dataclasses.dataclass
-
-getter_map = {
-    str: "string_value",
-    int: "integer_value",
-    bool: "bool_value",
-    float: "double_value",
-    "list[int]": "byte_array_value",
-    "list[bool]": "bool_array_value",
-    "list[int]": "integer_array_value",
-    "list[float]": "double_array_value",
-    "list[str]": "string_array_value",
-}
