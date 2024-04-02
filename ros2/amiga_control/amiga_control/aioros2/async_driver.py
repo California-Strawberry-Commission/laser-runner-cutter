@@ -37,6 +37,9 @@ class AsyncDriver(rclpy.node.Node):
         ]
     
     def _attach_params_dataclass(self, dataclass):
+        if dataclass is None:
+            return
+        
         # Declare and update all parameters present in the
         # passed dataclass.
         for f in dataclasses.fields(dataclass):

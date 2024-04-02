@@ -19,10 +19,10 @@ Action Server
 Service Server
 
 Service Client
+Action Client
 
 
 Todo:
-Action Client
 Topic Publisher
 Topic Subscriber
 Server background tasks
@@ -31,7 +31,6 @@ Server param change subscriptions
 Client param sets
 Server param side effects
 Server timer tasks
-
 """
 async def _ros_spin_nodes(nodes):
     print("Ros starting up...")

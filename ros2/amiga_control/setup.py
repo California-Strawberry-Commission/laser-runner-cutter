@@ -22,6 +22,9 @@ setup(
         'console_scripts': [
             'amiga_control_node = amiga_control.amiga_control_node:main',
             'amiga_control_client = amiga_control.amiga_control_client:main',
+            'test_srv = amiga_control.accli:main',
+            'test_cli = amiga_control.acserv:main',
+
         ],
     },
 )
