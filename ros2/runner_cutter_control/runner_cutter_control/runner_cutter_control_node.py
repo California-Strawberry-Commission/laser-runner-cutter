@@ -237,6 +237,7 @@ class StateMachine:
         await self.laser_client.stop_laser()
         await self.laser_client.clear_points()
         await self.camera_client.auto_exposure()
+        self.runner_tracker.clear()
 
     async def on_enter_calibration(self):
         self.node.publish_state()

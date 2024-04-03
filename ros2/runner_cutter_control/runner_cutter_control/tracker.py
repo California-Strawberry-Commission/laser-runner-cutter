@@ -72,3 +72,6 @@ class Tracker:
         else:
             track = Track(track_id, pixel, position)
             self.tracks[track_id] = track
+
+    def clear(self):
+        self.tracks.clear()
