@@ -46,15 +46,42 @@ class Yolo:
 
     def predict(self, image, iou=0.6):
         """
+        Run inference on an image and return bounding boxes and masks of detected object instances.
+
         Args:
             image (np.ndarray): color image in RGB8 format
+            iou (float): Intersection Over Union (IoU) threshold for Non-Maximum Suppression (NMS). Lower values result in fewer detections by eliminating overlapping boxes, useful for reducing duplicates.
         """
         # YOLO prediction takes an numpy array with BGR8 format
         result = self.model(cv2.cvtColor(image, cv2.COLOR_RGB2BGR), iou=iou)[0]
         out = {}
         out["conf"] = result.boxes.conf.cpu().numpy()
         out["bboxes"] = result.boxes.xyxy.cpu().numpy()
-        if result.masks:
+        if result.masks is not None:
+            out["masks"] = result.masks.xy
+
+        return out
+
+    def track(self, image, iou=0.6):
+        """
+        Run inference on an image and return bounding boxes, masks, and IDs of detected object instances.
+        This differs from `predict` in that it also runs object tracking that maintains a unique ID for each detected object.
+
+        Args:
+            image (np.ndarray): color image in RGB8 format
+            iou (float): Intersection Over Union (IoU) threshold for Non-Maximum Suppression (NMS). Lower values result in fewer detections by eliminating overlapping boxes, useful for reducing duplicates.
+        """
+        # YOLO prediction takes an numpy array with BGR8 format
+        result = self.model.track(
+            cv2.cvtColor(image, cv2.COLOR_RGB2BGR), iou=iou, persist=True
+        )[0]
+        out = {}
+        out["conf"] = result.boxes.conf.cpu().numpy()
+        out["bboxes"] = result.boxes.xyxy.cpu().numpy()
+        out["track_ids"] = (
+            result.boxes.id.int().cpu().tolist() if result.boxes.id is not None else []
+        )
+        if result.masks is not None:
             out["masks"] = result.masks.xy
 
         return out
