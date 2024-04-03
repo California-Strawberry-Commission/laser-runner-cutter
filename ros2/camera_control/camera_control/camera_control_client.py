@@ -2,7 +2,11 @@ import logging
 
 from rclpy.callback_groups import ReentrantCallbackGroup
 
-from camera_control_interfaces.srv import GetPosData, GetPositionsForPixels, SetExposure
+from camera_control_interfaces.srv import (
+    GetDetectionResult,
+    GetPositionsForPixels,
+    SetExposure,
+)
 from common_interfaces.msg import Vector2
 from common_interfaces.srv import GetBool
 
@@ -27,12 +31,12 @@ class CameraControlClient:
             callback_group=callback_group,
         )
         node.camera_get_lasers = node.create_client(
-            GetPosData,
+            GetDetectionResult,
             f"/{camera_node_name}/get_laser_detection",
             callback_group=callback_group,
         )
         node.camera_get_runners = node.create_client(
-            GetPosData,
+            GetDetectionResult,
             f"/{camera_node_name}/get_runner_detection",
             callback_group=callback_group,
         )
@@ -58,13 +62,17 @@ class CameraControlClient:
         request = SetExposure.Request(exposure_ms=-1.0)
         return await self.node.camera_set_exposure.call_async(request)
 
-    async def get_laser_pos(self):
-        result = await self.node.camera_get_lasers.call_async(GetPosData.Request())
-        return self._unpack_pos_data(result)
+    async def get_lasers(self):
+        result = await self.node.camera_get_lasers.call_async(
+            GetDetectionResult.Request()
+        )
+        return self._unpack_detection_result(result)
 
-    async def get_runner_pos(self):
-        result = await self.node.camera_get_runners.call_async(GetPosData.Request())
-        return self._unpack_pos_data(result)
+    async def get_runners(self):
+        result = await self.node.camera_get_runners.call_async(
+            GetDetectionResult.Request()
+        )
+        return self._unpack_detection_result(result)
 
     async def get_positions_for_pixels(self, pixels):
         request = GetPositionsForPixels.Request(
@@ -73,13 +81,23 @@ class CameraControlClient:
         result = await self.node.camera_get_positions_for_pixels.call_async(request)
         return [(position.x, position.y, position.z) for position in result.positions]
 
-    def _unpack_pos_data(self, res_data):
-        pos_data = res_data.pos_data
+    def _unpack_detection_result(self, data):
+        detection_result = data.result
         res = {}
-        res["timestamp"] = pos_data.timestamp
-        res["pos_list"] = [[data.x, data.y, data.z] for data in pos_data.pos_list]
-        res["point_list"] = [[data.x, data.y] for data in pos_data.point_list]
-        res["invalid_point_list"] = [
-            [data.x, data.y] for data in pos_data.invalid_point_list
+        res["timestamp"] = detection_result.timestamp
+        res["instances"] = [
+            {
+                "track_id": instance.track_id,
+                "position": [
+                    instance.position.x,
+                    instance.position.y,
+                    instance.position.z,
+                ],
+                "point": [instance.point.x, instance.point.y],
+            }
+            for instance in detection_result.instances
+        ]
+        res["invalid_points"] = [
+            [data.x, data.y] for data in detection_result.invalid_points
         ]
         return res

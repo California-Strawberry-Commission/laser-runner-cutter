@@ -272,10 +272,9 @@ class StateMachine:
 
         # If there are no pending tracks, check for new runners
         if not self.runner_tracker.has_pending_tracks:
-            pos_data = await self.camera_client.get_runner_pos()
-            if pos_data["pos_list"]:
-                for pos, point in zip(pos_data["pos_list"], pos_data["point_list"]):
-                    self.runner_tracker.add_track(point, pos)
+            detection_result = await self.camera_client.get_runners()
+            for instance in detection_result["instances"]:
+                self.runner_tracker.add_track(instance["point"], instance["position"])
 
         if self.runner_tracker.has_pending_tracks:
             # There are pending tracks. Set one as active.
@@ -314,14 +313,14 @@ class StateMachine:
     async def _get_laser_pixel_and_pos(self, max_attempts=3):
         attempt = 0
         while attempt < max_attempts:
-            laser_pos = await self.camera_client.get_laser_pos()
-            points = laser_pos["point_list"]
-            positions = laser_pos["pos_list"]
-            if points:
-                if len(points) > 1:
+            detection_result = await self.camera_client.get_lasers()
+            instances = detection_result["instances"]
+            if instances:
+                if len(instances) > 1:
                     self.logger.info("Found more than 1 laser during correction")
                 # TODO: better handle case where more than 1 laser detected
-                return points[0], positions[0]
+                instance = instances[0]
+                return instance["point"], instance["position"]
             # No lasers detected. Try again.
             await asyncio.sleep(0.2)
             attempt += 1

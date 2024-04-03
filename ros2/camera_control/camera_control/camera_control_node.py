@@ -15,10 +15,10 @@ from shapely.ops import nearest_points
 from std_srvs.srv import Trigger
 
 from camera_control.camera.realsense import RealSense
-from camera_control_interfaces.msg import PosData, State
+from camera_control_interfaces.msg import DetectionResult, ObjectInstance, State
 from camera_control_interfaces.srv import (
+    GetDetectionResult,
     GetFrame,
-    GetPosData,
     GetPositionsForPixels,
     GetState,
     SetExposure,
@@ -78,8 +78,12 @@ class CameraControlNode(Node):
         self.debug_frame_pub = self.create_publisher(
             CompressedImage, "~/debug_frame", 1
         )
-        self.laser_pos_pub = self.create_publisher(PosData, "~/laser_pos_data", 5)
-        self.runner_pos_pub = self.create_publisher(PosData, "~/runner_pos_data", 5)
+        self.laser_detections_pub = self.create_publisher(
+            DetectionResult, "~/laser_detections", 5
+        )
+        self.runner_detections_pub = self.create_publisher(
+            DetectionResult, "~/runner_detections", 5
+        )
 
         # Services
 
@@ -93,10 +97,14 @@ class CameraControlNode(Node):
             SetExposure, "~/set_exposure", self._set_exposure_callback
         )
         self.get_laser_detection_srv = self.create_service(
-            GetPosData, "~/get_laser_detection", self._single_laser_detection_callback
+            GetDetectionResult,
+            "~/get_laser_detection",
+            self._single_laser_detection_callback,
         )
         self.get_runner_detection_srv = self.create_service(
-            GetPosData, "~/get_runner_detection", self._single_runner_detection_callback
+            GetDetectionResult,
+            "~/get_runner_detection",
+            self._single_runner_detection_callback,
         )
         self.laser_detection_enabled = False
         self.start_laser_detection_srv = self.create_service(
@@ -189,16 +197,18 @@ class CameraControlNode(Node):
         if self.laser_detection_enabled:
             laser_points, confs = self._get_laser_points(color_frame)
             debug_frame = self._debug_draw_lasers(debug_frame, laser_points, confs)
-            self.laser_pos_pub.publish(self._create_pos_data_msg(laser_points, frames))
+            self.laser_detections_pub.publish(
+                self._create_detection_result_msg(laser_points, frames)
+            )
 
         if self.runner_detection_enabled:
-            runner_masks, confs = self._get_runner_masks(color_frame)
+            runner_masks, confs, track_ids = self._get_runner_masks(color_frame)
             runner_centroids = self._get_runner_centroids(runner_masks)
             debug_frame = self._debug_draw_runners(
                 debug_frame, runner_masks, runner_centroids, confs
             )
-            self.runner_pos_pub.publish(
-                self._create_pos_data_msg(runner_centroids, frames)
+            self.runner_detections_pub.publish(
+                self._create_detection_result_msg(runner_centroids, frames, track_ids)
             )
 
         self.debug_frame_pub.publish(
@@ -251,12 +261,15 @@ class CameraControlNode(Node):
         color_frame = cv2.resize(
             color_frame, self.runner_seg_size, interpolation=cv2.INTER_LINEAR
         )
-        result = self.runner_seg_model.predict(color_frame)
+        result = self.runner_seg_model.track(color_frame)
         result_conf = result["conf"]
         self.logger.info(f"Runner mask prediction found {result_conf.size} objects.")
 
+        self.logger.info(str(result["track_ids"]))
+
         runner_masks = []
         confs = []
+        track_ids = []
         for idx in range(result_conf.size):
             conf = result_conf[idx]
             if conf >= conf_threshold:
@@ -266,11 +279,14 @@ class CameraControlNode(Node):
                 mask[:, 1] *= frame_height / result_height
                 runner_masks.append(mask)
                 confs.append(conf)
+                track_ids.append(
+                    result["track_ids"][idx] if idx < len(result["track_ids"]) else -1
+                )
             else:
                 self.logger.info(
                     f"Runner mask prediction ignored due to low confidence: {conf} < {conf_threshold}"
                 )
-        return runner_masks, confs
+        return runner_masks, confs, track_ids
 
     def _get_runner_centroids(self, runner_masks):
         centroids = []
@@ -313,7 +329,7 @@ class CameraControlNode(Node):
         if self.curr_frames is not None:
             color_frame = np.asanyarray(self.curr_frames["color"].get_data())
             laser_points, conf = self._get_laser_points(color_frame)
-            response.pos_data = self._create_pos_data_msg(
+            response.result = self._create_detection_result_msg(
                 laser_points, self.curr_frames
             )
         return response
@@ -321,10 +337,10 @@ class CameraControlNode(Node):
     def _single_runner_detection_callback(self, request, response):
         if self.curr_frames is not None:
             color_frame = np.asanyarray(self.curr_frames["color"].get_data())
-            runner_masks, confs = self._get_runner_masks(color_frame)
+            runner_masks, confs, track_ids = self._get_runner_masks(color_frame)
             runner_centroids = self._get_runner_centroids(runner_masks)
-            response.pos_data = self._create_pos_data_msg(
-                runner_centroids, self.curr_frames
+            response.result = self._create_detection_result_msg(
+                runner_centroids, self.curr_frames, track_ids
             )
         return response
 
@@ -409,18 +425,24 @@ class CameraControlNode(Node):
 
     ## region Message builders
 
-    def _create_pos_data_msg(self, point_list, frames):
-        msg = PosData()
+    def _create_detection_result_msg(self, points, frames, track_ids=None):
+        msg = DetectionResult()
         msg.timestamp = frames["timestamp"] / 1000
-        for point in point_list:
+        for idx, point in enumerate(points):
             point_msg = Vector2(x=float(point[0]), y=float(point[1]))
             pos = self.camera.get_pos((point[0], point[1]), frames["depth"])
             if pos is not None:
-                pos_msg = Vector3(x=pos[0], y=pos[1], z=pos[2])
-                msg.pos_list.append(pos_msg)
-                msg.point_list.append(point_msg)
+                object_instance = ObjectInstance()
+                object_instance.track_id = (
+                    track_ids[idx]
+                    if track_ids is not None and idx < len(track_ids)
+                    else -1
+                )
+                object_instance.position = Vector3(x=pos[0], y=pos[1], z=pos[2])
+                object_instance.point = point_msg
+                msg.instances.append(object_instance)
             else:
-                msg.invalid_point_list.append(point_msg)
+                msg.invalid_points.append(point_msg)
         return msg
 
     def _get_color_frame_msg(self, color_frame, timestamp_millis):

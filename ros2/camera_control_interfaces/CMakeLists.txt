@@ -26,10 +26,11 @@ find_package(common_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/PosData.msg"
+  "msg/DetectionResult.msg"
+  "msg/ObjectInstance.msg"
   "msg/State.msg"
+  "srv/GetDetectionResult.srv"
   "srv/GetFrame.srv"
-  "srv/GetPosData.srv"
   "srv/GetPositionsForPixels.srv"
   "srv/GetState.srv"
   "srv/SetExposure.srv"
