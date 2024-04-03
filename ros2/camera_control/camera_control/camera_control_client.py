@@ -87,7 +87,7 @@ class CameraControlClient:
         res["timestamp"] = detection_result.timestamp
         res["instances"] = [
             {
-                "track_id": instance.track_id,
+                "track_id": instance.track_id if instance.track_id > 0 else None,
                 "position": [
                     instance.position.x,
                     instance.position.y,

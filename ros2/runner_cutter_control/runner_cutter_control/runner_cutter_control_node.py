@@ -274,7 +274,11 @@ class StateMachine:
         if not self.runner_tracker.has_pending_tracks:
             detection_result = await self.camera_client.get_runners()
             for instance in detection_result["instances"]:
-                self.runner_tracker.add_track(instance["point"], instance["position"])
+                self.runner_tracker.add_track(
+                    instance["point"],
+                    instance["position"],
+                    track_id=instance["track_id"],
+                )
 
         if self.runner_tracker.has_pending_tracks:
             # There are pending tracks. Set one as active.

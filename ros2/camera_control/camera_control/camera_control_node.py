@@ -205,7 +205,7 @@ class CameraControlNode(Node):
             runner_masks, confs, track_ids = self._get_runner_masks(color_frame)
             runner_centroids = self._get_runner_centroids(runner_masks)
             debug_frame = self._debug_draw_runners(
-                debug_frame, runner_masks, runner_centroids, confs
+                debug_frame, runner_masks, runner_centroids, confs, track_ids
             )
             self.runner_detections_pub.publish(
                 self._create_detection_result_msg(runner_centroids, frames, track_ids)
@@ -512,12 +512,14 @@ class CameraControlNode(Node):
         runner_masks,
         runner_centroids,
         confs,
+        track_ids,
         mask_color=(255, 255, 255),
-        centroid_color=(255, 0, 255),
+        centroid_color=(255, 64, 255),
         draw_conf=True,
+        draw_track_id=True,
     ):
-        for runner_mask, runner_centroid, conf in zip(
-            runner_masks, runner_centroids, confs
+        for runner_mask, runner_centroid, conf, track_id in zip(
+            runner_masks, runner_centroids, confs, track_ids
         ):
             debug_frame = cv2.fillPoly(
                 debug_frame,
@@ -534,10 +536,16 @@ class CameraControlNode(Node):
                 markerSize=20,
             )
             if draw_conf:
-                pos = [int(runner_centroid[0]) + 15, int(runner_centroid[1]) - 15]
+                pos = [int(runner_centroid[0]) + 15, int(runner_centroid[1]) - 5]
                 font = cv2.FONT_HERSHEY_SIMPLEX
                 debug_frame = cv2.putText(
-                    debug_frame, f"{conf:.2f}", pos, font, 0.5, centroid_color
+                    debug_frame, f"{conf:.2f}", pos, font, 0.5, mask_color
+                )
+            if draw_track_id and track_id > 0:
+                pos = [int(runner_centroid[0]) + 15, int(runner_centroid[1]) + 10]
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                debug_frame = cv2.putText(
+                    debug_frame, f"{track_id}", pos, font, 0.5, mask_color
                 )
         return debug_frame
 
