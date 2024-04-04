@@ -23,28 +23,11 @@ Web app for laser runner cutter control and automation, built with Next.js.
         $ cd laser-runner-cutter/apps/runner-cutter-app
         $ npm install
 
-## Run
+## Run locally
 
-1.  Run ROS2 nodes
+1.  Run the following:
 
-        $ source laser-runner-cutter/ros2/scripts/setup.sh  # or setup.zsh in Z shell
-        $ ros2 launch runner_cutter_control launch.py
-
-1.  In another terminal, run Rosbridge server
-
-        $ source laser-runner-cutter/ros2/scripts/setup.sh  # or setup.zsh in Z shell
-        $ ros2 launch rosbridge_server rosbridge_websocket_launch.xml
-
-1.  In yet another terminal, run the web server
-
-        $ cd runner-cutter-app
-
-        # Development mode (fast refresh, detailed error messages, debugging tools)
-        $ npm run dev
-
-        # Production mode
-        $ npm run build
-        $ npm run start
+        $ scripts/run_local_dev.sh
 
 1.  Open [http://localhost:3000](http://localhost:3000) with your browser to see the app.
 
@@ -54,7 +37,11 @@ Web app for laser runner cutter control and automation, built with Next.js.
 
 1.  Run Setup steps above.
 
-1.  Finally, run:
+1.  Build the prod app:
 
         $ cd laser-runner-cutter/apps/runner-cutter-app
-        $ ./install.sh
+        $ npm run build
+
+1.  Finally, run:
+
+        $ scripts/amiga_register.sh
