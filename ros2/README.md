@@ -6,6 +6,11 @@ This project uses **Ubuntu 20.04 (Focal Fossa)**! Newer versions of ROS are not 
 
 Auto-Installation assumes a fresh version of **Ubuntu 20.04 desktop/server** on a dedicated deployment or development PC.
 
+1.  Install Git LFS
+
+        $ curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
+        $ sudo apt-get install git-lfs
+
 1.  Clone this repository into your home directory
 
         $ cd ~
