@@ -1,4 +1,0 @@
-[core]
-    remote = deployed_models
-['remote "deployed_models"']
-    url = s3://csc-laser-runner-cutter-deployed-models
