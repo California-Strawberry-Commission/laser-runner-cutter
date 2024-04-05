@@ -24,7 +24,7 @@ def action(namespace, act_idl):
     def _action(fn):
         _check_action_handler_signature(fn, act_idl)
         
-        return decorate_handler(fn, ros_type_e.ACTION, ros_idl=act_idl, ros_namespace=namespace)
+        return decorate_handler(fn, ros_type_e.ACTION, idl=act_idl, namespace=namespace)
 
 
     return _action

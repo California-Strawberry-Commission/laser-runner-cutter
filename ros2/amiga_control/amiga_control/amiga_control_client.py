@@ -10,18 +10,21 @@ async def _main():
 
     print("Starting amiga control client")
     
-    print("Calling service")
-    res = await n.set_twist(twist=Vector2(x=1., y=1.))
-    print("Service Result", res)
+    # print("Calling service")
+    # res = await n.set_twist(twist=Vector2(x=1., y=1.))
+    # print("Service Result", res)
     
-    print("Slow action")
-    async for progress in (action := n.act(fast=False)):
-        print(f"Got progress {progress}")
+    # print("Slow action")
+    # async for progress in (action := n.act(fast=False)):
+    #     print(f"Got progress {progress}")
 
-    print("Fast action")
-    async for feedback in (action := n.act(fast=True)):
-        print(f"Progress {feedback}")
-    print("Result", action.result)
+    # print("Fast action")
+    # async for feedback in (action := n.act(fast=True)):
+    #     print(f"Progress {feedback}")
+    # print("Result", action.result)
+    
+    print("Publish to subscribed topic")
+    n.test_topic(data="test")
     
 def main():
     asyncio.run(_main())

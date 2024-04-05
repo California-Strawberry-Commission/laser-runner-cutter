@@ -51,7 +51,8 @@ class ClientDriver(AsyncDriver):
     def _create_impl(self):
         attachers = {
             ros_type_e.SERVICE: self._create_service_impl,
-            ros_type_e.ACTION: self._create_action_impl
+            ros_type_e.ACTION: self._create_action_impl,
+            ros_type_e.TOPIC_SUBSCRIBER: self._create_subscriber_publisher_impl
         }
 
         for handler in self._get_decorated():
@@ -142,7 +143,6 @@ class ClientDriver(AsyncDriver):
         setattr(self, handler.__name__, _impl)
         
 
-    
     def _dispatch_service_req(self, impl, request):
         cli = impl._ros_client
         
@@ -154,3 +154,19 @@ class ClientDriver(AsyncDriver):
         rclpy.spin_until_future_complete(self, fut)
         return fut.result()
         
+    def _create_subscriber_publisher_impl(self, handler):
+        self.log.info(f"Attach Subscriber publisher >{handler._ros_namespace}<")
+
+        idl = handler._ros_idl
+        namespace = handler._ros_namespace
+        qos = handler._ros_qos
+
+        print(idl, namespace, qos)
+        
+        pub = self.create_publisher(idl, namespace, qos)
+
+        def _dispatch(*args, **kwargs):
+            msg = idl(*args, **kwargs)
+            pub.publish(msg)
+
+        setattr(self, handler.__name__, _dispatch)

@@ -20,7 +20,9 @@ class ServerDriver(AsyncDriver):
         
         attachers = {
             ros_type_e.ACTION: self._attach_action,
-            ros_type_e.SERVICE: self._attach_service
+            ros_type_e.SERVICE: self._attach_service,
+            ros_type_e.TOPIC_SUBSCRIBER: self._attach_subscriber,
+            ros_type_e.TOPIC: self._attach_publisher,
         }
 
         for handler in self._get_decorated():
@@ -30,6 +32,8 @@ class ServerDriver(AsyncDriver):
                 self.log.warn(f"Could not initialize handler >{handler.__name__}< because type >{handler._ros_type}< is unknown.")
 
         return tasks
+
+    
 
     def _attach_service(self, service_handler):
         self.log.info(f"Attach service >{service_handler.__name__}<")
@@ -121,3 +125,37 @@ class ServerDriver(AsyncDriver):
         setattr(
             self, f"__{action_handler.__name__}", ActionServer(self, idl, namespace, cb)
         )
+    
+    def _attach_subscriber(self, service_handler): 
+        handler_name = service_handler.__name__
+        idl = service_handler._ros_idl
+        namespace = service_handler._ros_namespace
+        
+        self.log.info(f"Attach subscription >{handler_name}<")
+
+        def cb(msg):
+            print(f"SUBSCRIPTION HANDLER {namespace} START", msg)
+
+            msg_keys = msg.get_fields_and_field_types().keys()
+            kwargs = {k: getattr(msg, k) for k in msg_keys}
+
+            asyncio.run_coroutine_threadsafe(
+                service_handler(**kwargs), loop=self._loop
+            ).result()
+
+        self.create_subscription(idl, namespace, cb, 10)
+        
+    def _attach_publisher(self, handler):
+        self.log.info(f"Attach publisher >{handler._ros_namespace}<")
+
+        idl = handler._ros_idl
+        namespace = handler._ros_namespace
+        qos = handler._ros_qos
+
+        pub = self.create_publisher(idl, namespace, qos)
+
+        def _dispatch(*args, **kwargs):
+            msg = idl(*args, **kwargs)
+            pub.publish(msg)
+            
+        setattr(self, handler.__name__, _dispatch)

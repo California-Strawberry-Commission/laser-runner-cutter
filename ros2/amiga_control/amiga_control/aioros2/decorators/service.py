@@ -25,7 +25,7 @@ def _check_service_handler_signature(fn, srv):
 def service(namespace, srv_idl):
     def _service(fn):
         _check_service_handler_signature(fn, srv_idl)
-        decorate_handler(fn, ros_type_e.SERVICE, ros_idl=srv_idl, ros_namespace=namespace)
+        decorate_handler(fn, ros_type_e.SERVICE, idl=srv_idl, namespace=namespace)
         return fn
 
     return _service
