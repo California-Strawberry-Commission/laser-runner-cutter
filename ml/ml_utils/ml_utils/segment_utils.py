@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 from itertools import groupby
+import math
 
 
 def convert_mask_to_yolo_segment(mask):
@@ -170,6 +171,18 @@ def convert_mask_to_polygons(mask):
     return polygons
 
 
+def angle_between_points(p1, p2, p3):
+    """
+    Calculate the angle in radians formed by three points.
+    """
+    vector1 = np.array(p1) - np.array(p2)
+    vector2 = np.array(p3) - np.array(p2)
+    dot_product = np.dot(vector1, vector2)
+    magnitudes = np.linalg.norm(vector1) * np.linalg.norm(vector2)
+    angle_radians = np.arccos(np.clip(dot_product / magnitudes, -1.0, 1.0))
+    return angle_radians
+
+
 def convert_mask_to_line_segments(mask, epsilon=4.0):
     """
     Convert a mask to line segments that best resemble that mask
@@ -210,19 +223,36 @@ def convert_mask_to_line_segments(mask, epsilon=4.0):
     points = cv2.approxPolyDP(np.array(points), epsilon=epsilon, closed=False)
     points = np.squeeze(points, axis=1)
 
+    points = points.tolist()
+    if len(points) > 2:
+        # Remove any points that form tight angles
+        filtered_points = points[:2]
+        for i in range(2, len(points)):
+            radians = angle_between_points(
+                filtered_points[len(filtered_points) - 2],
+                filtered_points[len(filtered_points) - 1],
+                points[i],
+            )
+            degrees = math.degrees(radians)
+            if degrees >= 90 and degrees <= 270:
+                filtered_points.append(points[i])
+        points = filtered_points
     return points
 
 
-def convert_contour_to_line_segments(contour, image_shape, epsilon=4.0):
+def convert_contour_to_line_segments(contour, epsilon=4.0):
     """
     Convert a contour to line segments that best resemble that contour
 
     Args:
         contour (List(List)): points corresponding to the contour outline
-        image_shape (tuple): shape of image that contour is based on
         epsilon (float): tolerance parameter for Douglas-Peucker algorithm. A larger epsilon will result in less line segments
     """
-    mask = np.zeros(image_shape, dtype=np.uint8)
+    contour = np.array(contour, dtype=np.int32)
+    contour = contour.reshape(-1, 1, 2)
+    max_x = np.max(contour[:, 0, 0])
+    max_y = np.max(contour[:, 0, 1])
+    mask = np.zeros((math.ceil(max_y), math.ceil(max_x)), dtype=np.uint8)
     try:
         cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
     except Exception as exc:

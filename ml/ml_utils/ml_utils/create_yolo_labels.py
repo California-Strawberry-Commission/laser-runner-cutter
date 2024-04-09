@@ -7,7 +7,7 @@ import argparse
 import os
 import numpy as np
 from PIL import Image
-from segment_utils import convert_mask_to_yolo_segment
+from . import segment_utils
 
 
 def create_yolo_labels(masks_dir, output_dir, class_id=0):
@@ -31,7 +31,7 @@ def create_yolo_labels(masks_dir, output_dir, class_id=0):
                 file_path = os.path.join(subdir_path, file)
                 mask_image = Image.open(file_path)
                 mask_image_array = np.array(mask_image)
-                segment = convert_mask_to_yolo_segment(mask_image_array)
+                segment = segment_utils.convert_mask_to_yolo_segment(mask_image_array)
                 yolo_label_file.write(f"{class_id} {' '.join(map(str, segment))}\n")
 
 

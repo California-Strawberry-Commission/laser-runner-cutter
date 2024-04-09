@@ -10,11 +10,8 @@ from glob import glob
 from natsort import natsorted
 import cv2
 import json
-from segment_utils import (
-    convert_mask_to_coco_rle_segment,
-    convert_mask_to_coco_poly_segment,
-)
 from tqdm import tqdm
+from . import segment_utils
 
 
 class NpEncoder(json.JSONEncoder):
@@ -74,9 +71,11 @@ def create_coco_labels(images_dir, masks_dir, output_filepath, poly=False):
             area = np.sum(mask > 0)
 
             if poly:
-                segmentation = [convert_mask_to_coco_poly_segment(mask)]
+                segmentation = [segment_utils.convert_mask_to_coco_poly_segment(mask)]
             else:
-                rle_counts, rle_size = convert_mask_to_coco_rle_segment(mask)
+                rle_counts, rle_size = segment_utils.convert_mask_to_coco_rle_segment(
+                    mask
+                )
                 segmentation = {"size": rle_size, "counts": rle_counts}
 
             annotation = {

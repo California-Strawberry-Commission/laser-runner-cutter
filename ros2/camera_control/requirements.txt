@@ -1,8 +1,8 @@
 ultralytics
 opencv-contrib-python
 pyrealsense2
-shapely
 numpy
 dvc
 dvc[s3]
 ../../ml/runner_segmentation_model
+../../ml/ml_utils

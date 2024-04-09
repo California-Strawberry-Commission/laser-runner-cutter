@@ -7,11 +7,10 @@ import numpy as np
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from cv_bridge import CvBridge
+from ml_utils.mask_center import contour_closest_point_to_centroid
 from rclpy.node import Node
 from runner_segmentation.yolo import Yolo
 from sensor_msgs.msg import CompressedImage
-from shapely import Polygon
-from shapely.ops import nearest_points
 from std_srvs.srv import Trigger
 
 from camera_control.camera.realsense import RealSense
@@ -203,12 +202,12 @@ class CameraControlNode(Node):
 
         if self.runner_detection_enabled:
             runner_masks, confs, track_ids = self._get_runner_masks(color_frame)
-            runner_centroids = self._get_runner_centroids(runner_masks)
+            runner_centers = self._get_runner_centers(runner_masks)
             debug_frame = self._debug_draw_runners(
-                debug_frame, runner_masks, runner_centroids, confs, track_ids
+                debug_frame, runner_masks, runner_centers, confs, track_ids
             )
             self.runner_detections_pub.publish(
-                self._create_detection_result_msg(runner_centroids, frames, track_ids)
+                self._create_detection_result_msg(runner_centers, frames, track_ids)
             )
 
         self.debug_frame_pub.publish(
@@ -265,8 +264,6 @@ class CameraControlNode(Node):
         result_conf = result["conf"]
         self.logger.info(f"Runner mask prediction found {result_conf.size} objects.")
 
-        self.logger.info(str(result["track_ids"]))
-
         runner_masks = []
         confs = []
         track_ids = []
@@ -288,15 +285,12 @@ class CameraControlNode(Node):
                 )
         return runner_masks, confs, track_ids
 
-    def _get_runner_centroids(self, runner_masks):
-        centroids = []
+    def _get_runner_centers(self, runner_masks):
+        runner_centers = []
         for mask in runner_masks:
-            polygon = Polygon(mask)
-            closest_polygon_point, closest_point = nearest_points(
-                polygon, polygon.centroid
-            )
-            centroids.append((closest_polygon_point.x, closest_polygon_point.y))
-        return centroids
+            runner_center = contour_closest_point_to_centroid(mask)
+            runner_centers.append((runner_center[0], runner_center[1]))
+        return runner_centers
 
     def _publish_state(self):
         self.state_pub.publish(self.get_state())
@@ -338,9 +332,9 @@ class CameraControlNode(Node):
         if self.curr_frames is not None:
             color_frame = np.asanyarray(self.curr_frames["color"].get_data())
             runner_masks, confs, track_ids = self._get_runner_masks(color_frame)
-            runner_centroids = self._get_runner_centroids(runner_masks)
+            runner_centers = self._get_runner_centers(runner_masks)
             response.result = self._create_detection_result_msg(
-                runner_centroids, self.curr_frames, track_ids
+                runner_centers, self.curr_frames, track_ids
             )
         return response
 
@@ -510,39 +504,39 @@ class CameraControlNode(Node):
         self,
         debug_frame,
         runner_masks,
-        runner_centroids,
+        runner_centers,
         confs,
         track_ids,
         mask_color=(255, 255, 255),
-        centroid_color=(255, 64, 255),
+        center_color=(255, 64, 255),
         draw_conf=True,
         draw_track_id=True,
     ):
-        for runner_mask, runner_centroid, conf, track_id in zip(
-            runner_masks, runner_centroids, confs, track_ids
+        for runner_mask, runner_center, conf, track_id in zip(
+            runner_masks, runner_centers, confs, track_ids
         ):
             debug_frame = cv2.fillPoly(
                 debug_frame,
                 pts=[np.array(runner_mask, dtype=np.int32)],
                 color=mask_color,
             )
-            pos = [int(runner_centroid[0]), int(runner_centroid[1])]
+            pos = [int(runner_center[0]), int(runner_center[1])]
             debug_frame = cv2.drawMarker(
                 debug_frame,
                 pos,
-                centroid_color,
+                center_color,
                 cv2.MARKER_TILTED_CROSS,
                 thickness=1,
                 markerSize=20,
             )
             if draw_conf:
-                pos = [int(runner_centroid[0]) + 15, int(runner_centroid[1]) - 5]
+                pos = [int(runner_center[0]) + 15, int(runner_center[1]) - 5]
                 font = cv2.FONT_HERSHEY_SIMPLEX
                 debug_frame = cv2.putText(
                     debug_frame, f"{conf:.2f}", pos, font, 0.5, mask_color
                 )
             if draw_track_id and track_id > 0:
-                pos = [int(runner_centroid[0]) + 15, int(runner_centroid[1]) + 10]
+                pos = [int(runner_center[0]) + 15, int(runner_center[1]) + 10]
                 font = cv2.FONT_HERSHEY_SIMPLEX
                 debug_frame = cv2.putText(
                     debug_frame, f"{track_id}", pos, font, 0.5, mask_color
