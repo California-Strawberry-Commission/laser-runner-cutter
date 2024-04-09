@@ -4,8 +4,10 @@ import os
 import cv2
 import numpy as np
 import bisect
+from scipy import ndimage
 from shapely import Polygon
 from shapely.ops import nearest_points
+from skimage.morphology import skeletonize
 from . import segment_utils
 
 
@@ -16,56 +18,28 @@ def contour_closest_point_to_centroid(contour):
 
 
 def mask_center(mask):
-    line = segment_utils.convert_mask_to_line_segments(mask, epsilon=2.0)
-    return line_center(line)
+    # Apply morphological operations to find the skeleton
+    skeleton = skeletonize(mask)
+
+    # Find non-zero pixels in the skeleton and flip to (x, y)
+    points = np.column_stack(np.where(skeleton > 0))[:, ::-1]
+
+    if len(points) == 0:
+        return None
+    elif len(points) == 1:
+        return points[0]
+
+    # Find the point in the skeleton that is closest to the centroid
+    centroid = ndimage.center_of_mass(mask)
+    centroid = (centroid[1], centroid[0])
+    distances = np.linalg.norm(points - np.array(centroid), axis=1)
+    center = points[np.argmin(distances)]
+    return [center[0], center[1]]
 
 
 def contour_center(contour):
-    line = segment_utils.convert_contour_to_line_segments(contour, epsilon=2.0)
-    return line_center(line)
-
-
-def line_center(line):
-    """
-    Compute the distance-wise center of a line.
-    """
-    if len(line) < 1:
-        return None
-    elif len(line) == 1:
-        return line[0]
-
-    cumulative_distances = [0]
-    total_length = 0
-
-    # Compute cumulative distances along the line
-    for i in range(1, len(line)):
-        total_length += distance(line[i - 1], line[i])
-        cumulative_distances.append(total_length)
-
-    # Find the midpoint and indices of the points that the midpoint lies between
-    half_length = total_length / 2
-    insertion_idx = bisect.bisect(cumulative_distances, half_length)
-
-    # Interpolate between the points
-    segment_length = (
-        cumulative_distances[insertion_idx] - cumulative_distances[insertion_idx - 1]
-    )
-    ratio = (half_length - cumulative_distances[insertion_idx - 1]) / segment_length
-    x = line[insertion_idx - 1][0] + ratio * (
-        line[insertion_idx][0] - line[insertion_idx - 1][0]
-    )
-    y = line[insertion_idx - 1][1] + ratio * (
-        line[insertion_idx][1] - line[insertion_idx - 1][1]
-    )
-
-    return [x, y]
-
-
-def distance(point1, point2):
-    """
-    Calculate the Euclidean distance between two points.
-    """
-    return np.sqrt((point2[0] - point1[0]) ** 2 + (point2[1] - point1[1]) ** 2)
+    mask = segment_utils.convert_contour_to_mask(contour)
+    return mask_center(mask)
 
 
 def main():

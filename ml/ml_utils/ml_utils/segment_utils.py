@@ -2,6 +2,8 @@ import cv2
 import numpy as np
 from itertools import groupby
 import math
+from scipy import ndimage
+from skimage.morphology import skeletonize
 
 
 def convert_mask_to_yolo_segment(mask):
@@ -171,6 +173,17 @@ def convert_mask_to_polygons(mask):
     return polygons
 
 
+def convert_contour_to_mask(contour):
+    contour = np.array(contour, dtype=np.int32)
+    contour = contour.reshape(-1, 1, 2)
+    max_x = np.max(contour[:, 0, 0])
+    max_y = np.max(contour[:, 0, 1])
+    mask = np.zeros((math.ceil(max_y), math.ceil(max_x)), dtype=np.uint8)
+    cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
+
+    return mask
+
+
 def angle_between_points(p1, p2, p3):
     """
     Calculate the angle in radians formed by three points.
@@ -189,39 +202,31 @@ def convert_mask_to_line_segments(mask, epsilon=4.0):
 
     Args:
         mask (numpy.ndarray)
-        epsilon (float): tolerance parameter for Douglas-Peucker algorithm. A larger epsilon will result in less line segments
+        epsilon (float): tolerance parameter for Douglas-Peucker algorithm. A larger epsilon will result in less line segments. An epsilon <= 0 will bypass simplification.
     """
     # Apply morphological operations to find the skeleton
-    skeleton = cv2.ximgproc.thinning(mask)
+    skeleton = skeletonize(mask)
 
-    # Find non-zero pixels in the skeleton
-    points = np.column_stack(np.where(skeleton > 0))
-    points = [(point[1], point[0]) for point in points]
+    # Find non-zero pixels in the skeleton and flip to (x, y)
+    points = np.column_stack(np.where(skeleton > 0))[:, ::-1]
 
     if len(points) < 2:
         return []
 
-    # Estimate endpoints
-    min_x = min(point[0] for point in points)
-    max_x = max(point[0] for point in points)
-    min_y = min(point[1] for point in points)
-    max_y = max(point[1] for point in points)
-    skel_width = max_x - min_x
-    skel_height = max_y - min_y
-    if skel_width >= skel_height:
-        # Find the index of the point with the min x
-        start_point_index = min(enumerate(points), key=lambda el: el[1][0])[0]
-    else:
-        # Find the index of the point with the min y
-        start_point_index = min(enumerate(points), key=lambda el: el[1][1])[0]
+    # Estimate endpoint
+    centroid = ndimage.center_of_mass(mask)
+    centroid = (centroid[1], centroid[0])
+    distances = np.linalg.norm(points - np.array(centroid), axis=1)
+    start_point_index = np.argmax(distances)
 
     # Order a list of points such that subsequent points are closest together,
     # using the nearest neighbor approach
     points = _order_points_nearest_neighbor(points, start_point_index)
 
-    # Apply Douglas-Peucker algorithm for simplification
-    points = cv2.approxPolyDP(np.array(points), epsilon=epsilon, closed=False)
-    points = np.squeeze(points, axis=1)
+    if epsilon > 0:
+        # Apply Douglas-Peucker algorithm for simplification
+        points = cv2.approxPolyDP(points, epsilon=epsilon, closed=False)
+        points = np.squeeze(points, axis=1)
 
     points = points.tolist()
     if len(points) > 2:
@@ -237,7 +242,7 @@ def convert_mask_to_line_segments(mask, epsilon=4.0):
             if degrees >= 90 and degrees <= 270:
                 filtered_points.append(points[i])
         points = filtered_points
-    return points
+    return np.array(points)
 
 
 def convert_contour_to_line_segments(contour, epsilon=4.0):
@@ -248,11 +253,7 @@ def convert_contour_to_line_segments(contour, epsilon=4.0):
         contour (List(List)): points corresponding to the contour outline
         epsilon (float): tolerance parameter for Douglas-Peucker algorithm. A larger epsilon will result in less line segments
     """
-    contour = np.array(contour, dtype=np.int32)
-    contour = contour.reshape(-1, 1, 2)
-    max_x = np.max(contour[:, 0, 0])
-    max_y = np.max(contour[:, 0, 1])
-    mask = np.zeros((math.ceil(max_y), math.ceil(max_x)), dtype=np.uint8)
+    mask = convert_contour_to_mask(contour)
     try:
         cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
     except Exception as exc:
@@ -319,16 +320,16 @@ def _order_points_nearest_neighbor(points, start_index):
     if len(points) <= 1:
         return points
 
-    ordered_points = [points[start_index]]
-    remaining_points = set(points[:start_index] + points[start_index + 1 :])
+    current_point = points[start_index]
+    ordered_points = [current_point]
+    remaining_points = np.delete(points, start_index, axis=0)
+    while len(remaining_points) > 0:
+        distances = np.linalg.norm(remaining_points - current_point, axis=1)
+        nearest_index = np.argmin(distances)
+        nearest_point = remaining_points[nearest_index]
 
-    while remaining_points:
-        last_point = ordered_points[-1]
-        nearest_point = min(
-            remaining_points,
-            key=lambda p: np.linalg.norm(np.array(last_point) - np.array(p)),
-        )
+        current_point = nearest_point
         ordered_points.append(nearest_point)
-        remaining_points.remove(nearest_point)
+        remaining_points = np.delete(remaining_points, nearest_index, axis=0)
 
-    return ordered_points
+    return np.array(ordered_points)

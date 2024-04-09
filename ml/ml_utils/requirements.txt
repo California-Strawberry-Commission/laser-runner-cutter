@@ -5,3 +5,5 @@ natsort
 tqdm
 pyiqa
 shapely
+scipy
+scikit-image

@@ -7,7 +7,7 @@ import numpy as np
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from cv_bridge import CvBridge
-from ml_utils.mask_center import contour_closest_point_to_centroid
+from ml_utils.mask_center import contour_center
 from rclpy.node import Node
 from runner_segmentation.yolo import Yolo
 from sensor_msgs.msg import CompressedImage
@@ -288,7 +288,7 @@ class CameraControlNode(Node):
     def _get_runner_centers(self, runner_masks):
         runner_centers = []
         for mask in runner_masks:
-            runner_center = contour_closest_point_to_centroid(mask)
+            runner_center = contour_center(mask)
             runner_centers.append((runner_center[0], runner_center[1]))
         return runner_centers
 
