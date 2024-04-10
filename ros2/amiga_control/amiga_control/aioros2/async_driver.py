@@ -1,6 +1,8 @@
 import asyncio
 import dataclasses
 import rclpy
+from .decorators.self import Self
+from .decorators import RosDefinition
 
 getter_map = {
     str: "string_value",
@@ -24,17 +26,32 @@ class AsyncDriver(rclpy.node.Node):
         self._n = async_node
         self.log = self.get_logger()
 
-        self._n.params = self._attach_params_dataclass(self._n.params)
-        self._loop = asyncio.get_event_loop()
-    
-    def _get_decorated(self):
+        # self._n.params = self._attach_params_dataclass(self._n.params)
+        self._loop = asyncio.get_running_loop()
+
+    def __getattr__(self, attr):
+        """Lookup unknown attrs on node definition. Effectively extends node def"""
+        try:
+            return getattr(self._n, attr)
+        except AttributeError:
+            raise AttributeError(f"Attribute >{attr}< was not found in either [{type(self).__qualname__}] or [{type(self._n).__name__}]")
+
+
+    def _get_ros_definitions(self):
+        from .decorators.import_node import RosImport
+
         node = self._n
         
-        return [
-            getattr(node, handler_name)
-            for handler_name in dir(self._n)
-            if hasattr(getattr(node, handler_name), "_ros_type")
+        a = [
+            (attr, getattr(node, attr))
+            for attr in dir(self._n)
+            if isinstance(getattr(node, attr), RosDefinition)
         ]
+
+        # Make sure RosImports are processed first
+        a.sort(key=lambda b: type(b[1]) != RosImport)
+
+        return a
     
     def _attach_params_dataclass(self, dataclass):
         if dataclass is None:

@@ -3,71 +3,70 @@ import dataclasses
 import rclpy
 from rclpy.action import ActionServer
 from .async_driver import AsyncDriver
-from .decorators._decorators import ros_type_e
 from .result import Result
 from .feedback import Feedback
+
+from .decorators.self import Self
+from .decorators.service import RosService
+from .decorators.topic import RosTopic
+from .decorators.subscribe import RosSubscription
+from .decorators.import_node import RosImport
 
 class ServerDriver(AsyncDriver):
     def __init__(self, async_node):
         super().__init__(async_node)
         
         # Get ros-asyncio decorated functions to bind.
-        for handler in self._get_decorated():
+        for handler in self._get_ros_definitions():
             print(handler)
 
-    def tasks(self):
-        tasks = []
-        
+        # Attachers create an implementation for the passed handler which is assigned
+        # to that handler's name.
         attachers = {
-            ros_type_e.ACTION: self._attach_action,
-            ros_type_e.SERVICE: self._attach_service,
-            ros_type_e.TOPIC_SUBSCRIBER: self._attach_subscriber,
-            ros_type_e.TOPIC: self._attach_publisher,
+            # ros_type_e.ACTION: self._attach_action,
+            RosService: self._attach_service,
+            RosSubscription: self._attach_subscriber,
+            RosTopic: self._attach_publisher,
+            RosImport: self._process_import,
         }
 
-        for handler in self._get_decorated():
+        for attr, definition in self._get_ros_definitions():
+            ros_def_class = type(definition)
             try:
-                attachers[handler._ros_type](handler)
+                setattr(self, attr, attachers[ros_def_class](definition))
             except KeyError:
-                self.log.warn(f"Could not initialize handler >{handler.__name__}< because type >{handler._ros_type}< is unknown.")
+                self.log.warn(f"Could not initialize handler >{attr}< because type >{ros_def_class}< is unknown.")        
 
-        return tasks
+    def _process_import(self, imp: RosImport):
+        from .client_driver import ClientDriver
 
-    
+        print("PROCESS SERVER IMPORT")
 
-    def _attach_service(self, service_handler):
-        self.log.info(f"Attach service >{service_handler.__name__}<")
+        return ClientDriver(imp.resolve())
 
-        handler_name = service_handler.__name__
-        idl = service_handler._ros_idl
-        namespace = service_handler._ros_namespace
+    def _attach_service(self, srv_def: RosService):
+        self.log.info(f"Attach service @ >{srv_def.namespace}<")
 
         def cb(req, res):
-            print(f"SERVICE HANDLER {namespace} START", req)
+            print(f"SERVICE HANDLER {srv_def.namespace} START", req)
 
-            msg_keys = req.get_fields_and_field_types().keys()
-
-            kwargs = {k: getattr(req, k) for k in msg_keys}
-
-            result = asyncio.run_coroutine_threadsafe(
-                service_handler(**kwargs), loop=self._loop
-            ).result()
-
+            result = srv_def.call_handler_sync(self, req, self._loop)
+            
             # Prevent ROS hang if return value is invalid
             if not isinstance(result, Result):
                 self.log.warn(
-                    f"Service handler {handler_name} did not return `result(...)`. "
+                    f"Service handler @ >{srv_def.namespace}< did not return `result(...)`. "
                     "Expected Result, got {result}"
                 )
                 result = res
             else:
-                result = idl.Response(*result.args, **result.kwargs)
+                result = srv_def.idl.Response(*result.args, **result.kwargs)
 
-            print(f"SERVICE HANDLER {namespace} FINISH", result)
+            print(f"SERVICE HANDLER {srv_def.namespace} FINISH", result)
 
             return result
 
-        self.create_service(idl, namespace, cb)
+        self.create_service(srv_def.idl, srv_def.namespace, cb)
 
     def _attach_action(self, action_handler):
         self.log.info(f"Attach action >{action_handler.__name__}<")
@@ -77,10 +76,8 @@ class ServerDriver(AsyncDriver):
 
         def cb(goal):
             print(f"ACTION HANDLER {namespace} START", goal)
-            req = goal.request
-            goal_keys = req.get_fields_and_field_types().keys()
 
-            kwargs = {k: getattr(req, k) for k in goal_keys}
+            kwargs = self._idl_to_kwargs(goal.request)
 
             gen = action_handler(**kwargs)
 
@@ -126,36 +123,29 @@ class ServerDriver(AsyncDriver):
             self, f"__{action_handler.__name__}", ActionServer(self, idl, namespace, cb)
         )
     
-    def _attach_subscriber(self, service_handler): 
-        handler_name = service_handler.__name__
-        idl = service_handler._ros_idl
-        namespace = service_handler._ros_namespace
-        
-        self.log.info(f"Attach subscription >{handler_name}<")
+    def _attach_subscriber(self, sub: RosSubscription): 
+        topic = sub.get_topic(self)
+
+        self.log.info(f"Attach subscription to namespace >{topic.namespace}<")
 
         def cb(msg):
-            print(f"SUBSCRIPTION HANDLER {namespace} START", msg)
+            print(f"SUBSCRIPTION HANDLER {topic.namespace} START", msg)
 
-            msg_keys = msg.get_fields_and_field_types().keys()
-            kwargs = {k: getattr(msg, k) for k in msg_keys}
+            kwargs = self._idl_to_kwargs(msg)
 
             asyncio.run_coroutine_threadsafe(
-                service_handler(**kwargs), loop=self._loop
+                sub.server_handler(self, **kwargs), loop=self._loop
             ).result()
 
-        self.create_subscription(idl, namespace, cb, 10)
+        self.create_subscription(topic.idl, topic.namespace, cb, topic.qos)
         
-    def _attach_publisher(self, handler):
-        self.log.info(f"Attach publisher >{handler._ros_namespace}<")
+    def _attach_publisher(self, topic_def: RosTopic):
+        self.log.info(f"Attach publisher @ >{topic_def.namespace}<")
 
-        idl = handler._ros_idl
-        namespace = handler._ros_namespace
-        qos = handler._ros_qos
+        pub = self.create_publisher(topic_def.idl, topic_def.namespace, topic_def.qos)
 
-        pub = self.create_publisher(idl, namespace, qos)
-
-        def _dispatch(*args, **kwargs):
-            msg = idl(*args, **kwargs)
+        def _dispatch_pub(*args, **kwargs):
+            msg = topic_def.idl(*args, **kwargs)
             pub.publish(msg)
             
-        setattr(self, handler.__name__, _dispatch)
+        return _dispatch_pub

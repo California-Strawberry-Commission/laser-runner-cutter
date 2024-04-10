@@ -9,3 +9,4 @@ def to_camel_case(snake_str):
 def to_snake(camel_str):
     camel_str = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", camel_str)
     return re.sub("([a-z0-9])([A-Z])", r"\1_\2", camel_str).lower()
+

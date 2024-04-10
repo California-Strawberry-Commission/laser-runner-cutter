@@ -21,24 +21,27 @@ Service Server
 Service Client
 Action Client
 
-
-Todo:
 Topic Publisher
 Topic Subscriber
-Server background tasks
+
+Todo:
+
 Namespace linking
+Server background tasks
 Server param change subscriptions
 Client param sets
 Server param side effects
 Server timer tasks
 """
-async def _ros_spin_nodes(nodes):
+async def _ros_spin_nodes(nodes, num_threads):
     print("Ros starting up...")
 
     # TODO: Tune thread counts. Might be limitations - not sure what ROS behavior when running out.
-    executor = rclpy.executors.MultiThreadedExecutor(num_threads=10)
+    executor = rclpy.executors.MultiThreadedExecutor(num_threads=num_threads)
 
-    for node in nodes:
+    servers = [ServerDriver(n) for n in nodes]
+
+    for node in servers:
         executor.add_node(node)
 
     print("Ros event loop running!")
@@ -47,11 +50,7 @@ async def _ros_spin_nodes(nodes):
         await asyncio.sleep(1e-4)
 
 
-def serve_nodes(*nodes):
+def serve_nodes(*nodes, threads=10):
     rclpy.init()
 
-    servers = [ServerDriver(n) for n in nodes]
-    tasks = [task for s in servers for task in s.tasks()]
-
-    tasks = asyncio.wait(tasks + [_ros_spin_nodes(servers)])
-    asyncio.get_event_loop().run_until_complete(tasks)
+    asyncio.run(_ros_spin_nodes(nodes, threads))

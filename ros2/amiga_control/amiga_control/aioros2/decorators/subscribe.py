@@ -1,26 +1,30 @@
 import inspect
 from typing import Any, Union
-from ._decorators import decorate_handler, ros_type_e
 from .self import Self
+from ._decorators import RosDefinition
+from .topic import RosTopic
+
+class RosSubscription(RosDefinition):
+    def raw_topic(namespace, idl, qos, server_handler):
+        return RosSubscription(RosTopic(namespace, idl, qos), server_handler)
+
+    def __init__(self, topic: RosTopic, server_handler):
+        self.topic = topic
+        self.server_handler = server_handler
+
+    def get_topic(self, class_self) -> RosTopic:
+        if isinstance(self.topic, Self):
+            return self.topic.resolve(class_self)
+        
+        return self.topic
 
 
-def _decorate_str_topic(fn, topic: str, idl: Any):
-    if idl is None:
-        raise RuntimeError("An IDL must be passed for string-based subscriptions")
-    
-    return decorate_handler(fn, ros_type_e.TOPIC_SUBSCRIBER, idl=idl, namespace=topic)
 
-
-def _decorate_self_topic(fn, topic):
-    # TODO: remap namespace to reference node name.
-    return decorate_handler(fn, ros_type_e.TOPIC_SUBSCRIBER, idl=topic._ros_idl, namespace=topic._ros_namespace)
-
-
-def subscribe(topic: Union[Self, str], idl: Union[Any, None] = None):
+def subscribe(topic: Union[Self, str], idl: Union[Any, None] = None, qos=10):
     def _subscribe(fn):
         if isinstance(topic, Self):
-            return _decorate_self_topic(fn, topic)
+            return RosSubscription(topic, fn)
         else:
-            return _decorate_str_topic(fn, topic, idl)
+            return RosSubscription.raw_topic(topic, idl, qos, fn)
 
     return _subscribe

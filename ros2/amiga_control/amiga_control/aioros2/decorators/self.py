@@ -9,12 +9,19 @@ class Self:
     """
     
     def __init__(self, path=[]) -> None:
-        self._path = path
+        self.__path = path
     
-    def __getattr__(self, name: str) -> Any:
-        return Self(self._path + [name])
+    def __getattr__(self, attr: str) -> Any:
+        return Self(self.__path + [attr])
     
     def __repr__(self) -> str:
-        return "Self Object - path: " + ".".join(self._path)
+        return "Self Object - path: " + ".".join(self.__path)
+    
+    def resolve(self, otherSelf):
+        v = otherSelf
+        for seg in self.__path:
+            v = getattr(v, seg)
+            
+        return v
     
 self = Self()

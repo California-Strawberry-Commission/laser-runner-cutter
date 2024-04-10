@@ -14,7 +14,7 @@ class CircularNode:
         print("/global/topic", data)
 
     @subscribe("/global/topic", String)
-    def on_global(self, data):
+    def on_global2(self, data):
         print("/global/topic", data)
  
 

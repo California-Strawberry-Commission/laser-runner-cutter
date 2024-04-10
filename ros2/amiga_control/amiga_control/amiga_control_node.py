@@ -8,6 +8,8 @@ from rcl_interfaces.msg import ParameterDescriptor
 from .aioros2 import node, param, timer, service, action, serve_nodes, result, feedback, subscribe, topic, self, import_node
 from std_msgs.msg import String
 
+from .aioros2.decorators.subscribe import RosSubscription
+
 from . import circular_node
 
 # Future note: dataclass requires type annotations to work
@@ -34,9 +36,9 @@ class AmigaControlNode:
     # def own_topic(self, data):
     #     print(data)
         
-    # @subscribe(self.dependant_node_1.a_topic)
-    # def sub_another_topic(self, data):
-    #     print(data)
+    @subscribe(self.dependant_node_1.a_topic)
+    def sub_another_topic(self, data):
+        print(data)
 
     @subscribe("/test/topic", String)
     async def test_topic(self, data):
@@ -53,7 +55,7 @@ class AmigaControlNode:
 
     @service("~/set_twist", SetTwist)
     async def set_twist(self, twist) -> bool:
-        print(twist)
+        await self.dependant_node_1.on_global(data="test")
         return result(success=True)
 
     @action("~/test", Run)
