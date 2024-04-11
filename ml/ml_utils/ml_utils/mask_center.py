@@ -3,7 +3,6 @@ from glob import glob
 import os
 import cv2
 import numpy as np
-import bisect
 from scipy import ndimage
 from shapely import Polygon
 from shapely.ops import nearest_points
@@ -21,20 +20,20 @@ def mask_center(mask):
     # Apply morphological operations to find the skeleton
     skeleton = skeletonize(mask)
 
-    # Find non-zero pixels in the skeleton and flip to (x, y)
-    points = np.column_stack(np.where(skeleton > 0))[:, ::-1]
+    # Find non-zero pixels in the skeleton
+    points = np.column_stack(np.where(skeleton > 0))
 
     if len(points) == 0:
         return None
     elif len(points) == 1:
-        return points[0]
+        center = points[0]
+        return [center[1], center[0]]
 
     # Find the point in the skeleton that is closest to the centroid
     centroid = ndimage.center_of_mass(mask)
-    centroid = (centroid[1], centroid[0])
     distances = np.linalg.norm(points - np.array(centroid), axis=1)
     center = points[np.argmin(distances)]
-    return [center[0], center[1]]
+    return [center[1], center[0]]
 
 
 def contour_center(contour):
