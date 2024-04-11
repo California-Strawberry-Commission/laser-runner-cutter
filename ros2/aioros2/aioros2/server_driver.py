@@ -67,7 +67,7 @@ class ServerDriver(AsyncDriver):
             print(f"ACTION HANDLER @ {d.namespace} START", goal)
 
             kwargs = idl_to_kwargs(goal.request)
-            gen = d.sever_handler(**kwargs)
+            gen = d.sever_handler(self, **kwargs)
 
             result: Feedback | Result = None
             while True:

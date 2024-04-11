@@ -1,4 +1,6 @@
 class RosDefinition:
+    """Common base class for all aioros2 decorations. Used to discover aioros2
+    implementations when instantiating drivers"""
     pass
 
 
