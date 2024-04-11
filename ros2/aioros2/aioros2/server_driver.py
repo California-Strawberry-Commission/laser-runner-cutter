@@ -7,10 +7,15 @@ from .result import Result
 from .feedback import Feedback
 
 from .decorators.self import Self
+from .decorators import RosDefinition
 from .decorators.service import RosService
 from .decorators.topic import RosTopic
 from .decorators.subscribe import RosSubscription
 from .decorators.import_node import RosImport
+from .decorators.action import RosAction
+from .decorators.timer import RosTimer
+from .decorators.param import RosParamHandler
+from .decorators import idl_to_kwargs
 
 class ServerDriver(AsyncDriver):
     def __init__(self, async_node):
@@ -20,31 +25,18 @@ class ServerDriver(AsyncDriver):
         for handler in self._get_ros_definitions():
             print(handler)
 
-        # Attachers create an implementation for the passed handler which is assigned
-        # to that handler's name.
-        attachers = {
-            # ros_type_e.ACTION: self._attach_action,
-            RosService: self._attach_service,
-            RosSubscription: self._attach_subscriber,
-            RosTopic: self._attach_publisher,
-            RosImport: self._process_import,
-        }
+        self._attach()
 
-        for attr, definition in self._get_ros_definitions():
-            ros_def_class = type(definition)
-            try:
-                setattr(self, attr, attachers[ros_def_class](definition))
-            except KeyError:
-                self.log.warn(f"Could not initialize handler >{attr}< because type >{ros_def_class}< is unknown.")        
 
-    def _process_import(self, imp: RosImport):
+    def _process_import(self, attr, imp: RosImport):
         from .client_driver import ClientDriver
 
-        print("PROCESS SERVER IMPORT")
+        self.log.info("Resolving SERVER import")
 
         return ClientDriver(imp.resolve())
 
-    def _attach_service(self, srv_def: RosService):
+
+    def _attach_service(self, attr, srv_def: RosService):
         self.log.info(f"Attach service @ >{srv_def.namespace}<")
 
         def cb(req, res):
@@ -68,18 +60,14 @@ class ServerDriver(AsyncDriver):
 
         self.create_service(srv_def.idl, srv_def.namespace, cb)
 
-    def _attach_action(self, action_handler):
-        self.log.info(f"Attach action >{action_handler.__name__}<")
-        handler_name = action_handler.__name__
-        idl = action_handler._ros_idl
-        namespace = action_handler._ros_namespace
+    def _attach_action(self, attr, d: RosAction):
+        self.log.info(f"Attach action >{attr}<")
 
         def cb(goal):
-            print(f"ACTION HANDLER {namespace} START", goal)
+            print(f"ACTION HANDLER @ {d.namespace} START", goal)
 
-            kwargs = self._idl_to_kwargs(goal.request)
-
-            gen = action_handler(**kwargs)
+            kwargs = idl_to_kwargs(goal.request)
+            gen = d.sever_handler(**kwargs)
 
             result: Feedback | Result = None
             while True:
@@ -89,10 +77,10 @@ class ServerDriver(AsyncDriver):
                         loop=self._loop,
                     ).result()
 
-                    print(f"ACTION HANDLER {namespace} FEEDBACK", result)
+                    print(f"ACTION HANDLER @ {d.namespace} FEEDBACK", result)
 
                     if isinstance(result, Feedback):
-                        fb = idl.Feedback(*result.args, **result.kwargs)
+                        fb = d.idl.Feedback(*result.args, **result.kwargs)
                         goal.publish_feedback(fb)
                         
                     elif isinstance(result, Result):
@@ -103,27 +91,27 @@ class ServerDriver(AsyncDriver):
                         self.log.error("YIELDED NON-FEEDBACK, NON-RESULT VALUE")
                         
                 except StopAsyncIteration:
-                    self.log.warn(f"Action >{handler_name}< returned before yielding `result`")
+                    self.log.warn(f"Action >{attr}< returned before yielding `result`")
                     break
 
 
             if not isinstance(result, Result):
                 self.log.warn(
-                    f"Action >{handler_name}< did not yield `result(...)`. "
-                    f"Expected >{idl.Result}<, got >{result}<. Aborting action."
+                    f"Action >{attr}< did not yield `result(...)`. "
+                    f"Expected >{d.idl.Result}<, got >{result}<. Aborting action."
                 )
-                result = idl.Result()
+                result = d.idl.Result()
             else:
-                result = idl.Result(*result.args, **result.kwargs)
+                result = d.idl.Result(*result.args, **result.kwargs)
 
-            print(f"ACTION HANDLER {namespace} FINISH", result)
+            print(f"ACTION HANDLER @ {d.namespace} FINISH", result)
             return result
 
         setattr(
-            self, f"__{action_handler.__name__}", ActionServer(self, idl, namespace, cb)
+            self, f"__{d.sever_handler.__name__}", ActionServer(self, d.idl, d.namespace, cb)
         )
     
-    def _attach_subscriber(self, sub: RosSubscription): 
+    def _attach_subscriber(self, attr, sub: RosSubscription): 
         topic = sub.get_topic(self)
 
         self.log.info(f"Attach subscription to namespace >{topic.namespace}<")
@@ -131,7 +119,7 @@ class ServerDriver(AsyncDriver):
         def cb(msg):
             print(f"SUBSCRIPTION HANDLER {topic.namespace} START", msg)
 
-            kwargs = self._idl_to_kwargs(msg)
+            kwargs = idl_to_kwargs(msg)
 
             asyncio.run_coroutine_threadsafe(
                 sub.server_handler(self, **kwargs), loop=self._loop
@@ -139,7 +127,7 @@ class ServerDriver(AsyncDriver):
 
         self.create_subscription(topic.idl, topic.namespace, cb, topic.qos)
         
-    def _attach_publisher(self, topic_def: RosTopic):
+    def _attach_publisher(self, attr, topic_def: RosTopic):
         self.log.info(f"Attach publisher @ >{topic_def.namespace}<")
 
         pub = self.create_publisher(topic_def.idl, topic_def.namespace, topic_def.qos)

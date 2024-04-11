@@ -4,6 +4,9 @@ from ._decorators import RosDefinition
 class RosAction(RosDefinition):
     def __init__(self, namespace, act_idl, handler) -> None:
         self._check_action_handler_signature(handler, act_idl)
+        self.namespace = namespace
+        self.idl = act_idl
+        self.sever_handler = handler
 
     def _check_action_handler_signature(self, fn, act):
         # ['Feedback', 'Goal', 'Impl', 'Result']

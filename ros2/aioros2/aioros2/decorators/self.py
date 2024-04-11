@@ -18,10 +18,13 @@ class Self:
         return "Self Object - path: " + ".".join(self.__path)
     
     def resolve(self, otherSelf):
+        
         v = otherSelf
         for seg in self.__path:
             v = getattr(v, seg)
-            
+        
+        if v is None:
+            raise AttributeError(f"Could not resolve self >{self}< on >{otherSelf}<")
         return v
     
 self = Self()

@@ -5,10 +5,10 @@ from amiga_control_interfaces.srv import SetTwist
 from amiga_control_interfaces.action import Run
 from dataclasses import dataclass
 from rcl_interfaces.msg import ParameterDescriptor
-from .aioros2 import node, param, timer, service, action, serve_nodes, result, feedback, subscribe, topic, self, import_node
+from aioros2 import node, param, timer, service, action, serve_nodes, result, feedback, subscribe, topic, self, import_node
 from std_msgs.msg import String
 
-from .aioros2.decorators.subscribe import RosSubscription
+from aioros2.decorators.subscribe import RosSubscription
 
 from . import circular_node
 
@@ -56,6 +56,7 @@ class AmigaControlNode:
     @service("~/set_twist", SetTwist)
     async def set_twist(self, twist) -> bool:
         await self.dependant_node_1.on_global(data="test")
+
         return result(success=True)
 
     @action("~/test", Run)
