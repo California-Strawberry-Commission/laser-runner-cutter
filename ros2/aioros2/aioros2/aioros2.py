@@ -13,26 +13,6 @@ from .server_driver import ServerDriver
 # https://robotics.stackexchange.com/questions/106026/ros2-multi-nodes-each-on-a-thread-in-same-process
 
 
-"""
-Done:
-Action Server
-Service Server
-
-Service Client
-Action Client
-
-Topic Publisher
-Topic Subscriber
-
-Todo:
-
-Namespace linking
-Server background tasks
-Server param change subscriptions
-Client param sets
-Server param side effects
-Server timer tasks
-"""
 async def _ros_spin_nodes(nodes, num_threads):
     print("Ros starting up...")
 
