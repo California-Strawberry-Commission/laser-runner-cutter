@@ -1,9 +1,11 @@
 import argparse
-import glob
+import csv
 import os
+from glob import glob
+
+from natsort import natsorted
 from pyiqa import create_metric
 from tqdm import tqdm
-import csv
 
 
 def main():
@@ -51,9 +53,15 @@ def main():
         if args.ref is not None:
             ref_paths = [args.ref]
     else:
-        input_paths = sorted(glob.glob(os.path.join(args.input, "*")))
+        input_paths = natsorted(
+            glob(os.path.join(args.input, "*.jpg"))
+            + glob(os.path.join(args.input, "*.png"))
+        )
         if args.ref is not None:
-            ref_paths = sorted(glob.glob(os.path.join(args.ref, "*")))
+            ref_paths = natsorted(
+                glob(os.path.join(args.ref, "*.jpg"))
+                + glob(os.path.join(args.ref, "*.png"))
+            )
 
     if args.save_file:
         sf = open(args.save_file, "w")
