@@ -15,7 +15,6 @@ export async function POST(request: Request) {
       status: 200,
     });
   } catch (err) {
-    console.log("Error: ", err);
     return new Response(null, {
       status: 400,
     });
