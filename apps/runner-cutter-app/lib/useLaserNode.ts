@@ -19,7 +19,7 @@ export default function useLaserNode(nodeName: string) {
 
   // Initial node state
   useEffect(() => {
-    const connected = ros.nodes.includes(nodeName);
+    const connected = ros.isNodeConnected(nodeName);
     if (connected) {
       getState();
     }

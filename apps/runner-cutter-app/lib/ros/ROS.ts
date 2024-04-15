@@ -73,9 +73,12 @@ export default class ROS {
     }
   }
 
-  async getNodes(): Promise<string[]> {
-    const result = await this.callService("/rosapi/nodes", "rosapi/Nodes", {});
-    return result.nodes;
+  getNodes(): string[] {
+    return this.nodes;
+  }
+
+  isNodeConnected(nodeName: string): boolean {
+    return this.nodes.includes(nodeName);
   }
 
   async callService(
@@ -108,6 +111,11 @@ export default class ROS {
     return listener;
   }
 
+  private async getNodesInternal(): Promise<string[]> {
+    const result = await this.callService("/rosapi/nodes", "rosapi/Nodes", {});
+    return result.nodes;
+  }
+
   private setupReconnect(): void {
     if (this.reconnectInterval === null) {
       this.reconnectInterval = setInterval(() => {
@@ -124,7 +132,7 @@ export default class ROS {
           return;
         }
 
-        const nodes = await this.getNodes();
+        const nodes = await this.getNodesInternal();
         const prevSet = new Set(this.nodes);
         const currSet = new Set(nodes);
         const disconnected = this.nodes.filter((node) => !currSet.has(node));

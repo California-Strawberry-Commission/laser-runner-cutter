@@ -23,7 +23,7 @@ export default function useCameraNode(nodeName: string) {
 
   // Initial node state
   useEffect(() => {
-    const connected = ros.nodes.includes(nodeName);
+    const connected = ros.isNodeConnected(nodeName);
     if (connected) {
       getState();
     }
