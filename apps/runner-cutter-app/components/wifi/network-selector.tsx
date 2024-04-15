@@ -50,7 +50,7 @@ export default function NetworkSelector() {
     fetchNetworks();
     const fetchNetworksInterval = setInterval(fetchNetworks, 10000);
     return () => clearInterval(fetchNetworksInterval);
-  }, [fetchNetworks]);
+  }, []);
 
   const onPasswordSubmit = async (ssid: string, password: string) => {
     // TODO: show "connecting" modal

@@ -27,9 +27,7 @@ export default function ErrorModal({
       <DialogHeader>
         <DialogTitle>Error connecting to Wi-Fi network</DialogTitle>
         <DialogDescription>
-          There was an error when attempting to connect to the Wi-Fi network "
-          {networkName}
-          ". Please try again:
+          {`There was an error when attempting to connect to the Wi-Fi network "${networkName}". Please try again:`}
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-4 py-4">

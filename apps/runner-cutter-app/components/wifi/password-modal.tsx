@@ -27,7 +27,7 @@ export default function PasswordModal({
       <DialogHeader>
         <DialogTitle>Enter Wi-Fi password</DialogTitle>
         <DialogDescription>
-          Provide the password for the Wi-Fi network "{networkName}":
+          {`Provide the password for the Wi-Fi network "${networkName}":`}
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-4 py-4">
