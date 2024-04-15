@@ -50,7 +50,7 @@ export default function NodesList() {
       }
     });
     // TODO: unsubscribe from ros.onNodeConnected and ros.onStateChange
-  }, [updateNodes]);
+  }, [ros, updateNodes]);
 
   return (
     <Table>
