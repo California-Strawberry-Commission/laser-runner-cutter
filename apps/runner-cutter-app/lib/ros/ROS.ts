@@ -1,9 +1,5 @@
 import ROSLIB from "roslib";
 
-type NodeConnectionCallbacks = {
-  [key: string]: ((connected: boolean) => void)[];
-};
-
 export default class ROS {
   url: string;
   ros: ROSLIB.Ros;
@@ -11,7 +7,7 @@ export default class ROS {
   reconnectInterval: NodeJS.Timeout | null;
   nodes: string[];
   nodeMonitorInterval: NodeJS.Timeout | null;
-  nodeListeners: NodeConnectionCallbacks;
+  nodeListeners: ((nodeName: string, connected: boolean) => void)[];
 
   constructor(url: string, reconnectIntervalMs: number = 1000) {
     this.url = url;
@@ -48,7 +44,7 @@ export default class ROS {
     });
 
     this.nodes = [];
-    this.nodeListeners = {};
+    this.nodeListeners = [];
     this.nodeMonitorInterval = null;
   }
 
@@ -63,14 +59,9 @@ export default class ROS {
   }
 
   onNodeConnected(
-    nodeName: string,
-    callback: (connected: boolean) => void
+    callback: (nodeName: string, connected: boolean) => void
   ): void {
-    if (nodeName in this.nodeListeners) {
-      this.nodeListeners[nodeName].push(callback);
-    } else {
-      this.nodeListeners[nodeName] = [callback];
-    }
+    this.nodeListeners.push(callback);
   }
 
   getNodes(): string[] {
@@ -137,26 +128,21 @@ export default class ROS {
         const currSet = new Set(nodes);
         const disconnected = this.nodes.filter((node) => !currSet.has(node));
         const connected = nodes.filter((node) => !prevSet.has(node));
+        this.nodes = nodes;
 
         disconnected.forEach((node) => {
           console.log(`[ROS] Node disconnected: ${node}`);
-          if (node in this.nodeListeners) {
-            this.nodeListeners[node].forEach((listener) => {
-              listener(false);
-            });
-          }
+          this.nodeListeners.forEach((listener) => {
+            listener(node, false);
+          });
         });
 
         connected.forEach((node) => {
           console.log(`[ROS] Node connected: ${node}`);
-          if (node in this.nodeListeners) {
-            this.nodeListeners[node].forEach((listener) => {
-              listener(true);
-            });
-          }
+          this.nodeListeners.forEach((listener) => {
+            listener(node, true);
+          });
         });
-
-        this.nodes = nodes;
       }, 1000);
     }
   }

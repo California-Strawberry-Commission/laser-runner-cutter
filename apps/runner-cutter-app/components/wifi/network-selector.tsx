@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Check } from "lucide-react";
 import {
   Table,
@@ -27,7 +27,7 @@ export default function NetworkSelector() {
   const [passwordModalOpen, setPasswordModalOpen] = useState<boolean>(false);
   const [errorModalOpen, setErrorModalOpen] = useState<boolean>(false);
 
-  const fetchNetworks = async () => {
+  const fetchNetworks = useCallback(async () => {
     const response = await fetch("/api/wifi/list");
     if (response.ok) {
       const data: WifiNetwork[] = await response.json();
@@ -44,13 +44,13 @@ export default function NetworkSelector() {
     } else {
       console.error("Error fetching Wi-Fi networks");
     }
-  };
+  }, [setNetworks]);
 
   useEffect(() => {
     fetchNetworks();
     const fetchNetworksInterval = setInterval(fetchNetworks, 10000);
     return () => clearInterval(fetchNetworksInterval);
-  }, []);
+  }, [fetchNetworks]);
 
   const onPasswordSubmit = async (ssid: string, password: string) => {
     // TODO: show "connecting" modal

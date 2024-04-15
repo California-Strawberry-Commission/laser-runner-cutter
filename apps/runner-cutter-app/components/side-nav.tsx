@@ -4,13 +4,13 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
-export type SideNavItem = {
+type SideNavItem = {
   title: string;
   path: string;
   icon?: JSX.Element;
 };
 
-export const SIDENAV_ITEMS: SideNavItem[] = [
+const SIDENAV_ITEMS: SideNavItem[] = [
   {
     title: "Laser Runner Cutter",
     path: "/",
@@ -26,6 +26,10 @@ export const SIDENAV_ITEMS: SideNavItem[] = [
   {
     title: "Laser Test",
     path: "/laser",
+  },
+  {
+    title: "Nodes",
+    path: "/nodes",
   },
   {
     title: "Wi-Fi",

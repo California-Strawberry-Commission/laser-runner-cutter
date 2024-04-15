@@ -29,10 +29,12 @@ export default function useControlNode(nodeName: string) {
 
   // Subscriptions
   useEffect(() => {
-    ros.onNodeConnected(nodeName, (connected) => {
-      setNodeConnected(connected);
-      if (connected) {
-        getState();
+    ros.onNodeConnected((connectedNodeName, connected) => {
+      if (connectedNodeName === nodeName) {
+        setNodeConnected(connected);
+        if (connected) {
+          getState();
+        }
       }
     });
 
