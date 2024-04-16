@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import useCameraNode from "@/lib/useCameraNode";
+import FramePreview from "@/components/camera/frame-preview";
 
 export default function Controls() {
   const ros = useContext(ROSContext);
@@ -149,7 +150,7 @@ export default function Controls() {
           Save Image
         </Button>
       </div>
-      {frameSrc && <img src={frameSrc} alt="Camera Color Frame" />}
+      <FramePreview frameSrc={frameSrc} />
     </div>
   );
 }

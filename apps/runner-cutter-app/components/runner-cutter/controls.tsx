@@ -6,6 +6,7 @@ import useCameraNode from "@/lib/useCameraNode";
 import useLaserNode, { LASER_STATES } from "@/lib/useLaserNode";
 import useControlNode from "@/lib/useControlNode";
 import { Button } from "@/components/ui/button";
+import FramePreview from "@/components/camera/frame-preview";
 
 export default function Controls() {
   const ros = useContext(ROSContext);
@@ -89,7 +90,7 @@ export default function Controls() {
           Stop
         </Button>
       </div>
-      {frameSrc && <img src={frameSrc} alt="Camera Color Frame" />}
+      <FramePreview frameSrc={frameSrc} />
     </div>
   );
 }

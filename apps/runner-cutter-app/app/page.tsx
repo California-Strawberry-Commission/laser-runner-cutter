@@ -1,4 +1,4 @@
-import Controls from "@/components/laser-runner-cutter/controls";
+import Controls from "@/components/runner-cutter/controls";
 
 export default function Home() {
   return (

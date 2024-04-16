@@ -12,11 +12,11 @@ type SideNavItem = {
 
 const SIDENAV_ITEMS: SideNavItem[] = [
   {
-    title: "Laser Runner Cutter",
+    title: "Runner Cutter",
     path: "/",
   },
   {
-    title: "Calibration",
+    title: "Calibration Test",
     path: "/calibration",
   },
   {

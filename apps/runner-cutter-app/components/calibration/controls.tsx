@@ -6,6 +6,7 @@ import useCameraNode from "@/lib/useCameraNode";
 import useLaserNode, { LASER_STATES } from "@/lib/useLaserNode";
 import useControlNode from "@/lib/useControlNode";
 import { Button } from "@/components/ui/button";
+import FramePreview from "@/components/camera/frame-preview";
 
 export default function Controls() {
   const ros = useContext(ROSContext);
@@ -87,20 +88,15 @@ export default function Controls() {
           Start Calibration
         </Button>
       </div>
-      {frameSrc && (
-        <>
-          <p className="text-center">
-            Click on the image below to fire the laser at that point and add a
-            calibration point
-          </p>
-          <img
-            src={frameSrc}
-            alt="Camera Color Frame"
-            onLoad={onImageLoad}
-            onClick={onImageClick}
-          />
-        </>
-      )}
+      <p className="text-center">
+        Click on the image below to fire the laser at that point and add a
+        calibration point
+      </p>
+      <FramePreview
+        frameSrc={frameSrc}
+        onImageLoad={onImageLoad}
+        onImageClick={onImageClick}
+      />
     </div>
   );
 }
