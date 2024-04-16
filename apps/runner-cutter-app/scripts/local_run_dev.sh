@@ -1,4 +1,5 @@
-#! /bin/bash
+#!/bin/bash
+# For local development. Starts ROS2 nodes, Rosbridge, and the app concurrently.
 
 script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 app_dir=$script_dir/..
@@ -11,9 +12,8 @@ start_ros() {
 }
 
 start_rosbridge() {
-  cd $repo_dir/ros2/scripts
-  source setup.sh
-  ros2 launch rosbridge_server rosbridge_websocket_launch.xml
+  cd $app_dir
+  ./scripts/run_rosbridge.sh
 }
 
 start_app() {

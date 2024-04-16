@@ -27,7 +27,7 @@ Web app for laser runner cutter control and automation, built with Next.js.
 
 1.  Run the following:
 
-        $ scripts/run_local_dev.sh
+        $ scripts/local_run_dev.sh
 
 1.  Open [http://localhost:3000](http://localhost:3000) with your browser to see the app.
 

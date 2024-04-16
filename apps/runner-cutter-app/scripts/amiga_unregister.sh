@@ -1,4 +1,5 @@
 #! /bin/bash
+# For the Amiga Brain. Removes the app from the Brain's launcher.
 
 set -uxeo pipefail
 

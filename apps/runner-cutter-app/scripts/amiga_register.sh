@@ -1,4 +1,5 @@
 #! /bin/bash
+# For the Amiga Brain. Registers the app on the Brain's launcher.
 
 set -uxeo pipefail
 
