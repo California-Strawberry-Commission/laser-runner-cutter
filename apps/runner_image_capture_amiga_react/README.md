@@ -13,11 +13,11 @@ An application deployable to the Amiga brain, written using React and FastAPI, f
 
 2.  Install NVM
 
-        cd runner_image_capture_amiga_react/ts
         curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
 
 3.  Prepare the frontend
 
+        cd runner_image_capture_amiga_react/ts
         nvm install --lts
         npm install
         npm run build
@@ -39,6 +39,6 @@ An application deployable to the Amiga brain, written using React and FastAPI, f
 SSH into the Amiga brain and clone the repo there. Then,
 
     cd runner_image_capture_amiga_react
-    ./install.sh
+    ./scripts/amiga_register.sh
 
 You should now see the app on the brain screen. Click on it to launch it.
