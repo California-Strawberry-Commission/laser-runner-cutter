@@ -4,58 +4,79 @@ from typing import AsyncGenerator, Callable, TypeVar
 from amiga_control_interfaces.srv import SetTwist
 from amiga_control_interfaces.action import Run
 from dataclasses import dataclass
-from rcl_interfaces.msg import ParameterDescriptor
-from aioros2 import node, param, timer, service, action, serve_nodes, result, feedback, subscribe, topic, self, import_node
+from rcl_interfaces.msg import ParameterDescriptor, ParameterEvent
+from aioros2 import param, timer, service, action, serve_nodes, result, feedback, subscribe, topic, import_node, params, RosNode
 from std_msgs.msg import String
 
 from aioros2.decorators.subscribe import RosSubscription
 
 from . import circular_node
 
+# Remapping/linking
+# Global topics - don't remap
+# NEED - fully qualified node path for parameter, topic linking
+
 # Future note: dataclass requires type annotations to work
 @dataclass
 class AmigaParams:
     host: str = "127.0.0.1"
     port_canbus: int = 6001
+
+    # ParameterDescriptor(description="test", read_only=True)
+    read_me: str = param("A test value", description="test", read_only=True)
+
+@dataclass
+class GenericParams:
+    idk: str = "test"
+    a_test: str = "t"
     # read_me: str = (
     #     "A test value",
     #     ParameterDescriptor(description="test", read_only=True),
     # )
 
+# NOTE: In drivers, definitions must be treated as immutable
+class AmigaControlNode(RosNode):
+    amiga_params = params(AmigaParams)
+    generic_params = params(GenericParams)
 
-@node(AmigaParams)
-class AmigaControlNode:
-    dependant_node_1 = import_node(lambda: circular_node.CircularNode("node_name"))
+    dependant_node_1: "circular_node.CircularNode" = import_node(circular_node)
     
     my_topic = topic("~/atopic", String, 10)
 
-    # @imports
-    # def process_imports(self):
-
-    # @subscribe(self.my_topic)
-    # def own_topic(self, data):
-    #     print(data)
-        
-    @subscribe(self.dependant_node_1.a_topic)
+    @subscribe(dependant_node_1.a_topic)
     def sub_another_topic(self, data):
         print(data)
 
     @subscribe("/test/topic", String)
     async def test_topic(self, data):
         print(data)
-        
-    @param(AmigaParams.host)
-    async def set_host_param(self, host):
-        self.params.host = host
-        # Do something else...
+    
+    @subscribe(my_topic)
+    async def on_my_topic(self, data):
+        print("GOT MY TOPIC: ", data)
 
-    @timer(1) # Server only
+    # @subscribe("parameter_events", ParameterEvent)
+    # async def lmao(self, stamp, node, new_parameters, changed_parameters, deleted_parameters):
+    #     print("SDJKFOI", stamp, node, new_parameters, changed_parameters, deleted_parameters)
+
+    # @param(AmigaParams.host)
+    # async def set_host_param(self, host):
+    #     self.params.host = host
+    #     # Do something else...
+
+    @timer(2) # Server only
     async def task(self):
-        await self.publish()
+        await self.amiga_params.update()
+
+        print(self.amiga_params, self.amiga_params.port_canbus)
+        # if self.amiga_params.host != "TESTHOST":
+        #     print("Param is different, resetting!")
+        #     await self.amiga_params.set(host="TESTHOST")
 
     @service("~/set_twist", SetTwist)
     async def set_twist(self, twist) -> bool:
-        await self.dependant_node_1.on_global(data="test")
+        await self.dependant_node_1.on_global2(data="test")
+        await self.my_topic(data="TEST to my topic dude")
 
         return result(success=True)
 

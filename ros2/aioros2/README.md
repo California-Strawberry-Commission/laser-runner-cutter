@@ -14,6 +14,7 @@ The point of this library is to make working with ROS2/`rclpy` bearable (and pos
 - [x] Action Client
 - [x] Topic Publisher
 - [x] Topic Subscriber
+- [x] Server timer tasks
 - [ ] Namespace linking
     - Need to properly resolve ROS namespaces (including `~`) to other nodes
 - [ ] Remapping
@@ -21,7 +22,7 @@ The point of this library is to make working with ROS2/`rclpy` bearable (and pos
     - ` link(node1.dep_node_1, node2.dep_node_2) ` -> list of remaps to use in launch.py
 - [ ] Client param sets
 - [ ] Server param side effects
-- [ ] Server timer tasks
+- [ ] Non-async handlers / better warnings?
 
 ## Why?
 Here's a comparison between the [example ROS2 action client/server](https://docs.ros.org/en/foxy/Tutorials/Intermediate/Writing-an-Action-Server-Client/Py.html) and a fully-featured equivalent using `aioros2`:

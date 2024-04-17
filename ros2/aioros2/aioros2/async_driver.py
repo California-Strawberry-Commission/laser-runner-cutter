@@ -2,7 +2,7 @@ import asyncio
 import dataclasses
 import rclpy
 
-from .decorators.self import Self
+from .decorators.deferrable_accessor import DeferrableAccessor
 from .decorators import RosDefinition
 from .decorators.service import RosService
 from .decorators.topic import RosTopic
@@ -10,54 +10,42 @@ from .decorators.subscribe import RosSubscription
 from .decorators.import_node import RosImport
 from .decorators.action import RosAction
 from .decorators.timer import RosTimer
-from .decorators.param import RosParamHandler
+from .decorators.params import RosParams
 
-getter_map = {
-    str: "string_value",
-    int: "integer_value",
-    bool: "bool_value",
-    float: "double_value",
-    "list[int]": "byte_array_value",
-    "list[bool]": "bool_array_value",
-    "list[int]": "integer_array_value",
-    "list[float]": "double_array_value",
-    "list[str]": "string_array_value",
-}
 
-class AsyncDriver(rclpy.node.Node):
+class AsyncDriver:
     """Base class for all adapters"""
     
     def __init__(self, async_node):
-        super().__init__(async_node.__class__.__name__)
-        # rclpy.init()
-
         self._n = async_node
-        self.log = self.get_logger()
-
+        
         # self._n.params = self._attach_params_dataclass(self._n.params)
         self._loop = asyncio.get_running_loop()
 
-    def __getattr__(self, attr):
-        """Lookup unknown attrs on node definition. Effectively extends node def"""
-        try:
-            return getattr(self._n, attr)
-        except AttributeError:
-            raise AttributeError(f"Attribute >{attr}< was not found in either [{type(self).__qualname__}] or [{type(self._n).__name__}]")
+    # def __getattr__(self, attr):
+    #     """Lookup unknown attrs on node definition. Effectively extends node def"""
+    #     try:
+    #         return getattr(self._n, attr)
+    #     except AttributeError:
+    #         raise AttributeError(f"Attribute >{attr}< was not found in either [{type(self).__qualname__}] or [{type(self._n).__name__}]")
 
 
     def _get_ros_definitions(self):
         from .decorators.import_node import RosImport
 
         node = self._n
-        
+
         a = [
             (attr, getattr(node, attr))
-            for attr in dir(self._n)
+            for attr in dir(node)
             if isinstance(getattr(node, attr), RosDefinition)
         ]
 
         # Make sure RosImports are processed first
         a.sort(key=lambda b: type(b[1]) != RosImport)
+
+        # Process topics last to prevent function version from shadowing definition
+        a.sort(key=lambda b: type(b[1]) == RosTopic)
 
         return a
     
@@ -71,8 +59,8 @@ class AsyncDriver(rclpy.node.Node):
             RosTopic: self._attach_publisher,
             RosImport: self._process_import,
             RosAction: self._attach_action,
-            RosParamHandler: self._attach_param_handler,
             RosTimer: self._attach_timer,
+            RosParams: self._attach_params
         }
 
         for attr, definition in self._get_ros_definitions():
@@ -101,30 +89,44 @@ class AsyncDriver(rclpy.node.Node):
     
     def _attach_timer(self, attr, d):
         self._warn_unimplemented("timer", "_attach_timer")
-
-    def _attach_params_dataclass(self, dataclass):
-        if dataclass is None:
-            return
         
-        # Declare and update all parameters present in the
-        # passed dataclass.
-        for f in dataclasses.fields(dataclass):
-            self.declare_parameter(f.name, f.default)
+    def _attach_params(self, attr, d):
+        self._warn_unimplemented("params", "_attach_params")
 
-            # Map dataclass type to a ROS value attribute
-            # IE int -> get_parameter_value().integer_value
-            getter = getter_map[f.type]
+dataclass_ros_map = {
+    bool: 1,
+    int: 2,
+    float: 3,
+    str: 4,
+    bytes: 5,
+    "list[bool]": 6,
+    "list[int]": 7,
+    "list[float]": 8,
+    "list[str]": 9,
+}
 
-            if getter is None:
-                raise RuntimeError(f"No getter for type {f.type}")
+dataclass_ros_enum_map = {
+    bool: rclpy.Parameter.Type.BOOL,
+    int: rclpy.Parameter.Type.INTEGER,
+    float: rclpy.Parameter.Type.DOUBLE,
+    str: rclpy.Parameter.Type.STRING,
+    bytes: rclpy.Parameter.Type.BYTE_ARRAY,
+    "list[bool]": rclpy.Parameter.Type.BOOL_ARRAY,
+    "list[int]": rclpy.Parameter.Type.INTEGER_ARRAY,
+    "list[float]": rclpy.Parameter.Type.DOUBLE_ARRAY,
+    "list[str]": rclpy.Parameter.Type.STRING_ARRAY,
+}
 
-            current_val = getattr(
-                self.get_parameter(f.name).get_parameter_value(), getter
-            )
-            setattr(dataclass, f.name, current_val)
+ros_type_getter_map = {
+    1: "bool_value",
+    2: "integer_value",
+    3: "double_value",
+    4: "string_value",
+    5: "byte_array_value",
+    6: "bool_array_value",
+    7: "integer_array_value",
+    8: "double_array_value",
+    9: "string_array_value",
+}
 
-        # TODO: Figure out some kind of notification system for continuous updates
-        # Important: how to notify updates to application code?
-        # self.add_on_set_parameters_callback(self.parameter_callback)
-
-        return dataclass
+  
