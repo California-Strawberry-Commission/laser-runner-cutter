@@ -16,16 +16,20 @@ const SIDENAV_ITEMS: SideNavItem[] = [
     path: "/",
   },
   {
-    title: "Calibration Test",
-    path: "/calibration",
-  },
-  {
     title: "Camera Test",
-    path: "/camera",
+    path: "/test/camera",
   },
   {
     title: "Laser Test",
-    path: "/laser",
+    path: "/test/laser",
+  },
+  {
+    title: "Calibration Test",
+    path: "/test/calibration",
+  },
+  {
+    title: "Aim Test",
+    path: "/test/aim",
   },
   {
     title: "Nodes",

@@ -4,6 +4,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 
 from camera_control_interfaces.srv import (
     GetDetectionResult,
+    GetFrame,
     GetPositionsForPixels,
     SetExposure,
 )
@@ -24,6 +25,9 @@ class CameraControlClient:
         callback_group = ReentrantCallbackGroup()
         node.camera_has_frames = node.create_client(
             GetBool, f"/{camera_node_name}/has_frames", callback_group=callback_group
+        )
+        node.camera_get_frame = node.create_client(
+            GetFrame, f"/{camera_node_name}/get_frame", callback_group=callback_group
         )
         node.camera_set_exposure = node.create_client(
             SetExposure,
@@ -53,6 +57,9 @@ class CameraControlClient:
     async def has_frames(self):
         result = await self.node.camera_has_frames.call_async(GetBool.Request())
         return result.data
+
+    async def get_frame(self):
+        return await self.node.camera_get_frame.call_async(GetFrame.Request())
 
     async def set_exposure(self, exposure_ms):
         request = SetExposure.Request(exposure_ms=exposure_ms)

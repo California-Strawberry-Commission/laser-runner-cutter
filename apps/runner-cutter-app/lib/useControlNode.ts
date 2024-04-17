@@ -64,6 +64,14 @@ export default function useControlNode(nodeName: string) {
     );
   };
 
+  const manualTargetAimLaser = (x: number, y: number) => {
+    ros.callService(
+      `${nodeName}/manual_target_aim_laser`,
+      "runner_cutter_control_interfaces/ManualTargetAimLaser",
+      { camera_pixel: { x, y } }
+    );
+  };
+
   const startRunnerCutter = () => {
     ros.callService(`${nodeName}/start_runner_cutter`, "std_srvs/Trigger", {});
   };
@@ -78,6 +86,7 @@ export default function useControlNode(nodeName: string) {
     controlState: nodeState.state,
     calibrate,
     addCalibrationPoint,
+    manualTargetAimLaser,
     startRunnerCutter,
     stop,
   };

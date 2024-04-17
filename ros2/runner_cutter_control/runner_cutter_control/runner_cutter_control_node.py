@@ -21,7 +21,11 @@ from laser_control.laser_control_client import LaserControlClient
 from runner_cutter_control.calibration import Calibration
 from runner_cutter_control.tracker import Tracker, TrackState
 from runner_cutter_control_interfaces.msg import State
-from runner_cutter_control_interfaces.srv import AddCalibrationPoints, GetState
+from runner_cutter_control_interfaces.srv import (
+    AddCalibrationPoints,
+    GetState,
+    ManualTargetAimLaser,
+)
 
 
 class RunnerCutterControlNode(Node):
@@ -74,6 +78,11 @@ class RunnerCutterControlNode(Node):
             AddCalibrationPoints,
             "~/add_calibration_points",
             self._add_calibration_points_callback,
+        )
+        self.manual_target_aim_laser_srv = self.create_service(
+            ManualTargetAimLaser,
+            "~/manual_target_aim_laser",
+            self._manual_target_aim_laser_callback,
         )
         self.start_runner_cutter_srv = self.create_service(
             Trigger,
@@ -150,6 +159,13 @@ class RunnerCutterControlNode(Node):
             response.success = True
         return response
 
+    def _manual_target_aim_laser_callback(self, request, response):
+        if self.state_machine.state == "idle":
+            camera_pixel = (request.camera_pixel.x, request.camera_pixel.y)
+            self.state_machine_thread.queue("run_manual_target_aim_laser", camera_pixel)
+            response.success = True
+        return response
+
     def _start_runner_cutter_callback(self, request, response):
         if self.state_machine.state == "idle":
             self.state_machine_thread.queue("run_runner_cutter")
@@ -173,6 +189,7 @@ class StateMachine:
         "idle",
         "calibration",
         "add_calibration_points",
+        "manual_target_aim_laser",
         "acquire_target",
         "aim_laser",
         "burn_target",
@@ -215,6 +232,15 @@ class StateMachine:
         )
         self.machine.add_transition(
             "add_calibration_points_complete", "add_calibration_points", "idle"
+        )
+        self.machine.add_transition(
+            "run_manual_target_aim_laser",
+            "idle",
+            "manual_target_aim_laser",
+            conditions=["is_calibrated"],
+        )
+        self.machine.add_transition(
+            "manual_target_aim_laser_complete", "manual_target_aim_laser", "idle"
         )
         self.machine.add_transition(
             "run_runner_cutter", "idle", "acquire_target", conditions=["is_calibrated"]
@@ -262,6 +288,20 @@ class StateMachine:
         )
         await self.add_calibration_points_complete()
 
+    async def on_enter_manual_target_aim_laser(self, camera_pixel):
+        self.node.publish_state()
+        # Find the 3D position wrt the camera
+        positions = await self.camera_client.get_positions_for_pixels([camera_pixel])
+        target_position = positions[0]
+
+        corrected_laser_coord = await self._aim(target_position, camera_pixel)
+        if corrected_laser_coord is not None:
+            self.logger.info("Aim laser successful.")
+        else:
+            self.logger.info("Failed to aim laser.")
+
+        await self.manual_target_aim_laser_complete()
+
     async def on_enter_acquire_target(self):
         self.node.publish_state()
 
@@ -295,25 +335,29 @@ class StateMachine:
     async def on_enter_aim_laser(self, target):
         self.node.publish_state()
 
-        # TODO: set exposure automatically when detecting laser
-        await self.camera_client.set_exposure(0.001)
-        initial_laser_coord = self.calibration.camera_point_to_laser_coord(
-            target.position
-        )
-        await self.laser_client.start_laser(
-            point=initial_laser_coord, color=self.tracking_laser_color
-        )
-        corrected_laser_coord = await self._correct_laser(
-            target.pixel, initial_laser_coord
-        )
-        await self.laser_client.stop_laser()
-        await self.camera_client.auto_exposure()
+        corrected_laser_coord = await self._aim(target.position, target.pixel)
         if corrected_laser_coord is not None:
             await self.aim_successful(target, corrected_laser_coord)
         else:
             self.logger.info("Failed to aim laser.")
             target.state = TrackState.FAILED
             await self.aim_failed()
+
+    async def _aim(self, target_position, target_pixel):
+        # TODO: set exposure automatically when detecting laser
+        await self.camera_client.set_exposure(0.001)
+        initial_laser_coord = self.calibration.camera_point_to_laser_coord(
+            target_position
+        )
+        await self.laser_client.start_laser(
+            point=initial_laser_coord, color=self.tracking_laser_color
+        )
+        corrected_laser_coord = await self._correct_laser(
+            target_pixel, initial_laser_coord
+        )
+        await self.laser_client.stop_laser()
+        await self.camera_client.auto_exposure()
+        return corrected_laser_coord
 
     async def _get_laser_pixel_and_pos(self, max_attempts=3):
         attempt = 0
@@ -352,6 +396,9 @@ class StateMachine:
             laser_pixel = np.array(laser_pixel)
             target_pixel = np.array(target_pixel)
             dist = np.linalg.norm(laser_pixel - target_pixel)
+            self.logger.info(
+                f"Aiming laser. Target camera pixel = {target_pixel}, laser detected at = {laser_pixel}, dist = {dist}"
+            )
             if dist <= dist_threshold:
                 return current_laser_coord
             else:
@@ -361,12 +408,14 @@ class StateMachine:
                     current_laser_coord, laser_pos, update_transform=True
                 )
 
-                # TODO: scale correction by camera frame size
-                correction = (target_pixel - laser_pixel) / 10
+                # Scale correction by the camera frame size
+                correction = (target_pixel - laser_pixel) / np.array(
+                    self.calibration.camera_frame_size
+                )
                 # Invert Y axis as laser coord Y is flipped from camera frame Y
                 correction[1] *= -1
                 new_laser_coord = current_laser_coord + correction
-                self.logger.debug(
+                self.logger.info(
                     f"Correcting laser. Dist = {dist}, correction = {correction}, current coord = {current_laser_coord}, new coord = {new_laser_coord}"
                 )
 

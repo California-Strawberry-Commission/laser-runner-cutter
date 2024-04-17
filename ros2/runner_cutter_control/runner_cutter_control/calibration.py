@@ -22,6 +22,7 @@ class Calibration:
         self.calibration_camera_points = []
         self.is_calibrated = False
         self.camera_to_laser_transform = np.zeros((4, 3))
+        self.camera_frame_size = (0, 0)
 
     async def calibrate(self):
         """
@@ -36,6 +37,10 @@ class Calibration:
 
         # TODO: Depth values are noisy when the laser is on. Figure out how to reduce noise, or
         # use a depth frame obtained when the laser is off
+
+        # Get camera color frame size
+        frames = await self.camera_client.get_frame()
+        self.camera_frame_size = (frames.color_frame.width, frames.color_frame.height)
 
         # Get calibration points
         grid_size = (5, 5)

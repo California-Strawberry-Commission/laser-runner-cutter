@@ -2,7 +2,7 @@ import React from "react";
 
 export default function FramePreview({
   frameSrc,
-  height = 240,
+  height = 360,
   onImageLoad,
   onImageClick,
 }: {
