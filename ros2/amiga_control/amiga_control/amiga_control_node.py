@@ -5,7 +5,7 @@ from amiga_control_interfaces.srv import SetTwist
 from amiga_control_interfaces.action import Run
 from dataclasses import dataclass
 from rcl_interfaces.msg import ParameterDescriptor, ParameterEvent
-from aioros2 import param, timer, service, action, serve_nodes, result, feedback, subscribe, topic, import_node, params, RosNode
+from aioros2 import param, timer, service, action, serve_nodes, result, feedback, subscribe, topic, import_node, params, node
 from std_msgs.msg import String
 
 from aioros2.decorators.subscribe import RosSubscription
@@ -35,7 +35,8 @@ class GenericParams:
     # )
 
 # NOTE: In drivers, definitions must be treated as immutable
-class AmigaControlNode(RosNode):
+@node("amiga_control_node")
+class AmigaControlNode:
     amiga_params = params(AmigaParams)
     generic_params = params(GenericParams)
 
@@ -53,7 +54,7 @@ class AmigaControlNode(RosNode):
     
     @subscribe(my_topic)
     async def on_my_topic(self, data):
-        print("GOT MY TOPIC: ", data)
+        self.log.info(f"MYTOPIC {data}")
 
     # @subscribe("parameter_events", ParameterEvent)
     # async def lmao(self, stamp, node, new_parameters, changed_parameters, deleted_parameters):

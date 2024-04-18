@@ -1,24 +1,24 @@
 from launch import LaunchDescription
-from launch_ros.actions import Node
+from aioros2 import LaunchNode
 
 from amiga_control import amiga_control_node, circular_node
 
-class AIOLaunchNode(Node):
-    def __init__(package, name, namespace):
-        pass
 
 def generate_launch_description():
-    control_node: amiga_control_node.AmigaControlNode = AIOLaunchNode(
+    print(LaunchNode)
+    control_node: amiga_control_node.AmigaControlNode = LaunchNode(
         amiga_control_node, 
         name="acn", 
-        namespace="ns1"
+        namespace="/ns1"
     )
-    
-    circ_node: circular_node.CircularNode = AIOLaunchNode(
+    print("Created acn")
+
+    circ_node: circular_node.CircularNode = LaunchNode(
         circular_node,
         name="circ",
-        namespace="ns2"
+        namespace="/ns2"
     )
+    print("Created circ")
 
     # Define relations
     control_node.dependant_node_1.link(circ_node)
@@ -27,12 +27,7 @@ def generate_launch_description():
     
     return LaunchDescription([
         control_node,
-        Node(
-            package='amiga_control',
-            executable='circular_node',
-            namespace='ns2',
-            name='circnode'
-        ),
+        circ_node,
         # Node(
         #     package='turtlesim',
         #     executable='mimic',

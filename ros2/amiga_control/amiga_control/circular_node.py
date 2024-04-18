@@ -1,5 +1,5 @@
 from . import amiga_control_node
-from aioros2 import param, timer, service, action, serve_nodes, result, feedback, subscribe, topic, import_node, RosNode, params
+from aioros2 import param, timer, service, action, serve_nodes, result, feedback, subscribe, topic, import_node, params, node
 from std_msgs.msg import String
 from dataclasses import dataclass
 
@@ -7,7 +7,8 @@ from dataclasses import dataclass
 class CircularParams:
     s: str = "A setting"
 
-class CircularNode(RosNode):
+@node("circular_node")
+class CircularNode:
     params = params(CircularParams)
     a_topic = topic("/atopic", String, 10)
     dependant_node_1: "amiga_control_node.AmigaControlNode" = import_node(amiga_control_node)
@@ -25,14 +26,15 @@ class CircularNode(RosNode):
 
     @subscribe("/global/topic", String)
     async def on_global2(self, data):
-        print("/global/topic", data)
+        self.log.info(f"/global/topic {data}")
 
     @subscribe("~/set_host", String)
     async def set_other(self, data):
-        print("Call set param!!")
-        await self.dependant_node_1.amiga_params.set(
-            host = data
-        )
+        self.log.info(f"~/set_host {data}")
+        await self.dependant_node_1.on_my_topic(data="lel")
+        # await self.dependant_node_1.amiga_params.set(
+        #     host = data
+        # )
  
 
 def main():

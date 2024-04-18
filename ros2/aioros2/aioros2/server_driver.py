@@ -1,6 +1,7 @@
 import asyncio
 import dataclasses
 import rclpy
+from rclpy.node import Node
 from rclpy.action import ActionServer
 import rclpy.node
 from rclpy.parameter import Parameter
@@ -192,10 +193,10 @@ class ParamsWrapper:
         return path == fqnp
 
 
-class ServerDriver(AsyncDriver, rclpy.node.Node):
+class ServerDriver(AsyncDriver, Node):
     def __init__(self, async_node):
-        AsyncDriver.__init__(self, async_node)
-        rclpy.node.Node.__init__(self, self.__class__.__name__)
+        Node.__init__(self, self.__class__.__name__)
+        AsyncDriver.__init__(self, async_node, self.get_logger())
 
         self.log = self.get_logger()
 
@@ -209,8 +210,11 @@ class ServerDriver(AsyncDriver, rclpy.node.Node):
         from .client_driver import ClientDriver
 
         self.log.info("[SERVER] Resolving import")
+        
+        # TODO: extract naming logic somewhere else. This is duplicated
+        # in launch_driver._process_imports
 
-        # Create a parameter to fully resolve
+        # Create parameters to pass import name & namespace
         node_name_param_name = f"{attr}.name"
         node_namespace_param_name = f"{attr}.ns"
 

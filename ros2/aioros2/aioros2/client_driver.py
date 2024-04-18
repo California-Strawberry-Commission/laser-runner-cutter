@@ -56,38 +56,45 @@ class AsyncActionClient:
 # TODO: Receive fully qualified node path here.
 class ClientDriver(AsyncDriver):
     def __init__(self, node_def, server_node, node_name, node_namespace):
-        super().__init__(node_def)
-        
+
+    
         self._node = server_node
         self._node_name = node_name
         self._node_namespace = node_namespace
 
-        
-        if node_namespace == "/":
-            log_name = f"{node_name}-client"
-        else:
-            ns = node_namespace.lstrip("/")
-            log_name = f"{ns}.{node_name}-client"
-        
-        self.log = rclpy.logging.get_logger(log_name)
+        logger = rclpy.logging.get_logger(self._get_logger_name())
+        super().__init__(node_def, logger)
 
         self._attach()
 
+    def _get_logger_name(self):
+        if self._node_namespace == "/":
+            return f"{self._node_name}-client"
+        else:
+            ns = self._node_namespace.lstrip("/")
+            return f"{ns}.{self._node_name}-client"
+
     def _process_import(self, attr, imp: RosImport):
+        self.log.info("[CLIENT] Process import")
         # DON'T create a client from a client.
         # Resolve import to raw node definition
         return imp.resolve()
 
     def _attach_publisher(self, attr, d):
-        # Don't create topic publisher on clients
+        # Don't create topic publisher on clients, but keep definition populated
+        # on attr
         return d
+    
+    def _attach_timer(self, attr, d):
+        # Don't create topic publisher on clients
+        return None
     
     def _attach_subscriber(self, attr, sub: RosSubscription):
         topic = sub.get_topic(self._node_name, self._node_namespace)
         # print(topic.idl, topic.namespace, topic.qos)
 
         # Creates a publisher for this channel
-        self.log.info(f"Attach publisher @ >{topic.namespace}<")
+        self.log.info(f"Attach subscriber publisher @ >{topic.namespace}<")
 
         pub = self._node.create_publisher(topic.idl, topic.namespace, topic.qos)
 

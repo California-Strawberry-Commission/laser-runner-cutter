@@ -1,7 +1,7 @@
 from typing import Any, Callable, TypeVar
 from types import ModuleType
 from ._decorators import RosDefinition
-from ..ros_node import RosNode
+from .node import RosNode
 from .deferrable_accessor import DeferrableAccessor
 
 class RosImport(RosDefinition, DeferrableAccessor):

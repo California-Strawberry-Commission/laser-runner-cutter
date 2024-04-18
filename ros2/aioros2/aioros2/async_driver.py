@@ -16,7 +16,8 @@ from .decorators.params import RosParams
 class AsyncDriver:
     """Base class for all adapters"""
     
-    def __init__(self, async_node):
+    def __init__(self, async_node, logger):
+        self.log = logger
         self._n = async_node
         
         # self._n.params = self._attach_params_dataclass(self._n.params)
