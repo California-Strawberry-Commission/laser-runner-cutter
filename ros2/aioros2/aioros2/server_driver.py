@@ -33,9 +33,10 @@ from .decorators import idl_to_kwargs
 # ros2 param set /test/test_node amiga_params.host 1234.3
 # ros2 param get /test/test_node amiga_params_host
 
-# ros2 run amiga_control amiga_control_node --ros-args --remap __node:=test_node --remap __ns:=/test -p "dependant_node_1.name:=dep1" -p "dependant_node_1.ns:=/test"
-# ros2 run amiga_control circular_node --ros-args --remap __node:=dep1 --remap __ns:=/test -p "dependant_node_1.name:=test_node" -p "dependant_node_1.ns:=/test"
+# ros2 run amiga_control amiga_control_node --ros-args --remap __node:=acn --remap __ns:=/ns1 -p "dependant_node_1.name:=circ" -p "dependant_node_1.ns:=/ns2"
+# ros2 run amiga_control circular_node --ros-args --remap __node:=circ --remap __ns:=/ns2 -p "dependant_node_1.name:=acn" -p "dependant_node_1.ns:=/ns1"
 
+# https://answers.ros.org/question/340600/how-to-get-ros2-parameter-hosted-by-another-node/
 # https://roboticsbackend.com/rclpy-params-tutorial-get-set-ros2-params-with-python/
 # https://roboticsbackend.com/ros2-rclpy-parameter-callback/
 class ParamWrapper:
