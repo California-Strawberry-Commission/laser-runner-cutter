@@ -1,20 +1,20 @@
 "use client";
 
-import { useContext, useEffect, useState } from "react";
-import ROSContext from "@/lib/ros/ROSContext";
+import FramePreview from "@/components/camera/frame-preview";
+import NodeCards from "@/components/nodes/node-cards";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import useROS from "@/lib/ros/useROS";
 import useCameraNode from "@/lib/useCameraNode";
-import FramePreview from "@/components/camera/frame-preview";
+import { useState } from "react";
 
 export default function Controls() {
-  const ros = useContext(ROSContext);
-  const [rosConnected, setRosConnected] = useState<boolean>(false);
+  const { nodeInfo: rosbridgeNodeInfo } = useROS();
   // TODO: add ability to select camera node name
   const [nodeName, setNodeName] = useState<string>("/camera0");
   const {
-    nodeConnected,
+    nodeInfo,
     cameraConnected,
     laserDetectionEnabled,
     runnerDetectionEnabled,
@@ -31,21 +31,12 @@ export default function Controls() {
   } = useCameraNode(nodeName);
   const [exposureMs, setExposureMs] = useState<string>("0.2");
 
-  useEffect(() => {
-    ros.onStateChange(() => {
-      setRosConnected(ros.isConnected());
-    });
-    setRosConnected(ros.isConnected());
-  }, [ros, setRosConnected]);
+  const nodeInfos = [rosbridgeNodeInfo, nodeInfo];
+  const disableButtons = !rosbridgeNodeInfo.connected || !nodeInfo.connected;
 
   return (
     <div className="flex flex-col gap-4 items-center">
-      <div className="flex flex-col items-center">
-        <p className="text-center">{`Rosbridge: ${
-          rosConnected ? "connected" : "disconnected"
-        }`}</p>
-        <p className="text-center">{`Camera (${nodeName}): cameraConnected=${cameraConnected}, laserDetectionEnabled=${laserDetectionEnabled}, runnerDetectionEnabled=${runnerDetectionEnabled}, recordingVideo=${recordingVideo}`}</p>
-      </div>
+      <NodeCards nodeInfos={nodeInfos} />
       <div className="flex flex-row items-center gap-4">
         <Label className="flex-none w-16" htmlFor="exposure">
           Exposure (ms):
@@ -65,7 +56,7 @@ export default function Controls() {
           }}
         />
         <Button
-          disabled={!rosConnected || !nodeConnected}
+          disabled={disableButtons}
           onClick={() => {
             setExposure(Number(exposureMs));
           }}
@@ -73,7 +64,7 @@ export default function Controls() {
           Set Exposure
         </Button>
         <Button
-          disabled={!rosConnected || !nodeConnected}
+          disabled={disableButtons}
           onClick={() => {
             setExposure(-1.0);
           }}
@@ -84,7 +75,7 @@ export default function Controls() {
       <div className="flex flex-row items-center gap-4">
         {laserDetectionEnabled ? (
           <Button
-            disabled={!rosConnected || !nodeConnected}
+            disabled={disableButtons}
             onClick={() => {
               stopLaserDetection();
             }}
@@ -93,7 +84,7 @@ export default function Controls() {
           </Button>
         ) : (
           <Button
-            disabled={!rosConnected || !nodeConnected}
+            disabled={disableButtons}
             onClick={() => {
               startLaserDetection();
             }}
@@ -103,7 +94,7 @@ export default function Controls() {
         )}
         {runnerDetectionEnabled ? (
           <Button
-            disabled={!rosConnected || !nodeConnected}
+            disabled={disableButtons}
             onClick={() => {
               stopRunnerDetection();
             }}
@@ -112,7 +103,7 @@ export default function Controls() {
           </Button>
         ) : (
           <Button
-            disabled={!rosConnected || !nodeConnected}
+            disabled={disableButtons}
             onClick={() => {
               startRunnerDetection();
             }}
@@ -124,7 +115,7 @@ export default function Controls() {
       <div className="flex flex-row items-center gap-4">
         {recordingVideo ? (
           <Button
-            disabled={!rosConnected || !nodeConnected}
+            disabled={disableButtons}
             onClick={() => {
               stopRecordingVideo();
             }}
@@ -133,7 +124,7 @@ export default function Controls() {
           </Button>
         ) : (
           <Button
-            disabled={!rosConnected || !nodeConnected}
+            disabled={disableButtons}
             onClick={() => {
               startRecordingVideo();
             }}
@@ -142,7 +133,7 @@ export default function Controls() {
           </Button>
         )}
         <Button
-          disabled={!rosConnected || !nodeConnected}
+          disabled={disableButtons}
           onClick={() => {
             saveImage();
           }}

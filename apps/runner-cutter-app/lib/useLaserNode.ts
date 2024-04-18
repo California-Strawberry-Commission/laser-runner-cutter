@@ -1,12 +1,19 @@
 import { useCallback, useContext, useEffect, useState } from "react";
 import ROSContext from "@/lib/ros/ROSContext";
+import type { NodeInfo } from "@/lib/NodeInfo";
 
 export const LASER_STATES = ["disconnected", "stopped", "playing"];
 
 export default function useLaserNode(nodeName: string) {
   const ros = useContext(ROSContext);
   const [nodeConnected, setNodeConnected] = useState<boolean>(false);
-  const [laserState, setLaserState] = useState<number>(0);
+  const [laserState, setLaserState] = useState<string>(LASER_STATES[0]);
+
+  const nodeInfo: NodeInfo = {
+    name: nodeName,
+    connected: nodeConnected,
+    state: { laserState },
+  };
 
   const getState = useCallback(async () => {
     const result = await ros.callService(
@@ -14,7 +21,7 @@ export default function useLaserNode(nodeName: string) {
       "laser_control_interfaces/GetState",
       {}
     );
-    setLaserState(result.state.data);
+    setLaserState(LASER_STATES[result.state.data]);
   }, [ros, nodeName, setLaserState]);
 
   // Initial node state
@@ -41,7 +48,7 @@ export default function useLaserNode(nodeName: string) {
       `${nodeName}/state`,
       "laser_control_interfaces/State",
       (message) => {
-        setLaserState(message.data);
+        setLaserState(LASER_STATES[message.data]);
       }
     );
 
@@ -90,7 +97,7 @@ export default function useLaserNode(nodeName: string) {
   };
 
   return {
-    nodeConnected,
+    nodeInfo,
     laserState,
     addPoint,
     clearPoints,

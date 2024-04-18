@@ -1,11 +1,12 @@
 "use client";
 
-import { useContext, useEffect, useState } from "react";
-import ROSContext from "@/lib/ros/ROSContext";
+import ColorPicker from "@/components/laser/color-picker";
+import NodeCards from "@/components/nodes/node-cards";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import ColorPicker from "@/components/laser/color-picker";
-import useLaserNode, { LASER_STATES } from "@/lib/useLaserNode";
+import useROS from "@/lib/ros/useROS";
+import useLaserNode from "@/lib/useLaserNode";
+import { useState } from "react";
 
 function hexToRgb(hexColor: string) {
   hexColor = hexColor.replace("#", "");
@@ -20,40 +21,28 @@ function hexToRgb(hexColor: string) {
 }
 
 export default function Controls() {
-  const ros = useContext(ROSContext);
-  const [rosConnected, setRosConnected] = useState<boolean>(false);
+  const { nodeInfo: rosbridgeNodeInfo } = useROS();
   // TODO: add ability to select laser node name
   const [nodeName, setNodeName] = useState<string>("/laser0");
-  const {
-    nodeConnected,
-    laserState,
-    addPoint,
-    clearPoints,
-    play,
-    stop,
-    setColor,
-  } = useLaserNode(nodeName);
+  const { nodeInfo, laserState, addPoint, clearPoints, play, stop, setColor } =
+    useLaserNode(nodeName);
   const [laserColor, setLaserColor] = useState<string>("#ff0000");
   const [x, setX] = useState<string>("0");
   const [y, setY] = useState<string>("0");
 
-  useEffect(() => {
-    ros.onStateChange(() => {
-      setRosConnected(ros.isConnected());
-    });
-    setRosConnected(ros.isConnected());
-  }, [ros, setRosConnected]);
+  const nodeInfos = [rosbridgeNodeInfo, nodeInfo];
+  const disableButtons = !rosbridgeNodeInfo.connected || !nodeInfo.connected;
 
   let laserButton = null;
-  if (laserState === 1) {
+  if (laserState === "stopped") {
     laserButton = (
-      <Button disabled={!rosConnected || !nodeConnected} onClick={() => play()}>
+      <Button disabled={disableButtons} onClick={() => play()}>
         Start Laser
       </Button>
     );
-  } else if (laserState === 2) {
+  } else if (laserState === "playing") {
     laserButton = (
-      <Button disabled={!rosConnected || !nodeConnected} onClick={() => stop()}>
+      <Button disabled={disableButtons} onClick={() => stop()}>
         Stop Laser
       </Button>
     );
@@ -63,12 +52,7 @@ export default function Controls() {
 
   return (
     <div className="flex flex-col gap-4 items-center">
-      <div className="flex flex-col items-center">
-        <p className="text-center">{`Rosbridge: ${
-          rosConnected ? "connected" : "disconnected"
-        }`}</p>
-        <p className="text-center">{`Laser (${nodeName}): ${LASER_STATES[laserState]}`}</p>
-      </div>
+      <NodeCards nodeInfos={nodeInfos} />
       <div className="flex flex-row gap-4 items-center">
         <Input
           className="flex-none w-20"
@@ -101,15 +85,12 @@ export default function Controls() {
           }}
         />
         <Button
-          disabled={!rosConnected || !nodeConnected}
+          disabled={disableButtons}
           onClick={() => addPoint(Number(x), Number(y))}
         >
           Add Point
         </Button>
-        <Button
-          disabled={!rosConnected || !nodeConnected}
-          onClick={() => clearPoints()}
-        >
+        <Button disabled={disableButtons} onClick={() => clearPoints()}>
           Clear Points
         </Button>
       </div>

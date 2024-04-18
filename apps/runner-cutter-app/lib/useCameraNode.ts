@@ -1,5 +1,6 @@
 import { useCallback, useContext, useEffect, useState } from "react";
 import ROSContext from "@/lib/ros/ROSContext";
+import type { NodeInfo } from "@/lib/NodeInfo";
 
 export default function useCameraNode(nodeName: string) {
   const ros = useContext(ROSContext);
@@ -11,6 +12,12 @@ export default function useCameraNode(nodeName: string) {
     recording_video: false,
   });
   const [frameSrc, setFrameSrc] = useState<string>("");
+
+  const nodeInfo: NodeInfo = {
+    name: nodeName,
+    connected: nodeConnected,
+    state: nodeState,
+  };
 
   const getState = useCallback(async () => {
     const result = await ros.callService(
@@ -117,7 +124,7 @@ export default function useCameraNode(nodeName: string) {
   };
 
   return {
-    nodeConnected,
+    nodeInfo,
     cameraConnected: nodeState.connected,
     laserDetectionEnabled: nodeState.laser_detection_enabled,
     runnerDetectionEnabled: nodeState.runner_detection_enabled,

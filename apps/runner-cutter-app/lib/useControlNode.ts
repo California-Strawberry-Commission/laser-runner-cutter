@@ -1,5 +1,6 @@
 import { useCallback, useContext, useEffect, useState } from "react";
 import ROSContext from "@/lib/ros/ROSContext";
+import type { NodeInfo } from "@/lib/NodeInfo";
 
 export default function useControlNode(nodeName: string) {
   const ros = useContext(ROSContext);
@@ -8,6 +9,12 @@ export default function useControlNode(nodeName: string) {
     calibrated: false,
     state: "disconnected",
   });
+
+  const nodeInfo: NodeInfo = {
+    name: nodeName,
+    connected: nodeConnected,
+    state: nodeState,
+  };
 
   const getState = useCallback(async () => {
     const result = await ros.callService(
@@ -81,7 +88,7 @@ export default function useControlNode(nodeName: string) {
   };
 
   return {
-    nodeConnected,
+    nodeInfo,
     calibrated: nodeState.calibrated,
     controlState: nodeState.state,
     calibrate,
