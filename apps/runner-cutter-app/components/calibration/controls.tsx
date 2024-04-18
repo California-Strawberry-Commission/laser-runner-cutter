@@ -7,7 +7,7 @@ import useROS from "@/lib/ros/useROS";
 import useCameraNode from "@/lib/useCameraNode";
 import useControlNode from "@/lib/useControlNode";
 import useLaserNode from "@/lib/useLaserNode";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 export default function Controls() {
   const { nodeInfo: rosbridgeNodeInfo } = useROS();
@@ -40,12 +40,9 @@ export default function Controls() {
     addCalibrationPoint(scaledX, scaledY);
   };
 
-  const nodeInfos = [
-    rosbridgeNodeInfo,
-    controlNodeInfo,
-    cameraNodeInfo,
-    laserNodeInfo,
-  ];
+  const nodeInfos = useMemo(() => {
+    return [rosbridgeNodeInfo, controlNodeInfo, cameraNodeInfo, laserNodeInfo];
+  }, [rosbridgeNodeInfo, controlNodeInfo, cameraNodeInfo, laserNodeInfo]);
   const disableButtons =
     !rosbridgeNodeInfo.connected ||
     !controlNodeInfo.connected ||

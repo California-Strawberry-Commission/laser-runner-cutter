@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import useROS from "@/lib/ros/useROS";
 import useCameraNode from "@/lib/useCameraNode";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 export default function Controls() {
   const { nodeInfo: rosbridgeNodeInfo } = useROS();
@@ -31,7 +31,9 @@ export default function Controls() {
   } = useCameraNode(nodeName);
   const [exposureMs, setExposureMs] = useState<string>("0.2");
 
-  const nodeInfos = [rosbridgeNodeInfo, nodeInfo];
+  const nodeInfos = useMemo(() => {
+    return [rosbridgeNodeInfo, nodeInfo];
+  }, [rosbridgeNodeInfo, nodeInfo]);
   const disableButtons = !rosbridgeNodeInfo.connected || !nodeInfo.connected;
 
   return (

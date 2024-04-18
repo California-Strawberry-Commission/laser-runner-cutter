@@ -7,6 +7,7 @@ import useROS from "@/lib/ros/useROS";
 import useCameraNode from "@/lib/useCameraNode";
 import useControlNode from "@/lib/useControlNode";
 import useLaserNode from "@/lib/useLaserNode";
+import { useMemo } from "react";
 
 export default function Controls() {
   const { nodeInfo: rosbridgeNodeInfo } = useROS();
@@ -20,12 +21,9 @@ export default function Controls() {
   const { nodeInfo: cameraNodeInfo, frameSrc } = useCameraNode("/camera0");
   const { nodeInfo: laserNodeInfo } = useLaserNode("/laser0");
 
-  const nodeInfos = [
-    rosbridgeNodeInfo,
-    controlNodeInfo,
-    cameraNodeInfo,
-    laserNodeInfo,
-  ];
+  const nodeInfos = useMemo(() => {
+    return [rosbridgeNodeInfo, controlNodeInfo, cameraNodeInfo, laserNodeInfo];
+  }, [rosbridgeNodeInfo, controlNodeInfo, cameraNodeInfo, laserNodeInfo]);
   const disableButtons =
     !rosbridgeNodeInfo.connected ||
     !controlNodeInfo.connected ||

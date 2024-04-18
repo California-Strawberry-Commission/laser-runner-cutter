@@ -5,6 +5,7 @@ import useROS from "@/lib/ros/useROS";
 import useCameraNode from "@/lib/useCameraNode";
 import useControlNode from "@/lib/useControlNode";
 import useLaserNode from "@/lib/useLaserNode";
+import { useMemo } from "react";
 
 export type Node = {
   name: string;
@@ -18,12 +19,9 @@ export default function NodesList() {
   const { nodeInfo: cameraNodeInfo } = useCameraNode("/camera0");
   const { nodeInfo: laserNodeInfo } = useLaserNode("/laser0");
 
-  const nodeInfos = [
-    rosbridgeNodeInfo,
-    controlNodeInfo,
-    cameraNodeInfo,
-    laserNodeInfo,
-  ];
+  const nodeInfos = useMemo(() => {
+    return [rosbridgeNodeInfo, controlNodeInfo, cameraNodeInfo, laserNodeInfo];
+  }, [rosbridgeNodeInfo, controlNodeInfo, cameraNodeInfo, laserNodeInfo]);
 
   return <NodeCards nodeInfos={nodeInfos} />;
 }

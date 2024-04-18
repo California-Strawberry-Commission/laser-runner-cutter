@@ -1,20 +1,22 @@
-import { useCallback, useContext, useEffect, useState } from "react";
-import ROSContext from "@/lib/ros/ROSContext";
 import type { NodeInfo } from "@/lib/NodeInfo";
+import useROS from "@/lib/ros/useROS";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 export default function useControlNode(nodeName: string) {
-  const ros = useContext(ROSContext);
+  const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
   const [nodeConnected, setNodeConnected] = useState<boolean>(false);
   const [nodeState, setNodeState] = useState({
     calibrated: false,
     state: "disconnected",
   });
 
-  const nodeInfo: NodeInfo = {
-    name: nodeName,
-    connected: nodeConnected,
-    state: nodeState,
-  };
+  const nodeInfo: NodeInfo = useMemo(() => {
+    return {
+      name: nodeName,
+      connected: rosbridgeNodeInfo.connected && nodeConnected,
+      state: nodeState,
+    };
+  }, [nodeName, rosbridgeNodeInfo, nodeConnected, nodeState]);
 
   const getState = useCallback(async () => {
     const result = await ros.callService(
@@ -59,33 +61,39 @@ export default function useControlNode(nodeName: string) {
     };
   }, [ros, nodeName, getState, setNodeConnected, setNodeState]);
 
-  const calibrate = () => {
+  const calibrate = useCallback(() => {
     ros.callService(`${nodeName}/calibrate`, "std_srvs/Trigger", {});
-  };
+  }, [ros, nodeName]);
 
-  const addCalibrationPoint = (x: number, y: number) => {
-    ros.callService(
-      `${nodeName}/add_calibration_points`,
-      "runner_cutter_control_interfaces/AddCalibrationPoints",
-      { camera_pixels: [{ x, y }] }
-    );
-  };
+  const addCalibrationPoint = useCallback(
+    (x: number, y: number) => {
+      ros.callService(
+        `${nodeName}/add_calibration_points`,
+        "runner_cutter_control_interfaces/AddCalibrationPoints",
+        { camera_pixels: [{ x, y }] }
+      );
+    },
+    [ros, nodeName]
+  );
 
-  const manualTargetAimLaser = (x: number, y: number) => {
-    ros.callService(
-      `${nodeName}/manual_target_aim_laser`,
-      "runner_cutter_control_interfaces/ManualTargetAimLaser",
-      { camera_pixel: { x, y } }
-    );
-  };
+  const manualTargetAimLaser = useCallback(
+    (x: number, y: number) => {
+      ros.callService(
+        `${nodeName}/manual_target_aim_laser`,
+        "runner_cutter_control_interfaces/ManualTargetAimLaser",
+        { camera_pixel: { x, y } }
+      );
+    },
+    [ros, nodeName]
+  );
 
-  const startRunnerCutter = () => {
+  const startRunnerCutter = useCallback(() => {
     ros.callService(`${nodeName}/start_runner_cutter`, "std_srvs/Trigger", {});
-  };
+  }, [ros, nodeName]);
 
-  const stop = () => {
+  const stop = useCallback(() => {
     ros.callService(`${nodeName}/stop`, "std_srvs/Trigger", {});
-  };
+  }, [ros, nodeName]);
 
   return {
     nodeInfo,

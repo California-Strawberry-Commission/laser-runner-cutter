@@ -1,19 +1,21 @@
-import { useCallback, useContext, useEffect, useState } from "react";
-import ROSContext from "@/lib/ros/ROSContext";
 import type { NodeInfo } from "@/lib/NodeInfo";
+import useROS from "@/lib/ros/useROS";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-export const LASER_STATES = ["disconnected", "stopped", "playing"];
+const LASER_STATES = ["disconnected", "stopped", "playing"];
 
 export default function useLaserNode(nodeName: string) {
-  const ros = useContext(ROSContext);
+  const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
   const [nodeConnected, setNodeConnected] = useState<boolean>(false);
   const [laserState, setLaserState] = useState<string>(LASER_STATES[0]);
 
-  const nodeInfo: NodeInfo = {
-    name: nodeName,
-    connected: nodeConnected,
-    state: { laserState },
-  };
+  const nodeInfo: NodeInfo = useMemo(() => {
+    return {
+      name: nodeName,
+      connected: rosbridgeNodeInfo.connected && nodeConnected,
+      state: { laserState },
+    };
+  }, [nodeName, rosbridgeNodeInfo, nodeConnected, laserState]);
 
   const getState = useCallback(async () => {
     const result = await ros.callService(
@@ -58,43 +60,49 @@ export default function useLaserNode(nodeName: string) {
     };
   }, [ros, nodeName, getState, setNodeConnected, setLaserState]);
 
-  const addPoint = (x: number, y: number) => {
-    ros.callService(
-      `${nodeName}/add_point`,
-      "laser_control_interfaces/AddPoint",
-      {
-        point: {
-          x: x,
-          y: y,
-        },
-      }
-    );
-  };
+  const addPoint = useCallback(
+    (x: number, y: number) => {
+      ros.callService(
+        `${nodeName}/add_point`,
+        "laser_control_interfaces/AddPoint",
+        {
+          point: {
+            x: x,
+            y: y,
+          },
+        }
+      );
+    },
+    [ros, nodeName]
+  );
 
-  const clearPoints = () => {
+  const clearPoints = useCallback(() => {
     ros.callService(`${nodeName}/clear_points`, "std_srvs/Trigger", {});
-  };
+  }, [ros, nodeName]);
 
-  const play = () => {
+  const play = useCallback(() => {
     ros.callService(`${nodeName}/play`, "std_srvs/Trigger", {});
-  };
+  }, [ros, nodeName]);
 
-  const stop = () => {
+  const stop = useCallback(() => {
     ros.callService(`${nodeName}/stop`, "std_srvs/Trigger", {});
-  };
+  }, [ros, nodeName]);
 
-  const setColor = (r: number, g: number, b: number) => {
-    ros.callService(
-      `${nodeName}/set_color`,
-      "laser_control_interfaces/SetColor",
-      {
-        r: r,
-        g: g,
-        b: b,
-        i: 0.0,
-      }
-    );
-  };
+  const setColor = useCallback(
+    (r: number, g: number, b: number) => {
+      ros.callService(
+        `${nodeName}/set_color`,
+        "laser_control_interfaces/SetColor",
+        {
+          r: r,
+          g: g,
+          b: b,
+          i: 0.0,
+        }
+      );
+    },
+    [ros, nodeName]
+  );
 
   return {
     nodeInfo,

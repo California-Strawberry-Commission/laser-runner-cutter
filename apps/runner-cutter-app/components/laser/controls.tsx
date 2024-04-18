@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import useROS from "@/lib/ros/useROS";
 import useLaserNode from "@/lib/useLaserNode";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 function hexToRgb(hexColor: string) {
   hexColor = hexColor.replace("#", "");
@@ -30,7 +30,9 @@ export default function Controls() {
   const [x, setX] = useState<string>("0");
   const [y, setY] = useState<string>("0");
 
-  const nodeInfos = [rosbridgeNodeInfo, nodeInfo];
+  const nodeInfos = useMemo(() => {
+    return [rosbridgeNodeInfo, nodeInfo];
+  }, [rosbridgeNodeInfo, nodeInfo]);
   const disableButtons = !rosbridgeNodeInfo.connected || !nodeInfo.connected;
 
   let laserButton = null;
