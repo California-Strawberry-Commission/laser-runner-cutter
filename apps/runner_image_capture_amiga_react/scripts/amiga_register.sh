@@ -31,9 +31,9 @@ try {
 
   // Merge "services" objects
   const mergedServices = { ...userManifestJson.services, ...appManifestJson.services };
-  const userManifestJson = { services: mergedServices };
+  const newUserManifestJson = { services: mergedServices };
 
-  fs.writeFileSync(userManifestFile, JSON.stringify(userManifestJson, null, 2));
+  fs.writeFileSync(userManifestFile, JSON.stringify(newUserManifestJson, null, 2));
 
   console.log('User manifest updated:', userManifestFile);
 } catch (error) {
