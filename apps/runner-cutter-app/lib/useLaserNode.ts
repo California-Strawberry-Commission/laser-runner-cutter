@@ -3,6 +3,7 @@ import useROS from "@/lib/ros/useROS";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const LASER_STATES = ["disconnected", "stopped", "playing"];
+const INITIAL_STATE = LASER_STATES[0];
 
 export default function useLaserNode(nodeName: string) {
   const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
@@ -37,14 +38,18 @@ export default function useLaserNode(nodeName: string) {
 
   // Subscriptions
   useEffect(() => {
-    ros.onNodeConnected((connectedNodeName, connected) => {
-      if (connectedNodeName === nodeName) {
-        setNodeConnected(connected);
-        if (connected) {
-          getState();
+    const onNodeConnectedSub = ros.onNodeConnected(
+      (connectedNodeName, connected) => {
+        if (connectedNodeName === nodeName) {
+          setNodeConnected(connected);
+          if (connected) {
+            getState();
+          } else {
+            setLaserState(INITIAL_STATE);
+          }
         }
       }
-    });
+    );
 
     const stateSub = ros.subscribe(
       `${nodeName}/state`,
@@ -55,7 +60,7 @@ export default function useLaserNode(nodeName: string) {
     );
 
     return () => {
-      // TODO: unsubscribe from ros.onNodeConnected
+      onNodeConnectedSub.unsubscribe();
       stateSub.unsubscribe();
     };
   }, [ros, nodeName, getState, setNodeConnected, setLaserState]);

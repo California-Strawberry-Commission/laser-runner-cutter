@@ -2,13 +2,15 @@ import type { NodeInfo } from "@/lib/NodeInfo";
 import useROS from "@/lib/ros/useROS";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+const INITIAL_STATE = {
+  calibrated: false,
+  state: "idle",
+};
+
 export default function useControlNode(nodeName: string) {
   const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
   const [nodeConnected, setNodeConnected] = useState<boolean>(false);
-  const [nodeState, setNodeState] = useState({
-    calibrated: false,
-    state: "disconnected",
-  });
+  const [nodeState, setNodeState] = useState(INITIAL_STATE);
 
   const nodeInfo: NodeInfo = useMemo(() => {
     return {
@@ -38,14 +40,18 @@ export default function useControlNode(nodeName: string) {
 
   // Subscriptions
   useEffect(() => {
-    ros.onNodeConnected((connectedNodeName, connected) => {
-      if (connectedNodeName === nodeName) {
-        setNodeConnected(connected);
-        if (connected) {
-          getState();
+    const onNodeConnectedSub = ros.onNodeConnected(
+      (connectedNodeName, connected) => {
+        if (connectedNodeName === nodeName) {
+          setNodeConnected(connected);
+          if (connected) {
+            getState();
+          } else {
+            setNodeState(INITIAL_STATE);
+          }
         }
       }
-    });
+    );
 
     const stateSub = ros.subscribe(
       `${nodeName}/state`,
@@ -56,7 +62,7 @@ export default function useControlNode(nodeName: string) {
     );
 
     return () => {
-      // TODO: unsubscribe from ros.onNodeConnected
+      onNodeConnectedSub.unsubscribe();
       stateSub.unsubscribe();
     };
   }, [ros, nodeName, getState, setNodeConnected, setNodeState]);

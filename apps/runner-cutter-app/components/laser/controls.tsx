@@ -22,7 +22,7 @@ function hexToRgb(hexColor: string) {
 
 export default function Controls() {
   const { nodeInfo: rosbridgeNodeInfo } = useROS();
-  // TODO: add ability to select laser node name
+  // TODO: add ability to select node name
   const [nodeName, setNodeName] = useState<string>("/laser0");
   const { nodeInfo, laserState, addPoint, clearPoints, play, stop, setColor } =
     useLaserNode(nodeName);

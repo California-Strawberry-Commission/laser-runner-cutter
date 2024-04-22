@@ -1,13 +1,25 @@
 import ROSLIB from "roslib";
 
+class EventSubscriptionHandle {
+  private onUnsubscribe: () => void;
+
+  constructor(onUnsubscribe: () => void) {
+    this.onUnsubscribe = onUnsubscribe;
+  }
+
+  unsubscribe() {
+    this.onUnsubscribe();
+  }
+}
+
 export default class ROS {
-  url: string;
-  ros: ROSLIB.Ros;
-  reconnectIntervalMs: number;
-  reconnectInterval: NodeJS.Timeout | null;
-  nodes: string[];
-  nodeMonitorInterval: NodeJS.Timeout | null;
-  nodeListeners: ((nodeName: string, connected: boolean) => void)[];
+  private url: string;
+  private ros: ROSLIB.Ros;
+  private reconnectIntervalMs: number;
+  private reconnectInterval: NodeJS.Timeout | null;
+  private nodes: string[];
+  private nodeMonitorInterval: NodeJS.Timeout | null;
+  private nodeListeners: ((nodeName: string, connected: boolean) => void)[];
 
   constructor(url: string, reconnectIntervalMs: number = 1000) {
     this.url = url;
@@ -52,16 +64,30 @@ export default class ROS {
     return this.ros.isConnected;
   }
 
-  onStateChange(callback: (state: string) => void): void {
-    this.ros.on("connection", () => callback("connection"));
-    this.ros.on("error", () => callback("error"));
-    this.ros.on("close", () => callback("close"));
+  onStateChange(callback: (state: string) => void): EventSubscriptionHandle {
+    const connectionCallback = () => callback("connection");
+    const errorCallback = () => callback("error");
+    const closeCallback = () => callback("close");
+    this.ros.on("connection", connectionCallback);
+    this.ros.on("error", errorCallback);
+    this.ros.on("close", closeCallback);
+    return new EventSubscriptionHandle(() => {
+      this.ros.off("connection", connectionCallback);
+      this.ros.off("error", errorCallback);
+      this.ros.off("close", closeCallback);
+    });
   }
 
   onNodeConnected(
     callback: (nodeName: string, connected: boolean) => void
-  ): void {
+  ): EventSubscriptionHandle {
     this.nodeListeners.push(callback);
+    return new EventSubscriptionHandle(() => {
+      const index = this.nodeListeners.indexOf(callback);
+      if (index > -1) {
+        this.nodeListeners.splice(index, 1);
+      }
+    });
   }
 
   getNodes(): string[] {

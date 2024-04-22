@@ -11,7 +11,7 @@ import { useMemo, useState } from "react";
 
 export default function Controls() {
   const { nodeInfo: rosbridgeNodeInfo } = useROS();
-  // TODO: add ability to select camera node name
+  // TODO: add ability to select node name
   const [nodeName, setNodeName] = useState<string>("/camera0");
   const {
     nodeInfo,

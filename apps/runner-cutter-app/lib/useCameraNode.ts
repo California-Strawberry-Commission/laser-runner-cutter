@@ -2,15 +2,17 @@ import type { NodeInfo } from "@/lib/NodeInfo";
 import useROS from "@/lib/ros/useROS";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+const INITIAL_STATE = {
+  connected: false,
+  laser_detection_enabled: false,
+  runner_detection_enabled: false,
+  recording_video: false,
+};
+
 export default function useCameraNode(nodeName: string) {
   const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
   const [nodeConnected, setNodeConnected] = useState<boolean>(false);
-  const [nodeState, setNodeState] = useState({
-    connected: false,
-    laser_detection_enabled: false,
-    runner_detection_enabled: false,
-    recording_video: false,
-  });
+  const [nodeState, setNodeState] = useState(INITIAL_STATE);
   const [frameSrc, setFrameSrc] = useState<string>("");
 
   const nodeInfo: NodeInfo = useMemo(() => {
@@ -41,14 +43,18 @@ export default function useCameraNode(nodeName: string) {
 
   // Subscriptions
   useEffect(() => {
-    ros.onNodeConnected((connectedNodeName, connected) => {
-      if (connectedNodeName === nodeName) {
-        setNodeConnected(connected);
-        if (connected) {
-          getState();
+    const onNodeConnectedSub = ros.onNodeConnected(
+      (connectedNodeName, connected) => {
+        if (connectedNodeName === nodeName) {
+          setNodeConnected(connected);
+          if (connected) {
+            getState();
+          } else {
+            setNodeState(INITIAL_STATE);
+          }
         }
       }
-    });
+    );
 
     const stateSub = ros.subscribe(
       `${nodeName}/state`,
@@ -67,7 +73,7 @@ export default function useCameraNode(nodeName: string) {
     );
 
     return () => {
-      // TODO: unsubscribe from ros.onNodeConnected
+      onNodeConnectedSub.unsubscribe();
       stateSub.unsubscribe();
       frameSub.unsubscribe();
     };
