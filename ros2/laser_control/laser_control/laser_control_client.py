@@ -14,7 +14,7 @@ class LaserControlClient:
             self.logger = logger
         else:
             self.logger = logging.getLogger(__name__)
-            self.logger.setLevel(logging.DEBUG)
+            self.logger.setLevel(logging.INFO)
 
         callback_group = ReentrantCallbackGroup()
         node.laser_set_color = node.create_client(

@@ -1,12 +1,14 @@
 import logging
+import threading
+import time
 
 import numpy as np
 import pyrealsense2 as rs
-import time
-import threading
+
+from .camera import Camera
 
 
-class RealSense:
+class RealSense(Camera):
     def __init__(
         self,
         color_frame_size,
@@ -30,7 +32,7 @@ class RealSense:
             self.logger = logger
         else:
             self.logger = logging.getLogger(__name__)
-            self.logger.setLevel(logging.DEBUG)
+            self.logger.setLevel(logging.INFO)
         self.check_connection = False
         self.check_connection_thread = None
         self.connected_devices = []

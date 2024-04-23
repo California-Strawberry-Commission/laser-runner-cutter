@@ -16,7 +16,7 @@ class Calibration:
             self.logger = logger
         else:
             self.logger = logging.getLogger(__name__)
-            self.logger.setLevel(logging.DEBUG)
+            self.logger.setLevel(logging.INFO)
 
         self.calibration_laser_coords = []
         self.calibration_camera_points = []

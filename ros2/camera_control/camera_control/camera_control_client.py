@@ -20,7 +20,7 @@ class CameraControlClient:
             self.logger = logger
         else:
             self.logger = logging.getLogger(__name__)
-            self.logger.setLevel(logging.DEBUG)
+            self.logger.setLevel(logging.INFO)
 
         callback_group = ReentrantCallbackGroup()
         node.camera_has_frames = node.create_client(

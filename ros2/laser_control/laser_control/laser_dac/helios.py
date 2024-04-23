@@ -1,8 +1,9 @@
 import ctypes
-from .laser_dac import LaserDAC
+import logging
 import threading
 import time
 
+from .laser_dac import LaserDAC
 
 # Helios DAC uses 12 bits (unsigned) for x and y
 X_BOUNDS = (0, 4095)
@@ -44,7 +45,7 @@ class HeliosDAC(LaserDAC):
       dac.close()
     """
 
-    def __init__(self, lib_file):
+    def __init__(self, lib_file, logger=None):
         self.points = []
         self.points_lock = threading.Lock()
         self.color = (1, 1, 1, 1)  # (r, g, b, i)
@@ -54,11 +55,16 @@ class HeliosDAC(LaserDAC):
         self.playback_thread = None
         self.check_connection = False
         self.check_connection_thread = None
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = logging.getLogger(__name__)
+            self.logger.setLevel(logging.INFO)
 
     def initialize(self):
-        print("Initializing Helios DAC")
+        self.logger.info("Initializing Helios DAC")
         num_devices = self.lib.OpenDevices()
-        print(f"Found {num_devices} Helios DACs")
+        self.logger.info(f"Found {num_devices} Helios DACs")
         return num_devices
 
     def connect(self, dac_idx):
@@ -67,7 +73,9 @@ class HeliosDAC(LaserDAC):
         def check_connection_thread():
             while self.check_connection:
                 if self._get_status() < 0:
-                    print(f"DAC error {self._get_status()}. Attempting to reconnect.")
+                    self.logger.warning(
+                        f"DAC error {self._get_status()}. Attempting to reconnect."
+                    )
                     self.stop()
                     self.lib.CloseDevices()
                     self.initialize()

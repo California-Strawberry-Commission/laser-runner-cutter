@@ -28,7 +28,7 @@ class Tracker:
             self.logger = logger
         else:
             self.logger = logging.getLogger(__name__)
-            self.logger.setLevel(logging.DEBUG)
+            self.logger.setLevel(logging.INFO)
         self.tracks = {}
 
     @property

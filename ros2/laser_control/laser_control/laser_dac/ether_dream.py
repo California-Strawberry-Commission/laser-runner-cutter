@@ -1,8 +1,9 @@
 import ctypes
-from .laser_dac import LaserDAC
+import logging
 import threading
 import time
 
+from .laser_dac import LaserDAC
 
 # Ether Dream DAC uses 16 bits (signed) for x and y
 X_BOUNDS = (-32768, 32767)
@@ -52,7 +53,7 @@ class EtherDreamDAC(LaserDAC):
       dac.close()
     """
 
-    def __init__(self, lib_file):
+    def __init__(self, lib_file, logger):
         self.points = []
         self.points_lock = threading.Lock()
         self.color = (1, 1, 1, 1)  # (r, g, b, i)
@@ -62,34 +63,41 @@ class EtherDreamDAC(LaserDAC):
         self.playback_thread = None
         self.check_connection = False
         self.check_connection_thread = None
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = logging.getLogger(__name__)
+            self.logger.setLevel(logging.INFO)
 
     def initialize(self):
         """Initialize the native library and search for online DACs"""
 
-        print("Initializing Ether Dream DAC")
+        self.logger.info("Initializing Ether Dream DAC")
         self.lib.etherdream_lib_start()
-        print("Finding available Ether Dream DACs...")
+        self.logger.info("Finding available Ether Dream DACs...")
 
         # Ether Dream DACs broadcast once per second, so we need to wait for a bit
         # longer than that to ensure that we see broadcasts from all online DACs
         time.sleep(1.2)
 
         dac_count = self.lib.etherdream_dac_count()
-        print(f"Found {dac_count} Ether Dream DACs")
+        self.logger.info(f"Found {dac_count} Ether Dream DACs")
         return dac_count
 
     def connect(self, dac_idx):
-        print("Connecting to DAC...")
+        self.logger.info("Connecting to DAC...")
         dac_id = self.lib.etherdream_get_id(dac_idx)
         if self.lib.etherdream_connect(dac_id) < 0:
             raise EtherDreamError(f"Could not connect to DAC [{hex(dac_id)}]")
         self.connected_dac_id = dac_id
-        print(f"Connected to DAC with ID: {hex(dac_id)}")
+        self.logger.info(f"Connected to DAC with ID: {hex(dac_id)}")
 
         def check_connection_thread():
             while self.check_connection:
                 if self.lib.etherdream_is_connected(self.connected_dac_id) == 0:
-                    print(f"DAC connection error. Attempting to reconnect.")
+                    self.logger.warning(
+                        f"DAC connection error. Attempting to reconnect."
+                    )
                 time.sleep(2)
 
         if self.check_connection_thread is None:
