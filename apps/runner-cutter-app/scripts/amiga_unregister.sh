@@ -5,8 +5,8 @@ set -uxeo pipefail
 
 # Check if Node.js is installed
 if ! command -v node &> /dev/null; then
-    echo "Node.js is not installed. Please install Node.js first."
-    exit 1
+  echo "Node.js is not installed. Please install Node.js first."
+  exit 1
 fi
 
 script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
@@ -15,10 +15,10 @@ app_manifest_file=$app_dir/manifest.json
 user_manifest_file=~/manifest.json
 
 if [ ! -f "$user_manifest_file" ]; then
-    echo "User manifest file not found."
-    exit 1
+  echo "User manifest file not found."
+  exit 1
 else
-    node <<EOF
+  node <<EOF
 const fs = require('fs');
 const { execSync } = require('child_process');
 

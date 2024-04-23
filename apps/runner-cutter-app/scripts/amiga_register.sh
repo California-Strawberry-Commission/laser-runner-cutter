@@ -5,8 +5,8 @@ set -uxeo pipefail
 
 # Check if Node.js is installed
 if ! command -v node &> /dev/null; then
-    echo "Node.js is not installed. Please install Node.js first."
-    exit 1
+  echo "Node.js is not installed. Please install Node.js first."
+  exit 1
 fi
 
 script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
@@ -17,9 +17,9 @@ user_manifest_file=~/manifest.json
 # If user manifest file does not exist, then just copy the app manifest file.
 # Otherwise, insert the services in the app manifest file into the user manifest file.
 if [ ! -f "$user_manifest_file" ]; then
-    cp $app_manifest_file $user_manifest_file
+  cp $app_manifest_file $user_manifest_file
 else
-    node <<EOF
+  node <<EOF
 const fs = require('fs');
 
 const appManifestFile = '$app_manifest_file';

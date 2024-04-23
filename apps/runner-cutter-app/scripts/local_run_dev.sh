@@ -3,17 +3,12 @@
 
 script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 app_dir=$script_dir/..
-repo_dir=$script_dir/../../..
+repo_dir=$app_dir/../..
+ros_dir=$repo_dir/ros2
 
 start_ros() {
-  cd $repo_dir/ros2/scripts
-  source setup.sh
-  ros2 launch runner_cutter_control launch.py
-}
-
-start_rosbridge() {
-  cd $app_dir
-  ./scripts/run_rosbridge.sh
+  cd $ros_dir
+  ./scripts/run_ros.sh
 }
 
 start_app() {
@@ -21,6 +16,6 @@ start_app() {
   npm run dev
 }
 
-start_ros & start_rosbridge & start_app
+start_ros & start_app
 
 wait

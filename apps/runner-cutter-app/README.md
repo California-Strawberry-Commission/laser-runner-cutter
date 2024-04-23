@@ -6,10 +6,6 @@ Web app for laser runner cutter control and automation, built with Next.js.
 
 1.  Follow setup steps in [ros2/README.md](../../ros2/README.md)
 
-1.  Install Rosbridge
-
-        $ sudo apt install ros-foxy-rosbridge-suite
-
 1.  Install nvm
 
         $ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
