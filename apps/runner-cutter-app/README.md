@@ -33,6 +33,13 @@ Web app for laser runner cutter control and automation, built with Next.js.
 
 1.  Run Setup steps above.
 
+1.  Set environment variables
+
+        $ cd laser-runner-cutter/apps/runner-cutter-app
+        $ echo "NEXT_PUBLIC_ROSBRIDGE_URL=ws://localhost:9090" > .env.local
+
+    Change `ws://localhost:9090` to wherever Rosbridge will be running.
+
 1.  Build the prod app:
 
         $ cd laser-runner-cutter/apps/runner-cutter-app
