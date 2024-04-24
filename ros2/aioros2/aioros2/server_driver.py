@@ -1,5 +1,6 @@
 import asyncio
 import dataclasses
+import inspect
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionServer
@@ -27,6 +28,7 @@ from .decorators.timer import RosTimer
 from .decorators.params import RosParams
 from .decorators.param import RosParam
 from .decorators import idl_to_kwargs
+from .decorators.param_subscription import RosParamSubscription
 
 # ros2 run amiga_control amiga_control_node --ros-args -p amiga_params_port_canbus:=1234 --remap __node:=test_node --remap __ns:=/test
 # ros2 param list
@@ -39,73 +41,68 @@ from .decorators import idl_to_kwargs
 # https://answers.ros.org/question/340600/how-to-get-ros2-parameter-hosted-by-another-node/
 # https://roboticsbackend.com/rclpy-params-tutorial-get-set-ros2-params-with-python/
 # https://roboticsbackend.com/ros2-rclpy-parameter-callback/
-class ParamWrapper:
-    """Manages a single parameter"""
-
-    def __init__(self, fqpn, dclass_field, node):
-        node.log.info(f"Declare parameter >{fqpn}<")
-
-        self.node = node
-        self.fqpn = fqpn
-        self.field = dclass_field
-        self.listeners = []
-        self.value = None
-
-        # Initialize parameter
-        t = dclass_field.type
-        default = dclass_field.default
-
-        if not t in dataclass_ros_map:
-            raise TypeError(f"Type >{t}< is not supported by ROS as a parameter.")
-
-        # Declare param
-        ros_type = dataclass_ros_map[t]
-        descriptor = ParameterDescriptor(type=ros_type)
-        node.declare_parameter(fqpn, default, descriptor)
-
-        # Perform initial update
-        self.update()
-
-    def update(self):
-        p_val = self.node.get_parameter(self.fqpn).get_parameter_value()
-        self.update_from_ros_param_value(p_val)
-
-    def set(self, val):
-        if not type(val) == self.field.type:
-            raise TypeError("WRONG TYPE!")
-
-        ros_type = dataclass_ros_enum_map[self.field.type]
-        self.value = val
-
-        return Parameter(self.fqpn, ros_type, val)
-
-    def update_from_ros_param_value(self, pval, trigger_listeners=True):
-        getter_fn = ros_type_getter_map[pval.type]
-        self.value = getattr(pval, getter_fn)
-
-        if trigger_listeners:
-            for listener in self.listeners:
-                listener(self.field.name, self.value)
-
-        return self.value
-
-
 # https://github.com/mikeferguson/ros2_cookbook/blob/main/rclpy/parameters.md
-class ParamsWrapper:
-    # https://github.com/mikeferguson/ros2_cookbook/blob/main/rclpy/parameters.md
-    # https://github.com/ros2/demos/blob/rolling/demo_nodes_py/demo_nodes_py/parameters/set_parameters_callback.py
+# https://github.com/mikeferguson/ros2_cookbook/blob/main/rclpy/parameters.md
+# https://github.com/ros2/demos/blob/rolling/demo_nodes_py/demo_nodes_py/parameters/set_parameters_callback.py
 
-    def __init__(self, params_attr, param_class, ros_node, queue_size=10):
+
+class Param:
+    value = None
+    fqpn = None
+
+    __staged_value = None
+
+    def __init__(self, field: dataclasses.Field, fqpn: str) -> None:
+        self.fqpn = fqpn
+        self.value = field.default
+
+        self.__field = field
+        self.__listeners = []
+        self.__ros_type = dataclass_ros_map[field.type]
+        self.__ros_enum = dataclass_ros_enum_map[field.type]
+        self.__param_getter = ros_type_getter_map[self.__ros_type]
+
+    def add_listener(self, listener):
+        self.__listeners.append(listener)
+
+    def stage_param(self, param: Parameter):
+        pval = param.get_parameter_value()
+
+        # Check incoming type
+        if pval.type != self.__ros_type:
+            return SetParametersResult(
+                successful=False,
+                reason=f"Incorrect type for >{self.fqpn}<. Got >{pval.type}<, expected >{self.__ros_type}<",
+            )
+
+        # Stage value to set later if all grouped param sets pass
+        self.__staged_value = getattr(pval, self.__param_getter)
+
+        return SetParametersResult(successful=True)
+
+    def create_ros_parameter_setter(self, value):
+        return Parameter(self.fqpn, self.__ros_enum, value)
+
+    def commit(self):
+        # TODO: Call listeners!
+        self.value = self.__staged_value
+
+    def get_listeners(self):
+        return self.__listeners
+
+    def declare(self, ros_node):
+        ros_node.log.info(f"Declare parameter >{self.fqpn}<")
+        ros_node.declare_parameter(self.fqpn, self.value)
+
+
+class ParamsWrapper:
+    def __init__(self, params_attr, param_class, server_driver):
         self.__params_attr = params_attr
         self.__param_class = param_class
-        self.__node = ros_node
-
+        self.__driver = server_driver
         self.__params = {}
 
-        self.__node.log.info("Create parameter wrapper")
-        self.__node.create_subscription(
-            ParameterEvent, "/parameter_events", self.__on_parameter_event, queue_size
-        )
+        self.__driver.log.info("Create parameter wrapper")
 
         # declare dataclass fields
         for f in dataclasses.fields(self.__param_class):
@@ -114,84 +111,94 @@ class ParamsWrapper:
                     f"Parameter name >{f.name}< in >{self.__param_class}< is reserved by aioros2! Please choose another name."
                 )
 
-            fqpn = self.__get_fqpn(f.name)
-            if isinstance(f.default, RosParam):
-                ## TODO
-                continue
-            else:
-                self.__params[fqpn] = ParamWrapper(fqpn, f, ros_node)
+            fqpn = self.__fqpn(f.name)
+            param = self.__params[fqpn] = Param(f, fqpn)
 
-        # Attach to param event to handle successful param updates
-        # Note: In later versions than foxy, this could be handled natively using
+            if isinstance(f.default, RosParam):
+                ## TODO: declare
+                continue
+
+            param.declare(self.__driver)
+
+        # Note: In later versions than foxy, this could be handled using
         # self.__ros_node.add_post_set_parameters_callback
         # https://docs.ros.org/en/rolling/Concepts/Basic/About-Parameters.html#
 
-        # TODO: Attach to on_set_parameter to typecheck before accepting param set
+        self.__driver.add_on_set_parameters_callback(self.__parameters_callback)
 
-    async def update(self):
-        def _update():
-            for p in self.__params:
-                self.__params[p].update()
+    def __parameters_callback(self, params):
+        # Filter and pair incoming parameters to parameters this
+        # class manages
+        own_param_pairs = [
+            (p, self.__params[p.name]) for p in params if p.name in self.__params
+        ]
 
-        await self.__node._loop.run_in_executor(None, _update)
+        # Stage new values
+        for in_param, param in own_param_pairs:
+            res = param.stage_param(in_param)
+
+            if not res.successful:
+                return res
+
+        # If all stages were successful, commit values
+        for _, param in own_param_pairs:
+            param.commit()
+
+        # Once all values have been commited, run any listeners
+        all_listeners = [l for _, p in own_param_pairs for l in p.get_listeners()]
+        print(all_listeners)
+
+        # https://stackoverflow.com/questions/480214/how-do-i-remove-duplicates-from-a-list-while-preserving-order
+        seen = set()
+        seen_add = seen.add
+        unique_listeners = [x for x in all_listeners if not (x in seen or seen_add(x))]
+
+        asyncio.run_coroutine_threadsafe(
+            self.__call_listeners(unique_listeners), loop=self.__driver._loop
+        )
+
+        return SetParametersResult(successful=True)
+    
+    async def __call_listeners(self, unique_listeners):
+        for l in unique_listeners:
+            await l(self.__driver)
+
+    def add_change_listener(self, param_name, listener):
+        fqpn = self.__fqpn(param_name)
+        param = self.__params[fqpn]
+        param.add_listener(listener)
 
     async def set(self, **kwargs):
         updated_params = []
 
         for k in kwargs:
-            fqpn = self.__get_fqpn(k)
+            fqpn = self.__fqpn(k)
 
             if not fqpn in self.__params:
-                self.__node.log.warn(f">{k}< is not a valid parameter name.")
+                self.__driver.log.warn(f">{k}< is not a valid parameter name.")
                 continue
 
             param = self.__params[fqpn]
-            val = kwargs[k]
 
-            ros_param = param.set(val)
-
-            updated_params.append(ros_param)
+            updated_params.append(param.create_ros_parameter_setter(kwargs[k]))
 
         # Push updates through ROS
         try:
-            await self.__node._loop.run_in_executor(
-                None, self.__node.set_parameters, updated_params
+            await self.__driver._loop.run_in_executor(
+                None, self.__driver.set_parameters, updated_params
             )
         except Exception as e:
             print("ERROR SETTING", e)
 
-    def __get_fqpn(self, field_name):
+    def __fqpn(self, field_name):
         """Get Fully Qualified Parameter Name - prefixes dclass param names with the instance attribute name to allow
         duplicate parameter names within nodes
         """
-        return f"{self.__params_attr}_{field_name}"
-
-    def __on_parameter_event(self, req: ParameterEvent):
-        # Check if event is targeting this node
-        # print("GOT PARAM EVENT", req)
-        if not self.__path_matches_self(req.node):
-            return
-
-        for ros_param in req.changed_parameters:
-            fqpn = ros_param.name
-
-            if fqpn not in self.__params:
-                continue
-
-            param = self.__params[fqpn]
-
-            # Updates parameter value and calls listeners
-            param.update_from_ros_param_value(ros_param.value)
+        return f"{self.__params_attr}.{field_name}"
 
     def __getattr__(self, attr):
-        fqpn = self.__get_fqpn(attr)
+        fqpn = self.__fqpn(attr)
         return self.__params[fqpn].value
-
-    def __path_matches_self(self, path):
-        node_namespace = self.__node.get_namespace().lstrip("/")
-        fqnp = "/".join([node_namespace, self.__node.get_name()])
-        fqnp = "/" + fqnp if not fqnp.startswith("/") else fqnp
-        return path == fqnp
 
 
 class ServerDriver(AsyncDriver, Node):
@@ -211,7 +218,7 @@ class ServerDriver(AsyncDriver, Node):
         from .client_driver import ClientDriver
 
         self.log.info("[SERVER] Resolving import")
-        
+
         # TODO: extract naming logic somewhere else. This is duplicated
         # in launch_driver._process_imports
 
@@ -359,8 +366,29 @@ class ServerDriver(AsyncDriver, Node):
             asyncio.run_coroutine_threadsafe(t.server_handler(self), self._loop)
 
         self.create_timer(t.interval, _cb)
+        return t.server_handler
 
     def _attach_params(self, attr, p: RosParams):
         self.log.info(f"Attach params >{attr}<")
-
         return ParamsWrapper(attr, p.params_class, self)
+
+    def _attach_param_subscription(self, attr, p: RosParamSubscription):
+        print(p.references, p.handler)
+        # For each reference, find its definition's corrosponding attribute name
+        # so that we can reference its instantiated version through getattr.
+        for ref in p.references:
+            for member in inspect.getmembers(self._n):
+                if member[1] == ref.params_def:
+                    attr = member[0]
+                    break
+
+            if not attr:
+                # TODO: improve this error message
+                raise AttributeError("NOT FOUND")
+
+            # Add a listener to the corrosponding ParamsWrapper, param
+            params_wrapper: ParamsWrapper = getattr(self, attr)
+            params_wrapper.add_change_listener(ref.param_name, p.handler)
+
+        # Allow handling function to be directly called
+        return p.handler

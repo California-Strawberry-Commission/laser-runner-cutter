@@ -20,15 +20,17 @@ The point of this library is to make working with ROS2/`rclpy` bearable (and pos
 - [x] Remapping
     - Want to provide helpers to make linking nodes in launch files easy.
     - ` link(node1.dep_node_1, node2.dep_node_2) ` -> list of remaps to use in launch.py
-- [ ] Client param sets
-- [ ] Server param side effects
+- [x] Server param side effects
+- [ ] 2+ order import topic resolution
 - [ ] Non-async handlers / better warnings?
 - [ ] Server background tasks
+- [ ] Comprehensive error handling
 
-## Issues
-- 2nd order imports are not properly resolved. IE (node1 --import-> node2 --import-> node3), a node3 topic will incorrectly be resolved within node2's namespace
-    - Need to probably add a third "leaf driver" class to create structure like ServerDriver -> ClientDriver -> LeafDriver
-    - Adds some complexity w/ namespace parameter resolution but should be possible to do.
+## Limitations
+- Param dataclasses currently must be flat.
+- 2+ order imported topics are currently not properly resolved. IE for (`node1` --import-> `node2` --import-> `node3`), the topic `node1.node2.node3.topic` will incorrectly be resolved within node2's namespace
+    - Need to probably add a third "leaf driver" class to create structure like ServerDriver -> ClientDriver -> LeafDriver where LeafDrivers are responsible for properly resolving namespaces
+    - Adds significant complexity w/ namespace parameter resolution but should be possible to do.
 - Non-async handlers are not supported
 - Errors are not bubbled in some or all types of handler.
     - Manifests as a handler freeze.

@@ -1,5 +1,5 @@
 from . import amiga_control_node
-from aioros2 import param, timer, service, action, serve_nodes, result, feedback, subscribe, topic, import_node, params, node
+from aioros2 import  timer, service, action, serve_nodes, result, feedback, subscribe, topic, import_node, params, node, subscribe_param
 from std_msgs.msg import String
 from dataclasses import dataclass
 

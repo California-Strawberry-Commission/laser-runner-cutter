@@ -9,6 +9,6 @@ class RosTopic(RosDefinition):
         self.qos = qos
 
 
-def topic(namespace: str, idl: Any, qos: int):
-    return RosTopic(namespace, idl, qos)
+def topic(namespace: str, idl: Any, queue: int = 10):
+    return RosTopic(namespace, idl, queue)
     

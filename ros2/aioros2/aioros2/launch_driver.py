@@ -3,6 +3,8 @@ from launch_ros.actions import Node as RclpyNode
 from .async_driver import AsyncDriver
 from rclpy.logging import get_logger
 
+# TODO: Validate all imports are linked before allowing execution ??
+
 class ImportLinker:
     def __init__(self, attr, cb) -> None:
         self._cb = cb

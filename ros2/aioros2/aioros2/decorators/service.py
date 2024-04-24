@@ -7,6 +7,9 @@ from ._decorators import RosDefinition, idl_to_kwargs
 
 class RosService(RosDefinition):
     def __init__(self, namespace, idl, handler):
+        if not hasattr(idl, "Request"):
+            raise TypeError("Passed object is not a service-compatible IDL object! Make sure it isn't a topic or action IDL.")
+        
         self._check_service_handler_signature(handler, idl)
         self.namespace = namespace
         self.idl = idl

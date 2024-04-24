@@ -11,7 +11,7 @@ from .decorators.import_node import RosImport
 from .decorators.action import RosAction
 from .decorators.timer import RosTimer
 from .decorators.params import RosParams
-
+from .decorators.param_subscription import RosParamSubscription
 
 class AsyncDriver:
     """Base class for all adapters"""
@@ -61,7 +61,8 @@ class AsyncDriver:
             RosImport: self._process_import,
             RosAction: self._attach_action,
             RosTimer: self._attach_timer,
-            RosParams: self._attach_params
+            RosParams: self._attach_params,
+            RosParamSubscription: self._attach_param_subscription,
         }
 
         for attr, definition in self._get_ros_definitions():
@@ -93,6 +94,9 @@ class AsyncDriver:
         
     def _attach_params(self, attr, d):
         self._warn_unimplemented("params", "_attach_params")
+
+    def _attach_param_subscription(self, attr, sub):
+        self._warn_unimplemented("param subscription", "_attach_param_subscription")
 
 dataclass_ros_map = {
     bool: 1,

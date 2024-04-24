@@ -5,7 +5,7 @@ from amiga_control_interfaces.srv import SetTwist
 from amiga_control_interfaces.action import Run
 from dataclasses import dataclass
 from rcl_interfaces.msg import ParameterDescriptor, ParameterEvent
-from aioros2 import param, timer, service, action, serve_nodes, result, feedback, subscribe, topic, import_node, params, node
+from aioros2 import timer, service, action, serve_nodes, result, feedback, subscribe, topic, import_node, params, node, subscribe_param, param
 from std_msgs.msg import String
 
 from aioros2.decorators.subscribe import RosSubscription
@@ -56,19 +56,13 @@ class AmigaControlNode:
     async def on_my_topic(self, data):
         self.log.info(f"MYTOPIC {data}")
 
-    # @subscribe("parameter_events", ParameterEvent)
-    # async def lmao(self, stamp, node, new_parameters, changed_parameters, deleted_parameters):
-    #     print("SDJKFOI", stamp, node, new_parameters, changed_parameters, deleted_parameters)
-
-    # @param(AmigaParams.host)
-    # async def set_host_param(self, host):
-    #     self.params.host = host
-    #     # Do something else...
+    @subscribe_param(amiga_params.host, amiga_params.port_canbus)
+    async def on_change(self):
+        print("CHANGE HANDLER", self.amiga_params.host, self.amiga_params.port_canbus)
+        # Do something else...
 
     @timer(2) # Server only
     async def task(self):
-        await self.amiga_params.update()
-
         print(self.amiga_params, self.amiga_params.port_canbus)
         # if self.amiga_params.host != "TESTHOST":
         #     print("Param is different, resetting!")
@@ -81,6 +75,15 @@ class AmigaControlNode:
 
         return result(success=True)
 
+    @subscribe("~/set_host", String, 10)
+    async def set_host(self, data):
+        await self.amiga_params.set(
+            host = data
+        )
+
+        print(self.amiga_params.host)
+        print("SET PARAM SUCCESSFUL")
+        
     @action("~/test", Run)
     async def act(self, fast) -> AsyncGenerator[int, None]:
         for i in range(10):
