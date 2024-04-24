@@ -5,16 +5,15 @@ import time
 import numpy as np
 import pyrealsense2 as rs
 
-from .camera import Camera
 
-
-class RealSense(Camera):
+class RealSense:
     def __init__(
         self,
         color_frame_size,
         depth_frame_size,
         fps=30,
         align_depth_to_color_frame=True,
+        serial_number=None,
         camera_index=0,
         logger=None,
     ):
@@ -27,6 +26,7 @@ class RealSense(Camera):
         self.depth_frame_size = depth_frame_size
         self.fps = fps
         self.align_depth_to_color_frame = align_depth_to_color_frame
+        self.serial_number = serial_number
         self.camera_index = camera_index
         if logger:
             self.logger = logger
@@ -35,21 +35,36 @@ class RealSense(Camera):
             self.logger.setLevel(logging.INFO)
         self.check_connection = False
         self.check_connection_thread = None
-        self.connected_devices = []
+        self.pipeline = None
+
+    @property
+    def is_connected(self):
+        return self.pipeline is not None
 
     def initialize(self):
         # Setup code based on https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/align-depth2color.py
-        self.config = rs.config()
 
-        # Connect to specific camera
-        self.connected_devices = [
+        connected_devices = [
             device.get_info(rs.camera_info.serial_number)
             for device in rs.context().query_devices()
         ]
-        if self.camera_index < 0 or self.camera_index >= len(self.connected_devices):
-            raise Exception("camera_index is out of bounds")
 
-        self.serial_number = self.connected_devices[self.camera_index]
+        # If we don't have a serial number of a device, find one using camera_index
+        if self.serial_number is None:
+            if self.camera_index < 0 or self.camera_index >= len(connected_devices):
+                raise Exception(
+                    f"camera_index {self.camera_index} is out of bounds: {len(connected_devices)} devices found."
+                )
+            self.serial_number = connected_devices[self.camera_index]
+
+        # Check if device is connected
+        if self.serial_number not in connected_devices:
+            raise Exception(f"No device with serial number {self.serial_number} found.")
+
+        self.logger.info(f"Device {self.serial_number} is connected")
+
+        # Enable device
+        self.config = rs.config()
         self.config.enable_device(self.serial_number)
 
         # Configure streams
@@ -101,21 +116,19 @@ class RealSense(Camera):
 
         def check_connection_thread():
             while self.check_connection:
-                prev_devices = set(self.connected_devices)
-                self.connected_devices = [
+                connected_devices = [
                     device.get_info(rs.camera_info.serial_number)
                     for device in rs.context().query_devices()
                 ]
-                curr_devices = set(self.connected_devices)
-                disconnected_devices = prev_devices - curr_devices
-                connected_devices = curr_devices - prev_devices
-
-                if self.serial_number in connected_devices:
-                    self.logger.info(f"Camera connected")
-                    self.initialize()
-                elif self.serial_number in disconnected_devices:
-                    self.logger.info(f"Camera disconnected")
-                    self.pipeline.stop()
+                connected = self.serial_number in connected_devices
+                if self.is_connected != connected:
+                    if connected:
+                        self.logger.info(f"Device {self.serial_number} connected")
+                        self.initialize()
+                    else:
+                        self.logger.info(f"Device {self.serial_number} disconnected")
+                        self.pipeline.stop()
+                        self.pipeline = None
 
                 time.sleep(1)
 
@@ -126,7 +139,12 @@ class RealSense(Camera):
             )
             self.check_connection_thread.start()
 
+        self.logger.info(f"Device {self.serial_number} is initialized")
+
     def set_exposure(self, exposure_ms):
+        if not self.is_connected:
+            return
+
         color_sensor = self.profile.get_device().first_color_sensor()
         if exposure_ms < 0:
             color_sensor.set_option(rs.option.enable_auto_exposure, 1)
@@ -136,7 +154,7 @@ class RealSense(Camera):
             color_sensor.set_option(rs.option.exposure, exposure_us)
 
     def get_frames(self):
-        if not self._is_connected():
+        if not self.is_connected:
             return None
 
         try:
@@ -210,6 +228,3 @@ class RealSense(Camera):
             )
 
             return None if depth_pixel[0] < 0 or depth_pixel[1] < 0 else depth_pixel
-
-    def _is_connected(self):
-        return self.serial_number in self.connected_devices
