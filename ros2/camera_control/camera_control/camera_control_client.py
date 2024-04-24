@@ -61,12 +61,12 @@ class CameraControlClient:
     async def get_frame(self):
         return await self.node.camera_get_frame.call_async(GetFrame.Request())
 
-    async def set_exposure(self, exposure_ms):
-        request = SetExposure.Request(exposure_ms=exposure_ms)
+    async def set_exposure(self, exposure_us):
+        request = SetExposure.Request(exposure_us=exposure_us)
         return await self.node.camera_set_exposure.call_async(request)
 
     async def auto_exposure(self):
-        request = SetExposure.Request(exposure_ms=-1.0)
+        request = SetExposure.Request(exposure_us=-1.0)
         return await self.node.camera_set_exposure.call_async(request)
 
     async def get_lasers(self):

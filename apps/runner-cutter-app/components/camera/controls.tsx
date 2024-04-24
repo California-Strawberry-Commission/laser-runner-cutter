@@ -29,7 +29,7 @@ export default function Controls() {
     stopRecordingVideo,
     saveImage,
   } = useCameraNode(nodeName);
-  const [exposureMs, setExposureMs] = useState<string>("0.2");
+  const [exposureUs, setExposureUs] = useState<string>("200");
 
   const nodeInfos = useMemo(() => {
     return [rosbridgeNodeInfo, nodeInfo];
@@ -41,26 +41,26 @@ export default function Controls() {
       <NodeCards nodeInfos={nodeInfos} />
       <div className="flex flex-row items-center gap-4">
         <Label className="flex-none w-16" htmlFor="exposure">
-          Exposure (ms):
+          Exposure (us):
         </Label>
         <Input
           className="flex-none w-20"
           type="number"
           id="exposure"
           name="exposure"
-          step={0.01}
-          value={exposureMs.toString()}
+          step={10}
+          value={exposureUs.toString()}
           onChange={(event) => {
             const value = Number(event.target.value);
             if (!isNaN(value)) {
-              setExposureMs(event.target.value);
+              setExposureUs(event.target.value);
             }
           }}
         />
         <Button
           disabled={disableButtons}
           onClick={() => {
-            setExposure(Number(exposureMs));
+            setExposure(Number(exposureUs));
           }}
         >
           Set Exposure

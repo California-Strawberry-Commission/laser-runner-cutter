@@ -315,7 +315,7 @@ class CameraControlNode(Node):
         return response
 
     def _set_exposure_callback(self, request, response):
-        self.camera.set_exposure(request.exposure_ms)
+        self.camera.set_exposure(request.exposure_us)
         response.success = True
         return response
 

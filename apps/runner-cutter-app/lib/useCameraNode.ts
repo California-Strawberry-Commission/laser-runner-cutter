@@ -80,11 +80,11 @@ export default function useCameraNode(nodeName: string) {
   }, [ros, nodeName, getState, setNodeConnected, setNodeState, setFrameSrc]);
 
   const setExposure = useCallback(
-    (exposureMs: number) => {
+    (exposureUs: number) => {
       ros.callService(
         `${nodeName}/set_exposure`,
         "camera_control_interfaces/SetExposure",
-        { exposure_ms: exposureMs }
+        { exposure_us: exposureUs }
       );
     },
     [ros, nodeName]

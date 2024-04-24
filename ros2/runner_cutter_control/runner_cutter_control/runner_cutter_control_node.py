@@ -345,7 +345,7 @@ class StateMachine:
 
     async def _aim(self, target_position, target_pixel):
         # TODO: set exposure automatically when detecting laser
-        await self.camera_client.set_exposure(0.001)
+        await self.camera_client.set_exposure(1.0)
         initial_laser_coord = self.calibration.camera_point_to_laser_coord(
             target_position
         )

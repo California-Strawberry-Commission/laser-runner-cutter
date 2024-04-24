@@ -87,7 +87,7 @@ class Calibration:
         """
 
         # TODO: set exposure on camera node automatically when detecting laser
-        await self.camera_client.set_exposure(0.001)
+        await self.camera_client.set_exposure(1.0)
         await self.laser_client.set_color((0.0, 0.0, 0.0))
         await self.laser_client.start_laser()
         for laser_coord in laser_coords:

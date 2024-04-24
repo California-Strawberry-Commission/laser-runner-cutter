@@ -141,16 +141,16 @@ class RealSense:
 
         self.logger.info(f"Device {self.serial_number} is initialized")
 
-    def set_exposure(self, exposure_ms):
+    def set_exposure(self, exposure_us):
         if not self.is_connected:
             return
 
         color_sensor = self.profile.get_device().first_color_sensor()
-        if exposure_ms < 0:
+        if exposure_us < 0:
             color_sensor.set_option(rs.option.enable_auto_exposure, 1)
         else:
             # D435 has a minimum exposure time of 1us
-            exposure_us = max(1, round(exposure_ms * 1000))
+            exposure_us = max(1, round(exposure_us))
             color_sensor.set_option(rs.option.exposure, exposure_us)
 
     def get_frames(self):
