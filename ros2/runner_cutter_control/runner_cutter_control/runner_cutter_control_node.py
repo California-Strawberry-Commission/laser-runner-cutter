@@ -8,7 +8,7 @@ finding a specific runner to burn, and burning said runner.
 
 import asyncio
 import threading
-
+from typing import List, Optional, Tuple
 import numpy as np
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
@@ -19,7 +19,7 @@ from transitions.extensions.asyncio import AsyncMachine
 from camera_control.camera_control_client import CameraControlClient
 from laser_control.laser_control_client import LaserControlClient
 from runner_cutter_control.calibration import Calibration
-from runner_cutter_control.tracker import Tracker, TrackState
+from runner_cutter_control.tracker import Track, Tracker, TrackState
 from runner_cutter_control_interfaces.msg import State
 from runner_cutter_control_interfaces.srv import (
     AddCalibrationPoints,
@@ -138,7 +138,7 @@ class RunnerCutterControlNode(Node):
         self.state_machine_thread = StateMachineThread(self.state_machine, self.logger)
         self.state_machine_thread.start()
 
-    def get_state(self):
+    def get_state(self) -> State:
         return State(
             calibrated=self.state_machine.is_calibrated, state=self.state_machine.state
         )
@@ -154,14 +154,19 @@ class RunnerCutterControlNode(Node):
 
     def _add_calibration_points_callback(self, request, response):
         if self.state_machine.state == "idle":
-            camera_pixels = [(pixel.x, pixel.y) for pixel in request.camera_pixels]
+            camera_pixels = [
+                (round(pixel.x), round(pixel.y)) for pixel in request.camera_pixels
+            ]
             self.state_machine_thread.queue("run_add_calibration_points", camera_pixels)
             response.success = True
         return response
 
     def _manual_target_aim_laser_callback(self, request, response):
         if self.state_machine.state == "idle":
-            camera_pixel = (request.camera_pixel.x, request.camera_pixel.y)
+            camera_pixel = (
+                round(request.camera_pixel.x),
+                round(request.camera_pixel.y),
+            )
             self.state_machine_thread.queue("run_manual_target_aim_laser", camera_pixel)
             response.success = True
         return response
@@ -197,14 +202,14 @@ class StateMachine:
 
     def __init__(
         self,
-        node,
-        laser_client,
-        camera_client,
-        calibration,
-        runner_tracker,
-        tracking_laser_color,
-        burn_laser_color,
-        burn_time_secs,
+        node: RunnerCutterControlNode,
+        laser_client: LaserControlClient,
+        camera_client: CameraControlClient,
+        calibration: Calibration,
+        runner_tracker: Tracker,
+        tracking_laser_color: Tuple[float, float, float],
+        burn_laser_color: Tuple[float, float, float],
+        burn_time_secs: float,
         logger,
     ):
         self.node = node
@@ -216,8 +221,6 @@ class StateMachine:
         self.burn_laser_color = burn_laser_color
         self.burn_time_secs = burn_time_secs
         self.logger = logger
-
-        self.calibrated = False
 
         self.machine = AsyncMachine(
             model=self, states=StateMachine.states, initial="idle", queued=False
@@ -256,7 +259,7 @@ class StateMachine:
 
     @property
     def is_calibrated(self):
-        return self.calibrated
+        return self.calibration.is_calibrated
 
     async def on_enter_idle(self):
         self.node.publish_state()
@@ -267,12 +270,12 @@ class StateMachine:
 
     async def on_enter_calibration(self):
         self.node.publish_state()
-        self.calibrated = False
         await self.calibration.calibrate()
-        self.calibrated = True
         await self.calibration_complete()
 
-    async def on_enter_add_calibration_points(self, camera_pixels):
+    async def on_enter_add_calibration_points(
+        self, camera_pixels: List[Tuple[int, int]]
+    ):
         self.node.publish_state()
         # For each camera pixel, find the 3D position wrt the camera
         positions = await self.camera_client.get_positions_for_pixels(camera_pixels)
@@ -288,7 +291,7 @@ class StateMachine:
         )
         await self.add_calibration_points_complete()
 
-    async def on_enter_manual_target_aim_laser(self, camera_pixel):
+    async def on_enter_manual_target_aim_laser(self, camera_pixel: Tuple[int, int]):
         self.node.publish_state()
         # Find the 3D position wrt the camera
         positions = await self.camera_client.get_positions_for_pixels([camera_pixel])
@@ -332,7 +335,7 @@ class StateMachine:
             self.logger.info("No pending targets found.")
             await self.no_target_found()
 
-    async def on_enter_aim_laser(self, target):
+    async def on_enter_aim_laser(self, target: Track):
         self.node.publish_state()
 
         corrected_laser_coord = await self._aim(target.position, target.pixel)
@@ -343,7 +346,9 @@ class StateMachine:
             target.state = TrackState.FAILED
             await self.aim_failed()
 
-    async def _aim(self, target_position, target_pixel):
+    async def _aim(
+        self, target_position: Tuple[float, float, float], target_pixel: Tuple[int, int]
+    ) -> Optional[Tuple[float, float]]:
         # TODO: set exposure automatically when detecting laser
         await self.camera_client.set_exposure(1.0)
         initial_laser_coord = self.calibration.camera_point_to_laser_coord(
@@ -359,7 +364,9 @@ class StateMachine:
         await self.camera_client.auto_exposure()
         return corrected_laser_coord
 
-    async def _get_laser_pixel_and_pos(self, max_attempts=3):
+    async def _get_laser_pixel_and_pos(
+        self, max_attempts: int = 3
+    ) -> Tuple[Optional[Tuple[float, float]], Optional[Tuple[float, float, float]]]:
         attempt = 0
         while attempt < max_attempts:
             detection_result = await self.camera_client.get_lasers()
@@ -377,10 +384,10 @@ class StateMachine:
 
     async def _correct_laser(
         self,
-        target_pixel,
-        original_laser_coord,
-        dist_threshold=2.5,
-    ):
+        target_pixel: Tuple[int, int],
+        original_laser_coord: Tuple[float, float],
+        dist_threshold: float = 2.5,
+    ) -> Optional[Tuple[float, float]]:
         current_laser_coord = original_laser_coord
 
         while True:
@@ -388,7 +395,7 @@ class StateMachine:
             # Wait for galvo to settle and for camera frame capture
             await asyncio.sleep(0.1)
             laser_pixel, laser_pos = await self._get_laser_pixel_and_pos()
-            if laser_pixel is None:
+            if laser_pixel is None or laser_pos is None:
                 self.logger.info("Could not detect laser.")
                 return None
 
@@ -430,7 +437,9 @@ class StateMachine:
 
                 current_laser_coord = new_laser_coord
 
-    async def on_enter_burn_target(self, target, laser_coord):
+    async def on_enter_burn_target(
+        self, target: Track, laser_coord: Tuple[float, float]
+    ):
         self.node.publish_state()
 
         await self.laser_client.start_laser(

@@ -2,29 +2,49 @@ import asyncio
 import functools
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from typing import List, Optional, Tuple
 
 import numpy as np
 from scipy.optimize import least_squares, minimize
 
+from camera_control.camera_control_client import CameraControlClient
+from laser_control.laser_control_client import LaserControlClient
+
 
 class Calibration:
-    def __init__(self, laser_client, camera_client, laser_color, logger=None):
-        self.laser_client = laser_client
-        self.camera_client = camera_client
-        self.laser_color = laser_color
-        if logger:
-            self.logger = logger
-        else:
-            self.logger = logging.getLogger(__name__)
-            self.logger.setLevel(logging.INFO)
+    is_calibrated: bool
+    camera_to_laser_transform: np.ndarray
+    camera_frame_size: Tuple[int, int]
 
-        self.calibration_laser_coords = []
-        self.calibration_camera_points = []
+    def __init__(
+        self,
+        laser_client: LaserControlClient,
+        camera_client: CameraControlClient,
+        laser_color: Tuple[float, float, float],
+        logger: Optional[logging.Logger] = None,
+    ):
+        self._laser_client = laser_client
+        self._camera_client = camera_client
+        self._laser_color = laser_color
+        if logger:
+            self._logger = logger
+        else:
+            self._logger = logging.getLogger(__name__)
+            self._logger.setLevel(logging.INFO)
+
+        self._calibration_laser_coords = []
+        self._calibration_camera_points = []
         self.is_calibrated = False
         self.camera_to_laser_transform = np.zeros((4, 3))
         self.camera_frame_size = (0, 0)
 
-    async def calibrate(self):
+    def reset(self):
+        self.camera_to_laser_transform = np.zeros((4, 3))
+        self._calibration_laser_coords = []
+        self._calibration_camera_points = []
+        self.is_calibrated = False
+
+    async def calibrate(self) -> bool:
         """
         Use image correspondences to compute the transformation matrix from camera to laser.
         Note that calling this resets the point correspondences.
@@ -33,13 +53,17 @@ class Calibration:
         2. For each laser point, capture an image from the camera
         3. Identify the corresponding point in the camera frame
         4. Compute the transformation matrix from camera to laser
+
+        Returns:
+            bool: Whether calibration was successful or not.
         """
+        self.reset()
 
         # TODO: Depth values are noisy when the laser is on. Figure out how to reduce noise, or
         # use a depth frame obtained when the laser is off
 
         # Get camera color frame size
-        frames = await self.camera_client.get_frame()
+        frames = await self._camera_client.get_frame()
         self.camera_frame_size = (frames.color_frame.width, frames.color_frame.height)
 
         # Get calibration points
@@ -54,115 +78,128 @@ class Calibration:
                 pending_calibration_laser_coords.append((x, y))
 
         # Get image correspondences
-        self.calibration_laser_coords = []
-        self.calibration_camera_points = []
-
         await self.add_calibration_points(pending_calibration_laser_coords)
 
-        self.logger.info(
-            f"{len(self.calibration_laser_coords)} out of {len(pending_calibration_laser_coords)} point correspondences found."
+        self._logger.info(
+            f"{len(self._calibration_laser_coords)} out of {len(pending_calibration_laser_coords)} point correspondences found."
         )
 
-        if len(self.calibration_laser_coords) < 3:
-            self.logger.warning(
+        if len(self._calibration_laser_coords) < 3:
+            self._logger.warning(
                 "Calibration failed: insufficient point correspondences found."
             )
             return False
 
         # Use linear least squares for an initial estimate, then refine using nonlinear least squares
         self._update_transform_linear_least_squares()
-        await self.update_transform_nonlinear_least_squares()
+        await self._update_transform_nonlinear_least_squares()
 
         self.is_calibrated = True
         return True
 
-    async def add_calibration_points(self, laser_coords, update_transform=False):
+    async def add_calibration_points(
+        self, laser_coords: List[Tuple[float, float]], update_transform: bool = False
+    ):
         """
         Find and add additional point correspondences by shooting the laser at each laser_coords
         and then optionally recalculate the transform.
 
         Args:
-            laser_coords: [(x: float, y: float)], laser coordinates to find point correspondences with
-            update_transform: bool, whether to recalculate the camera-space position to laser coord transform
+            laser_coords (List[Tuple[float, float]]): laser coordinates to find point correspondences with
+            update_transform (bool): Whether to recalculate the camera-space position to laser coord transform
         """
 
         # TODO: set exposure on camera node automatically when detecting laser
-        await self.camera_client.set_exposure(1.0)
-        await self.laser_client.set_color((0.0, 0.0, 0.0))
-        await self.laser_client.start_laser()
+        await self._camera_client.set_exposure(1.0)
+        await self._laser_client.set_color((0.0, 0.0, 0.0))
+        await self._laser_client.start_laser()
         for laser_coord in laser_coords:
-            await self.laser_client.set_point(laser_coord)
-            await self.laser_client.set_color(self.laser_color)
+            await self._laser_client.set_point(laser_coord)
+            await self._laser_client.set_color(self._laser_color)
             # Wait for galvo to settle and for camera frame capture
             await asyncio.sleep(0.1)
             camera_point = await self._find_point_correspondence(laser_coord)
             if camera_point is not None:
                 await self.add_point_correspondence(laser_coord, camera_point)
             # We use set_color instead of stop_laser as it is faster to temporarily turn off the laser
-            await self.laser_client.set_color((0.0, 0.0, 0.0))
+            await self._laser_client.set_color((0.0, 0.0, 0.0))
 
-        await self.laser_client.stop_laser()
-        await self.camera_client.auto_exposure()
+        await self._laser_client.stop_laser()
+        await self._camera_client.auto_exposure()
 
         if update_transform:
-            await self.update_transform_nonlinear_least_squares()
+            await self._update_transform_nonlinear_least_squares()
 
-    def camera_point_to_laser_coord(self, camera_point):
+    def camera_point_to_laser_coord(
+        self, position: Tuple[float, float, float]
+    ) -> Tuple[float, float]:
         """
-        Transform a 3D point in camera-space to a laser coord
+        Transform a 3D position in camera-space to a laser coord.
 
         Args:
-            camera_point: [(x: float, y: float, z: float)], a point in camera-space
+            position (Tuple[float, float, float]): A 3D position (x, y, z) in camera-space.
         """
-        if not self.is_calibrated:
-            return None
-
-        homogeneous_camera_point = np.hstack((camera_point, 1))
+        homogeneous_camera_point = np.hstack((position, 1))
         transformed_point = homogeneous_camera_point @ self.camera_to_laser_transform
         transformed_point = transformed_point / transformed_point[2]
-        return transformed_point[:2]
+        return (transformed_point[0], transformed_point[1])
 
-    async def _find_point_correspondence(self, laser_coord, num_attempts=3):
+    async def _find_point_correspondence(
+        self, laser_coord: Tuple[float, float], num_attempts: int = 3
+    ) -> Optional[Tuple[float, float, float]]:
         """
         For the given laser coord, find the corresponding 3D point in camera-space.
 
         Args:
-            laser_coord: [(x: float, y: float)], laser coordinate to find point correspondence for
+            laser_coord (Tuple[float, float]): Laser coordinate (x, y) to find point correspondence for.
+            num_attempts (int): Number of tries to detect the laser and find the point correspondence.
         """
         attempt = 0
         while attempt < num_attempts:
-            self.logger.info(
+            self._logger.info(
                 f"Attempt {attempt} to detect laser and find point correspondence."
             )
             attempt += 1
-            detection_result = await self.camera_client.get_lasers()
+            detection_result = await self._camera_client.get_lasers()
             instances = detection_result["instances"]
             if instances:
                 # TODO: handle case where multiple lasers detected
                 instance = instances[0]
-                self.logger.info(
+                self._logger.info(
                     f"Found point correspondence: laser_coord = {laser_coord}, pixel = {instance['point']}, position = {instance['position']}."
                 )
                 return instance["position"]
             await asyncio.sleep(0.2)
-        self.logger.info(
-            f"Failed to find point. {len(self.calibration_laser_coords)} total correspondences."
+        self._logger.info(
+            f"Failed to find point. {len(self._calibration_laser_coords)} total correspondences."
         )
         return None
 
     async def add_point_correspondence(
-        self, laser_coord, camera_point, update_transform=False
+        self,
+        laser_coord: Tuple[float, float],
+        camera_point: Tuple[float, float, float],
+        update_transform: bool = False,
     ):
-        self.calibration_laser_coords.append(laser_coord)
-        self.calibration_camera_points.append(camera_point)
-        self.logger.info(
-            f"Added point correspondence. {len(self.calibration_laser_coords)} total correspondences."
+        """
+        Add the point correspondence between laser coord and camera-space position and optionally
+        update the transform.
+
+        Args:
+            laser_coord (Tuple[float, float]): Laser coordinate (x, y) of the point correspondence.
+            camera_point (Tuple[float, float, float]): Camera-space position (x, y, z) of the point correspondence.
+            update_transform (bool): Whether to update the transform matrix or not.
+        """
+        self._calibration_laser_coords.append(laser_coord)
+        self._calibration_camera_points.append(camera_point)
+        self._logger.info(
+            f"Added point correspondence. {len(self._calibration_laser_coords)} total correspondences."
         )
 
         if update_transform:
-            await self.update_transform_bundle_adjustment()
+            await self._update_transform_nonlinear_least_squares()
 
-    async def update_transform_nonlinear_least_squares(self):
+    async def _update_transform_nonlinear_least_squares(self):
         def residuals(parameters, camera_points, laser_coords):
             homogeneous_camera_points = np.hstack(
                 (camera_points, np.ones((camera_points.shape[0], 1)))
@@ -174,8 +211,8 @@ class Calibration:
             )
             return (homogeneous_transformed_points[:, :2] - laser_coords).flatten()
 
-        camera_points = np.array(self.calibration_camera_points)
-        laser_coords = np.array(self.calibration_laser_coords)
+        camera_points = np.array(self._calibration_camera_points)
+        laser_coords = np.array(self._calibration_laser_coords)
 
         with ThreadPoolExecutor() as executor:
             result = await asyncio.get_event_loop().run_in_executor(
@@ -191,14 +228,14 @@ class Calibration:
 
         self.camera_to_laser_transform = result.x.reshape((4, 3))
 
-        self.logger.info(
+        self._logger.info(
             "Updated camera to laser transform using nonlinear least squares"
         )
         self._get_reprojection_error(
             camera_points, laser_coords, self.camera_to_laser_transform
         )
 
-    async def update_transform_bundle_adjustment(self):
+    async def _update_transform_bundle_adjustment(self):
         def cost_function(parameters, camera_points, laser_coords):
             homogeneous_camera_points = np.hstack(
                 (camera_points, np.ones((camera_points.shape[0], 1)))
@@ -213,8 +250,8 @@ class Calibration:
             )
             return np.mean(errors)
 
-        camera_points = np.array(self.calibration_camera_points)
-        laser_coords = np.array(self.calibration_laser_coords)
+        camera_points = np.array(self._calibration_camera_points)
+        laser_coords = np.array(self._calibration_laser_coords)
 
         with ThreadPoolExecutor() as executor:
             result = await asyncio.get_event_loop().run_in_executor(
@@ -230,14 +267,14 @@ class Calibration:
 
         self.camera_to_laser_transform = result.x.reshape((4, 3))
 
-        self.logger.info("Updated camera to laser transform using bundle adjustment")
+        self._logger.info("Updated camera to laser transform using bundle adjustment")
         self._get_reprojection_error(
             camera_points, laser_coords, self.camera_to_laser_transform
         )
 
     def _update_transform_linear_least_squares(self):
-        camera_points = np.array(self.calibration_camera_points)
-        laser_coords = np.array(self.calibration_laser_coords)
+        camera_points = np.array(self._calibration_camera_points)
+        laser_coords = np.array(self._calibration_laser_coords)
         homogeneous_laser_coords = np.hstack(
             (laser_coords, np.ones((laser_coords.shape[0], 1)))
         )
@@ -250,18 +287,20 @@ class Calibration:
             rcond=None,
         )[0]
 
-        self.logger.info("Updated camera to laser transform using linear least squares")
+        self._logger.info(
+            "Updated camera to laser transform using linear least squares"
+        )
         self._get_reprojection_error(
             camera_points, laser_coords, self.camera_to_laser_transform
         )
 
     def _get_reprojection_error(
         self,
-        camera_points,
-        laser_coords,
-        camera_to_laser_transform,
-    ):
-        self.logger.info(f"Laser coords:\n{laser_coords}")
+        camera_points: np.ndarray,
+        laser_coords: np.ndarray,
+        camera_to_laser_transform: np.ndarray,
+    ) -> float:
+        self._logger.info(f"Laser coords:\n{laser_coords}")
         homogeneous_camera_points = np.hstack(
             (camera_points, np.ones((camera_points.shape[0], 1)))
         )
@@ -271,7 +310,7 @@ class Calibration:
         homogeneous_transformed_points = (
             transformed_points[:, :2] / transformed_points[:, 2][:, np.newaxis]
         )
-        self.logger.info(
+        self._logger.info(
             f"Laser coords calculated using transform:\n{homogeneous_transformed_points[:, :2]}"
         )
         reprojection_error = np.mean(
@@ -282,5 +321,5 @@ class Calibration:
                 )
             )
         )
-        self.logger.info(f"Mean reprojection error: {reprojection_error}")
+        self._logger.info(f"Mean reprojection error: {reprojection_error}")
         return reprojection_error
