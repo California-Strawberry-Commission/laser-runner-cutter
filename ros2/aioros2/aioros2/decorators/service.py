@@ -6,15 +6,14 @@ from ._decorators import RosDefinition, idl_to_kwargs
 
 
 class RosService(RosDefinition):
-    def __init__(self, namespace, idl, handler):
+    def __init__(self, path, idl, handler):
         if not hasattr(idl, "Request"):
             raise TypeError("Passed object is not a service-compatible IDL object! Make sure it isn't a topic or action IDL.")
         
         self._check_service_handler_signature(handler, idl)
-        self.namespace = namespace
+        self.path = path
         self.idl = idl
-        self.service_handler = handler
-        self._loop = asyncio.get_event_loop()
+        self.handler = handler
 
     def _check_service_handler_signature(self, fn, srv):
         fn_name = fn.__name__
@@ -34,10 +33,6 @@ class RosService(RosDefinition):
                 f"Handler: {fn_name} -> \t{fn_params if len(fn_params) else 'NO ARGUMENTS'}\n"
                 f"    IDL: {fn_name} -> \t{idl_params}"
             )
-
-    def call_handler_sync(self, handler_self, req, loop):
-        kwargs = idl_to_kwargs(req)
-        return asyncio.run_coroutine_threadsafe(self.service_handler(handler_self, **kwargs), loop=loop).result()
 
 def service(namespace, srv_idl):
     def _service(fn):

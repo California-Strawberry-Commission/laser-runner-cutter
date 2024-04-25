@@ -1,5 +1,7 @@
 import asyncio
 import dataclasses
+import functools
+import traceback
 import rclpy
 
 from .decorators.deferrable_accessor import DeferrableAccessor
@@ -17,18 +19,27 @@ class AsyncDriver:
     """Base class for all adapters"""
     
     def __init__(self, async_node, logger):
-        self.log = logger
+        self._logger = logger
         self._n = async_node
         
         # self._n.params = self._attach_params_dataclass(self._n.params)
         self._loop = asyncio.get_running_loop()
 
-    # def __getattr__(self, attr):
-    #     """Lookup unknown attrs on node definition. Effectively extends node def"""
-    #     try:
-    #         return getattr(self._n, attr)
-    #     except AttributeError:
-    #         raise AttributeError(f"Attribute >{attr}< was not found in either [{type(self).__qualname__}] or [{type(self._n).__name__}]")
+    async def run_executor(self, fn, *args, **kwargs):
+        """Runs a synchronous function in an executor"""
+        return await self._loop.run_in_executor(None, fn, *args, **kwargs)
+
+    def run_coroutine(self, fn, *args, **kwargs):
+        """Runs asyncio code from ANOTHER SYNC THREAD"""
+        async def _wrap_coro(coro):
+            try:
+                return await coro
+            except Exception:
+                self.error(traceback.format_exc())
+
+        # https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.call_soon_threadsafe
+        return asyncio.run_coroutine_threadsafe(_wrap_coro(fn(*args, **kwargs)), self._loop)
+    
 
 
     def _get_ros_definitions(self):
@@ -50,6 +61,18 @@ class AsyncDriver:
 
         return a
     
+    def debug(self, msg: str):
+        self._logger.info(msg)
+
+    def warn(self, msg: str):
+        self._logger.warn(msg)
+
+    def error(self, msg: str):
+        self._logger.error(msg)
+
+    def log(self, msg: str):
+        self._logger.info(msg)
+
     def _attach(self):
         # Attachers create an implementation for the passed handler which is assigned
         # to that handler's name.
@@ -69,7 +92,7 @@ class AsyncDriver:
             setattr(self, attr, attachers[type(definition)](attr, definition))
             
     def _warn_unimplemented(self, readable_name, fn_name):
-        self.log.warn(f"Failed to initialize >{readable_name}< because >{fn_name}< is not implemented in driver >{self.__class__.__qualname__}<")
+        self._logger.warn(f"Failed to initialize >{readable_name}< because >{fn_name}< is not implemented in driver >{self.__class__.__qualname__}<")
 
     def _process_import(self, attr, d):
         self._warn_unimplemented("import", "_process_import")
@@ -98,6 +121,7 @@ class AsyncDriver:
     def _attach_param_subscription(self, attr, sub):
         self._warn_unimplemented("param subscription", "_attach_param_subscription")
 
+# Maps python types to a ROS parameter integer enum
 dataclass_ros_map = {
     bool: 1,
     int: 2,
@@ -110,6 +134,7 @@ dataclass_ros_map = {
     "list[str]": 9,
 }
 
+# Maps python types to a ROS parameter enum
 dataclass_ros_enum_map = {
     bool: rclpy.Parameter.Type.BOOL,
     int: rclpy.Parameter.Type.INTEGER,
@@ -122,6 +147,8 @@ dataclass_ros_enum_map = {
     "list[str]": rclpy.Parameter.Type.STRING_ARRAY,
 }
 
+# Maps ROS types to a corresponding attribute containing the
+# typed value
 ros_type_getter_map = {
     1: "bool_value",
     2: "integer_value",

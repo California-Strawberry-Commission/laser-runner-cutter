@@ -10,12 +10,12 @@ class RosSubscription(RosDefinition):
 
     def __init__(self, topic: RosTopic, server_handler):
         self.topic = topic
-        self.server_handler = server_handler
+        self.handler = server_handler
 
 
-    def get_topic(self, node_name, node_ns) -> RosTopic:
-        """Returns a fully-qualified topic for this topic under this instance."""
-        fully_qual = expand_topic_name(self.topic.namespace, node_name, node_ns)
+    def get_fqt(self, node_name, node_ns) -> RosTopic:
+        """Returns a fully-qualified topic name for this topic's path under the passed node."""
+        fully_qual = expand_topic_name(self.topic.path, node_name, node_ns)
         return RosTopic(fully_qual, self.topic.idl, self.topic.qos)
     
 

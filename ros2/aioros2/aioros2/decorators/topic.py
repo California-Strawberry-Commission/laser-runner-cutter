@@ -4,7 +4,7 @@ from .deferrable_accessor import DeferrableAccessor
 
 class RosTopic(RosDefinition):
     def __init__(self, namespace, msg_idl, qos) -> None:
-        self.namespace = namespace
+        self.path = namespace
         self.idl = msg_idl
         self.qos = qos
 

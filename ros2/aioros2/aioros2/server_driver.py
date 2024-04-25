@@ -8,6 +8,7 @@ import rclpy.node
 from rclpy.parameter import Parameter
 from rcl_interfaces.msg import SetParametersResult
 from rcl_interfaces.msg import ParameterDescriptor, ParameterEvent, ParameterValue
+import traceback
 
 from .async_driver import (
     AsyncDriver,
@@ -30,14 +31,6 @@ from .decorators.param import RosParam
 from .decorators import idl_to_kwargs
 from .decorators.param_subscription import RosParamSubscription
 
-# ros2 run amiga_control amiga_control_node --ros-args -p amiga_params_port_canbus:=1234 --remap __node:=test_node --remap __ns:=/test
-# ros2 param list
-# ros2 param set /test/test_node amiga_params.host 1234.3
-# ros2 param get /test/test_node amiga_params_host
-
-# ros2 run amiga_control amiga_control_node --ros-args --remap __node:=acn --remap __ns:=/ns1 -p "dependant_node_1.name:=circ" -p "dependant_node_1.ns:=/ns2"
-# ros2 run amiga_control circular_node --ros-args --remap __node:=circ --remap __ns:=/ns2 -p "dependant_node_1.name:=acn" -p "dependant_node_1.ns:=/ns1"
-
 # https://answers.ros.org/question/340600/how-to-get-ros2-parameter-hosted-by-another-node/
 # https://roboticsbackend.com/rclpy-params-tutorial-get-set-ros2-params-with-python/
 # https://roboticsbackend.com/ros2-rclpy-parameter-callback/
@@ -45,8 +38,8 @@ from .decorators.param_subscription import RosParamSubscription
 # https://github.com/mikeferguson/ros2_cookbook/blob/main/rclpy/parameters.md
 # https://github.com/ros2/demos/blob/rolling/demo_nodes_py/demo_nodes_py/parameters/set_parameters_callback.py
 
-
-class Param:
+class ParamDriver:
+    """Manages a single parameter"""
     value = None
     fqpn = None
 
@@ -56,11 +49,10 @@ class Param:
         self.fqpn = fqpn
         self.value = field.default
 
-        self.__field = field
         self.__listeners = []
         self.__ros_type = dataclass_ros_map[field.type]
         self.__ros_enum = dataclass_ros_enum_map[field.type]
-        self.__param_getter = ros_type_getter_map[self.__ros_type]
+        self.__ros_param_getter = ros_type_getter_map[self.__ros_type]
 
     def add_listener(self, listener):
         self.__listeners.append(listener)
@@ -76,33 +68,39 @@ class Param:
             )
 
         # Stage value to set later if all grouped param sets pass
-        self.__staged_value = getattr(pval, self.__param_getter)
+        self.__staged_value = getattr(pval, self.__ros_param_getter)
 
         return SetParametersResult(successful=True)
 
-    def create_ros_parameter_setter(self, value):
+    def to_ros_param(self, value):
+        """Creates a ROS parameter that can be passed to `set_parameters`
+        to eventually update this parameter with the passed value"""
         return Parameter(self.fqpn, self.__ros_enum, value)
 
     def commit(self):
-        # TODO: Call listeners!
+        """Commits the currently staged value"""
         self.value = self.__staged_value
 
     def get_listeners(self):
         return self.__listeners
 
-    def declare(self, ros_node):
-        ros_node.log.info(f"Declare parameter >{self.fqpn}<")
+    def declare(self, ros_node: "ServerDriver"):
+        """Declares this parameter on the passed ros node"""
+        ros_node.debug(f"Declare parameter >{self.fqpn}<")
         ros_node.declare_parameter(self.fqpn, self.value)
 
 
-class ParamsWrapper:
-    def __init__(self, params_attr, param_class, server_driver):
+class ParamsDriver:
+    """Manages a parameter dataclass"""
+    def __init__(self, params_attr, param_class, server_driver: "ServerDriver"):
         self.__params_attr = params_attr
         self.__param_class = param_class
         self.__driver = server_driver
+        
+        # Stores parameter drivers by their fqpn (Fully Qualified Parameter Name)
         self.__params = {}
 
-        self.__driver.log.info("Create parameter wrapper")
+        self.__driver.debug("Create parameter wrapper")
 
         # declare dataclass fields
         for f in dataclasses.fields(self.__param_class):
@@ -112,83 +110,89 @@ class ParamsWrapper:
                 )
 
             fqpn = self.__fqpn(f.name)
-            param = self.__params[fqpn] = Param(f, fqpn)
+            param = self.__params[fqpn] = ParamDriver(f, fqpn)
 
             if isinstance(f.default, RosParam):
-                ## TODO: declare
+                ## TODO: declare to allow descriptors
                 continue
 
             param.declare(self.__driver)
 
-        # Note: In later versions than foxy, this could be handled using
-        # self.__ros_node.add_post_set_parameters_callback
-        # https://docs.ros.org/en/rolling/Concepts/Basic/About-Parameters.html#
-
+        # Add a callback for when any param is changed to handle local updates
         self.__driver.add_on_set_parameters_callback(self.__parameters_callback)
-
+    
     def __parameters_callback(self, params):
-        # Filter and pair incoming parameters to parameters this
-        # class manages
+        """Handles incoming parameter changes on this node"""
+        # Filter and pair incoming parameters to only parameters this class manages
+        # ros_parameter, parameter_driver
         own_param_pairs = [
             (p, self.__params[p.name]) for p in params if p.name in self.__params
         ]
 
         # Stage new values
-        for in_param, param in own_param_pairs:
-            res = param.stage_param(in_param)
+        for in_param, param_driver in own_param_pairs:
+            res = param_driver.stage_param(in_param)
 
             if not res.successful:
                 return res
 
         # If all stages were successful, commit values
-        for _, param in own_param_pairs:
-            param.commit()
+        for _, param_driver in own_param_pairs:
+            param_driver.commit()
 
-        # Once all values have been commited, run any listeners
+        # Once all values have been commited, run listeners
         all_listeners = [l for _, p in own_param_pairs for l in p.get_listeners()]
-        print(all_listeners)
 
+        # Remove duplicate listener calls while preserving order
         # https://stackoverflow.com/questions/480214/how-do-i-remove-duplicates-from-a-list-while-preserving-order
         seen = set()
         seen_add = seen.add
         unique_listeners = [x for x in all_listeners if not (x in seen or seen_add(x))]
 
-        asyncio.run_coroutine_threadsafe(
-            self.__call_listeners(unique_listeners), loop=self.__driver._loop
-        )
+        # Run unique listeners
+        self.__driver.run_coroutine(self.__call_listeners, unique_listeners)
 
         return SetParametersResult(successful=True)
     
     async def __call_listeners(self, unique_listeners):
         for l in unique_listeners:
             await l(self.__driver)
-
-    def add_change_listener(self, param_name, listener):
+    
+    def get_param(self, param_name) -> ParamDriver:
         fqpn = self.__fqpn(param_name)
-        param = self.__params[fqpn]
-        param.add_listener(listener)
+        return self.get_param_fqpn(fqpn)
+
+    def has_param(self, param_name):
+        fqpn = self.__fqpn(param_name)
+        return self.has_param_fqpn(fqpn)
+    
+    def get_param_fqpn(self, fqpn):
+        return self.__params[fqpn]
+    
+    def has_param_fqpn(self, fqpn):
+        return fqpn in self.__params
+    
+    def add_change_listener(self, param_name, listener):
+        """Adds a listener function to the specified parameter"""
+        self.get_param(param_name).add_listener(listener)
 
     async def set(self, **kwargs):
+        """Sets parameters. Takes many kwargs in the form `parameter_name=new_value` and executes a ROS mutation.
+        Parameters are changed atomically in the same call, not once at a time"""
         updated_params = []
 
-        for k in kwargs:
-            fqpn = self.__fqpn(k)
-
-            if not fqpn in self.__params:
-                self.__driver.log.warn(f">{k}< is not a valid parameter name.")
+        for param_name in kwargs:
+            new_value = kwargs[param_name]
+            if not self.has_param(param_name):
+                self.__driver.warn(f">{param_name}< is not a valid parameter name.")
                 continue
 
-            param = self.__params[fqpn]
+            param = self.get_param(param_name)
 
-            updated_params.append(param.create_ros_parameter_setter(kwargs[k]))
+            updated_params.append(param.to_ros_param(new_value))
 
         # Push updates through ROS
-        try:
-            await self.__driver._loop.run_in_executor(
-                None, self.__driver.set_parameters, updated_params
-            )
-        except Exception as e:
-            print("ERROR SETTING", e)
+        await self.__driver.run_executor(self.__driver.set_parameters, updated_params)
 
     def __fqpn(self, field_name):
         """Get Fully Qualified Parameter Name - prefixes dclass param names with the instance attribute name to allow
@@ -206,18 +210,12 @@ class ServerDriver(AsyncDriver, Node):
         Node.__init__(self, self.__class__.__name__)
         AsyncDriver.__init__(self, async_node, self.get_logger())
 
-        self.log = self.get_logger()
-
-        # Get ros-asyncio decorated functions to bind.
-        for handler in self._get_ros_definitions():
-            print(handler)
-
         self._attach()
 
     def _process_import(self, attr, imp: RosImport):
         from .client_driver import ClientDriver
 
-        self.log.info("[SERVER] Resolving import")
+        self.debug("[SERVER] Resolving import")
 
         # TODO: extract naming logic somewhere else. This is duplicated
         # in launch_driver._process_imports
@@ -240,61 +238,54 @@ class ServerDriver(AsyncDriver, Node):
         )
 
         if node_name == attr:
-            self.log.warn(
+            self.warn(
                 f"Node name for import >{attr}< was not set at "
                 f">{node_name_param_name}<. Using default name: >{attr}<"
             )
 
         if node_ns == "/":
-            self.log.warn(
+            self.warn(
                 f"Node namespace for import >{attr}< was not set at "
                 f">{node_namespace_param_name}<. Using default namespace: >/<"
             )
 
         return ClientDriver(imp, self, node_name, node_ns)
 
-    def _attach_service(self, attr, srv_def: RosService):
-        self.log.info(f"[SERVER] Attach service @ >{srv_def.namespace}<")
+    def _attach_service(self, attr, s: RosService):
+        """Attaches a service"""
+        self.debug(f"[SERVER] Attach service >{attr}< @ >{s.path}<")
 
+        # Will be called from MultiThreadedExecutor 
         def cb(req, res):
-            print(f"SERVICE HANDLER {srv_def.namespace} START", req)
+            # Call handler function
+            kwargs = idl_to_kwargs(req)
+            result = self.run_coroutine(s.handler, self, **kwargs).result()
+        
+            if isinstance(result, Result):
+                result = s.idl.Response(*result.args, **result.kwargs)
 
-            result = srv_def.call_handler_sync(self, req, self._loop)
-
-            # Prevent ROS hang if return value is invalid
-            if not isinstance(result, Result):
-                self.log.warn(
-                    f"Service handler @ >{srv_def.namespace}< did not return `result(...)`. "
-                    "Expected Result, got {result}"
+            else: # Prevent ROS hang if return value is invalid by returning default
+                self._logger.warn(
+                    f"Service handler >{attr}< @ >{s.path}< did not return `result(...)`. "
+                    f"Expected Result, got {result}"
                 )
                 result = res
-            else:
-                result = srv_def.idl.Response(*result.args, **result.kwargs)
-
-            print(f"SERVICE HANDLER {srv_def.namespace} FINISH", result)
-
+                
             return result
 
-        self.create_service(srv_def.idl, srv_def.namespace, cb)
+        self.create_service(s.idl, s.path, cb)
 
     def _attach_action(self, attr, d: RosAction):
-        self.log.info(f"[SERVER] Attach action >{attr}<")
+        self.debug(f"[SERVER] Attach action >{attr}<")
 
         def cb(goal):
-            print(f"ACTION HANDLER @ {d.namespace} START", goal)
-
             kwargs = idl_to_kwargs(goal.request)
-            gen = d.sever_handler(self, **kwargs)
+            gen = d.handler(self, **kwargs)
 
             result: Feedback | Result = None
             while True:
                 try:
-                    result = asyncio.run_coroutine_threadsafe(
-                        gen.__anext__(),
-                        loop=self._loop,
-                    ).result()
-
-                    print(f"ACTION HANDLER @ {d.namespace} FEEDBACK", result)
+                    result = self.run_coroutine(gen.__anext__()).result()
 
                     if isinstance(result, Feedback):
                         fb = d.idl.Feedback(*result.args, **result.kwargs)
@@ -305,75 +296,73 @@ class ServerDriver(AsyncDriver, Node):
                         break
 
                     else:
-                        self.log.error("YIELDED NON-FEEDBACK, NON-RESULT VALUE")
+                        self.error("YIELDED NON-FEEDBACK, NON-RESULT VALUE")
 
                 except StopAsyncIteration:
-                    self.log.warn(f"Action >{attr}< returned before yielding `result`")
+                    self.warn(f"Action >{attr}< returned before yielding `result`")
                     break
 
-            if not isinstance(result, Result):
-                self.log.warn(
+            if isinstance(result, Result):
+                result = d.idl.Result(*result.args, **result.kwargs)
+            else:
+                self.warn(
                     f"Action >{attr}< did not yield `result(...)`. "
                     f"Expected >{d.idl.Result}<, got >{result}<. Aborting action."
                 )
                 result = d.idl.Result()
-            else:
-                result = d.idl.Result(*result.args, **result.kwargs)
 
-            print(f"ACTION HANDLER @ {d.namespace} FINISH", result)
+            print(f"ACTION HANDLER @ {d.path} FINISH", result)
             return result
 
         setattr(
             self,
-            f"__{d.sever_handler.__name__}",
-            ActionServer(self, d.idl, d.namespace, cb),
+            f"__{d.handler.__name__}",
+            ActionServer(self, d.idl, d.path, cb),
         )
 
-    def _attach_subscriber(self, attr, sub: RosSubscription):
-        topic = sub.get_topic(self.get_name(), self.get_namespace())
+        return d.handler
 
-        self.log.info(f"[SERVER] Attach subscriber >{attr}<")
-        # print(topic, topic.idl, topic.namespace, topic.qos)
+    def _attach_subscriber(self, attr, sub: RosSubscription):
+        fqt = sub.get_fqt(self.get_name(), self.get_namespace())
+
+        self.debug(f"[SERVER] Attach subscriber >{attr}<")
 
         def cb(msg):
-            print(f"SUBSCRIPTION HANDLER {topic.namespace} START", msg)
-
             kwargs = idl_to_kwargs(msg)
+            self.run_coroutine(sub.handler, self, **kwargs)
 
-            asyncio.run_coroutine_threadsafe(
-                sub.server_handler(self, **kwargs), loop=self._loop
-            ).result()
-
-        self.create_subscription(topic.idl, topic.namespace, cb, topic.qos)
+        self.create_subscription(fqt.idl, fqt.path, cb, fqt.qos)
 
     def _attach_publisher(self, attr, topic_def: RosTopic):
-        self.log.info(f"Attach publisher @ >{topic_def.namespace}<")
+        self.debug(f"Attach publisher {attr} @ >{topic_def.path}<")
 
-        pub = self.create_publisher(topic_def.idl, topic_def.namespace, topic_def.qos)
+        pub = self.create_publisher(topic_def.idl, topic_def.path, topic_def.qos)
 
         async def _dispatch_pub(*args, **kwargs):
             msg = topic_def.idl(*args, **kwargs)
-            await self._loop.run_in_executor(None, pub.publish, msg)
+            await self.run_executor(pub.publish, msg)
 
         return _dispatch_pub
 
     # TODO: Better error handling.
     # ATM raised errors are completely hidden
     def _attach_timer(self, attr, t: RosTimer):
-        self.log.info(f"Attach timer >{attr}<")
+        self.debug(f"Attach timer >{attr}<")
 
         def _cb():
-            asyncio.run_coroutine_threadsafe(t.server_handler(self), self._loop)
+            try:
+                self.run_coroutine(t.server_handler, self)
+            except Exception:
+                self.error(traceback.format_exc())
 
         self.create_timer(t.interval, _cb)
         return t.server_handler
 
     def _attach_params(self, attr, p: RosParams):
-        self.log.info(f"Attach params >{attr}<")
-        return ParamsWrapper(attr, p.params_class, self)
+        self.debug(f"Attach params >{attr}<")
+        return ParamsDriver(attr, p.params_class, self)
 
     def _attach_param_subscription(self, attr, p: RosParamSubscription):
-        print(p.references, p.handler)
         # For each reference, find its definition's corrosponding attribute name
         # so that we can reference its instantiated version through getattr.
         for ref in p.references:
@@ -387,7 +376,7 @@ class ServerDriver(AsyncDriver, Node):
                 raise AttributeError("NOT FOUND")
 
             # Add a listener to the corrosponding ParamsWrapper, param
-            params_wrapper: ParamsWrapper = getattr(self, attr)
+            params_wrapper: ParamsDriver = getattr(self, attr)
             params_wrapper.add_change_listener(ref.param_name, p.handler)
 
         # Allow handling function to be directly called

@@ -8,7 +8,7 @@ from rclpy.action import ActionClient
 from queue import Empty, SimpleQueue
 
 from rclpy.action.client import ClientGoalHandle
-
+import server_driver
 from .decorators.deferrable_accessor import DeferrableAccessor
 from .decorators import RosDefinition
 from .decorators.service import RosService
@@ -58,7 +58,7 @@ class ClientDriver(AsyncDriver):
     def __init__(self, node_def, server_node, node_name, node_namespace):
 
     
-        self._node = server_node
+        self._node: "server_driver.ServerDriver" = server_node
         self._node_name = node_name
         self._node_namespace = node_namespace
 
@@ -68,6 +68,7 @@ class ClientDriver(AsyncDriver):
         self._attach()
 
     def _get_logger_name(self):
+        """Returns a pretty name for this client's logger"""
         if self._node_namespace == "/":
             return f"{self._node_name}-client"
         else:
@@ -75,14 +76,14 @@ class ClientDriver(AsyncDriver):
             return f"{ns}.{self._node_name}-client"
 
     def _process_import(self, attr, imp: RosImport):
-        self.log.info("[CLIENT] Process import")
+        self.debug("[CLIENT] Process import")
         # DON'T create a client from a client.
         # Resolve import to raw node definition
+        # TODO: Change this to properly resolve 2nd order imports
         return imp.resolve()
 
     def _attach_publisher(self, attr, d):
         # Don't create topic publisher on clients, but keep definition populated
-        # on attr
         return d
     
     def _attach_timer(self, attr, d):
@@ -90,32 +91,31 @@ class ClientDriver(AsyncDriver):
         return None
     
     def _attach_subscriber(self, attr, sub: RosSubscription):
-        topic = sub.get_topic(self._node_name, self._node_namespace)
-        # print(topic.idl, topic.namespace, topic.qos)
+        # TODO: This doesn't work as expected for 2nd order imports
+        topic = sub.get_fqt(self._node_name, self._node_namespace)
 
         # Creates a publisher for this channel
-        self.log.info(f"Attach subscriber publisher @ >{topic.namespace}<")
+        self.debug(f"Attach subscriber publisher @ >{topic.path}<")
 
-        pub = self._node.create_publisher(topic.idl, topic.namespace, topic.qos)
+        pub = self._node.create_publisher(topic.idl, topic.path, topic.qos)
 
         async def _dispatch_pub(*args, **kwargs):
             msg = topic.idl(*args, **kwargs)
-            await self._node._loop.run_in_executor(None, pub.publish, msg)
+            await self._node.run_executor(pub.publish, msg)
             
         return _dispatch_pub
 
     def _attach_action(self, attr, a: RosAction):
-
         def _impl(*args, **kwargs):
             goal = a.idl.Goal(*args, **kwargs)
-            generator = self._dispatch_action_req(_impl, goal)
+            generator = self._dispatch_action_req(_impl._ros_client, goal)
             return AsyncActionClient(generator, self._node._loop, a.idl)
 
-        _impl._ros_client = ActionClient(self._node, a.idl, a.namespace)
+        _impl._ros_client = ActionClient(self._node, a.idl, a.path)
         return _impl
 
     # TODO: Gracefully handle action rejections
-    def _dispatch_action_req(self, impl, request):
+    def _dispatch_action_req(self, client, request):
         """Dispatches a ROS action request and yields feedback as it is received
         side note: wow is the ROS api for this horrible or what???
         """
@@ -125,32 +125,28 @@ class ClientDriver(AsyncDriver):
         feedback_queue = SimpleQueue()
         result = None
 
-        cli = impl._ros_client
-
         # Wait for desired service to become available
-        if not impl._ros_client.wait_for_server(timeout_sec=2.0):
-            self.log.error("Action server not available")
+        if not client.wait_for_server(timeout_sec=2.0):
+            self._logger.error("Action server not available")
             return None
 
         # Create method-local hooks for callbacks
         def on_feedback(fb):
             nonlocal feedback_queue
             feedback_queue.put(fb)
-            # print("FEEDBACK", fb)
 
         def on_result(future):
             nonlocal action_complete, result
             result = future.result().result
-            # print("DONE", result)
             action_complete = True
 
-        def on_action_response(future):
+        def on_initial_action_response(future):
             """Entrypoint for initial action response"""
             nonlocal action_complete
 
             goal_handle = future.result()
             if not goal_handle.accepted:
-                self.log.warn("Goal rejected")
+                self.warn("Goal rejected")
                 action_complete = True
                 return
 
@@ -159,8 +155,8 @@ class ClientDriver(AsyncDriver):
             self._get_result_future.add_done_callback(on_result)
 
         # Request action w/ goal
-        fut = cli.send_goal_async(request, feedback_callback=on_feedback)
-        fut.add_done_callback(on_action_response)
+        fut = client.send_goal_async(request, feedback_callback=on_feedback)
+        fut.add_done_callback(on_initial_action_response)
 
         # Spin to win
         while not action_complete:
@@ -182,36 +178,19 @@ class ClientDriver(AsyncDriver):
                 None, self._dispatch_service_req, _impl, req
             )
 
-        _impl._ros_client = self._node.create_client(s.idl, s.namespace)
+        _impl._ros_client = self._node.create_client(s.idl, s.path)
         return _impl
 
     def _dispatch_service_req(self, impl, request):
         cli = impl._ros_client
 
         if not impl._ros_client.wait_for_service(timeout_sec=2.0):
-            self.log.error("Service not available")
+            self._logger.error("Service not available")
             return None
 
         fut = cli.call_async(request)
         rclpy.spin_until_future_complete(self, fut)
         return fut.result()
-
-    def _create_subscriber_publisher_impl(self, handler):
-        self.log.info(f"Attach Subscriber publisher >{handler._ros_namespace}<")
-
-        idl = handler._ros_idl
-        namespace = handler._ros_namespace
-        qos = handler._ros_qos
-
-        # print(idl, namespace, qos)
-
-        pub = self._node.create_publisher(idl, namespace, qos)
-
-        def _dispatch(*args, **kwargs):
-            msg = idl(*args, **kwargs)
-            pub.publish(msg)
-
-        setattr(self, handler.__name__, _dispatch)
 
     # Resolves a path into a fully resolved path based on this client's
     # fully qualified node path
