@@ -1,19 +1,22 @@
 import os
 import time
 from datetime import datetime
+from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
+import numpy.typing as npt
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from cv_bridge import CvBridge
 from ml_utils.mask_center import contour_center
 from rclpy.node import Node
 from runner_segmentation.yolo import Yolo
-from sensor_msgs.msg import CompressedImage
+from sensor_msgs.msg import CompressedImage, Image
 from std_srvs.srv import Trigger
 
 from camera_control.camera.realsense import RealSense
+from camera_control.camera.rgbd_frame import RGBDFrame
 from camera_control_interfaces.msg import DetectionResult, ObjectInstance, State
 from camera_control_interfaces.srv import (
     GetDetectionResult,
@@ -146,7 +149,7 @@ class CameraControlNode(Node):
 
         # Camera
 
-        self.curr_frames = None
+        self.curr_frame = None
         self.camera = RealSense(
             self.rgb_size,
             self.depth_size,
@@ -170,7 +173,7 @@ class CameraControlNode(Node):
         self.laser_detection_model = Yolo(laser_weights_path)
         self.laser_detection_size = (640, 480)
 
-    def get_state(self):
+    def get_state(self) -> State:
         state = State()
         state.connected = self.camera is not None
         state.laser_detection_enabled = self.laser_detection_enabled
@@ -179,45 +182,46 @@ class CameraControlNode(Node):
         return state
 
     def _frame_callback(self):
-        frames = self.camera.get_frames()
-        if not frames:
+        frame = self.camera.get_frame()
+        if not frame:
             return
 
-        self.curr_frames = frames
-        color_frame = np.asanyarray(frames["color"].get_data())
-        debug_frame = np.copy(color_frame)
-        depth_frame = np.asanyarray(frames["depth"].get_data())
-        timestamp_millis = frames["timestamp"]
+        self.curr_frame = frame
+        debug_frame = np.copy(frame.color_frame)
 
         self.color_frame_pub.publish(
-            self._get_color_frame_compressed_msg(color_frame, timestamp_millis)
+            self._get_color_frame_compressed_msg(
+                frame.color_frame, frame.timestamp_millis
+            )
         )
 
         if self.laser_detection_enabled:
-            laser_points, confs = self._get_laser_points(color_frame)
+            laser_points, confs = self._get_laser_points(frame.color_frame)
             debug_frame = self._debug_draw_lasers(debug_frame, laser_points, confs)
             self.laser_detections_pub.publish(
-                self._create_detection_result_msg(laser_points, frames)
+                self._create_detection_result_msg(laser_points, frame)
             )
 
         if self.runner_detection_enabled:
-            runner_masks, confs, track_ids = self._get_runner_masks(color_frame)
+            runner_masks, confs, track_ids = self._get_runner_masks(frame.color_frame)
             runner_centers = self._get_runner_centers(runner_masks)
             debug_frame = self._debug_draw_runners(
                 debug_frame, runner_masks, runner_centers, confs, track_ids
             )
             self.runner_detections_pub.publish(
-                self._create_detection_result_msg(runner_centers, frames, track_ids)
+                self._create_detection_result_msg(runner_centers, frame, track_ids)
             )
 
         self.debug_frame_pub.publish(
-            self._get_debug_frame_compressed_msg(debug_frame, timestamp_millis)
+            self._get_debug_frame_compressed_msg(debug_frame, frame.timestamp_millis)
         )
 
         if self.video_writer is not None:
             self.video_writer.write(cv2.cvtColor(debug_frame, cv2.COLOR_RGB2BGR))
 
-    def _get_laser_points(self, color_frame, conf_threshold=0.0):
+    def _get_laser_points(
+        self, color_frame: npt.NDArray, conf_threshold: float = 0.0
+    ) -> Tuple[List[Tuple[int, int]], List[float]]:
         # Scale image before prediction to improve accuracy
         frame_width = color_frame.shape[1]
         frame_height = color_frame.shape[0]
@@ -251,7 +255,9 @@ class CameraControlNode(Node):
                 )
         return laser_points, confs
 
-    def _get_runner_masks(self, color_frame, conf_threshold=0.0):
+    def _get_runner_masks(
+        self, color_frame: npt.NDArray, conf_threshold: float = 0.0
+    ) -> Tuple[List[npt.NDArray], List[float], List[int]]:
         # Scale image before prediction to improve accuracy
         frame_width = color_frame.shape[1]
         frame_height = color_frame.shape[0]
@@ -285,7 +291,9 @@ class CameraControlNode(Node):
                 )
         return runner_masks, confs, track_ids
 
-    def _get_runner_centers(self, runner_masks):
+    def _get_runner_centers(
+        self, runner_masks: List[npt.NDArray]
+    ) -> List[Tuple[int, int]]:
         runner_centers = []
         for mask in runner_masks:
             runner_center = contour_center(mask)
@@ -298,19 +306,16 @@ class CameraControlNode(Node):
     ## region Service calls
 
     def _has_frames_callback(self, request, response):
-        response.data = self.curr_frames is not None
+        response.data = self.curr_frame is not None
         return response
 
     def _get_frame_callback(self, request, response):
-        if self.curr_frames is not None:
-            color_frame = np.asanyarray(self.curr_frames["color"].get_data())
-            depth_frame = np.asanyarray(self.curr_frames["depth"].get_data())
-            timestamp_millis = self.curr_frames["timestamp"]
+        if self.curr_frame is not None:
             response.color_frame = self._get_color_frame_msg(
-                color_frame, timestamp_millis
+                self.curr_frame.color_frame, self.curr_frame.timestamp_millis
             )
             response.depth_frame = self._get_depth_frame_msg(
-                depth_frame, timestamp_millis
+                self.curr_frame.depth_frame, self.curr_frame.timestamp_millis
             )
         return response
 
@@ -320,21 +325,21 @@ class CameraControlNode(Node):
         return response
 
     def _single_laser_detection_callback(self, request, response):
-        if self.curr_frames is not None:
-            color_frame = np.asanyarray(self.curr_frames["color"].get_data())
-            laser_points, conf = self._get_laser_points(color_frame)
+        if self.curr_frame is not None:
+            laser_points, conf = self._get_laser_points(self.curr_frame.color_frame)
             response.result = self._create_detection_result_msg(
-                laser_points, self.curr_frames
+                laser_points, self.curr_frame
             )
         return response
 
     def _single_runner_detection_callback(self, request, response):
-        if self.curr_frames is not None:
-            color_frame = np.asanyarray(self.curr_frames["color"].get_data())
-            runner_masks, confs, track_ids = self._get_runner_masks(color_frame)
+        if self.curr_frame is not None:
+            runner_masks, confs, track_ids = self._get_runner_masks(
+                self.curr_frame.color_frame
+            )
             runner_centers = self._get_runner_centers(runner_masks)
             response.result = self._create_detection_result_msg(
-                runner_centers, self.curr_frames, track_ids
+                runner_centers, self.curr_frame, track_ids
             )
         return response
 
@@ -385,16 +390,15 @@ class CameraControlNode(Node):
         return response
 
     def _save_image_callback(self, request, response):
-        if self.curr_frames is not None:
+        if self.curr_frame is not None:
             os.makedirs(self.image_dir, exist_ok=True)
             ts = time.time()
             datetime_obj = datetime.fromtimestamp(ts)
             datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
             image_name = f"{datetime_string}.png"
-            color_frame = np.asanyarray(self.curr_frames["color"].get_data())
             cv2.imwrite(
                 os.path.join(self.image_dir, image_name),
-                cv2.cvtColor(color_frame, cv2.COLOR_RGB2BGR),
+                cv2.cvtColor(self.curr_frame.color_frame, cv2.COLOR_RGB2BGR),
             )
             response.success = True
 
@@ -406,54 +410,68 @@ class CameraControlNode(Node):
 
     def _get_positions_for_pixels_callback(self, request, response):
         response.positions = []
-        for pixel in request.pixels:
-            pos = self.camera.get_pos((pixel.x, pixel.y), self.curr_frames["depth"])
-            response.positions.append(
-                Vector3(x=pos[0], y=pos[1], z=pos[2])
-                if pos is not None
-                else Vector3(x=-1.0, y=-1.0, z=-1.0)
-            )
+        if self.curr_frame is not None:
+            for pixel in request.pixels:
+                position = self.curr_frame.get_position((pixel.x, pixel.y))
+                response.positions.append(
+                    Vector3(x=position[0], y=position[1], z=position[2])
+                    if position is not None
+                    else Vector3(x=-1.0, y=-1.0, z=-1.0)
+                )
         return response
 
     ## endregion
 
     ## region Message builders
 
-    def _create_detection_result_msg(self, points, frames, track_ids=None):
+    def _create_detection_result_msg(
+        self,
+        points: List[Tuple[int, int]],
+        frame: RGBDFrame,
+        track_ids: Optional[List[int]] = None,
+    ) -> DetectionResult:
         msg = DetectionResult()
-        msg.timestamp = frames["timestamp"] / 1000
+        msg.timestamp = frame.timestamp_millis / 1000
         for idx, point in enumerate(points):
             point_msg = Vector2(x=float(point[0]), y=float(point[1]))
-            pos = self.camera.get_pos((point[0], point[1]), frames["depth"])
-            if pos is not None:
+            position = frame.get_position(point)
+            if position is not None:
                 object_instance = ObjectInstance()
                 object_instance.track_id = (
                     track_ids[idx]
                     if track_ids is not None and idx < len(track_ids)
                     else -1
                 )
-                object_instance.position = Vector3(x=pos[0], y=pos[1], z=pos[2])
+                object_instance.position = Vector3(
+                    x=position[0], y=position[1], z=position[2]
+                )
                 object_instance.point = point_msg
                 msg.instances.append(object_instance)
             else:
                 msg.invalid_points.append(point_msg)
         return msg
 
-    def _get_color_frame_msg(self, color_frame, timestamp_millis):
+    def _get_color_frame_msg(
+        self, color_frame: npt.NDArray, timestamp_millis: float
+    ) -> Image:
         msg = self.cv_bridge.cv2_to_imgmsg(color_frame, encoding="rgb8")
         sec, nanosec = milliseconds_to_ros_time(timestamp_millis)
         msg.header.stamp.sec = sec
         msg.header.stamp.nanosec = nanosec
         return msg
 
-    def _get_depth_frame_msg(self, depth_frame, timestamp_millis):
+    def _get_depth_frame_msg(
+        self, depth_frame: npt.NDArray, timestamp_millis: float
+    ) -> Image:
         msg = self.cv_bridge.cv2_to_imgmsg(depth_frame, encoding="mono16")
         sec, nanosec = milliseconds_to_ros_time(timestamp_millis)
         msg.header.stamp.sec = sec
         msg.header.stamp.nanosec = nanosec
         return msg
 
-    def _get_color_frame_compressed_msg(self, color_frame, timestamp_millis):
+    def _get_color_frame_compressed_msg(
+        self, color_frame: npt.NDArray, timestamp_millis: float
+    ) -> CompressedImage:
         sec, nanosec = milliseconds_to_ros_time(timestamp_millis)
         _, jpeg_data = cv2.imencode(
             ".jpg", cv2.cvtColor(color_frame, cv2.COLOR_RGB2BGR)
@@ -465,7 +483,9 @@ class CameraControlNode(Node):
         msg.header.stamp.nanosec = nanosec
         return msg
 
-    def _get_debug_frame_compressed_msg(self, debug_frame, timestamp_millis):
+    def _get_debug_frame_compressed_msg(
+        self, debug_frame: npt.NDArray, timestamp_millis: float
+    ) -> CompressedImage:
         sec, nanosec = milliseconds_to_ros_time(timestamp_millis)
         _, jpeg_data = cv2.imencode(
             ".jpg", cv2.cvtColor(debug_frame, cv2.COLOR_RGB2BGR)

@@ -1,0 +1,42 @@
+from abc import ABC, abstractmethod
+from typing import Optional
+
+from .rgbd_frame import RGBDFrame
+
+
+class Camera(ABC):
+    @property
+    @abstractmethod
+    def is_connected(self) -> bool:
+        """
+        Returns:
+            bool: Whether the camera is connected.
+        """
+        pass
+
+    @abstractmethod
+    def initialize(self):
+        """
+        Set up the camera.
+        """
+        pass
+
+    @abstractmethod
+    def set_exposure(self, exposure_us: float):
+        """
+        Set the exposure time of the camera.
+
+        Args:
+            exposure_us (float): Exposure time in microseconds.
+        """
+        pass
+
+    @abstractmethod
+    def get_frame(self) -> Optional[RGBDFrame]:
+        """
+        Get the latest available color and depth frames from the camera.
+
+        Returns:
+            Optional[RGBDFrame]: The color and depth frames, or None if not available.
+        """
+        pass
