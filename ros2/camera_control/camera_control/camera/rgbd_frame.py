@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional, Sequence
 
-import numpy.typing as npt
+import numpy as np
 
 
 class RGBDFrame(ABC):
-    color_frame: npt.NDArray
-    depth_frame: npt.NDArray
+    color_frame: np.ndarray
+    depth_frame: np.ndarray
     timestamp_millis: float
     color_depth_aligned: bool
 

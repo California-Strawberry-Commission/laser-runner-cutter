@@ -97,7 +97,7 @@ class LaserControlNode(Node):
         self.logger.info(f"{num_dacs} DACs of type {self.dac_type} found")
         self.dac.connect(self.dac_index)
 
-    def get_state(self):
+    def get_state(self) -> State:
         if self.dac is None:
             return State.DISCONNECTED
         elif self.dac.playing:

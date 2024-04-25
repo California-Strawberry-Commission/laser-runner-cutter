@@ -95,16 +95,16 @@ class CameraControlClient:
         res["instances"] = [
             {
                 "track_id": instance.track_id if instance.track_id > 0 else None,
-                "position": [
+                "position": (
                     instance.position.x,
                     instance.position.y,
                     instance.position.z,
-                ],
-                "point": [instance.point.x, instance.point.y],
+                ),
+                "point": (instance.point.x, instance.point.y),
             }
             for instance in detection_result.instances
         ]
         res["invalid_points"] = [
-            [data.x, data.y] for data in detection_result.invalid_points
+            (data.x, data.y) for data in detection_result.invalid_points
         ]
         return res

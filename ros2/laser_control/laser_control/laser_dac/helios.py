@@ -2,6 +2,7 @@ import ctypes
 import logging
 import threading
 import time
+from typing import Optional, List, Tuple
 
 from .laser_dac import LaserDAC
 
@@ -26,7 +27,8 @@ class HeliosPoint(ctypes.Structure):
 
 
 class HeliosDAC(LaserDAC):
-    """Helios DAC
+    """
+    Helios DAC
 
     Example usage:
 
@@ -45,94 +47,129 @@ class HeliosDAC(LaserDAC):
       dac.close()
     """
 
-    def __init__(self, lib_file, logger=None):
+    points: List[Tuple[float, float]]
+    color: Tuple[float, float, float, float]
+    dac_idx: int
+    playing: bool
+
+    def __init__(self, lib_file: str, logger: Optional[logging.Logger] = None):
+        """
+        Args:
+            lib_file (str): Path to native library file.
+            logger (logging.Logger): Logger
+        """
         self.points = []
-        self.points_lock = threading.Lock()
+        self._points_lock = threading.Lock()
         self.color = (1, 1, 1, 1)  # (r, g, b, i)
         self.dac_idx = -1
-        self.lib = ctypes.cdll.LoadLibrary(lib_file)
+        self._lib = ctypes.cdll.LoadLibrary(lib_file)
         self.playing = False
-        self.playback_thread = None
-        self.check_connection = False
-        self.check_connection_thread = None
+        self._playback_thread = None
+        self._check_connection = False
+        self._check_connection_thread = None
         if logger:
-            self.logger = logger
+            self._logger = logger
         else:
-            self.logger = logging.getLogger(__name__)
-            self.logger.setLevel(logging.INFO)
+            self._logger = logging.getLogger(__name__)
+            self._logger.setLevel(logging.INFO)
 
     def initialize(self):
-        self.logger.info("Initializing Helios DAC")
-        num_devices = self.lib.OpenDevices()
-        self.logger.info(f"Found {num_devices} Helios DACs")
+        """
+        Initialize the native library and search for online DACs.
+        """
+        self._logger.info("Initializing Helios DAC")
+        num_devices = self._lib.OpenDevices()
+        self._logger.info(f"Found {num_devices} Helios DACs")
         return num_devices
 
-    def connect(self, dac_idx):
+    def connect(self, dac_idx: int):
+        """
+        Connect to the specified DAC.
+
+        Args:
+            dac_idx (int): Index of the DAC to connect to.
+        """
         self.dac_idx = dac_idx
 
         def check_connection_thread():
-            while self.check_connection:
+            while self._check_connection:
                 if self._get_status() < 0:
-                    self.logger.warning(
+                    self._logger.warning(
                         f"DAC error {self._get_status()}. Attempting to reconnect."
                     )
                     self.stop()
-                    self.lib.CloseDevices()
+                    self._lib.CloseDevices()
                     self.initialize()
                 time.sleep(1)
 
-        if self.check_connection_thread is None:
-            self.check_connection = True
-            self.check_connection_thread = threading.Thread(
+        if self._check_connection_thread is None:
+            self._check_connection = True
+            self._check_connection_thread = threading.Thread(
                 target=check_connection_thread, daemon=True
             )
-            self.check_connection_thread.start()
+            self._check_connection_thread.start()
 
-    def set_color(self, r=1.0, g=1.0, b=1.0, i=1.0):
+    def set_color(self, r: float, g: float, b: float, i: float):
+        """
+        Set the color of the laser.
+
+        Args:
+            r (float): Red channel, with value normalized to [0, 1]
+            g (float): Green channel, with value normalized to [0, 1]
+            b (float): Blue channel, with value normalized to [0, 1]
+            i (float): Intensity, with value normalized to [0, 1]
+        """
         self.color = (r, g, b, i)
 
-    def add_point(self, x, y):
-        """Add a point to be rendered by the DAC.
+    def add_point(self, x: float, y: float):
+        """
+        Add a point to be rendered by the DAC. (0, 0) corresponds to bottom left.
+        The point will be ignored if it lies outside the bounds.
 
-        :param x: x coordinate normalized to [0, 1]
-        :param y: y coordinate normalized to [0, 1]
+        Args:
+            x (float): x coordinate normalized to [0, 1]
+            y (float): y coordinate normalized to [0, 1]
         """
         if 0.0 <= x and x <= 1.0 and 0.0 <= y and y <= 1.0:
-            with self.points_lock:
+            with self._points_lock:
                 self.points.append((x, y))
-            return True
-        else:
-            return False
 
     def remove_point(self):
-        """Remove the last added point."""
-        with self.points_lock:
+        """
+        Remove the last added point.
+        """
+        with self._points_lock:
             if self.points:
                 self.points.pop()
 
     def clear_points(self):
-        with self.points_lock:
+        """
+        Remove all points.
+        """
+        with self._points_lock:
             self.points.clear()
 
-    def _denormalize_point(self, x, y):
+    def _denormalize_point(self, x: float, y: float) -> Tuple[int, int]:
         x_denorm = round((X_BOUNDS[1] - X_BOUNDS[0]) * x + X_BOUNDS[0])
         y_denorm = round((Y_BOUNDS[1] - Y_BOUNDS[0]) * y + Y_BOUNDS[0])
-        return x_denorm, y_denorm
+        return (x_denorm, y_denorm)
 
-    def _get_frame(self, fps=30, pps=30000, transition_duration_ms=0.5):
-        """Return an array of HeliosPoints representing the next frame that should be rendered.
+    def _get_frame(self, fps: int, pps: int, transition_duration_ms: float):
+        """
+        Return an array of HeliosPoints representing the next frame that should be rendered.
 
-        :param fps: target frames per second
-        :param pps: target points per second. This should not exceed the capability of the DAC and laser projector.
-        :param transition_duration_ms: duration in ms to turn the laser off between subsequent points. If we are
-        rendering more than one point, we need to provide enough time between subsequent points, or else there may
-        be visible streaks between the points as the galvos take time to move to the new position
+        Args:
+            fps (int): Target frames per second.
+            pps (int): Target points per second. This should not exceed the capability of the DAC and laser projector.
+            transition_duration_ms (float): Duration in ms to turn the laser off between subsequent points in the same
+                frame. If we are rendering more than one point, we need to provide enough time between subsequent points,
+                or else there may be visible streaks between the points as the galvos take time to move to the new position.
         """
 
         # We'll use "laxel", or laser "pixel", to refer to each point that the laser projector renders, which
         # disambiguates it from "point", which refers to the (x, y) coordinates we want to have rendered
 
-        with self.points_lock:
+        with self._points_lock:
             # Calculate how many laxels of transition we need to add per point
             laxels_per_transition = round(transition_duration_ms / (1000 / pps))
 
@@ -171,56 +208,72 @@ class HeliosDAC(LaserDAC):
                         )
             return frame
 
-    def play(self, fps=30, pps=30000, transition_duration_ms=0.5):
-        """Start playback of points.
+    def play(
+        self, fps: int = 30, pps: int = 30000, transition_duration_ms: float = 0.5
+    ):
+        """
+        Start playback of points.
         Helios max rate: 65535 pps
         Helios max points per frame (pps/fps): 4096
 
-        :param fps: target frames per second
-        :param pps: target points per second. This should not exceed the capability of the DAC and laser projector.
-        :param transition_duration_ms: duration in ms to turn the laser off between subsequent points. If we are
-        rendering more than one point, we need to provide enough time between subsequent points, or else there may
-        be visible streaks between the points as the galvos take time to move to the new position
+        Args:
+            fps (int): Target frames per second.
+            pps (int): Target points per second. This should not exceed the capability of the DAC and laser projector.
+            transition_duration_ms (float): Duration in ms to turn the laser off between subsequent points in the same
+                frame. If we are rendering more than one point, we need to provide enough time between subsequent points,
+                or else there may be visible streaks between the points as the galvos take time to move to the new position.
         """
+        fps = max(0, fps)
+        pps = min(max(0, pps), 65535)
 
         def playback_thread():
             while self.playing:
                 frame = self._get_frame(fps, pps, transition_duration_ms)
                 statusAttempts = 0
                 # Make 512 attempts for DAC status to be ready. After that, just give up and try to write the frame anyway
-                while statusAttempts < 512 and self.lib.GetStatus(self.dac_idx) != 1:
+                while statusAttempts < 512 and self._lib.GetStatus(self.dac_idx) != 1:
                     statusAttempts += 1
 
-                self.lib.WriteFrame(
+                self._lib.WriteFrame(
                     self.dac_idx,
                     len(frame) * fps,
                     0,
                     ctypes.pointer(frame),
                     len(frame),
                 )
-            self.lib.Stop(self.dac_idx)
+            self._lib.Stop(self.dac_idx)
 
         if not self.playing:
             self.playing = True
-            self.playback_thread = threading.Thread(target=playback_thread, daemon=True)
-            self.playback_thread.start()
+            self._playback_thread = threading.Thread(
+                target=playback_thread, daemon=True
+            )
+            self._playback_thread.start()
 
     def stop(self):
+        """
+        Stop playback of points.
+        """
         if self.playing:
             self.playing = False
-            self.playback_thread.join()
-            self.playback_thread = None
+            if self._playback_thread:
+                self._playback_thread.join()
+                self._playback_thread = None
 
     def close(self):
+        """
+        Close connection to laser DAC.
+        """
         self.stop()
-        if self.check_connection:
-            self.check_connection = False
-            self.check_connection_thread.join()
-            self.check_connection_thread = None
-        self.lib.CloseDevices()
+        if self._check_connection:
+            self._check_connection = False
+            if self._check_connection_thread:
+                self._check_connection_thread.join()
+                self._check_connection_thread = None
+        self._lib.CloseDevices()
 
     def _get_status(self):
         # 1 means ready to receive frame
         # 0 means not ready to receive frame
         # Any negative status means error
-        return self.lib.GetStatus(self.dac_idx)
+        return self._lib.GetStatus(self.dac_idx)

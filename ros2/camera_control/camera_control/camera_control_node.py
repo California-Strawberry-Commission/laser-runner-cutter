@@ -5,7 +5,6 @@ from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
-import numpy.typing as npt
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from cv_bridge import CvBridge
@@ -220,7 +219,7 @@ class CameraControlNode(Node):
             self.video_writer.write(cv2.cvtColor(debug_frame, cv2.COLOR_RGB2BGR))
 
     def _get_laser_points(
-        self, color_frame: npt.NDArray, conf_threshold: float = 0.0
+        self, color_frame: np.ndarray, conf_threshold: float = 0.0
     ) -> Tuple[List[Tuple[int, int]], List[float]]:
         # Scale image before prediction to improve accuracy
         frame_width = color_frame.shape[1]
@@ -256,8 +255,8 @@ class CameraControlNode(Node):
         return laser_points, confs
 
     def _get_runner_masks(
-        self, color_frame: npt.NDArray, conf_threshold: float = 0.0
-    ) -> Tuple[List[npt.NDArray], List[float], List[int]]:
+        self, color_frame: np.ndarray, conf_threshold: float = 0.0
+    ) -> Tuple[List[np.ndarray], List[float], List[int]]:
         # Scale image before prediction to improve accuracy
         frame_width = color_frame.shape[1]
         frame_height = color_frame.shape[0]
@@ -292,7 +291,7 @@ class CameraControlNode(Node):
         return runner_masks, confs, track_ids
 
     def _get_runner_centers(
-        self, runner_masks: List[npt.NDArray]
+        self, runner_masks: List[np.ndarray]
     ) -> List[Tuple[int, int]]:
         runner_centers = []
         for mask in runner_masks:
@@ -452,7 +451,7 @@ class CameraControlNode(Node):
         return msg
 
     def _get_color_frame_msg(
-        self, color_frame: npt.NDArray, timestamp_millis: float
+        self, color_frame: np.ndarray, timestamp_millis: float
     ) -> Image:
         msg = self.cv_bridge.cv2_to_imgmsg(color_frame, encoding="rgb8")
         sec, nanosec = milliseconds_to_ros_time(timestamp_millis)
@@ -461,7 +460,7 @@ class CameraControlNode(Node):
         return msg
 
     def _get_depth_frame_msg(
-        self, depth_frame: npt.NDArray, timestamp_millis: float
+        self, depth_frame: np.ndarray, timestamp_millis: float
     ) -> Image:
         msg = self.cv_bridge.cv2_to_imgmsg(depth_frame, encoding="mono16")
         sec, nanosec = milliseconds_to_ros_time(timestamp_millis)
@@ -470,7 +469,7 @@ class CameraControlNode(Node):
         return msg
 
     def _get_color_frame_compressed_msg(
-        self, color_frame: npt.NDArray, timestamp_millis: float
+        self, color_frame: np.ndarray, timestamp_millis: float
     ) -> CompressedImage:
         sec, nanosec = milliseconds_to_ros_time(timestamp_millis)
         _, jpeg_data = cv2.imencode(
@@ -484,7 +483,7 @@ class CameraControlNode(Node):
         return msg
 
     def _get_debug_frame_compressed_msg(
-        self, debug_frame: npt.NDArray, timestamp_millis: float
+        self, debug_frame: np.ndarray, timestamp_millis: float
     ) -> CompressedImage:
         sec, nanosec = milliseconds_to_ros_time(timestamp_millis)
         _, jpeg_data = cv2.imencode(
