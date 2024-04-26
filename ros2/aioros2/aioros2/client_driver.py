@@ -5,7 +5,7 @@ from .async_driver import AsyncDriver
 from rclpy.action import ActionClient
 from queue import Empty, SimpleQueue
 
-import server_driver
+from . import server_driver
 from .decorators.service import RosService
 from .decorators.subscribe import RosSubscription
 from .decorators.import_node import RosImport
@@ -69,7 +69,7 @@ class ClientDriver(AsyncDriver):
             return f"{ns}.{self._node_name}-client"
 
     def _process_import(self, attr, imp: RosImport):
-        self.debug("[CLIENT] Process import")
+        self.log_debug("[CLIENT] Process import")
         # DON'T create a client from a client.
         # Resolve import to raw node definition
         # TODO: Change this to properly resolve 2nd order imports
@@ -88,7 +88,7 @@ class ClientDriver(AsyncDriver):
         topic = sub.get_fqt(self._node_name, self._node_namespace)
 
         # Creates a publisher for this channel
-        self.debug(f"Attach subscriber publisher @ >{topic.path}<")
+        self.log_debug(f"Attach subscriber publisher @ >{topic.path}<")
 
         pub = self._node.create_publisher(topic.idl, topic.path, topic.qos)
 
@@ -139,7 +139,7 @@ class ClientDriver(AsyncDriver):
 
             goal_handle = future.result()
             if not goal_handle.accepted:
-                self.warn("Goal rejected")
+                self.log_warn("Goal rejected")
                 action_complete = True
                 return
 

@@ -82,7 +82,7 @@ class ParamDriver:
 
     def declare(self, ros_node: "ServerDriver"):
         """Declares this parameter on the passed ros node"""
-        ros_node.debug(f"Declare parameter >{self.fqpn}<")
+        ros_node.log_debug(f"Declare parameter >{self.fqpn}<")
         ros_node.declare_parameter(self.fqpn, self.value)
 
 
@@ -96,7 +96,7 @@ class ParamsDriver:
         # Stores parameter drivers by their fqpn (Fully Qualified Parameter Name)
         self.__params = {}
 
-        self.__driver.debug("Create parameter wrapper")
+        self.__driver.log_debug("Create parameter wrapper")
 
         # declare dataclass fields
         for f in dataclasses.fields(self.__param_class):
@@ -180,7 +180,7 @@ class ParamsDriver:
         for param_name in kwargs:
             new_value = kwargs[param_name]
             if not self.has_param(param_name):
-                self.__driver.warn(f">{param_name}< is not a valid parameter name.")
+                self.__driver.log_warn(f">{param_name}< is not a valid parameter name.")
                 continue
 
             param = self.get_param(param_name)
@@ -211,7 +211,7 @@ class ServerDriver(AsyncDriver, Node):
     def _process_import(self, attr, imp: RosImport):
         from .client_driver import ClientDriver
 
-        self.debug("[SERVER] Resolving import")
+        self.log_debug("[SERVER] Resolving import")
 
         # TODO: extract naming logic somewhere else. This is duplicated
         # in launch_driver._process_imports
@@ -234,13 +234,13 @@ class ServerDriver(AsyncDriver, Node):
         )
 
         if node_name == attr:
-            self.warn(
+            self.log_warn(
                 f"Node name for import >{attr}< was not set at "
                 f">{node_name_param_name}<. Using default name: >{attr}<"
             )
 
         if node_ns == "/":
-            self.warn(
+            self.log_warn(
                 f"Node namespace for import >{attr}< was not set at "
                 f">{node_namespace_param_name}<. Using default namespace: >/<"
             )
@@ -249,7 +249,7 @@ class ServerDriver(AsyncDriver, Node):
 
     def _attach_service(self, attr, s: RosService):
         """Attaches a service"""
-        self.debug(f"[SERVER] Attach service >{attr}< @ >{s.path}<")
+        self.log_debug(f"[SERVER] Attach service >{attr}< @ >{s.path}<")
 
         # Will be called from MultiThreadedExecutor 
         def cb(req, res):
@@ -272,7 +272,7 @@ class ServerDriver(AsyncDriver, Node):
         self.create_service(s.idl, s.path, cb)
 
     def _attach_action(self, attr, d: RosAction):
-        self.debug(f"[SERVER] Attach action >{attr}<")
+        self.log_debug(f"[SERVER] Attach action >{attr}<")
 
         def cb(goal):
             kwargs = idl_to_kwargs(goal.request)
@@ -292,16 +292,16 @@ class ServerDriver(AsyncDriver, Node):
                         break
 
                     else:
-                        self.error("YIELDED NON-FEEDBACK, NON-RESULT VALUE")
+                        self.log_error("YIELDED NON-FEEDBACK, NON-RESULT VALUE")
 
                 except StopAsyncIteration:
-                    self.warn(f"Action >{attr}< returned before yielding `result`")
+                    self.log_warn(f"Action >{attr}< returned before yielding `result`")
                     break
 
             if isinstance(result, Result):
                 result = d.idl.Result(*result.args, **result.kwargs)
             else:
-                self.warn(
+                self.log_warn(
                     f"Action >{attr}< did not yield `result(...)`. "
                     f"Expected >{d.idl.Result}<, got >{result}<. Aborting action."
                 )
@@ -321,7 +321,7 @@ class ServerDriver(AsyncDriver, Node):
     def _attach_subscriber(self, attr, sub: RosSubscription):
         fqt = sub.get_fqt(self.get_name(), self.get_namespace())
 
-        self.debug(f"[SERVER] Attach subscriber >{attr}<")
+        self.log_debug(f"[SERVER] Attach subscriber >{attr}<")
 
         def cb(msg):
             kwargs = idl_to_kwargs(msg)
@@ -330,7 +330,7 @@ class ServerDriver(AsyncDriver, Node):
         self.create_subscription(fqt.idl, fqt.path, cb, fqt.qos)
 
     def _attach_publisher(self, attr, topic_def: RosTopic):
-        self.debug(f"Attach publisher {attr} @ >{topic_def.path}<")
+        self.log_debug(f"Attach publisher {attr} @ >{topic_def.path}<")
 
         pub = self.create_publisher(topic_def.idl, topic_def.path, topic_def.qos)
 
@@ -343,19 +343,19 @@ class ServerDriver(AsyncDriver, Node):
     # TODO: Better error handling.
     # ATM raised errors are completely hidden
     def _attach_timer(self, attr, t: RosTimer):
-        self.debug(f"Attach timer >{attr}<")
+        self.log_debug(f"Attach timer >{attr}<")
 
         def _cb():
             try:
                 self.run_coroutine(t.server_handler, self)
             except Exception:
-                self.error(traceback.format_exc())
+                self.log_error(traceback.format_exc())
 
         self.create_timer(t.interval, _cb)
         return t.server_handler
 
     def _attach_params(self, attr, p: RosParams):
-        self.debug(f"Attach params >{attr}<")
+        self.log_debug(f"Attach params >{attr}<")
         return ParamsDriver(attr, p.params_class, self)
 
     def _attach_param_subscription(self, attr, p: RosParamSubscription):

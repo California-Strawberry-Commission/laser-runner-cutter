@@ -48,7 +48,7 @@ class LaunchNode(RclpyNode, AsyncDriver):
         self.__init_rclpy_node()
         AsyncDriver.__init__(self, node_def, get_logger(f"LAUNCH-{namespace}-{name}"))
 
-        self.debug(f"Launching node >{self._package}< >{self._executable}<")
+        self.log_debug(f"Launching node >{self._package}< >{self._executable}<")
 
 
         self._attach()

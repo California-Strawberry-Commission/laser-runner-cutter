@@ -32,7 +32,7 @@ class AsyncDriver:
             try:
                 return await coro
             except Exception:
-                self.error(traceback.format_exc())
+                self.log_error(traceback.format_exc())
 
         # https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.call_soon_threadsafe
         return asyncio.run_coroutine_threadsafe(_wrap_coro(fn(*args, **kwargs)), self._loop)
@@ -58,13 +58,13 @@ class AsyncDriver:
 
         return a
     
-    def debug(self, msg: str):
+    def log_debug(self, msg: str):
         self._logger.info(msg)
 
-    def warn(self, msg: str):
+    def log_warn(self, msg: str):
         self._logger.warn(msg)
 
-    def error(self, msg: str):
+    def log_error(self, msg: str):
         self._logger.error(msg)
 
     def log(self, msg: str):
