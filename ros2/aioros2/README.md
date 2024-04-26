@@ -7,6 +7,13 @@ The point of this library is to make working with ROS2/`rclpy` bearable (and pos
 - Generators instead of callbacks
 - Transparent clients (use the same class as both client and server)
 
+## Installation
+This will install `aioros2` in dev mode in the current environment
+```
+$ cd aioros2
+$ pip install -e . --config-settings editable_mode=strict
+```
+
 ### Feature Tracker
 - [x] Action Server
 - [x] Service Server
