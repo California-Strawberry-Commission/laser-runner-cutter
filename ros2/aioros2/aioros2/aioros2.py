@@ -23,7 +23,7 @@ async def _ros_spin_nodes(nodes, num_threads):
     print("Ros event loop running!")
     while rclpy.ok():
         executor.spin_once(timeout_sec=0)
-        await asyncio.sleep(1e-4)
+        await asyncio.sleep(0)
 
 
 def serve_nodes(*nodes, threads=10):
