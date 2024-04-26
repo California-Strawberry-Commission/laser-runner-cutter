@@ -1,4 +1,3 @@
-import asyncio
 import inspect
 from ._decorators import RosDefinition, idl_to_kwargs
 

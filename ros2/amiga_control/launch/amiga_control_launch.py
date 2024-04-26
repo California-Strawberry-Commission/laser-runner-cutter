@@ -5,22 +5,20 @@ from amiga_control import amiga_control_node, circular_node
 
 
 def generate_launch_description():
-    print(LaunchNode)
+    # First, define all nodes. Name and namespace should be specified!
     control_node: amiga_control_node.AmigaControlNode = LaunchNode(
         amiga_control_node, 
         name="acn", 
         namespace="/ns1"
     )
-    print("Created acn")
 
     circ_node: circular_node.CircularNode = LaunchNode(
         circular_node,
         name="circ",
         namespace="/ns2"
     )
-    print("Created circ")
 
-    # Define relations
+    # Define relations between nodes. Every import on every node should have `link` call
     control_node.dependant_node_1.link(circ_node)
     
     circ_node.dependant_node_1.link(control_node)

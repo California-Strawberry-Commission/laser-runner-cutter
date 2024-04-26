@@ -1,6 +1,5 @@
 from typing import Any
 from ._decorators import RosDefinition
-from .deferrable_accessor import DeferrableAccessor
 
 class RosTopic(RosDefinition):
     def __init__(self, namespace, msg_idl, qos) -> None:

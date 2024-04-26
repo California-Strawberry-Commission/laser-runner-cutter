@@ -1,4 +1,3 @@
-import inspect
 from typing import Any, Union
 from ._decorators import RosDefinition
 from .topic import RosTopic
