@@ -20,7 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'amgia_control = amiga_control.amgia_control:main'
+            'amiga_control_node = amiga_control.amiga_control_node:main',
+            'circular_node = amiga_control.circular_node:main',
         ],
     },
 )

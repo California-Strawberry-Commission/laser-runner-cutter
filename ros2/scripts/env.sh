@@ -1,3 +1,3 @@
-SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[-1]:-${(%):-%x}}")")"
+SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR=~/.ros_venv
 ROS_WS_DIR=$SCRIPT_DIR/..

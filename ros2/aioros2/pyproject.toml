@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aioros2"
+version = "0.0.0"
+dependencies = []
+requires-python = ">=3.8"
+authors = [
+    {name = "Dominic C", email = "dominicchm.gh@gmail.com"},
+]
+maintainers = [
+    {name = "Dominic C", email = "dominicchm.gh@gmail.com"},
+]
+description = "A modern, asyncio-based, ROS2 wrapper library"
+readme = "README.rst"
+license = {file = "LICENSE.txt"}
+keywords = ["ros2", "rclpy"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Programming Language :: Python",
+  "Framework :: Robot Framework :: Library",
+]

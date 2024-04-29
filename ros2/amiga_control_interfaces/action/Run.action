@@ -1,0 +1,8 @@
+# Define a goal of washing all dishes
+bool fast  # Spend extra time cleaning
+---
+# Define the result that will be published after the action execution ends.
+uint32 success
+---
+# Define a feedback message that will be published during action execution.
+float32 progress
