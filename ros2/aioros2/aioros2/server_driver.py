@@ -26,6 +26,7 @@ from .decorators.params import RosParams
 from .decorators.param import RosParam
 from .decorators import idl_to_kwargs
 from .decorators.param_subscription import RosParamSubscription
+from .decorators.start import RosStart
 
 # https://answers.ros.org/question/340600/how-to-get-ros2-parameter-hosted-by-another-node/
 # https://roboticsbackend.com/rclpy-params-tutorial-get-set-ros2-params-with-python/
@@ -34,8 +35,10 @@ from .decorators.param_subscription import RosParamSubscription
 # https://github.com/mikeferguson/ros2_cookbook/blob/main/rclpy/parameters.md
 # https://github.com/ros2/demos/blob/rolling/demo_nodes_py/demo_nodes_py/parameters/set_parameters_callback.py
 
+
 class ParamDriver:
     """Manages a single parameter"""
+
     value = None
     fqpn = None
 
@@ -88,11 +91,12 @@ class ParamDriver:
 
 class ParamsDriver:
     """Manages a parameter dataclass"""
+
     def __init__(self, params_attr, param_class, server_driver: "ServerDriver"):
         self.__params_attr = params_attr
         self.__param_class = param_class
         self.__driver = server_driver
-        
+
         # Stores parameter drivers by their fqpn (Fully Qualified Parameter Name)
         self.__params = {}
 
@@ -116,7 +120,7 @@ class ParamsDriver:
 
         # Add a callback for when any param is changed to handle local updates
         self.__driver.add_on_set_parameters_callback(self.__parameters_callback)
-    
+
     def __parameters_callback(self, params):
         """Handles incoming parameter changes on this node"""
         # Filter and pair incoming parameters to only parameters this class manages
@@ -149,11 +153,11 @@ class ParamsDriver:
         self.__driver.run_coroutine(self.__call_listeners, unique_listeners)
 
         return SetParametersResult(successful=True)
-    
+
     async def __call_listeners(self, unique_listeners):
         for l in unique_listeners:
             await l(self.__driver)
-    
+
     def get_param(self, param_name) -> ParamDriver:
         fqpn = self.__fqpn(param_name)
         return self.get_param_fqpn(fqpn)
@@ -161,13 +165,13 @@ class ParamsDriver:
     def has_param(self, param_name):
         fqpn = self.__fqpn(param_name)
         return self.has_param_fqpn(fqpn)
-    
+
     def get_param_fqpn(self, fqpn):
         return self.__params[fqpn]
-    
+
     def has_param_fqpn(self, fqpn):
         return fqpn in self.__params
-    
+
     def add_change_listener(self, param_name, listener):
         """Adds a listener function to the specified parameter"""
         self.get_param(param_name).add_listener(listener)
@@ -208,7 +212,7 @@ class ServerDriver(AsyncDriver, Node):
 
         self._attach()
 
-    def _process_import(self, attr, imp: RosImport):
+    def _process_import(self, attr, ros_import: RosImport):
         from .client_driver import ClientDriver
 
         self.log_debug("[SERVER] Resolving import")
@@ -245,38 +249,38 @@ class ServerDriver(AsyncDriver, Node):
                 f">{node_namespace_param_name}<. Using default namespace: >/<"
             )
 
-        return ClientDriver(imp, self, node_name, node_ns)
+        return ClientDriver(ros_import, self, node_name, node_ns)
 
-    def _attach_service(self, attr, s: RosService):
+    def _attach_service(self, attr, ros_service: RosService):
         """Attaches a service"""
-        self.log_debug(f"[SERVER] Attach service >{attr}< @ >{s.path}<")
+        self.log_debug(f"[SERVER] Attach service >{attr}< @ >{ros_service.path}<")
 
-        # Will be called from MultiThreadedExecutor 
+        # Will be called from MultiThreadedExecutor
         def cb(req, res):
             # Call handler function
             kwargs = idl_to_kwargs(req)
-            result = self.run_coroutine(s.handler, self, **kwargs).result()
-        
-            if isinstance(result, Result):
-                result = s.idl.Response(*result.args, **result.kwargs)
+            result = self.run_coroutine(ros_service.handler, self, **kwargs).result()
 
-            else: # Prevent ROS hang if return value is invalid by returning default
+            if isinstance(result, Result):
+                result = ros_service.idl.Response(*result.args, **result.kwargs)
+
+            else:  # Prevent ROS hang if return value is invalid by returning default
                 self._logger.warn(
-                    f"Service handler >{attr}< @ >{s.path}< did not return `result(...)`. "
+                    f"Service handler >{attr}< @ >{ros_service.path}< did not return `result(...)`. "
                     f"Expected Result, got {result}"
                 )
                 result = res
-                
+
             return result
 
-        self.create_service(s.idl, s.path, cb)
+        self.create_service(ros_service.idl, ros_service.path, cb)
 
-    def _attach_action(self, attr, d: RosAction):
+    def _attach_action(self, attr, ros_action: RosAction):
         self.log_debug(f"[SERVER] Attach action >{attr}<")
 
         def cb(goal):
             kwargs = idl_to_kwargs(goal.request)
-            gen = d.handler(self, **kwargs)
+            gen = ros_action.handler(self, **kwargs)
 
             result: Feedback | Result = None
             while True:
@@ -284,7 +288,7 @@ class ServerDriver(AsyncDriver, Node):
                     result = self.run_coroutine(gen.__anext__()).result()
 
                     if isinstance(result, Feedback):
-                        fb = d.idl.Feedback(*result.args, **result.kwargs)
+                        fb = ros_action.idl.Feedback(*result.args, **result.kwargs)
                         goal.publish_feedback(fb)
 
                     elif isinstance(result, Result):
@@ -299,69 +303,69 @@ class ServerDriver(AsyncDriver, Node):
                     break
 
             if isinstance(result, Result):
-                result = d.idl.Result(*result.args, **result.kwargs)
+                result = ros_action.idl.Result(*result.args, **result.kwargs)
             else:
                 self.log_warn(
                     f"Action >{attr}< did not yield `result(...)`. "
-                    f"Expected >{d.idl.Result}<, got >{result}<. Aborting action."
+                    f"Expected >{ros_action.idl.Result}<, got >{result}<. Aborting action."
                 )
-                result = d.idl.Result()
+                result = ros_action.idl.Result()
 
-            print(f"ACTION HANDLER @ {d.path} FINISH", result)
+            print(f"ACTION HANDLER @ {ros_action.path} FINISH", result)
             return result
 
         setattr(
             self,
-            f"__{d.handler.__name__}",
-            ActionServer(self, d.idl, d.path, cb),
+            f"__{ros_action.handler.__name__}",
+            ActionServer(self, ros_action.idl, ros_action.path, cb),
         )
 
-        return d.handler
+        return ros_action.handler
 
-    def _attach_subscriber(self, attr, sub: RosSubscription):
-        fqt = sub.get_fqt(self.get_name(), self.get_namespace())
+    def _attach_subscriber(self, attr, ros_sub: RosSubscription):
+        fqt = ros_sub.get_fqt(self.get_name(), self.get_namespace())
 
         self.log_debug(f"[SERVER] Attach subscriber >{attr}<")
 
         def cb(msg):
             kwargs = idl_to_kwargs(msg)
-            self.run_coroutine(sub.handler, self, **kwargs)
+            self.run_coroutine(ros_sub.handler, self, **kwargs)
 
         self.create_subscription(fqt.idl, fqt.path, cb, fqt.qos)
 
-    def _attach_publisher(self, attr, topic_def: RosTopic):
-        self.log_debug(f"Attach publisher {attr} @ >{topic_def.path}<")
+    def _attach_publisher(self, attr, ros_topic: RosTopic):
+        self.log_debug(f"Attach publisher {attr} @ >{ros_topic.path}<")
 
-        pub = self.create_publisher(topic_def.idl, topic_def.path, topic_def.qos)
+        pub = self.create_publisher(ros_topic.idl, ros_topic.path, ros_topic.qos)
 
         async def _dispatch_pub(*args, **kwargs):
-            msg = topic_def.idl(*args, **kwargs)
+            msg = ros_topic.idl(*args, **kwargs)
             await self.run_executor(pub.publish, msg)
 
         return _dispatch_pub
 
     # TODO: Better error handling.
     # ATM raised errors are completely hidden
-    def _attach_timer(self, attr, t: RosTimer):
+    def _attach_timer(self, attr, ros_timer: RosTimer):
         self.log_debug(f"Attach timer >{attr}<")
 
         def _cb():
             try:
-                self.run_coroutine(t.server_handler, self)
+                self.run_coroutine(ros_timer.server_handler, self)
             except Exception:
                 self.log_error(traceback.format_exc())
 
-        self.create_timer(t.interval, _cb)
-        return t.server_handler
+        self.create_timer(ros_timer.interval, _cb)
+        return ros_timer.server_handler
 
-    def _attach_params(self, attr, p: RosParams):
+    def _attach_params(self, attr, ros_params: RosParams):
         self.log_debug(f"Attach params >{attr}<")
-        return ParamsDriver(attr, p.params_class, self)
+        return ParamsDriver(attr, ros_params.params_class, self)
 
-    def _attach_param_subscription(self, attr, p: RosParamSubscription):
+    def _attach_param_subscription(self, attr, ros_param_sub: RosParamSubscription):
         # For each reference, find its definition's corrosponding attribute name
         # so that we can reference its instantiated version through getattr.
-        for ref in p.references:
+        for ref in ros_param_sub.references:
             for member in inspect.getmembers(self._n):
                 if member[1] == ref.params_def:
                     attr = member[0]
@@ -373,7 +377,12 @@ class ServerDriver(AsyncDriver, Node):
 
             # Add a listener to the corrosponding ParamsWrapper, param
             params_wrapper: ParamsDriver = getattr(self, attr)
-            params_wrapper.add_change_listener(ref.param_name, p.handler)
+            params_wrapper.add_change_listener(ref.param_name, ros_param_sub.handler)
 
         # Allow handling function to be directly called
-        return p.handler
+        return ros_param_sub.handler
+
+    def _process_start(self, attr, ros_start: RosStart):
+        self.log_debug(f"Process start >{attr}<")
+        self.run_coroutine(ros_start.server_handler, self)
+        return ros_start.server_handler
