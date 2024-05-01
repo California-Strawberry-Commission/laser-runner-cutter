@@ -89,6 +89,7 @@ class AmigaControlNode:
     @timer(2) 
     async def task(self):
         print(self.amiga_params, self.amiga_params.port_canbus)
+        self.print_host()
 
     # Service implementation.
     @service("~/set_twist", SetTwist)
@@ -123,6 +124,17 @@ class AmigaControlNode:
             await asyncio.sleep(0.1 if fast else 1)
         # LAST YIELD MUST BE RESPONSE!!
         yield result(success=True)
+
+
+    a_value = 10
+    def print_host(self):
+        print(f"Host param is {self.amiga_params.host}")
+        print(f"A value is {self.a_value}")
+        self.a_static_method()
+
+    @staticmethod
+    def a_static_method():
+        print("Called static method")
 
 # Boilerplate below here.
 def main():
