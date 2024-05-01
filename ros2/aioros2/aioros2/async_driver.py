@@ -11,14 +11,16 @@ from .decorators.action import RosAction
 from .decorators.timer import RosTimer
 from .decorators.params import RosParams
 from .decorators.param_subscription import RosParamSubscription
+from .decorators.start import RosStart
+
 
 class AsyncDriver:
     """Base class for all adapters"""
-    
+
     def __init__(self, async_node, logger):
         self._logger = logger
         self._n = async_node
-        
+
         # self._n.params = self._attach_params_dataclass(self._n.params)
         self._loop = asyncio.get_running_loop()
 
@@ -28,6 +30,7 @@ class AsyncDriver:
 
     def run_coroutine(self, fn, *args, **kwargs):
         """Runs asyncio code from ANOTHER SYNC THREAD"""
+
         async def _wrap_coro(coro):
             try:
                 return await coro
@@ -35,9 +38,9 @@ class AsyncDriver:
                 self.log_error(traceback.format_exc())
 
         # https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.call_soon_threadsafe
-        return asyncio.run_coroutine_threadsafe(_wrap_coro(fn(*args, **kwargs)), self._loop)
-    
-
+        return asyncio.run_coroutine_threadsafe(
+            _wrap_coro(fn(*args, **kwargs)), self._loop
+        )
 
     def _get_ros_definitions(self):
         from .decorators.import_node import RosImport
@@ -56,8 +59,11 @@ class AsyncDriver:
         # Process topics last to prevent function version from shadowing definition
         a.sort(key=lambda b: type(b[1]) == RosTopic)
 
+        # Process start last as it depends on everything else
+        a.sort(key=lambda b: type(b[1]) == RosStart)
+
         return a
-    
+
     def log_debug(self, msg: str):
         self._logger.info(msg)
 
@@ -83,40 +89,44 @@ class AsyncDriver:
             RosTimer: self._attach_timer,
             RosParams: self._attach_params,
             RosParamSubscription: self._attach_param_subscription,
+            RosStart: self._process_start,
         }
 
         for attr, definition in self._get_ros_definitions():
             setattr(self, attr, attachers[type(definition)](attr, definition))
-            
-    def _warn_unimplemented(self, readable_name, fn_name):
-        self._logger.warn(f"Failed to initialize >{readable_name}< because >{fn_name}< is not implemented in driver >{self.__class__.__qualname__}<")
 
-    def _process_import(self, attr, d):
+    def _warn_unimplemented(self, readable_name, fn_name):
+        self._logger.warn(
+            f"Failed to initialize >{readable_name}< because >{fn_name}< is not implemented in driver >{self.__class__.__qualname__}<"
+        )
+
+    def _process_import(self, attr, ros_def):
         self._warn_unimplemented("import", "_process_import")
 
-    def _attach_service(self, attr, d):
+    def _attach_service(self, attr, ros_service):
         self._warn_unimplemented("service", "_attach_service")
 
-    def _attach_subscriber(self, attr, d):
+    def _attach_subscriber(self, attr, ros_sub):
         self._warn_unimplemented("subscriber", "_attach_subscriber")
-    
-    def _attach_publisher(self, attr, d):
+
+    def _attach_publisher(self, attr, ros_topic):
         self._warn_unimplemented("topic publisher", "_attach_publisher")
 
-    def _attach_action(self, attr, d):
+    def _attach_action(self, attr, ros_action):
         self._warn_unimplemented("action", "_attach_action")
-    
-    def _attach_param_handler(self, attr, d):
-        self._warn_unimplemented("param handler", "_attach_param_handler")
-    
-    def _attach_timer(self, attr, d):
+
+    def _attach_timer(self, attr, ros_timer):
         self._warn_unimplemented("timer", "_attach_timer")
-        
-    def _attach_params(self, attr, d):
+
+    def _attach_params(self, attr, ros_params):
         self._warn_unimplemented("params", "_attach_params")
 
-    def _attach_param_subscription(self, attr, sub):
+    def _attach_param_subscription(self, attr, ros_param_sub):
         self._warn_unimplemented("param subscription", "_attach_param_subscription")
+
+    def _process_start(self, attr, ros_start):
+        self._warn_unimplemented("start", "_process_start")
+
 
 # Maps python types to a ROS parameter integer enum
 dataclass_ros_map = {
@@ -157,5 +167,3 @@ ros_type_getter_map = {
     8: "double_array_value",
     9: "string_array_value",
 }
-
-  
