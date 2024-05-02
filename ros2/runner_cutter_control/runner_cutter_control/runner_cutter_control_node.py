@@ -7,15 +7,24 @@ finding a specific runner to burn, and burning said runner.
 """
 
 import asyncio
+import logging
 import threading
+from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
+
 import numpy as np
-import rclpy
-from rclpy.executors import MultiThreadedExecutor
-from rclpy.node import Node
 from std_srvs.srv import Trigger
 from transitions.extensions.asyncio import AsyncMachine
 
+from aioros2 import (
+    node,
+    params,
+    result,
+    serve_nodes,
+    service,
+    start,
+    topic,
+)
 from camera_control.camera_control_client import CameraControlClient
 from laser_control.laser_control_client import LaserControlClient
 from runner_cutter_control.calibration import Calibration
@@ -28,164 +37,109 @@ from runner_cutter_control_interfaces.srv import (
 )
 
 
-class RunnerCutterControlNode(Node):
-    def __init__(self):
-        super().__init__("runner_cutter_control_node")
-        self.logger = self.get_logger()
+@dataclass
+class RunnerCutterControlParams:
+    laser_node_name: str = "laser0"
+    camera_node_name: str = "camera0"
+    tracking_laser_color: List[float] = field(default_factory=lambda: [0.15, 0.0, 0.0])
+    burn_laser_color: List[float] = field(default_factory=lambda: [0.0, 0.0, 1.0])
+    burn_time_secs: float = 5.0
 
-        # Parameters
 
-        self.declare_parameters(
-            namespace="",
-            parameters=[
-                ("laser_node_name", "laser"),
-                ("camera_node_name", "camera"),
-                ("tracking_laser_color", [0.15, 0.0, 0.0]),
-                ("burn_laser_color", [0.0, 0.0, 1.0]),
-                ("burn_time_secs", 5),
-            ],
-        )
-        self.laser_node_name = (
-            self.get_parameter("laser_node_name").get_parameter_value().string_value
-        )
-        self.camera_node_name = (
-            self.get_parameter("camera_node_name").get_parameter_value().string_value
-        )
-        self.tracking_laser_color = (
-            self.get_parameter("tracking_laser_color")
-            .get_parameter_value()
-            .double_array_value
-        )
-        self.burn_laser_color = (
-            self.get_parameter("burn_laser_color")
-            .get_parameter_value()
-            .double_array_value
-        )
-        self.burn_time_secs = (
-            self.get_parameter("burn_time_secs").get_parameter_value().integer_value
-        )
+@node("runner_cutter_control_node")
+class RunnerCutterControlNode:
+    runner_cutter_control_params = params(RunnerCutterControlParams)
+    state_topic = topic("~/state", State, 5)
 
-        # Services
-
-        # TODO: use action instead once there's a new release of roslib. Currently
-        # roslib does not support actions with ROS2
-        self.calibrate_srv = self.create_service(
-            Trigger,
-            "~/calibrate",
-            self._calibrate_callback,
+    @start
+    async def start(self):
+        self.laser_client = LaserControlClient(
+            self, self.runner_cutter_control_params.laser_node_name, self.get_logger()
         )
-        self.add_calibration_points_srv = self.create_service(
-            AddCalibrationPoints,
-            "~/add_calibration_points",
-            self._add_calibration_points_callback,
-        )
-        self.manual_target_aim_laser_srv = self.create_service(
-            ManualTargetAimLaser,
-            "~/manual_target_aim_laser",
-            self._manual_target_aim_laser_callback,
-        )
-        self.start_runner_cutter_srv = self.create_service(
-            Trigger,
-            "~/start_runner_cutter",
-            self._start_runner_cutter_callback,
-        )
-        self.start_runner_cutter_srv = self.create_service(
-            Trigger,
-            "~/stop",
-            self._stop_callback,
-        )
-        self.get_state_srv = self.create_service(
-            GetState, "~/get_state", self._get_state_callback
-        )
-
-        # Pub/sub
-
-        self.state_publisher = self.create_publisher(State, "~/state", 5)
-
-        # Set up dependencies
-
-        self.laser_client = LaserControlClient(self, self.laser_node_name, self.logger)
         self.camera_client = CameraControlClient(
-            self, self.camera_node_name, self.logger
+            self, self.runner_cutter_control_params.camera_node_name, self.get_logger()
         )
         self.laser_client.wait_active()
         self.camera_client.wait_active()
         self.calibration = Calibration(
             self.laser_client,
             self.camera_client,
-            self.tracking_laser_color,
-            logger=self.logger,
+            self.runner_cutter_control_params.tracking_laser_color,
+            self.get_logger(),
         )
-        self.runner_tracker = Tracker(self.logger)
-
-        # State machine
-
-        # We run the state machine on a separate thread that runs an asyncio event loop.
-        # Note that we cannot directly call triggers on self.state_machine from service callbacks,
-        # as there are long running tasks that run on certain states. So, from service callbacks,
-        # we queue triggers that will be processed on the state machine thread.
+        self.runner_tracker = Tracker(self.get_logger())
         self.state_machine = StateMachine(
             self,
             self.laser_client,
             self.camera_client,
             self.calibration,
             self.runner_tracker,
-            self.tracking_laser_color,
-            self.burn_laser_color,
-            self.burn_time_secs,
-            self.logger,
+            self.runner_cutter_control_params.tracking_laser_color,
+            self.runner_cutter_control_params.burn_laser_color,
+            self.runner_cutter_control_params.burn_time_secs,
+            self.get_logger(),
         )
-        self.state_machine_thread = StateMachineThread(self.state_machine, self.logger)
-        self.state_machine_thread.start()
 
-    def get_state(self) -> State:
+    # TODO: use action instead once there's a new release of roslib. Currently
+    # roslib does not support actions with ROS2
+    @service("~/calibrate", Trigger)
+    async def calibrate(self):
+        if self.state_machine.state != "idle":
+            return result(success=False)
+
+        asyncio.get_running_loop().create_task(self.state_machine.run_calibration())
+        return result(success=True)
+
+    @service("~/add_calibration_points", AddCalibrationPoints)
+    async def add_calibration_points(self, camera_pixels):
+        if self.state_machine.state != "idle":
+            return result(success=False)
+
+        camera_pixels = [(round(pixel.x), round(pixel.y)) for pixel in camera_pixels]
+        asyncio.get_running_loop().create_task(
+            self.state_machine.run_add_calibration_points(camera_pixels)
+        )
+        return result(success=True)
+
+    @service("~/manual_target_aim_laser", ManualTargetAimLaser)
+    async def manual_target_aim_laser(self, camera_pixel):
+        if self.state_machine.state != "idle":
+            return result(success=False)
+
+        camera_pixel = (
+            round(camera_pixel.x),
+            round(camera_pixel.y),
+        )
+        asyncio.get_running_loop().create_task(
+            self.state_machine.run_manual_target_aim_laser(camera_pixel)
+        )
+        return result(success=True)
+
+    @service("~/start_runner_cutter", Trigger)
+    async def start_runner_cutter(self):
+        if self.state_machine.state != "idle":
+            return result(success=False)
+
+        asyncio.get_running_loop().create_task(self.state_machine.run_runner_cutter())
+        return result(success=True)
+
+    @service("~/stop", Trigger)
+    async def stop(self):
+        asyncio.get_running_loop().create_task(self.state_machine.stop())
+        return result(success=True)
+
+    @service("~/get_state", GetState)
+    async def get_state(self):
+        return result(state=self._get_state())
+
+    async def publish_state(self):
+        state = self._get_state()
+        await self.state_topic(calibrated=state.calibrated, state=state.state)
+
+    def _get_state(self) -> State:
         return State(
             calibrated=self.state_machine.is_calibrated, state=self.state_machine.state
         )
-
-    def publish_state(self):
-        self.state_publisher.publish(self.get_state())
-
-    def _calibrate_callback(self, request, response):
-        if self.state_machine.state == "idle":
-            self.state_machine_thread.queue("run_calibration")
-            response.success = True
-        return response
-
-    def _add_calibration_points_callback(self, request, response):
-        if self.state_machine.state == "idle":
-            camera_pixels = [
-                (round(pixel.x), round(pixel.y)) for pixel in request.camera_pixels
-            ]
-            self.state_machine_thread.queue("run_add_calibration_points", camera_pixels)
-            response.success = True
-        return response
-
-    def _manual_target_aim_laser_callback(self, request, response):
-        if self.state_machine.state == "idle":
-            camera_pixel = (
-                round(request.camera_pixel.x),
-                round(request.camera_pixel.y),
-            )
-            self.state_machine_thread.queue("run_manual_target_aim_laser", camera_pixel)
-            response.success = True
-        return response
-
-    def _start_runner_cutter_callback(self, request, response):
-        if self.state_machine.state == "idle":
-            self.state_machine_thread.queue("run_runner_cutter")
-            response.success = True
-        return response
-
-    def _stop_callback(self, request, response):
-        if self.state_machine.state != "idle":
-            self.state_machine_thread.queue("stop")
-            response.success = True
-        return response
-
-    def _get_state_callback(self, request, response):
-        response.state = self.get_state()
-        return response
 
 
 class StateMachine:
@@ -210,7 +164,7 @@ class StateMachine:
         tracking_laser_color: Tuple[float, float, float],
         burn_laser_color: Tuple[float, float, float],
         burn_time_secs: float,
-        logger,
+        logger: Optional[logging.Logger] = None,
     ):
         self.node = node
         self.laser_client = laser_client
@@ -220,7 +174,11 @@ class StateMachine:
         self.tracking_laser_color = tracking_laser_color
         self.burn_laser_color = burn_laser_color
         self.burn_time_secs = burn_time_secs
-        self.logger = logger
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = logging.getLogger(__name__)
+            self.logger.setLevel(logging.INFO)
 
         self.machine = AsyncMachine(
             model=self, states=StateMachine.states, initial="idle", queued=False
@@ -262,21 +220,21 @@ class StateMachine:
         return self.calibration.is_calibrated
 
     async def on_enter_idle(self):
-        self.node.publish_state()
+        await self.node.publish_state()
         await self.laser_client.stop_laser()
         await self.laser_client.clear_points()
         await self.camera_client.auto_exposure()
         self.runner_tracker.clear()
 
     async def on_enter_calibration(self):
-        self.node.publish_state()
+        await self.node.publish_state()
         await self.calibration.calibrate()
         await self.calibration_complete()
 
     async def on_enter_add_calibration_points(
         self, camera_pixels: List[Tuple[int, int]]
     ):
-        self.node.publish_state()
+        await self.node.publish_state()
         # For each camera pixel, find the 3D position wrt the camera
         positions = await self.camera_client.get_positions_for_pixels(camera_pixels)
         # Filter out any invalid positions
@@ -292,7 +250,7 @@ class StateMachine:
         await self.add_calibration_points_complete()
 
     async def on_enter_manual_target_aim_laser(self, camera_pixel: Tuple[int, int]):
-        self.node.publish_state()
+        await self.node.publish_state()
         # Find the 3D position wrt the camera
         positions = await self.camera_client.get_positions_for_pixels([camera_pixel])
         target_position = positions[0]
@@ -306,7 +264,7 @@ class StateMachine:
         await self.manual_target_aim_laser_complete()
 
     async def on_enter_acquire_target(self):
-        self.node.publish_state()
+        await self.node.publish_state()
 
         # Do nothing if there is already an active target
         if self.runner_tracker.has_active_tracks:
@@ -336,7 +294,7 @@ class StateMachine:
             await self.no_target_found()
 
     async def on_enter_aim_laser(self, target: Track):
-        self.node.publish_state()
+        await self.node.publish_state()
 
         corrected_laser_coord = await self._aim(target.position, target.pixel)
         if corrected_laser_coord is not None:
@@ -440,7 +398,7 @@ class StateMachine:
     async def on_enter_burn_target(
         self, target: Track, laser_coord: Tuple[float, float]
     ):
-        self.node.publish_state()
+        await self.node.publish_state()
 
         await self.laser_client.start_laser(
             point=laser_coord, color=self.burn_laser_color
@@ -451,55 +409,8 @@ class StateMachine:
         await self.burn_complete()
 
 
-class StateMachineThread(threading.Thread):
-
-    def __init__(self, state_machine, logger):
-        super().__init__()
-        self.daemon = True
-        self.state_machine = state_machine
-        self.logger = logger
-        self._queued_trigger = None
-        self._queued_args = None
-        self._queued_kwargs = None
-        self._lock = threading.Lock()
-
-    def queue(self, trigger, *args, **kwargs):
-        with self._lock:
-            self._queued_trigger = trigger
-            self._queued_args = args
-            self._queued_kwargs = kwargs
-
-    async def _state_machine_task(self):
-        while True:
-            trigger = None
-            with self._lock:
-                if self._queued_trigger is not None:
-                    trigger = self._queued_trigger
-                    args = self._queued_args
-                    kwargs = self._queued_kwargs
-                    self._queued_trigger = None
-                    self._queued_args = None
-                    self._queued_kwargs = None
-            if trigger is not None:
-                # Create a task so we don't block the queue processing loop
-                task = asyncio.create_task(
-                    self.state_machine.trigger(trigger, *args, **kwargs)
-                )
-            await asyncio.sleep(0.1)
-
-    def run(self):
-        asyncio.run(self._state_machine_task())
-
-
-def main(args=None):
-    rclpy.init(args=args)
-    node = RunnerCutterControlNode()
-    executor = MultiThreadedExecutor()
-    executor.add_node(node)
-    executor.spin()
-    executor.shutdown()
-    node.destroy_node()
-    rclpy.shutdown()
+def main():
+    serve_nodes(RunnerCutterControlNode())
 
 
 if __name__ == "__main__":
