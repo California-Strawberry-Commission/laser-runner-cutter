@@ -2,7 +2,7 @@
 # https://roboticsbackend.com/ros2-yaml-params/
 
 # Note: Need to add this file as a shared resource to get it to load :(
-# Add: (f"share/{package_name}/config", glob('config/*')) to `config_files` in `setup.py`
+# Add: `(f"share/{package_name}/config", glob('config/*'))` to `data_files` in `setup.py`
 /ns1/acn:
   ros__parameters:
     amiga_params:
