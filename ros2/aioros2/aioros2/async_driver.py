@@ -1,5 +1,7 @@
 import asyncio
+from inspect import getmembers
 import traceback
+import types
 import rclpy
 
 from .decorators import RosDefinition
@@ -16,6 +18,23 @@ from .decorators.start import RosStart
 
 class AsyncDriver:
     """Base class for all adapters"""
+
+    def __getattr__(self, attr):
+        if not hasattr(self._n, attr):
+            raise AttributeError(f"Attr >{attr}< not found in either driver or definition class")
+        
+        value = getattr(self._n, attr)
+
+        # Rebind self-bound definition functions to this driver
+        if isinstance(value, types.MethodType):
+            value = types.MethodType(value.__func__, self) 
+
+        # Cache result for future accesses to bypass this 
+        # getattr
+        setattr(self, attr, value)
+
+        return value
+
 
     def __init__(self, async_node, logger):
         self._logger = logger
@@ -47,11 +66,7 @@ class AsyncDriver:
 
         node = self._n
 
-        a = [
-            (attr, getattr(node, attr))
-            for attr in dir(node)
-            if isinstance(getattr(node, attr), RosDefinition)
-        ]
+        a = getmembers(node, lambda v: isinstance(v, RosDefinition))
 
         # Make sure RosImports are processed first
         a.sort(key=lambda b: type(b[1]) != RosImport)
