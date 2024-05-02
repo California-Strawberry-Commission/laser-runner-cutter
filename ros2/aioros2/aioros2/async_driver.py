@@ -3,6 +3,7 @@ from inspect import getmembers
 import traceback
 import types
 import rclpy
+from typing import List
 
 from .decorators import RosDefinition
 from .decorators.service import RosService
@@ -21,20 +22,21 @@ class AsyncDriver:
 
     def __getattr__(self, attr):
         if not hasattr(self._n, attr):
-            raise AttributeError(f"Attr >{attr}< not found in either driver or definition class")
-        
+            raise AttributeError(
+                f"Attr >{attr}< not found in either driver or definition class"
+            )
+
         value = getattr(self._n, attr)
 
         # Rebind self-bound definition functions to this driver
         if isinstance(value, types.MethodType):
-            value = types.MethodType(value.__func__, self) 
+            value = types.MethodType(value.__func__, self)
 
-        # Cache result for future accesses to bypass this 
+        # Cache result for future accesses to bypass this
         # getattr
         setattr(self, attr, value)
 
         return value
-
 
     def __init__(self, async_node, logger):
         self._logger = logger
@@ -115,31 +117,31 @@ class AsyncDriver:
             f"Failed to initialize >{readable_name}< because >{fn_name}< is not implemented in driver >{self.__class__.__qualname__}<"
         )
 
-    def _process_import(self, attr, ros_def):
+    def _process_import(self, attr, ros_import: RosImport):
         self._warn_unimplemented("import", "_process_import")
 
-    def _attach_service(self, attr, ros_service):
+    def _attach_service(self, attr, ros_service: RosService):
         self._warn_unimplemented("service", "_attach_service")
 
-    def _attach_subscriber(self, attr, ros_sub):
+    def _attach_subscriber(self, attr, ros_sub: RosSubscription):
         self._warn_unimplemented("subscriber", "_attach_subscriber")
 
-    def _attach_publisher(self, attr, ros_topic):
+    def _attach_publisher(self, attr, ros_topic: RosTopic):
         self._warn_unimplemented("topic publisher", "_attach_publisher")
 
-    def _attach_action(self, attr, ros_action):
+    def _attach_action(self, attr, ros_action: RosAction):
         self._warn_unimplemented("action", "_attach_action")
 
-    def _attach_timer(self, attr, ros_timer):
+    def _attach_timer(self, attr, ros_timer: RosTimer):
         self._warn_unimplemented("timer", "_attach_timer")
 
-    def _attach_params(self, attr, ros_params):
+    def _attach_params(self, attr, ros_params: RosParams):
         self._warn_unimplemented("params", "_attach_params")
 
-    def _attach_param_subscription(self, attr, ros_param_sub):
+    def _attach_param_subscription(self, attr, ros_param_sub: RosParamSubscription):
         self._warn_unimplemented("param subscription", "_attach_param_subscription")
 
-    def _process_start(self, attr, ros_start):
+    def _process_start(self, attr, ros_start: RosStart):
         self._warn_unimplemented("start", "_process_start")
 
 
@@ -150,10 +152,10 @@ dataclass_ros_map = {
     float: 3,
     str: 4,
     bytes: 5,
-    "list[bool]": 6,
-    "list[int]": 7,
-    "list[float]": 8,
-    "list[str]": 9,
+    List[bool]: 6,
+    List[int]: 7,
+    List[float]: 8,
+    List[str]: 9,
 }
 
 # Maps python types to a ROS parameter enum
@@ -163,10 +165,10 @@ dataclass_ros_enum_map = {
     float: rclpy.Parameter.Type.DOUBLE,
     str: rclpy.Parameter.Type.STRING,
     bytes: rclpy.Parameter.Type.BYTE_ARRAY,
-    "list[bool]": rclpy.Parameter.Type.BOOL_ARRAY,
-    "list[int]": rclpy.Parameter.Type.INTEGER_ARRAY,
-    "list[float]": rclpy.Parameter.Type.DOUBLE_ARRAY,
-    "list[str]": rclpy.Parameter.Type.STRING_ARRAY,
+    List[bool]: rclpy.Parameter.Type.BOOL_ARRAY,
+    List[int]: rclpy.Parameter.Type.INTEGER_ARRAY,
+    List[float]: rclpy.Parameter.Type.DOUBLE_ARRAY,
+    List[str]: rclpy.Parameter.Type.STRING_ARRAY,
 }
 
 # Maps ROS types to a corresponding attribute containing the

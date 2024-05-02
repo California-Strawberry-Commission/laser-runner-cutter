@@ -46,7 +46,13 @@ class ParamDriver:
 
     def __init__(self, field: dataclasses.Field, fqpn: str) -> None:
         self.fqpn = fqpn
-        self.value = field.default
+
+        # Check if default_factory exists. If it does, call the factory function to get the default value
+        self.value = (
+            field.default
+            if field.default_factory is dataclasses.MISSING
+            else field.default_factory()
+        )
 
         self.__listeners = []
         self.__ros_type = dataclass_ros_map[field.type]
