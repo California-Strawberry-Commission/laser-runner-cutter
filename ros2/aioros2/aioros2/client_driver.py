@@ -10,7 +10,10 @@ from .decorators.service import RosService
 from .decorators.subscribe import RosSubscription
 from .decorators.import_node import RosImport
 from .decorators.action import RosAction
+from .decorators.topic import RosTopic
+from .decorators.timer import RosTimer
 from rclpy.expand_topic_name import expand_topic_name
+
 
 class AsyncActionClient:
     _action_complete = False
@@ -50,7 +53,6 @@ class AsyncActionClient:
 class ClientDriver(AsyncDriver):
     def __init__(self, node_def, server_node, node_name, node_namespace):
 
-    
         self._node: "server_driver.ServerDriver" = server_node
         self._node_name = node_name
         self._node_namespace = node_namespace
@@ -68,24 +70,24 @@ class ClientDriver(AsyncDriver):
             ns = self._node_namespace.lstrip("/")
             return f"{ns}.{self._node_name}-client"
 
-    def _process_import(self, attr, imp: RosImport):
+    def _process_import(self, attr, ros_import: RosImport):
         self.log_debug("[CLIENT] Process import")
         # DON'T create a client from a client.
         # Resolve import to raw node definition
         # TODO: Change this to properly resolve 2nd order imports
-        return imp.resolve()
+        return ros_import.resolve()
 
-    def _attach_publisher(self, attr, d):
+    def _attach_publisher(self, attr, ros_topic: RosTopic):
         # Don't create topic publisher on clients, but keep definition populated
-        return d
-    
-    def _attach_timer(self, attr, d):
+        return ros_topic
+
+    def _attach_timer(self, attr, ros_timer: RosTimer):
         # Don't create topic publisher on clients
         return None
-    
-    def _attach_subscriber(self, attr, sub: RosSubscription):
+
+    def _attach_subscriber(self, attr, ros_sub: RosSubscription):
         # TODO: This doesn't work as expected for 2nd order imports
-        topic = sub.get_fqt(self._node_name, self._node_namespace)
+        topic = ros_sub.get_fqt(self._node_name, self._node_namespace)
 
         # Creates a publisher for this channel
         self.log_debug(f"Attach subscriber publisher @ >{topic.path}<")
@@ -95,16 +97,16 @@ class ClientDriver(AsyncDriver):
         async def _dispatch_pub(*args, **kwargs):
             msg = topic.idl(*args, **kwargs)
             await self._node.run_executor(pub.publish, msg)
-            
+
         return _dispatch_pub
 
-    def _attach_action(self, attr, a: RosAction):
+    def _attach_action(self, attr, ros_action: RosAction):
         def _impl(*args, **kwargs):
-            goal = a.idl.Goal(*args, **kwargs)
+            goal = ros_action.idl.Goal(*args, **kwargs)
             generator = self._dispatch_action_req(_impl._ros_client, goal)
-            return AsyncActionClient(generator, self._node._loop, a.idl)
+            return AsyncActionClient(generator, self._node._loop, ros_action.idl)
 
-        _impl._ros_client = ActionClient(self._node, a.idl, a.path)
+        _impl._ros_client = ActionClient(self._node, ros_action.idl, ros_action.path)
         return _impl
 
     # TODO: Gracefully handle action rejections
@@ -164,14 +166,14 @@ class ClientDriver(AsyncDriver):
         yield result
         raise StopAsyncIteration()
 
-    def _attach_service(self, attr, s:RosService):
+    def _attach_service(self, attr, ros_service: RosService):
         async def _impl(*args, **kwargs):
-            req = s.idl.Request(*args, **kwargs)
+            req = ros_service.idl.Request(*args, **kwargs)
             return await self._loop.run_in_executor(
                 None, self._dispatch_service_req, _impl, req
             )
 
-        _impl._ros_client = self._node.create_client(s.idl, s.path)
+        _impl._ros_client = self._node.create_client(ros_service.idl, ros_service.path)
         return _impl
 
     def _dispatch_service_req(self, impl, request):

@@ -5,6 +5,7 @@ from rclpy.action import ActionServer
 from rclpy.parameter import Parameter
 from rcl_interfaces.msg import SetParametersResult
 import traceback
+import asyncio
 
 from .async_driver import (
     AsyncDriver,
@@ -27,6 +28,7 @@ from .decorators.param import RosParam
 from .decorators import idl_to_kwargs
 from .decorators.param_subscription import RosParamSubscription
 from .decorators.start import RosStart
+from functools import partial
 
 # https://answers.ros.org/question/340600/how-to-get-ros2-parameter-hosted-by-another-node/
 # https://roboticsbackend.com/rclpy-params-tutorial-get-set-ros2-params-with-python/
@@ -51,7 +53,12 @@ class ParamDriver:
         if isinstance(field.default, RosParam):
             self.value = 0
         else:
-            self.value = field.default
+            # Check if default_factory exists. If it does, call the factory function to get the default value
+            self.value = (
+                field.default
+                if field.default_factory is dataclasses.MISSING
+                else field.default_factory()
+            )
 
         self.__listeners = []
         self.__ros_type = dataclass_ros_map[field.type]
@@ -353,13 +360,17 @@ class ServerDriver(AsyncDriver, Node):
     def _attach_timer(self, attr, ros_timer: RosTimer):
         self.log_debug(f"Attach timer >{attr}<")
 
-        def _cb():
+        def _cb(lock=None):
             try:
-                self.run_coroutine(ros_timer.server_handler, self)
+                if lock:
+                    self.run_coroutine_with_lock(ros_timer.server_handler, lock, self)
+                else:
+                    self.run_coroutine(ros_timer.server_handler, self)
             except Exception:
                 self.log_error(traceback.format_exc())
 
-        self.create_timer(ros_timer.interval, _cb)
+        lock = asyncio.Lock() if ros_timer.skip_until_complete else None
+        self.create_timer(ros_timer.interval, partial(_cb, lock))
         return ros_timer.server_handler
 
     def _attach_params(self, attr, ros_params: RosParams):

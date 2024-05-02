@@ -1,9 +1,18 @@
 import os
+from dataclasses import dataclass
 
-import rclpy
 from ament_index_python.packages import get_package_share_directory
-from rclpy.node import Node
+from std_srvs.srv import Trigger
 
+from aioros2 import (
+    node,
+    params,
+    result,
+    serve_nodes,
+    service,
+    start,
+    topic,
+)
 from laser_control.laser_dac import EtherDreamDAC, HeliosDAC
 from laser_control_interfaces.msg import State
 from laser_control_interfaces.srv import (
@@ -13,91 +22,122 @@ from laser_control_interfaces.srv import (
     SetPlaybackParams,
     SetPoints,
 )
-from std_srvs.srv import Trigger
 
 
-class LaserControlNode(Node):
-    def __init__(self):
-        super().__init__("laser_control_node")
-        self.logger = self.get_logger()
+@dataclass
+class LaserControlParams:
+    dac_type: str = "helios"  # "helios" or "ether_dream"
+    dac_index: int = 0
+    fps: int = 30
+    pps: int = 30000
+    transition_duration_ms: float = 0.5
 
-        # Parameters
 
-        self.declare_parameters(
-            namespace="",
-            parameters=[
-                ("dac_type", "helios"),  # "helios" or "ether_dream"
-                ("dac_index", 0),
-                ("fps", 30),
-                ("pps", 30000),
-                ("transition_duration_ms", 0.5),
-            ],
-        )
+@node("laser_control_node")
+class LaserControlNode:
+    laser_control_params = params(LaserControlParams)
+    state_topic = topic("~/state", State, 5)
 
-        self.dac_type = (
-            self.get_parameter("dac_type").get_parameter_value().string_value
-        )
-        self.dac_index = (
-            self.get_parameter("dac_index").get_parameter_value().integer_value
-        )
-        self.fps = self.get_parameter("fps").get_parameter_value().integer_value
-        self.pps = self.get_parameter("pps").get_parameter_value().integer_value
-        self.transition_duration_ms = (
-            self.get_parameter("transition_duration_ms")
-            .get_parameter_value()
-            .double_value
-        )
-
-        # Services
-
-        self.set_color_srv = self.create_service(
-            SetColor, "~/set_color", self._set_color_callback
-        )
-        self.add_point_srv = self.create_service(
-            AddPoint, "~/add_point", self._add_point_callback
-        )
-        self.set_points_srv = self.create_service(
-            SetPoints, "~/set_points", self._set_points_callback
-        )
-        self.remove_point_srv = self.create_service(
-            Trigger, "~/remove_point", self._remove_point_callback
-        )
-        self.clear_points_srv = self.create_service(
-            Trigger, "~/clear_points", self._clear_points_callback
-        )
-        self.set_playback_params_srv = self.create_service(
-            SetPlaybackParams,
-            "~/set_playback_params",
-            self._set_playback_params_callback,
-        )
-        self.play_srv = self.create_service(Trigger, "~/play", self._play_callback)
-        self.stop_srv = self.create_service(Trigger, "~/stop", self._stop_callback)
-        self.get_state_srv = self.create_service(
-            GetState, "~/get_state", self._get_state_callback
-        )
-
-        # Pub/sub
-
-        self.state_pub = self.create_publisher(State, "~/state", 5)
-
+    @start
+    async def start(self):
         # Initialize DAC
-
         include_dir = os.path.join(
             get_package_share_directory("laser_control"), "include"
         )
         self.dac = None
-        if self.dac_type == "helios":
+        if self.laser_control_params.dac_type == "helios":
             self.dac = HeliosDAC(os.path.join(include_dir, "libHeliosDacAPI.so"))
-        elif self.dac_type == "ether_dream":
+        elif self.laser_control_params.dac_type == "ether_dream":
             self.dac = EtherDreamDAC(os.path.join(include_dir, "libEtherDream.so"))
         else:
-            raise Exception(f"Unknown dac_type: {self.dac_type}")
+            raise Exception(f"Unknown dac_type: {self.laser_control_params.dac_type}")
 
         num_dacs = self.dac.initialize()
-        self.logger.info(f"{num_dacs} DACs of type {self.dac_type} found")
-        self.dac.connect(self.dac_index)
+        self.log(f"{num_dacs} DACs of type {self.laser_control_params.dac_type} found")
+        self.dac.connect(self.laser_control_params.dac_index)
 
-    def get_state(self) -> State:
+    @service("~/set_color", SetColor)
+    async def set_color(self, r, g, b, i):
+        if self.dac is None:
+            return result(success=False)
+
+        self.dac.set_color(r, g, b, i)
+        return result(success=True)
+
+    @service("~/add_point", AddPoint)
+    async def add_point(self, point):
+        if self.dac is None:
+            return result(success=False)
+
+        self.dac.add_point(point.x, point.y)
+        return result(success=True)
+
+    @service("~/set_points", SetPoints)
+    async def set_points(self, points):
+        if self.dac is None:
+            return result(success=False)
+
+        self.dac.clear_points()
+        for point in points:
+            self.dac.add_point(point.x, point.y)
+        return result(success=True)
+
+    @service("~/remove_point", Trigger)
+    async def remove_point(self):
+        if self.dac is None:
+            return result(success=False)
+
+        self.dac.remove_point()
+        return result(success=True)
+
+    @service("~/clear_points", Trigger)
+    async def clear_points(self):
+        if self.dac is None:
+            return result(success=False)
+
+        self.dac.clear_points()
+        return result(success=True)
+
+    @service("~/set_playback_params", SetPlaybackParams)
+    async def set_playback_params(self, fps, pps, transition_duration_ms):
+        await self.laser_control_params.set(
+            fps=fps,
+            pps=pps,
+            transition_duration_ms=transition_duration_ms,
+        )
+        return result(success=True)
+
+    @service("~/play", Trigger)
+    async def play(self):
+        if self.dac is None:
+            return result(success=False)
+
+        self.dac.play(
+            self.laser_control_params.fps,
+            self.laser_control_params.pps,
+            self.laser_control_params.transition_duration_ms,
+        )
+        await self._publish_state()
+        return result(success=True)
+
+    @service("~/stop", Trigger)
+    async def stop(self):
+        if self.dac is None:
+            return result(success=False)
+
+        self.dac.stop()
+        await self._publish_state()
+        return result(success=True)
+
+    @service("~/get_state", GetState)
+    async def get_state(self):
+        return result(
+            dac_type=self.laser_control_params.dac_type,
+            dac_index=self.laser_control_params.dac_index,
+            state=State(data=self._get_state()),
+        )
+
+    def _get_state(self) -> State:
         if self.dac is None:
             return State.DISCONNECTED
         elif self.dac.playing:
@@ -105,76 +145,12 @@ class LaserControlNode(Node):
         else:
             return State.STOPPED
 
-    def _set_color_callback(self, request, response):
-        if self.dac is not None:
-            self.dac.set_color(request.r, request.g, request.b, request.i)
-        return response
-
-    def _add_point_callback(self, request, response):
-        if self.dac is not None:
-            self.dac.add_point(request.point.x, request.point.y)
-            response.success = True
-        return response
-
-    def _set_points_callback(self, request, response):
-        if self.dac is not None:
-            self.dac.clear_points()
-            for point in request.points:
-                self.dac.add_point(point.x, point.y)
-            response.success = True
-        return response
-
-    def _remove_point_callback(self, request, response):
-        if self.dac is not None:
-            self.dac.remove_point()
-            response.success = True
-        return response
-
-    def _clear_points_callback(self, request, response):
-        if self.dac is not None:
-            self.dac.clear_points()
-            response.success = True
-        return response
-
-    def _set_playback_params_callback(self, request, response):
-        self.fps = request.fps
-        self.pps = request.pps
-        self.transition_duration_ms = request.transition_duration_ms
-        response.success = True
-        return response
-
-    def _play_callback(self, request, response):
-        if self.dac is not None:
-            self.dac.play(self.fps, self.pps, self.transition_duration_ms)
-            self._publish_state()
-            response.success = True
-        return response
-
-    def _stop_callback(self, request, response):
-        if self.dac is not None:
-            self.dac.stop()
-            self._publish_state()
-            response.success = True
-        return response
-
-    def _get_state_callback(self, request, response):
-        response.dac_type = self.dac_type
-        response.dac_index = self.dac_index
-        response.state.data = self.get_state()
-        return response
-
-    def _publish_state(self):
-        msg = State()
-        msg.data = self.get_state()
-        self.state_pub.publish(msg)
+    async def _publish_state(self):
+        await self.state_topic(data=self._get_state())
 
 
-def main(args=None):
-    rclpy.init(args=args)
-    node = LaserControlNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+def main():
+    serve_nodes(LaserControlNode())
 
 
 if __name__ == "__main__":
