@@ -13,6 +13,8 @@ from . import circular_node
 # Some test commands
 # For a launch file example, look to ../launch/amiga_control_launch
 
+# ros2 launch amiga_control/launch_amiga_control_launch.py
+
 # ros2 run amiga_control amiga_control_node --ros-args --remap __node:=acn --remap __ns:=/ns1 -p "dependant_node_1.name:=circ" -p "dependant_node_1.ns:=/ns2" --log-level DEBUG
 # ros2 run amiga_control circular_node --ros-args --remap __node:=circ --remap __ns:=/ns2 -p "dependant_node_1.name:=acn" -p "dependant_node_1.ns:=/ns1" --log-level DEBUG
 
@@ -129,6 +131,7 @@ class AmigaControlNode:
     a_value = 10
     def print_host(self):
         print(f"Host param is {self.amiga_params.host}")
+        self.log(f"Canbus: {self.amiga_params.port_canbus}, host {self.amiga_params.host}")
         print(f"A value is {self.a_value}")
         self.a_static_method()
 

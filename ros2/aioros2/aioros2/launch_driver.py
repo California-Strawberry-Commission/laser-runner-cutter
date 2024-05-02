@@ -15,14 +15,15 @@ class ImportLinker:
 
 class LaunchNode(RclpyNode, AsyncDriver):
     def __init_rclpy_node(self):
-        parameters = self._parameters + (self._kwargs["parameters"] if ("parameters" in self._kwargs) else [])
+        # Override parameters kwargs with launch params in addition to passed params
+        self._kwargs["parameters"] = self._parameters + (self._kwargs["parameters"] if ("parameters" in self._kwargs) else [])
+
         RclpyNode.__init__(
             self,
             package=self._package,
             executable=self._executable,
             name=self._name, 
             namespace=self._namespace,
-            parameters=parameters,
             **self._kwargs
             )
         
@@ -49,7 +50,6 @@ class LaunchNode(RclpyNode, AsyncDriver):
         AsyncDriver.__init__(self, node_def, get_logger(f"LAUNCH-{namespace}-{name}"))
 
         self.log_debug(f"Launching node >{self._package}< >{self._executable}<")
-
 
         self._attach()
 
