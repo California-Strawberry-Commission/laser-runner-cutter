@@ -274,10 +274,10 @@ class RealSense(Camera):
 
     def set_exposure(self, exposure_us: float):
         """
-        Set the exposure time of the camera.
+        Set the exposure time of the camera. A negative value sets auto exposure.
 
         Args:
-            exposure_us (float): Exposure time in microseconds.
+            exposure_us (float): Exposure time in microseconds. A negative value sets auto exposure.
         """
         if not self.is_connected:
             return
