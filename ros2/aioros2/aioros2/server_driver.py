@@ -231,8 +231,14 @@ class ServerDriver(AsyncDriver, Node):
         node_name_param_name = f"{attr}.name"
         node_namespace_param_name = f"{attr}.ns"
 
-        self.declare_parameter(node_name_param_name, attr)
-        self.declare_parameter(node_namespace_param_name, "/")
+        self.declare_parameter(
+            node_name_param_name,
+            ros_import.node_name if ros_import.node_name is not None else attr,
+        )
+        self.declare_parameter(
+            node_namespace_param_name,
+            ros_import.node_namespace if ros_import.node_namespace is not None else "/",
+        )
 
         node_name = (
             self.get_parameter(node_name_param_name).get_parameter_value().string_value

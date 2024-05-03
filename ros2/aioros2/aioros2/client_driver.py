@@ -55,11 +55,12 @@ class AsyncActionClient:
 
 # TODO: Receive fully qualified node path here.
 class ClientDriver(AsyncDriver):
-    def __init__(self, node_def, server_node, node_name, node_namespace, logger=None):
-
+    def __init__(
+        self, node_def, server_node, node_name, node_namespace=None, logger=None
+    ):
         self._node: "server_driver.ServerDriver" = server_node
         self._node_name = node_name
-        self._node_namespace = node_namespace
+        self._node_namespace = node_namespace if node_namespace is not None else "/"
 
         if logger is None:
             logger = rclpy.logging.get_logger(self._get_logger_name())
