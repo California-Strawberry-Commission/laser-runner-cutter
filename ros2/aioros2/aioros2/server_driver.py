@@ -1,34 +1,33 @@
+import asyncio
 import dataclasses
 import inspect
-from rclpy.node import Node
-from rclpy.action import ActionServer
-from rclpy.parameter import Parameter
-from rcl_interfaces.msg import SetParametersResult
 import traceback
-import asyncio
+from functools import partial
+
+from rcl_interfaces.msg import SetParametersResult
+from rclpy.action import ActionServer
+from rclpy.node import Node
+from rclpy.parameter import Parameter
 
 from .async_driver import (
     AsyncDriver,
+    dataclass_ros_enum_map,
     dataclass_ros_map,
     ros_type_getter_map,
-    dataclass_ros_enum_map,
 )
-from .result import Result
-from .feedback import Feedback
-
-from .decorators import RosDefinition
-from .decorators.service import RosService
-from .decorators.topic import RosTopic
-from .decorators.subscribe import RosSubscription
-from .decorators.import_node import RosImport
+from .decorators import RosDefinition, idl_to_kwargs
 from .decorators.action import RosAction
-from .decorators.timer import RosTimer
-from .decorators.params import RosParams
+from .decorators.import_node import RosImport
 from .decorators.param import RosParam
-from .decorators import idl_to_kwargs
 from .decorators.param_subscription import RosParamSubscription
+from .decorators.params import RosParams
+from .decorators.service import RosService
 from .decorators.start import RosStart
-from functools import partial
+from .decorators.subscribe import RosSubscription
+from .decorators.timer import RosTimer
+from .decorators.topic import RosTopic
+from .feedback import Feedback
+from .result import Result
 
 # https://answers.ros.org/question/340600/how-to-get-ros2-parameter-hosted-by-another-node/
 # https://roboticsbackend.com/rclpy-params-tutorial-get-set-ros2-params-with-python/
@@ -223,7 +222,7 @@ class ServerDriver(AsyncDriver, Node):
     def _process_import(self, attr, ros_import: RosImport):
         from .client_driver import ClientDriver
 
-        self.log_debug("[SERVER] Resolving import")
+        self.log_debug(f"[SERVER] Resolving import >{attr}<")
 
         # TODO: extract naming logic somewhere else. This is duplicated
         # in launch_driver._process_imports
@@ -256,7 +255,6 @@ class ServerDriver(AsyncDriver, Node):
                 f"Node namespace for import >{attr}< was not set at "
                 f">{node_namespace_param_name}<. Using default namespace: >/<"
             )
-
         return ClientDriver(ros_import, self, node_name, node_ns)
 
     def _attach_service(self, attr, ros_service: RosService):
@@ -342,7 +340,7 @@ class ServerDriver(AsyncDriver, Node):
         self.create_subscription(fqt.idl, fqt.path, cb, fqt.qos)
 
     def _attach_publisher(self, attr, ros_topic: RosTopic):
-        self.log_debug(f"Attach publisher {attr} @ >{ros_topic.path}<")
+        self.log_debug(f"[SERVER] Attach publisher {attr} @ >{ros_topic.path}<")
 
         pub = self.create_publisher(ros_topic.idl, ros_topic.path, ros_topic.qos)
 
@@ -355,7 +353,7 @@ class ServerDriver(AsyncDriver, Node):
     # TODO: Better error handling.
     # ATM raised errors are completely hidden
     def _attach_timer(self, attr, ros_timer: RosTimer):
-        self.log_debug(f"Attach timer >{attr}<")
+        self.log_debug(f"[SERVER] Attach timer >{attr}<")
 
         def _cb(lock=None):
             try:
@@ -371,10 +369,11 @@ class ServerDriver(AsyncDriver, Node):
         return ros_timer.server_handler
 
     def _attach_params(self, attr, ros_params: RosParams):
-        self.log_debug(f"Attach params >{attr}<")
+        self.log_debug(f"[SERVER] Attach params >{attr}<")
         return ParamsDriver(attr, ros_params.params_class, self)
 
     def _attach_param_subscription(self, attr, ros_param_sub: RosParamSubscription):
+        self.log_debug(f"[SERVER] Attach param subscription >{attr}<")
         # For each reference, find its definition's corrosponding attribute name
         # so that we can reference its instantiated version through getattr.
         for ref in ros_param_sub.references:
@@ -395,6 +394,6 @@ class ServerDriver(AsyncDriver, Node):
         return ros_param_sub.handler
 
     def _process_start(self, attr, ros_start: RosStart):
-        self.log_debug(f"Process start >{attr}<")
+        self.log_debug(f"[SERVER] Process start >{attr}<")
         self.run_coroutine(ros_start.server_handler, self)
         return ros_start.server_handler
