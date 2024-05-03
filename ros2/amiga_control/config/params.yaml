@@ -1,0 +1,11 @@
+# https://roboticsbackend.com/ros2-yaml-params/#From_a_launch_file
+# https://roboticsbackend.com/ros2-yaml-params/
+
+# Note: Need to add this file as a shared resource to get it to load :(
+# Add: `(f"share/{package_name}/config", glob('config/*'))` to `data_files` in `setup.py`
+/ns1/acn:
+  ros__parameters:
+    amiga_params:
+      port_canbus: 200
+    generic_params:
+      a_test: "Loaded from YAML"

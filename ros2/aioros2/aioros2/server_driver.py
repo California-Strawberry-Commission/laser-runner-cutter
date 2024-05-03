@@ -46,20 +46,26 @@ class ParamDriver:
 
     __staged_value = None
 
-    def __init__(self, field: dataclasses.Field, fqpn: str) -> None:
+    def __init__(self, field: dataclasses.Field, fqpn: str, ros_node :"ServerDriver") -> None:
         self.fqpn = fqpn
 
-        # Check if default_factory exists. If it does, call the factory function to get the default value
-        self.value = (
-            field.default
-            if field.default_factory is dataclasses.MISSING
-            else field.default_factory()
-        )
+        # TODO: Allow passing in descriptors
+        if isinstance(field.default, RosParam):
+            self.value = 0
+        else:
+            # Check if default_factory exists. If it does, call the factory function to get the default value
+            self.value = (
+                field.default
+                if field.default_factory is dataclasses.MISSING
+                else field.default_factory()
+            )
 
         self.__listeners = []
         self.__ros_type = dataclass_ros_map[field.type]
         self.__ros_enum = dataclass_ros_enum_map[field.type]
         self.__ros_param_getter = ros_type_getter_map[self.__ros_type]
+
+        self.declare(ros_node)
 
     def add_listener(self, listener):
         self.__listeners.append(listener)
@@ -96,6 +102,10 @@ class ParamDriver:
         ros_node.log_debug(f"Declare parameter >{self.fqpn}<")
         ros_node.declare_parameter(self.fqpn, self.value)
 
+        # Sync inital value
+        param_val = ros_node.get_parameter(self.fqpn).get_parameter_value()
+        self.value = getattr(param_val, self.__ros_param_getter)
+
 
 class ParamsDriver:
     """Manages a parameter dataclass"""
@@ -107,24 +117,17 @@ class ParamsDriver:
 
         # Stores parameter drivers by their fqpn (Fully Qualified Parameter Name)
         self.__params = {}
-
         self.__driver.log_debug("Create parameter wrapper")
 
-        # declare dataclass fields
-        for f in dataclasses.fields(self.__param_class):
-            if f.name in dir(self):
+        # declare dataclass fields as parameters
+        for field in dataclasses.fields(self.__param_class):
+            if field.name in dir(self):
                 raise NameError(
-                    f"Parameter name >{f.name}< in >{self.__param_class}< is reserved by aioros2! Please choose another name."
+                    f"Parameter name >{field.name}< in >{self.__param_class}< is reserved by aioros2! Please choose another name."
                 )
 
-            fqpn = self.__fqpn(f.name)
-            param = self.__params[fqpn] = ParamDriver(f, fqpn)
-
-            if isinstance(f.default, RosParam):
-                ## TODO: declare to allow descriptors
-                continue
-
-            param.declare(self.__driver)
+            fqpn = self.__fqpn(field.name)
+            param = self.__params[fqpn] = ParamDriver(field, fqpn, self.__driver)
 
         # Add a callback for when any param is changed to handle local updates
         self.__driver.add_on_set_parameters_callback(self.__parameters_callback)
