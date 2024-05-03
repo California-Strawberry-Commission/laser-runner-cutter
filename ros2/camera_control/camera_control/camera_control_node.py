@@ -110,6 +110,11 @@ class CameraControlNode:
         self.camera.set_exposure(exposure_us)
         return result(success=True)
 
+    @service("~/auto_exposure", Trigger)
+    async def auto_exposure(self):
+        self.camera.set_exposure(-1.0)
+        return result(success=True)
+
     @service("~/get_laser_detection", GetDetectionResult)
     async def get_laser_detection(self):
         if self.curr_frame is None:

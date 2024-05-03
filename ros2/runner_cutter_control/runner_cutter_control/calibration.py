@@ -7,8 +7,9 @@ from typing import List, Optional, Tuple
 import numpy as np
 from scipy.optimize import least_squares, minimize
 
-from camera_control.camera_control_client import CameraControlClient
-from laser_control.laser_control_client import LaserControlClient
+from camera_control.camera_control_node import CameraControlNode
+from common_interfaces.msg import Vector2
+from laser_control.laser_control_node import LaserControlNode
 
 
 class Calibration:
@@ -18,13 +19,13 @@ class Calibration:
 
     def __init__(
         self,
-        laser_client: LaserControlClient,
-        camera_client: CameraControlClient,
+        laser_node: LaserControlNode,
+        camera_node: CameraControlNode,
         laser_color: Tuple[float, float, float],
         logger: Optional[logging.Logger] = None,
     ):
-        self._laser_client = laser_client
-        self._camera_client = camera_client
+        self._laser_node = laser_node
+        self._camera_node = camera_node
         self._laser_color = laser_color
         if logger:
             self._logger = logger
@@ -63,8 +64,8 @@ class Calibration:
         # use a depth frame obtained when the laser is off
 
         # Get camera color frame size
-        frames = await self._camera_client.get_frame()
-        self.camera_frame_size = (frames.color_frame.width, frames.color_frame.height)
+        result = await self._camera_node.get_frame()
+        self.camera_frame_size = (result.color_frame.width, result.color_frame.height)
 
         # Get calibration points
         grid_size = (5, 5)
@@ -78,6 +79,7 @@ class Calibration:
                 pending_calibration_laser_coords.append((x, y))
 
         # Get image correspondences
+        self._logger.info("Get image correspondences")
         await self.add_calibration_points(pending_calibration_laser_coords)
 
         self._logger.info(
@@ -110,22 +112,32 @@ class Calibration:
         """
 
         # TODO: set exposure on camera node automatically when detecting laser
-        await self._camera_client.set_exposure(1.0)
-        await self._laser_client.set_color((0.0, 0.0, 0.0))
-        await self._laser_client.start_laser()
+        await self._camera_node.set_exposure(exposure_us=1.0)
+        self._logger.info("laser node set 0 color")
+        await self._laser_node.set_color(r=0.0, g=0.0, b=0.0, i=0.0)
+        self._logger.info("laser node play")
+        await self._laser_node.play()
         for laser_coord in laser_coords:
-            await self._laser_client.set_point(laser_coord)
-            await self._laser_client.set_color(self._laser_color)
+            await self._laser_node.set_points(
+                points=[Vector2(x=laser_coord[0], y=laser_coord[1])]
+            )
+            await self._laser_node.set_color(
+                r=self._laser_color[0],
+                g=self._laser_color[1],
+                b=self._laser_color[2],
+                i=0.0,
+            )
+            self._logger.info("laser set color")
             # Wait for galvo to settle and for camera frame capture
             await asyncio.sleep(0.1)
             camera_point = await self._find_point_correspondence(laser_coord)
             if camera_point is not None:
                 await self.add_point_correspondence(laser_coord, camera_point)
             # We use set_color instead of stop_laser as it is faster to temporarily turn off the laser
-            await self._laser_client.set_color((0.0, 0.0, 0.0))
+            await self._laser_node.set_color(r=0.0, g=0.0, b=0.0, i=0.0)
 
-        await self._laser_client.stop_laser()
-        await self._camera_client.auto_exposure()
+        await self._laser_node.stop()
+        await self._camera_node.auto_exposure()
 
         if update_transform:
             await self._update_transform_nonlinear_least_squares()
@@ -160,15 +172,16 @@ class Calibration:
                 f"Attempt {attempt} to detect laser and find point correspondence."
             )
             attempt += 1
-            detection_result = await self._camera_client.get_lasers()
-            instances = detection_result["instances"]
+            result = await self._camera_node.get_laser_detection()
+            detection_result = result.result
+            instances = detection_result.instances
             if instances:
                 # TODO: handle case where multiple lasers detected
                 instance = instances[0]
                 self._logger.info(
-                    f"Found point correspondence: laser_coord = {laser_coord}, pixel = {instance['point']}, position = {instance['position']}."
+                    f"Found point correspondence: laser_coord = {laser_coord}, pixel = {instance.point}, position = {instance.position}."
                 )
-                return instance["position"]
+                return (instance.position.x, instance.position.y, instance.position.z)
             await asyncio.sleep(0.2)
         self._logger.info(
             f"Failed to find point. {len(self._calibration_laser_coords)} total correspondences."

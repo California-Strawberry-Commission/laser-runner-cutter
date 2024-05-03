@@ -1,18 +1,22 @@
-import rclpy
-import rclpy.node
-import rclpy.logging
-from .async_driver import AsyncDriver
-from rclpy.action import ActionClient
 from queue import Empty, SimpleQueue
 
+import rclpy
+import rclpy.logging
+import rclpy.node
+from rclpy.action import ActionClient
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.expand_topic_name import expand_topic_name
+
 from . import server_driver
+from .async_driver import AsyncDriver
+from .decorators.action import RosAction
+from .decorators.import_node import RosImport
+from .decorators.params import RosParams
 from .decorators.service import RosService
 from .decorators.subscribe import RosSubscription
-from .decorators.import_node import RosImport
-from .decorators.action import RosAction
-from .decorators.topic import RosTopic
 from .decorators.timer import RosTimer
-from rclpy.expand_topic_name import expand_topic_name
+from .decorators.topic import RosTopic
+from .decorators.start import RosStart
 
 
 class AsyncActionClient:
@@ -51,14 +55,18 @@ class AsyncActionClient:
 
 # TODO: Receive fully qualified node path here.
 class ClientDriver(AsyncDriver):
-    def __init__(self, node_def, server_node, node_name, node_namespace):
-
+    def __init__(
+        self, node_def, server_node, node_name, node_namespace=None, logger=None
+    ):
         self._node: "server_driver.ServerDriver" = server_node
         self._node_name = node_name
-        self._node_namespace = node_namespace
+        self._node_namespace = node_namespace if node_namespace is not None else "/"
 
-        logger = rclpy.logging.get_logger(self._get_logger_name())
+        if logger is None:
+            logger = rclpy.logging.get_logger(self._get_logger_name())
         super().__init__(node_def, logger)
+
+        self._callback_group = ReentrantCallbackGroup()
 
         self._attach()
 
@@ -82,7 +90,15 @@ class ClientDriver(AsyncDriver):
         return ros_topic
 
     def _attach_timer(self, attr, ros_timer: RosTimer):
-        # Don't create topic publisher on clients
+        # Unused on clients
+        return None
+
+    def _attach_params(self, attr, ros_params: RosParams):
+        # Unused on clients
+        return None
+
+    def _process_start(self, attr, ros_start: RosStart):
+        # Unused on clients
         return None
 
     def _attach_subscriber(self, attr, ros_sub: RosSubscription):
@@ -90,7 +106,7 @@ class ClientDriver(AsyncDriver):
         topic = ros_sub.get_fqt(self._node_name, self._node_namespace)
 
         # Creates a publisher for this channel
-        self.log_debug(f"Attach subscriber publisher @ >{topic.path}<")
+        self.log_debug(f"[CLIENT] Attach subscriber publisher @ >{topic.path}<")
 
         pub = self._node.create_publisher(topic.idl, topic.path, topic.qos)
 
@@ -101,12 +117,20 @@ class ClientDriver(AsyncDriver):
         return _dispatch_pub
 
     def _attach_action(self, attr, ros_action: RosAction):
+        self.log_debug(f"[CLIENT] Attach action >{attr}<")
+
+        client = ActionClient(
+            self._node,
+            ros_action.idl,
+            self._resolve_path(ros_action.path),
+            callback_group=self._callback_group,
+        )
+
         def _impl(*args, **kwargs):
             goal = ros_action.idl.Goal(*args, **kwargs)
-            generator = self._dispatch_action_req(_impl._ros_client, goal)
+            generator = self._dispatch_action_req(client, goal)
             return AsyncActionClient(generator, self._node._loop, ros_action.idl)
 
-        _impl._ros_client = ActionClient(self._node, ros_action.idl, ros_action.path)
         return _impl
 
     # TODO: Gracefully handle action rejections
@@ -167,28 +191,25 @@ class ClientDriver(AsyncDriver):
         raise StopAsyncIteration()
 
     def _attach_service(self, attr, ros_service: RosService):
+        self.log_debug(f"[CLIENT] Attach service >{attr}< @ >{ros_service.path}<")
+
+        ros_client = self._node.create_client(
+            ros_service.idl,
+            self._resolve_path(ros_service.path),
+            callback_group=self._callback_group,
+        )
+
         async def _impl(*args, **kwargs):
-            req = ros_service.idl.Request(*args, **kwargs)
-            return await self._loop.run_in_executor(
-                None, self._dispatch_service_req, _impl, req
-            )
+            request = ros_service.idl.Request(*args, **kwargs)
+            if not ros_client.wait_for_service(timeout_sec=2.0):
+                self._logger.error("Service not available")
+                return None
+            return await ros_client.call_async(request)
 
-        _impl._ros_client = self._node.create_client(ros_service.idl, ros_service.path)
         return _impl
-
-    def _dispatch_service_req(self, impl, request):
-        cli = impl._ros_client
-
-        if not impl._ros_client.wait_for_service(timeout_sec=2.0):
-            self._logger.error("Service not available")
-            return None
-
-        fut = cli.call_async(request)
-        rclpy.spin_until_future_complete(self, fut)
-        return fut.result()
 
     # Resolves a path into a fully resolved path based on this client's
     # fully qualified node path
     # https://design.ros2.org/articles/topic_and_service_names.html
-    def _resolve_topic(self, topic: str):
-        return expand_topic_name(topic, self._node_name, self._node_namespace)
+    def _resolve_path(self, path: str):
+        return expand_topic_name(path, self._node_name, self._node_namespace)
