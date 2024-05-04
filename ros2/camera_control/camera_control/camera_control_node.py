@@ -225,8 +225,6 @@ class CameraControlNode:
                 )
         return result(positions=positions)
 
-    from time import perf_counter
-
     # TODO: Define interval using param
     @timer(1.0 / 30)
     async def frame_callback(self):

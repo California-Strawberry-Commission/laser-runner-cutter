@@ -113,9 +113,7 @@ class Calibration:
 
         # TODO: set exposure on camera node automatically when detecting laser
         await self._camera_node.set_exposure(exposure_us=1.0)
-        self._logger.info("laser node set 0 color")
         await self._laser_node.set_color(r=0.0, g=0.0, b=0.0, i=0.0)
-        self._logger.info("laser node play")
         await self._laser_node.play()
         for laser_coord in laser_coords:
             await self._laser_node.set_points(
@@ -127,7 +125,6 @@ class Calibration:
                 b=self._laser_color[2],
                 i=0.0,
             )
-            self._logger.info("laser set color")
             # Wait for galvo to settle and for camera frame capture
             await asyncio.sleep(0.1)
             camera_point = await self._find_point_correspondence(laser_coord)
