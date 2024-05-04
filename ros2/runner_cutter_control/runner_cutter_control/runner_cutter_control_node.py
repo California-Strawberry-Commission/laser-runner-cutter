@@ -133,9 +133,11 @@ class RunnerCutterControlNode:
     async def get_state(self):
         return result(state=self._get_state())
 
-    async def publish_state(self):
+    def publish_state(self):
         state = self._get_state()
-        await self.state_topic(calibrated=state.calibrated, state=state.state)
+        asyncio.get_running_loop().create_task(
+            self.state_topic(calibrated=state.calibrated, state=state.state)
+        )
 
     def _get_state(self) -> State:
         return State(
@@ -221,21 +223,21 @@ class StateMachine:
         return self._calibration.is_calibrated
 
     async def on_enter_idle(self):
-        await self._node.publish_state()
+        self._node.publish_state()
         await self._laser_node.stop()
         await self._laser_node.clear_points()
         await self._camera_node.auto_exposure()
         self._runner_tracker.clear()
 
     async def on_enter_calibration(self):
-        await self._node.publish_state()
+        self._node.publish_state()
         await self._calibration.calibrate()
         await self.calibration_complete()
 
     async def on_enter_add_calibration_points(
         self, camera_pixels: List[Tuple[int, int]]
     ):
-        await self._node.publish_state()
+        self._node.publish_state()
         # For each camera pixel, find the 3D position wrt the camera
         result = await self._camera_node.get_positions_for_pixels(
             [Vector2(x=float(pixel[0]), y=float(pixel[1])) for pixel in camera_pixels]
@@ -256,7 +258,7 @@ class StateMachine:
         await self.add_calibration_points_complete()
 
     async def on_enter_manual_target_aim_laser(self, camera_pixel: Tuple[int, int]):
-        await self._node.publish_state()
+        self._node.publish_state()
         # Find the 3D position wrt the camera
         result = await self._camera_node.get_positions_for_pixels(
             [Vector2(x=float(camera_pixel[0]), y=float(camera_pixel[1]))]
@@ -275,7 +277,7 @@ class StateMachine:
         await self.manual_target_aim_laser_complete()
 
     async def on_enter_acquire_target(self):
-        await self._node.publish_state()
+        self._node.publish_state()
 
         # Do nothing if there is already an active target
         if self._runner_tracker.has_active_tracks:
@@ -312,7 +314,7 @@ class StateMachine:
             await self.no_target_found()
 
     async def on_enter_aim_laser(self, target: Track):
-        await self._node.publish_state()
+        self._node.publish_state()
 
         corrected_laser_coord = await self._aim(target.position, target.pixel)
         if corrected_laser_coord is not None:
@@ -430,7 +432,7 @@ class StateMachine:
     async def on_enter_burn_target(
         self, target: Track, laser_coord: Tuple[float, float]
     ):
-        await self._node.publish_state()
+        self._node.publish_state()
 
         await self._laser_node.set_points(
             points=[Vector2(x=laser_coord[0], y=laser_coord[1])]

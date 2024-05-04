@@ -1,18 +1,11 @@
+import asyncio
 import os
 from dataclasses import dataclass
 
 from ament_index_python.packages import get_package_share_directory
 from std_srvs.srv import Trigger
 
-from aioros2 import (
-    node,
-    params,
-    result,
-    serve_nodes,
-    service,
-    start,
-    topic,
-)
+from aioros2 import node, params, result, serve_nodes, service, start, topic
 from laser_control.laser_dac import EtherDreamDAC, HeliosDAC
 from laser_control_interfaces.msg import State
 from laser_control_interfaces.srv import (
@@ -117,7 +110,7 @@ class LaserControlNode:
             self.laser_control_params.pps,
             self.laser_control_params.transition_duration_ms,
         )
-        await self._publish_state()
+        self._publish_state()
         return result(success=True)
 
     @service("~/stop", Trigger)
@@ -126,7 +119,7 @@ class LaserControlNode:
             return result(success=False)
 
         self.dac.stop()
-        await self._publish_state()
+        self._publish_state()
         return result(success=True)
 
     @service("~/get_state", GetState)
@@ -145,8 +138,8 @@ class LaserControlNode:
         else:
             return State.STOPPED
 
-    async def _publish_state(self):
-        await self.state_topic(data=self._get_state())
+    def _publish_state(self):
+        asyncio.get_running_loop().create_task(self.state_topic(data=self._get_state()))
 
 
 def main():

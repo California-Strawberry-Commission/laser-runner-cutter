@@ -1,3 +1,4 @@
+import asyncio
 import os
 import time
 from dataclasses import dataclass, field
@@ -74,7 +75,6 @@ class CameraControlNode:
         self.camera.initialize()
 
         # ML models
-
         package_share_directory = get_package_share_directory("camera_control")
         runner_weights_path = os.path.join(
             package_share_directory, "models", "RunnerSegYoloV8m.pt"
@@ -143,25 +143,25 @@ class CameraControlNode:
     @service("~/start_laser_detection", Trigger)
     async def start_laser_detection(self):
         self.laser_detection_enabled = True
-        await self._publish_state()
+        self._publish_state()
         return result(success=True)
 
     @service("~/stop_laser_detection", Trigger)
     async def stop_laser_detection(self):
         self.laser_detection_enabled = False
-        await self._publish_state()
+        self._publish_state()
         return result(success=True)
 
     @service("~/start_runner_detection", Trigger)
     async def start_runner_detection(self):
         self.runner_detection_enabled = True
-        await self._publish_state()
+        self._publish_state()
         return result(success=True)
 
     @service("~/stop_runner_detection", Trigger)
     async def stop_runner_detection(self):
         self.runner_detection_enabled = False
-        await self._publish_state()
+        self._publish_state()
         return result(success=True)
 
     @service("~/start_recording_video", Trigger)
@@ -180,13 +180,13 @@ class CameraControlNode:
                 self.camera_control_params.rgb_size[1],
             ),
         )
-        await self._publish_state()
+        self._publish_state()
         return result(success=True)
 
     @service("~/stop_recording_video", Trigger)
     async def stop_recording_video(self):
         self.video_writer = None
-        await self._publish_state()
+        self._publish_state()
         return result(success=True)
 
     @service("~/save_image", Trigger)
@@ -225,6 +225,8 @@ class CameraControlNode:
                 )
         return result(positions=positions)
 
+    from time import perf_counter
+
     # TODO: Define interval using param
     @timer(1.0 / 30)
     async def frame_callback(self):
@@ -232,24 +234,28 @@ class CameraControlNode:
         if not frame:
             return
 
+        # TODO: Optimize this. Frame copy takes ~20ms, _get_color_frame_compressed_msg takes ~30ms
+
         self.curr_frame = frame
         debug_frame = np.copy(frame.color_frame)
 
         msg = self._get_color_frame_compressed_msg(
             frame.color_frame, frame.timestamp_millis
         )
-        await self.color_frame_topic(
-            header=msg.header, format=msg.format, data=msg.data
+        asyncio.get_running_loop().create_task(
+            self.color_frame_topic(header=msg.header, format=msg.format, data=msg.data)
         )
 
         if self.laser_detection_enabled:
             laser_points, confs = self._get_laser_points(frame.color_frame)
             debug_frame = self._debug_draw_lasers(debug_frame, laser_points, confs)
             msg = self._create_detection_result_msg(laser_points, frame)
-            await self.laser_detections_topic(
-                timestamp=msg.timestamp,
-                instances=msg.instances,
-                invalid_points=msg.invalid_points,
+            asyncio.get_running_loop().create_task(
+                self.laser_detections_topic(
+                    timestamp=msg.timestamp,
+                    instances=msg.instances,
+                    invalid_points=msg.invalid_points,
+                )
             )
 
         if self.runner_detection_enabled:
@@ -259,15 +265,17 @@ class CameraControlNode:
                 debug_frame, runner_masks, runner_centers, confs, track_ids
             )
             msg = self._create_detection_result_msg(runner_centers, frame, track_ids)
-            await self.runner_detections_topic(
-                timestamp=msg.timestamp,
-                instances=msg.instances,
-                invalid_points=msg.invalid_points,
+            asyncio.get_running_loop().create_task(
+                self.runner_detections_topic(
+                    timestamp=msg.timestamp,
+                    instances=msg.instances,
+                    invalid_points=msg.invalid_points,
+                )
             )
 
         msg = self._get_debug_frame_compressed_msg(debug_frame, frame.timestamp_millis)
-        await self.debug_frame_topic(
-            header=msg.header, format=msg.format, data=msg.data
+        asyncio.get_running_loop().create_task(
+            self.debug_frame_topic(header=msg.header, format=msg.format, data=msg.data)
         )
 
         if self.video_writer is not None:
@@ -281,13 +289,15 @@ class CameraControlNode:
         state.recording_video = self.video_writer is not None
         return state
 
-    async def _publish_state(self):
+    def _publish_state(self):
         state = self._get_state()
-        await self.state_topic(
-            connected=state.connected,
-            laser_detection_enabled=state.laser_detection_enabled,
-            runner_detection_enabled=state.runner_detection_enabled,
-            recording_video=state.recording_video,
+        asyncio.get_running_loop().create_task(
+            self.state_topic(
+                connected=state.connected,
+                laser_detection_enabled=state.laser_detection_enabled,
+                runner_detection_enabled=state.runner_detection_enabled,
+                recording_video=state.recording_video,
+            )
         )
 
     def _get_laser_points(
