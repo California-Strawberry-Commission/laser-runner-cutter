@@ -1,5 +1,6 @@
 import asyncio
 from inspect import getmembers
+import time
 import traceback
 import types
 import rclpy
@@ -38,25 +39,38 @@ class AsyncDriver:
 
         return value
 
-    def __init__(self, async_node, logger):
+    def __init__(self, async_node, logger, monitor_performance):
         self._logger = logger
         self._n = async_node
+        self._monitor_performance = monitor_performance
 
         # self._n.params = self._attach_params_dataclass(self._n.params)
         self._loop = asyncio.get_running_loop()
 
     async def run_executor(self, fn, *args, **kwargs):
         """Runs a synchronous function in an executor"""
-        return await self._loop.run_in_executor(None, fn, *args, **kwargs)
+        try:
+            t_start = time.perf_counter()
+            return await self._loop.run_in_executor(None, fn, *args, **kwargs)
+        except Exception:
+            self.log_error(traceback.format_exc())
+        finally:
+            if self._monitor_performance:
+                self.log(f"executor >{fn}< executed in >{(time.perf_counter() - t_start) * 1000}<ms")
+        
 
     def run_coroutine(self, fn, *args, **kwargs):
         """Runs asyncio code from ANOTHER SYNC THREAD"""
 
         async def _wrap_coro(coro):
             try:
+                t_start = time.perf_counter()
                 return await coro
             except Exception:
                 self.log_error(traceback.format_exc())
+            finally:
+                if self._monitor_performance:
+                    self.log(f"coroutine >{fn}< executed in >{(time.perf_counter() - t_start) * 1000}<ms")
 
         # https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.call_soon_threadsafe
         return asyncio.run_coroutine_threadsafe(
