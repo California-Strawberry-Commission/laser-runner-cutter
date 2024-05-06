@@ -368,6 +368,7 @@ class StateMachine:
                     instance.position.z,
                 )
             # No lasers detected. Try again.
+            # TODO: optimize the frame callback time and reduce this
             await asyncio.sleep(0.2)
             attempt += 1
         return None, None
@@ -385,7 +386,8 @@ class StateMachine:
                 points=[Vector2(x=current_laser_coord[0], y=current_laser_coord[1])]
             )
             # Wait for galvo to settle and for camera frame capture
-            await asyncio.sleep(0.1)
+            # TODO: optimize the frame callback time and reduce this
+            await asyncio.sleep(0.2)
             laser_pixel, laser_pos = await self._get_laser_pixel_and_pos()
             if laser_pixel is None or laser_pos is None:
                 self._logger.info("Could not detect laser.")

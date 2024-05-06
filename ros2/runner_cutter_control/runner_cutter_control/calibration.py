@@ -126,7 +126,8 @@ class Calibration:
                 i=0.0,
             )
             # Wait for galvo to settle and for camera frame capture
-            await asyncio.sleep(0.1)
+            # TODO: optimize the frame callback time and reduce this
+            await asyncio.sleep(0.2)
             camera_point = await self._find_point_correspondence(laser_coord)
             if camera_point is not None:
                 await self.add_point_correspondence(laser_coord, camera_point)
@@ -179,6 +180,7 @@ class Calibration:
                     f"Found point correspondence: laser_coord = {laser_coord}, pixel = {instance.point}, position = {instance.position}."
                 )
                 return (instance.position.x, instance.position.y, instance.position.z)
+            # TODO: optimize the frame callback time and reduce this
             await asyncio.sleep(0.2)
         self._logger.info(
             f"Failed to find point. {len(self._calibration_laser_coords)} total correspondences."
