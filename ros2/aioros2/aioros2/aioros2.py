@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import rclpy
 import rclpy.node
 from .server_driver import ServerDriver
@@ -7,6 +8,7 @@ from .server_driver import ServerDriver
 
 # https://stackoverflow.com/questions/338101/python-function-attributes-uses-and-abuses
 # https://robotics.stackexchange.com/questions/106026/ros2-multi-nodes-each-on-a-thread-in-same-process
+# https://github.com/mavlink/MAVSDK-Python/issues/419#issuecomment-1383903908
 
 
 async def _ros_spin_nodes(nodes, num_threads, monitor_performance):
@@ -20,19 +22,27 @@ async def _ros_spin_nodes(nodes, num_threads, monitor_performance):
     for node in servers:
         executor.add_node(node)
 
-    print("Ros event loop running!")
-    while rclpy.ok():
-        executor.spin_once(timeout_sec=0)
-        await asyncio.sleep(0)
+    # Derived from https://github.com/mavlink/MAVSDK-Python/issues/419#issuecomment-1383903908
+    def _spin(event_loop: asyncio.AbstractEventLoop):
+        try:
+            while event_loop.is_running():
+                executor.spin_once()
+        except Exception:
+            return
 
+    event_loop = asyncio.get_running_loop()
+    spin_thread = threading.Thread(target=_spin, args=(event_loop,), daemon=True)
+
+    spin_thread.start()
+    print("Ros event loop running!")
+    spin_thread.join()
 
 def serve_nodes(*nodes, threads=10, monitor_performance=False):
     from .decorators import deferrable_accessor
-    
+
     # Notify deferrables that load has fully completed
     deferrable_accessor.deferrables_frozen = True
 
     rclpy.init()
-    
+
     asyncio.run(_ros_spin_nodes(nodes, threads, monitor_performance))
-    

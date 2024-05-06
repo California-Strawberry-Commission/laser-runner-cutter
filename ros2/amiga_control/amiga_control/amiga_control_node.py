@@ -118,6 +118,10 @@ class AmigaControlNode:
 
         # Publish to own topics by directly calling the topic as you would an idl.Request
         await self.my_topic(data="Test to own topic")
+        await self.my_topic(data="Test to own topic")
+        await self.my_topic(data="Test to own topic")
+        await self.my_topic(data="Test to own topic")
+        await self.my_topic(data="Test to own topic")
 
         # raise Exception("Exception!")
 
