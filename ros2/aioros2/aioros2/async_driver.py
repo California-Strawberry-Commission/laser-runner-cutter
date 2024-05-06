@@ -56,8 +56,9 @@ class AsyncDriver:
             self.log_error(traceback.format_exc())
         finally:
             if self._monitor_performance:
-                self.log(f"executor >{fn}< executed in >{(time.perf_counter() - t_start) * 1000}<ms")
-        
+                self.log(
+                    f"executor >{fn}< executed in >{(time.perf_counter() - t_start) * 1000}<ms"
+                )
 
     def run_coroutine(self, fn, *args, **kwargs):
         """Runs asyncio code from ANOTHER SYNC THREAD"""
@@ -70,7 +71,9 @@ class AsyncDriver:
                 self.log_error(traceback.format_exc())
             finally:
                 if self._monitor_performance:
-                    self.log(f"coroutine >{fn}< executed in >{(time.perf_counter() - t_start) * 1000}<ms")
+                    self.log(
+                        f"coroutine >{fn}< executed in >{(time.perf_counter() - t_start) * 1000}<ms"
+                    )
 
         # https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.call_soon_threadsafe
         return asyncio.run_coroutine_threadsafe(
@@ -82,11 +85,17 @@ class AsyncDriver:
 
         async def _wrap_coro(coro, lock):
             try:
+                t_start = time.perf_counter()
                 if not lock.locked():
                     async with lock:
                         return await coro
             except Exception:
                 self.log_error(traceback.format_exc())
+            finally:
+                if self._monitor_performance:
+                    self.log(
+                        f"coroutine >{fn}< executed in >{(time.perf_counter() - t_start) * 1000}<ms"
+                    )
 
         return asyncio.run_coroutine_threadsafe(
             _wrap_coro(fn(*args, **kwargs), lock), self._loop
