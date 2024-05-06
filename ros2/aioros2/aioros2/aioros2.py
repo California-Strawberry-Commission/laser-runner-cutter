@@ -1,7 +1,10 @@
 import asyncio
 import threading
+from typing import Optional
+
 import rclpy
 import rclpy.node
+
 from .server_driver import ServerDriver
 
 # pip install -e laser-runner-cutter/ros2/aioros2/ --config-settings editable_mode=strict
@@ -11,10 +14,13 @@ from .server_driver import ServerDriver
 # https://github.com/mavlink/MAVSDK-Python/issues/419#issuecomment-1383903908
 
 
-async def _ros_spin_nodes(nodes, num_threads, monitor_performance):
+async def _ros_spin_nodes(
+    nodes, 
+    num_threads: Optional[int] = None, 
+    monitor_performance: bool = False
+):
     print("Ros starting up...")
 
-    # TODO: Tune thread counts. Might be limitations - not sure what ROS behavior when running out.
     executor = rclpy.executors.MultiThreadedExecutor(num_threads=num_threads)
 
     servers = [ServerDriver(n, monitor_performance) for n in nodes]
@@ -37,7 +43,8 @@ async def _ros_spin_nodes(nodes, num_threads, monitor_performance):
     print("Ros event loop running!")
     spin_thread.join()
 
-def serve_nodes(*nodes, threads=10, monitor_performance=False):
+
+def serve_nodes(*nodes, num_threads: Optional[int] = None, monitor_performance: bool = False):
     from .decorators import deferrable_accessor
 
     # Notify deferrables that load has fully completed
@@ -45,4 +52,8 @@ def serve_nodes(*nodes, threads=10, monitor_performance=False):
 
     rclpy.init()
 
-    asyncio.run(_ros_spin_nodes(nodes, threads, monitor_performance))
+    asyncio.run(_ros_spin_nodes(
+        nodes, 
+        num_threads=num_threads, 
+        monitor_performance=monitor_performance
+    ))
