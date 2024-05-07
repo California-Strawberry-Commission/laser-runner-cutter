@@ -139,7 +139,7 @@ class LaserControlNode:
             return State.STOPPED
 
     def _publish_state(self):
-        asyncio.get_running_loop().create_task(self.state_topic(data=self._get_state()))
+        asyncio.create_task(self.state_topic(data=self._get_state()))
 
 
 def main():

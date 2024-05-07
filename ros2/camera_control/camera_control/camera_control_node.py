@@ -226,7 +226,7 @@ class CameraControlNode:
         return result(positions=positions)
 
     # TODO: Define interval using param
-    @timer(1.0 / 30)
+    @timer(1.0 / 30, allow_concurrent_execution=False)
     async def frame_callback(self):
         frame = self.camera.get_frame()
         if not frame:
@@ -240,7 +240,7 @@ class CameraControlNode:
         msg = self._get_color_frame_compressed_msg(
             frame.color_frame, frame.timestamp_millis
         )
-        asyncio.get_running_loop().create_task(
+        asyncio.create_task(
             self.color_frame_topic(header=msg.header, format=msg.format, data=msg.data)
         )
 
@@ -248,7 +248,7 @@ class CameraControlNode:
             laser_points, confs = self._get_laser_points(frame.color_frame)
             debug_frame = self._debug_draw_lasers(debug_frame, laser_points, confs)
             msg = self._create_detection_result_msg(laser_points, frame)
-            asyncio.get_running_loop().create_task(
+            asyncio.create_task(
                 self.laser_detections_topic(
                     timestamp=msg.timestamp,
                     instances=msg.instances,
@@ -263,7 +263,7 @@ class CameraControlNode:
                 debug_frame, runner_masks, runner_centers, confs, track_ids
             )
             msg = self._create_detection_result_msg(runner_centers, frame, track_ids)
-            asyncio.get_running_loop().create_task(
+            asyncio.create_task(
                 self.runner_detections_topic(
                     timestamp=msg.timestamp,
                     instances=msg.instances,
@@ -272,7 +272,7 @@ class CameraControlNode:
             )
 
         msg = self._get_debug_frame_compressed_msg(debug_frame, frame.timestamp_millis)
-        asyncio.get_running_loop().create_task(
+        asyncio.create_task(
             self.debug_frame_topic(header=msg.header, format=msg.format, data=msg.data)
         )
 
@@ -289,7 +289,7 @@ class CameraControlNode:
 
     def _publish_state(self):
         state = self._get_state()
-        asyncio.get_running_loop().create_task(
+        asyncio.create_task(
             self.state_topic(
                 connected=state.connected,
                 laser_detection_enabled=state.laser_detection_enabled,

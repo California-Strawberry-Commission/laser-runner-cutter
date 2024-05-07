@@ -45,7 +45,9 @@ class ParamDriver:
 
     __staged_value = None
 
-    def __init__(self, field: dataclasses.Field, fqpn: str, ros_node :"ServerDriver") -> None:
+    def __init__(
+        self, field: dataclasses.Field, fqpn: str, ros_node: "ServerDriver"
+    ) -> None:
         self.fqpn = fqpn
 
         # TODO: Allow passing in descriptors
@@ -364,17 +366,37 @@ class ServerDriver(AsyncDriver, Node):
     def _attach_timer(self, attr, ros_timer: RosTimer):
         self.log_debug(f"[SERVER] Attach timer >{attr}<")
 
-        def _cb(lock=None):
-            try:
-                if lock:
-                    self.run_coroutine_with_lock(ros_timer.server_handler, lock, self)
-                else:
-                    self.run_coroutine(ros_timer.server_handler, self)
-            except Exception:
-                self.log_error(traceback.format_exc())
+        if ros_timer.allow_concurrent_execution:
 
-        lock = asyncio.Lock() if ros_timer.skip_until_complete else None
-        self.create_timer(ros_timer.interval, partial(_cb, lock))
+            def _timer_callback():
+                try:
+                    self.run_coroutine(ros_timer.server_handler, self)
+                except Exception:
+                    self.log_error(traceback.format_exc())
+
+            self.create_timer(ros_timer.interval, _timer_callback)
+        else:
+            task_queue = asyncio.Queue(1)
+            loop = asyncio.get_running_loop()
+
+            def _timer_callback():
+                # asyncio.Queue is not thread safe. This function gets called from a separate
+                # thread (the ROS spin thread), so we need to use run_coroutine_threadsafe here.
+                asyncio.run_coroutine_threadsafe(_enqueue_task(), loop)
+
+            async def _enqueue_task():
+                if task_queue.empty():
+                    await task_queue.put(ros_timer.server_handler)
+
+            async def _process_queue():
+                while True:
+                    task_func = await task_queue.get()
+                    await task_func(self)
+                    task_queue.task_done()
+
+            self.create_timer(ros_timer.interval, _timer_callback)
+            loop.create_task(_process_queue())
+
         return ros_timer.server_handler
 
     def _attach_params(self, attr, ros_params: RosParams):

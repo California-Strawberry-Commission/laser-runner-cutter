@@ -1,10 +1,9 @@
 import asyncio
 import threading
-from typing import List, Optional
+from typing import Optional
 
 import rclpy
 from rclpy.executors import Executor, MultiThreadedExecutor
-from rclpy.node import Node
 
 from .server_driver import ServerDriver
 

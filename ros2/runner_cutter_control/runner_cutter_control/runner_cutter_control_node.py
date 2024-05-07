@@ -88,7 +88,7 @@ class RunnerCutterControlNode:
         if self.state_machine.state != "idle":
             return result(success=False)
 
-        asyncio.get_running_loop().create_task(self.state_machine.run_calibration())
+        asyncio.create_task(self.state_machine.run_calibration())
         return result(success=True)
 
     @service("~/add_calibration_points", AddCalibrationPoints)
@@ -97,7 +97,7 @@ class RunnerCutterControlNode:
             return result(success=False)
 
         camera_pixels = [(round(pixel.x), round(pixel.y)) for pixel in camera_pixels]
-        asyncio.get_running_loop().create_task(
+        asyncio.create_task(
             self.state_machine.run_add_calibration_points(camera_pixels)
         )
         return result(success=True)
@@ -111,7 +111,7 @@ class RunnerCutterControlNode:
             round(camera_pixel.x),
             round(camera_pixel.y),
         )
-        asyncio.get_running_loop().create_task(
+        asyncio.create_task(
             self.state_machine.run_manual_target_aim_laser(camera_pixel)
         )
         return result(success=True)
@@ -121,12 +121,12 @@ class RunnerCutterControlNode:
         if self.state_machine.state != "idle":
             return result(success=False)
 
-        asyncio.get_running_loop().create_task(self.state_machine.run_runner_cutter())
+        asyncio.create_task(self.state_machine.run_runner_cutter())
         return result(success=True)
 
     @service("~/stop", Trigger)
     async def stop(self):
-        asyncio.get_running_loop().create_task(self.state_machine.stop())
+        asyncio.create_task(self.state_machine.stop())
         return result(success=True)
 
     @service("~/get_state", GetState)
@@ -135,7 +135,7 @@ class RunnerCutterControlNode:
 
     def publish_state(self):
         state = self._get_state()
-        asyncio.get_running_loop().create_task(
+        asyncio.create_task(
             self.state_topic(calibrated=state.calibrated, state=state.state)
         )
 

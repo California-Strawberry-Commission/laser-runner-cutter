@@ -63,21 +63,6 @@ class AsyncDriver:
             _wrap_coro(fn(*args, **kwargs)), self._loop
         )
 
-    def run_coroutine_with_lock(self, fn, lock, *args, **kwargs):
-        """Runs asyncio code from ANOTHER SYNC THREAD. Skips if lock is still acquired."""
-
-        async def _wrap_coro(coro, lock):
-            try:
-                if not lock.locked():
-                    async with lock:
-                        return await coro
-            except Exception:
-                self.log_error(traceback.format_exc())
-
-        return asyncio.run_coroutine_threadsafe(
-            _wrap_coro(fn(*args, **kwargs), lock), self._loop
-        )
-
     def _get_ros_definitions(self):
         from .decorators.import_node import RosImport
 
