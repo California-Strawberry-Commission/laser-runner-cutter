@@ -18,7 +18,7 @@ export default function Controls() {
     startRunnerCutter,
     stop,
   } = useControlNode("/control0");
-  const { nodeInfo: cameraNodeInfo, frameSrc } = useCameraNode("/camera0");
+  const { nodeInfo: cameraNodeInfo } = useCameraNode("/camera0");
   const { nodeInfo: laserNodeInfo } = useLaserNode("/laser0");
 
   const nodeInfos = useMemo(() => {
@@ -59,7 +59,7 @@ export default function Controls() {
           Stop
         </Button>
       </div>
-      <FramePreview frameSrc={frameSrc} />
+      <FramePreview topicName={"/camera0/debug_frame"} />
     </div>
   );
 }

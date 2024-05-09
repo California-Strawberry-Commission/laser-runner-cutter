@@ -1,23 +1,26 @@
 import React from "react";
 
 export default function FramePreview({
-  frameSrc,
+  topicName,
   height = 360,
   onImageLoad,
   onImageClick,
 }: {
-  frameSrc?: string;
+  topicName?: string;
   height?: number;
   onImageLoad?: React.EventHandler<
     React.SyntheticEvent<HTMLImageElement, Event>
   >;
   onImageClick?: React.MouseEventHandler<HTMLImageElement>;
 }) {
+  const videoServer =
+    process.env.NEXT_PUBLIC_VIDEO_SERVER_URL ?? "http://localhost:8080";
+  const src = `${videoServer}/stream?topic=${topicName}`;
   return (
     <div className="flex flex-col w-full items-center" style={{ height }}>
-      {frameSrc ? (
+      {topicName ? (
         <img
-          src={frameSrc}
+          src={src}
           alt="Camera Color Frame"
           className="h-full w-auto max-h-full max-w-full"
           onLoad={onImageLoad}

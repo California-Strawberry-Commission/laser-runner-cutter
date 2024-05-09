@@ -14,6 +14,12 @@ start_rosbridge() {
   ros2 launch rosbridge_server rosbridge_websocket_launch.xml
 }
 
-start_ros & start_rosbridge
+start_web_video_server() {
+  cd $script_dir
+  source setup.sh
+  ros2 run web_video_server web_video_server
+}
+
+start_ros & start_rosbridge & start_web_video_server
 
 wait

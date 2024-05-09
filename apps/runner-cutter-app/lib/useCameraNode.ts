@@ -13,7 +13,6 @@ export default function useCameraNode(nodeName: string) {
   const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
   const [nodeConnected, setNodeConnected] = useState<boolean>(false);
   const [nodeState, setNodeState] = useState(INITIAL_STATE);
-  const [frameSrc, setFrameSrc] = useState<string>("");
 
   const nodeInfo: NodeInfo = useMemo(() => {
     return {
@@ -64,20 +63,11 @@ export default function useCameraNode(nodeName: string) {
       }
     );
 
-    const frameSub = ros.subscribe(
-      `${nodeName}/debug_frame`,
-      "sensor_msgs/CompressedImage",
-      (message) => {
-        setFrameSrc(`data:image/jpeg;base64,${message.data}`);
-      }
-    );
-
     return () => {
       onNodeConnectedSub.unsubscribe();
       stateSub.unsubscribe();
-      frameSub.unsubscribe();
     };
-  }, [ros, nodeName, getState, setNodeConnected, setNodeState, setFrameSrc]);
+  }, [ros, nodeName, getState, setNodeConnected, setNodeState]);
 
   const setExposure = useCallback(
     (exposureUs: number) => {
@@ -140,7 +130,6 @@ export default function useCameraNode(nodeName: string) {
     laserDetectionEnabled: nodeState.laser_detection_enabled,
     runnerDetectionEnabled: nodeState.runner_detection_enabled,
     recordingVideo: nodeState.recording_video,
-    frameSrc,
     setExposure,
     startLaserDetection,
     stopLaserDetection,

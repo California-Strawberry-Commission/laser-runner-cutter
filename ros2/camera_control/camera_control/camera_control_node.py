@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import os
 import time
 from dataclasses import dataclass, field
@@ -50,8 +51,8 @@ def milliseconds_to_ros_time(milliseconds):
 class CameraControlNode:
     camera_control_params = params(CameraControlParams)
     state_topic = topic("~/state", State, 5)
-    color_frame_topic = topic("~/color_frame", CompressedImage, 1)
-    debug_frame_topic = topic("~/debug_frame", CompressedImage, 1)
+    color_frame_topic = topic("~/color_frame", Image, 1)
+    debug_frame_topic = topic("~/debug_frame", Image, 1)
     laser_detections_topic = topic("~/laser_detections", DetectionResult, 5)
     runner_detections_topic = topic("~/runner_detections", DetectionResult, 5)
 
@@ -70,7 +71,7 @@ class CameraControlNode:
             self.camera_control_params.depth_size,
             fps=self.camera_control_params.fps,
             camera_index=self.camera_control_params.camera_index,
-            # logger=self.logger,
+            logger=self.get_logger(),
         )
         self.camera.initialize()
 
@@ -120,7 +121,7 @@ class CameraControlNode:
         if self.curr_frame is None:
             return result()
 
-        laser_points, conf = self._get_laser_points(self.curr_frame.color_frame)
+        laser_points, conf = await self._get_laser_points(self.curr_frame.color_frame)
         return result(
             result=self._create_detection_result_msg(laser_points, self.curr_frame)
         )
@@ -130,10 +131,10 @@ class CameraControlNode:
         if self.curr_frame is None:
             return result()
 
-        runner_masks, confs, track_ids = self._get_runner_masks(
+        runner_masks, confs, track_ids = await self._get_runner_masks(
             self.curr_frame.color_frame
         )
-        runner_centers = self._get_runner_centers(runner_masks)
+        runner_centers = await self._get_runner_centers(runner_masks)
         return result(
             result=self._create_detection_result_msg(
                 runner_centers, self.curr_frame, track_ids
@@ -232,20 +233,32 @@ class CameraControlNode:
         if not frame:
             return
 
-        # TODO: Optimize this. Frame copy takes ~20ms, _get_color_frame_compressed_msg takes ~30ms
-
         self.curr_frame = frame
+
+        msg = self._get_color_frame_msg(frame.color_frame, frame.timestamp_millis)
+        asyncio.create_task(
+            self.color_frame_topic(
+                header=msg.header,
+                height=msg.height,
+                width=msg.width,
+                encoding=msg.encoding,
+                is_bigendian=msg.is_bigendian,
+                step=msg.step,
+                data=msg.data,
+            )
+        )
+
+    # TODO: Define interval using param
+    @timer(1.0 / 30, allow_concurrent_execution=False)
+    async def detection_callback(self):
+        if not self.curr_frame:
+            return
+
+        frame = self.curr_frame
         debug_frame = np.copy(frame.color_frame)
 
-        msg = self._get_color_frame_compressed_msg(
-            frame.color_frame, frame.timestamp_millis
-        )
-        asyncio.create_task(
-            self.color_frame_topic(header=msg.header, format=msg.format, data=msg.data)
-        )
-
         if self.laser_detection_enabled:
-            laser_points, confs = self._get_laser_points(frame.color_frame)
+            laser_points, confs = await self._get_laser_points(frame.color_frame)
             debug_frame = self._debug_draw_lasers(debug_frame, laser_points, confs)
             msg = self._create_detection_result_msg(laser_points, frame)
             asyncio.create_task(
@@ -257,8 +270,10 @@ class CameraControlNode:
             )
 
         if self.runner_detection_enabled:
-            runner_masks, confs, track_ids = self._get_runner_masks(frame.color_frame)
-            runner_centers = self._get_runner_centers(runner_masks)
+            runner_masks, confs, track_ids = await self._get_runner_masks(
+                frame.color_frame
+            )
+            runner_centers = await self._get_runner_centers(runner_masks)
             debug_frame = self._debug_draw_runners(
                 debug_frame, runner_masks, runner_centers, confs, track_ids
             )
@@ -271,9 +286,17 @@ class CameraControlNode:
                 )
             )
 
-        msg = self._get_debug_frame_compressed_msg(debug_frame, frame.timestamp_millis)
+        msg = self._get_color_frame_msg(debug_frame, frame.timestamp_millis)
         asyncio.create_task(
-            self.debug_frame_topic(header=msg.header, format=msg.format, data=msg.data)
+            self.debug_frame_topic(
+                header=msg.header,
+                height=msg.height,
+                width=msg.width,
+                encoding=msg.encoding,
+                is_bigendian=msg.is_bigendian,
+                step=msg.step,
+                data=msg.data,
+            )
         )
 
         if self.video_writer is not None:
@@ -298,7 +321,7 @@ class CameraControlNode:
             )
         )
 
-    def _get_laser_points(
+    async def _get_laser_points(
         self, color_frame: np.ndarray, conf_threshold: float = 0.0
     ) -> Tuple[List[Tuple[int, int]], List[float]]:
         # Scale image before prediction to improve accuracy
@@ -309,7 +332,14 @@ class CameraControlNode:
         color_frame = cv2.resize(
             color_frame, self.laser_detection_size, interpolation=cv2.INTER_LINEAR
         )
-        result = self.laser_detection_model.predict(color_frame)
+
+        result = await asyncio.get_running_loop().run_in_executor(
+            None,
+            functools.partial(
+                self.laser_detection_model.predict,
+                color_frame,
+            ),
+        )
         result_conf = result["conf"]
         self.log(f"Laser point prediction found {result_conf.size} objects.")
 
@@ -334,7 +364,7 @@ class CameraControlNode:
                 )
         return laser_points, confs
 
-    def _get_runner_masks(
+    async def _get_runner_masks(
         self, color_frame: np.ndarray, conf_threshold: float = 0.0
     ) -> Tuple[List[np.ndarray], List[float], List[int]]:
         # Scale image before prediction to improve accuracy
@@ -345,7 +375,13 @@ class CameraControlNode:
         color_frame = cv2.resize(
             color_frame, self.runner_seg_size, interpolation=cv2.INTER_LINEAR
         )
-        result = self.runner_seg_model.track(color_frame)
+        result = await asyncio.get_running_loop().run_in_executor(
+            None,
+            functools.partial(
+                self.runner_seg_model.track,
+                color_frame,
+            ),
+        )
         result_conf = result["conf"]
         self.log(f"Runner mask prediction found {result_conf.size} objects.")
 
@@ -370,12 +406,18 @@ class CameraControlNode:
                 )
         return runner_masks, confs, track_ids
 
-    def _get_runner_centers(
+    async def _get_runner_centers(
         self, runner_masks: List[np.ndarray]
     ) -> List[Tuple[int, int]]:
         runner_centers = []
         for mask in runner_masks:
-            runner_center = contour_center(mask)
+            runner_center = await asyncio.get_running_loop().run_in_executor(
+                None,
+                functools.partial(
+                    contour_center,
+                    mask,
+                ),
+            )
             runner_centers.append((runner_center[0], runner_center[1]))
         return runner_centers
 
@@ -432,20 +474,6 @@ class CameraControlNode:
         sec, nanosec = milliseconds_to_ros_time(timestamp_millis)
         _, jpeg_data = cv2.imencode(
             ".jpg", cv2.cvtColor(color_frame, cv2.COLOR_RGB2BGR)
-        )
-        msg = CompressedImage()
-        msg.format = "jpeg"
-        msg.data = jpeg_data.tobytes()
-        msg.header.stamp.sec = sec
-        msg.header.stamp.nanosec = nanosec
-        return msg
-
-    def _get_debug_frame_compressed_msg(
-        self, debug_frame: np.ndarray, timestamp_millis: float
-    ) -> CompressedImage:
-        sec, nanosec = milliseconds_to_ros_time(timestamp_millis)
-        _, jpeg_data = cv2.imencode(
-            ".jpg", cv2.cvtColor(debug_frame, cv2.COLOR_RGB2BGR)
         )
         msg = CompressedImage()
         msg.format = "jpeg"

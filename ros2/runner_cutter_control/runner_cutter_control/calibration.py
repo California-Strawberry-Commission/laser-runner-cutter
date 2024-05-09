@@ -1,7 +1,6 @@
 import asyncio
 import functools
 import logging
-from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -226,17 +225,16 @@ class Calibration:
         camera_points = np.array(self._calibration_camera_points)
         laser_coords = np.array(self._calibration_laser_coords)
 
-        with ThreadPoolExecutor() as executor:
-            result = await asyncio.get_event_loop().run_in_executor(
-                executor,
-                functools.partial(
-                    least_squares,
-                    residuals,
-                    self.camera_to_laser_transform.flatten(),
-                    args=(camera_points, laser_coords),
-                    method="trf",
-                ),
-            )
+        result = await asyncio.get_running_loop().run_in_executor(
+            None,
+            functools.partial(
+                least_squares,
+                residuals,
+                self.camera_to_laser_transform.flatten(),
+                args=(camera_points, laser_coords),
+                method="trf",
+            ),
+        )
 
         self.camera_to_laser_transform = result.x.reshape((4, 3))
 
@@ -265,17 +263,16 @@ class Calibration:
         camera_points = np.array(self._calibration_camera_points)
         laser_coords = np.array(self._calibration_laser_coords)
 
-        with ThreadPoolExecutor() as executor:
-            result = await asyncio.get_event_loop().run_in_executor(
-                executor,
-                functools.partial(
-                    minimize,
-                    cost_function,
-                    self.camera_to_laser_transform.flatten(),
-                    args=(camera_points, laser_coords),
-                    method="L-BFGS-B",
-                ),
-            )
+        result = await asyncio.get_running_loop().run_in_executor(
+            None,
+            functools.partial(
+                minimize,
+                cost_function,
+                self.camera_to_laser_transform.flatten(),
+                args=(camera_points, laser_coords),
+                method="L-BFGS-B",
+            ),
+        )
 
         self.camera_to_laser_transform = result.x.reshape((4, 3))
 

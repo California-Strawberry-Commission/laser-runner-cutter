@@ -17,7 +17,7 @@ export default function Controls() {
     calibrate,
     manualTargetAimLaser,
   } = useControlNode("/control0");
-  const { nodeInfo: cameraNodeInfo, frameSrc } = useCameraNode("/camera0");
+  const { nodeInfo: cameraNodeInfo } = useCameraNode("/camera0");
   const { nodeInfo: laserNodeInfo } = useLaserNode("/laser0");
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
 
@@ -65,7 +65,7 @@ export default function Controls() {
         Click on the image below to attempt to aim the laser to that point.
       </p>
       <FramePreview
-        frameSrc={frameSrc}
+        topicName={"/camera0/debug_frame"}
         onImageLoad={onImageLoad}
         onImageClick={onImageClick}
       />

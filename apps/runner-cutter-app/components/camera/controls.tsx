@@ -19,7 +19,6 @@ export default function Controls() {
     laserDetectionEnabled,
     runnerDetectionEnabled,
     recordingVideo,
-    frameSrc,
     setExposure,
     startLaserDetection,
     stopLaserDetection,
@@ -143,7 +142,7 @@ export default function Controls() {
           Save Image
         </Button>
       </div>
-      <FramePreview frameSrc={frameSrc} />
+      <FramePreview topicName={"/camera0/debug_frame"} />
     </div>
   );
 }

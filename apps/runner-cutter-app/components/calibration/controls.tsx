@@ -17,7 +17,7 @@ export default function Controls() {
     calibrate,
     addCalibrationPoint,
   } = useControlNode("/control0");
-  const { nodeInfo: cameraNodeInfo, frameSrc } = useCameraNode("/camera0");
+  const { nodeInfo: cameraNodeInfo } = useCameraNode("/camera0");
   const { nodeInfo: laserNodeInfo } = useLaserNode("/laser0");
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
 
@@ -66,7 +66,7 @@ export default function Controls() {
         calibration point
       </p>
       <FramePreview
-        frameSrc={frameSrc}
+        topicName={"/camera0/debug_frame"}
         onImageLoad={onImageLoad}
         onImageClick={onImageClick}
       />
