@@ -21,4 +21,4 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-a
 
 # Install APT deps
 sudo apt update
-sudo apt install -y ros-foxy-desktop ros-foxy-diagnostic-updater python3-rosdep2 python3-colcon-common-extensions python3-argcomplete ros-foxy-rosbridge-suite
+sudo apt install -y ros-foxy-desktop ros-foxy-diagnostic-updater python3-rosdep2 python3-colcon-common-extensions python3-argcomplete ros-foxy-rosbridge-suite ros-foxy-async-web-server-cpp ros-foxy-cv-bridge ros-foxy-image-transport
