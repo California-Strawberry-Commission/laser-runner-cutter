@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from .rgbd_frame import RGBDFrame
+from .rgbd_frame import RgbdFrame
 
 
-class Camera(ABC):
+class RgbdCamera(ABC):
     @property
     @abstractmethod
     def is_connected(self) -> bool:
@@ -32,11 +32,11 @@ class Camera(ABC):
         pass
 
     @abstractmethod
-    def get_frame(self) -> Optional[RGBDFrame]:
+    def get_frame(self) -> Optional[RgbdFrame]:
         """
         Get the latest available color and depth frames from the camera.
 
         Returns:
-            Optional[RGBDFrame]: The color and depth frames, or None if not available.
+            Optional[RgbdFrame]: The color and depth frames, or None if not available.
         """
         pass

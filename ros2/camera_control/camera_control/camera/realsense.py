@@ -1,13 +1,13 @@
 import logging
 import threading
 import time
-from typing import List, Optional, Sequence
+from typing import Optional, Tuple
 
 import numpy as np
 import pyrealsense2 as rs
 
-from .camera import Camera
-from .rgbd_frame import RGBDFrame
+from .rgbd_camera import RgbdCamera
+from .rgbd_frame import RgbdFrame
 
 # D435 has a minimum exposure time of 1us
 MIN_EXPOSURE_US = 1
@@ -16,7 +16,12 @@ DEPTH_MIN_METERS = 0.1
 DEPTH_MAX_METERS = 10
 
 
-class RealSenseFrame(RGBDFrame):
+class RealSenseFrame(RgbdFrame):
+    color_frame: np.ndarray
+    depth_frame: np.ndarray
+    timestamp_millis: float
+    color_depth_aligned: bool
+
     def __init__(
         self,
         color_frame: rs.frame,
@@ -52,15 +57,17 @@ class RealSenseFrame(RGBDFrame):
         self._depth_to_color_extrinsics = depth_to_color_extrinsics
         self._color_to_depth_extrinsics = color_to_depth_extrinsics
 
-    def get_position(self, color_pixel: Sequence[int]) -> Optional[List[int]]:
+    def get_position(
+        self, color_pixel: Tuple[int, int]
+    ) -> Optional[Tuple[float, float, float]]:
         """
-        Given an x-y coordinate in the color frame, return the x-y-z position with respect to the camera.
+        Given an (x, y) coordinate in the color frame, return the (x, y, z) position with respect to the camera.
 
         Args:
-            color_pixel (Sequence[int]): [x, y] coordinate in the color frame.
+            color_pixel (Sequence[int]): (x, y) coordinate in the color frame.
 
         Returns:
-            Optional[List[int]]: [x, y, z] position with respect to the camera, or None if the position could not be determined
+            Optional[Tuple[float, float, float]]: (x, y, z) position with respect to the camera, or None if the position could not be determined.
         """
         depth_pixel = self._color_pixel_to_depth_pixel(color_pixel)
         if depth_pixel is None or np.isnan(depth_pixel[0]) or np.isnan(depth_pixel[1]):
@@ -72,24 +79,25 @@ class RealSenseFrame(RGBDFrame):
         if depth < 0:
             return None
 
-        return rs.rs2_deproject_pixel_to_point(
+        position = rs.rs2_deproject_pixel_to_point(
             self._color_intrinsics, color_pixel, depth
         )
+        return (position[0], position[1], position[2])
 
     def _color_pixel_to_depth_pixel(
-        self, color_pixel: Sequence[int]
-    ) -> Optional[List[int]]:
+        self, color_pixel: Tuple[int, int]
+    ) -> Optional[Tuple[int, int]]:
         """
         Given an x-y coordinate in the color frame, return the corresponding x-y coordinate in the depth frame.
 
         Args:
-            color_pixel (Sequence[int]): [x, y] coordinate in the color frame.
+            color_pixel (Tuple[int, int]): [x, y] coordinate in the color frame.
 
         Returns:
-            Optional[List[int]]: [x, y] coordinate in the depth frame, or None if the depth is negative
+            Optional[Tuple[int, int]]: [x, y] coordinate in the depth frame, or None if the depth is negative
         """
         if self.color_depth_aligned:
-            return [color_pixel[0], color_pixel[1]]
+            return color_pixel
         else:
             # Based of a number of RealSense Github issues including
             # https://github.com/IntelRealSense/librealsense/issues/5440#issuecomment-566593866
@@ -108,20 +116,20 @@ class RealSenseFrame(RGBDFrame):
             return (
                 None
                 if depth_pixel[0] < 0 or depth_pixel[1] < 0
-                else [round(depth_pixel[0]), round(depth_pixel[1])]
+                else (round(depth_pixel[0]), round(depth_pixel[1]))
             )
 
 
-class RealSense(Camera):
-    color_frame_size: Sequence[int]
-    depth_frame_size: Sequence[int]
+class RealSense(RgbdCamera):
+    color_frame_size: Tuple[int, int]
+    depth_frame_size: Tuple[int, int]
     fps: int
     serial_number: Optional[str]
 
     def __init__(
         self,
-        color_frame_size: Sequence[int],
-        depth_frame_size: Sequence[int],
+        color_frame_size: Tuple[int, int],
+        depth_frame_size: Tuple[int, int],
         fps: int = 30,
         align_depth_to_color_frame: bool = True,
         serial_number: Optional[str] = None,
@@ -136,13 +144,13 @@ class RealSense(Camera):
         See https://www.intelrealsense.com/usb2-support-for-intel-realsense-technology/
 
         Args:
-            color_frame_size (Sequence[int]): [width, height] of the color frame.
-            depth_frame_size (Sequence[int]): [width, height] of the depth frame.
+            color_frame_size (Tuple[int, int]): (width, height) of the color frame.
+            depth_frame_size (Tuple[int, int]): (width, height) of the depth frame.
             fps (int): Number of frames per second that the camera should capture.
             align_depth_to_color_frame (bool): Whether the color and depth frames should be aligned.
             serial_number (Optional[str]): Serial number of device to connect to. If None, camera_index will be used.
             camera_index (int): Index of detected camera to connect to. Will only be used if serial_number is None.
-            logger (Optional[logging.Logger])
+            logger (Optional[logging.Logger]): Logger
         """
         self.color_frame_size = color_frame_size
         self.depth_frame_size = depth_frame_size
@@ -286,16 +294,15 @@ class RealSense(Camera):
         if exposure_us < 0:
             color_sensor.set_option(rs.option.enable_auto_exposure, 1)
         else:
-            # D435 has a minimum exposure time of 1us
             exposure_us = max(MIN_EXPOSURE_US, round(exposure_us))
             color_sensor.set_option(rs.option.exposure, exposure_us)
 
-    def get_frame(self) -> Optional[RGBDFrame]:
+    def get_frame(self) -> Optional[RealSenseFrame]:
         """
         Get the latest available color and depth frames from the camera.
 
         Returns:
-            Optional[RGBDFrame]: The color and depth frames, or None if not available.
+            Optional[RealSenseFrame]: The color and depth frames, or None if not available.
         """
         if not self.is_connected:
             return None

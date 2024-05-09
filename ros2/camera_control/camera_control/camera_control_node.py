@@ -16,7 +16,7 @@ from std_srvs.srv import Trigger
 
 from aioros2 import node, params, result, serve_nodes, service, start, timer, topic
 from camera_control.camera.realsense import RealSense
-from camera_control.camera.rgbd_frame import RGBDFrame
+from camera_control.camera.rgbd_frame import RgbdFrame
 from camera_control_interfaces.msg import DetectionResult, ObjectInstance, State
 from camera_control_interfaces.srv import (
     GetDetectionResult,
@@ -384,7 +384,7 @@ class CameraControlNode:
     def _create_detection_result_msg(
         self,
         points: List[Tuple[int, int]],
-        frame: RGBDFrame,
+        frame: RgbdFrame,
         track_ids: Optional[List[int]] = None,
     ) -> DetectionResult:
         msg = DetectionResult()
