@@ -240,7 +240,9 @@ class StateMachine:
         self._node.publish_state()
         # For each camera pixel, find the 3D position wrt the camera
         result = await self._camera_node.get_positions_for_pixels(
-            [Vector2(x=float(pixel[0]), y=float(pixel[1])) for pixel in camera_pixels]
+            pixels=[
+                Vector2(x=float(pixel[0]), y=float(pixel[1])) for pixel in camera_pixels
+            ]
         )
         positions = [
             (position.x, position.y, position.z) for position in result.positions
@@ -261,7 +263,7 @@ class StateMachine:
         self._node.publish_state()
         # Find the 3D position wrt the camera
         result = await self._camera_node.get_positions_for_pixels(
-            [Vector2(x=float(camera_pixel[0]), y=float(camera_pixel[1]))]
+            pixels=[Vector2(x=float(camera_pixel[0]), y=float(camera_pixel[1]))]
         )
         positions = [
             (position.x, position.y, position.z) for position in result.positions
