@@ -10,10 +10,19 @@ const INITIAL_STATE = {
   interval_capture_active: false,
 };
 
+function convertToLocalReadableTime(secondsSinceEpoch: number) {
+  const date = new Date(secondsSinceEpoch * 1000);
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
+  const seconds = date.getSeconds().toString().padStart(2, "0");
+  return `${hours}:${minutes}:${seconds}`;
+}
+
 export default function useCameraNode(nodeName: string) {
   const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
   const [nodeConnected, setNodeConnected] = useState<boolean>(false);
   const [nodeState, setNodeState] = useState(INITIAL_STATE);
+  const [logMessages, setLogMessages] = useState<string[]>([]);
 
   const nodeInfo: NodeInfo = useMemo(() => {
     return {
@@ -31,6 +40,16 @@ export default function useCameraNode(nodeName: string) {
     );
     setNodeState(result.state);
   }, [ros, nodeName, setNodeState]);
+
+  const addLogMessage = useCallback(
+    (logMessage: string) => {
+      setLogMessages((prevLogMessages) => {
+        const newLogMessages = [...prevLogMessages, logMessage];
+        return newLogMessages.slice(-10);
+      });
+    },
+    [setLogMessages]
+  );
 
   // Initial node state
   useEffect(() => {
@@ -68,15 +87,20 @@ export default function useCameraNode(nodeName: string) {
       `${nodeName}/log`,
       "rcl_interfaces/Log",
       (message) => {
-        console.log(`Received log: ${JSON.stringify(message)}`);
+        const timestamp_sec = parseInt(message["stamp"]["sec"]);
+        const msg = `[${convertToLocalReadableTime(timestamp_sec)}] ${
+          message["msg"]
+        }`;
+        addLogMessage(msg);
       }
     );
 
     return () => {
       onNodeConnectedSub.unsubscribe();
       stateSub.unsubscribe();
+      logSub.unsubscribe();
     };
-  }, [ros, nodeName, getState, setNodeConnected, setNodeState]);
+  }, [ros, nodeName, getState, setNodeConnected, setNodeState, addLogMessage]);
 
   const setExposure = useCallback(
     (exposureUs: number) => {
@@ -163,6 +187,7 @@ export default function useCameraNode(nodeName: string) {
     runnerDetectionEnabled: nodeState.runner_detection_enabled,
     recordingVideo: nodeState.recording_video,
     intervalCaptureActive: nodeState.interval_capture_active,
+    logMessages,
     setExposure,
     autoExposure,
     startLaserDetection,

@@ -20,6 +20,7 @@ export default function Controls() {
     runnerDetectionEnabled,
     recordingVideo,
     intervalCaptureActive,
+    logMessages,
     setExposure,
     autoExposure,
     startLaserDetection,
@@ -184,6 +185,13 @@ export default function Controls() {
         )}
       </div>
       <FramePreview topicName={"/camera0/debug_frame"} />
+      <div className="w-full">
+        {logMessages.map((msg, index) => (
+          <p className="text-xs" key={index}>
+            {msg}
+          </p>
+        ))}
+      </div>
     </div>
   );
 }
