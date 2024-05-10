@@ -135,6 +135,7 @@ class CameraControlNode:
             self.curr_frame.color_frame
         )
         runner_centers = await self._get_runner_centers(runner_masks)
+        runner_centers = [center for center in runner_centers if center is not None]
         return result(
             result=self._create_detection_result_msg(
                 runner_centers, self.curr_frame, track_ids
@@ -418,7 +419,9 @@ class CameraControlNode:
                     mask,
                 ),
             )
-            runner_centers.append((runner_center[0], runner_center[1]))
+            runner_centers.append(
+                (runner_center[0], runner_center[1]) if runner_center else None
+            )
         return runner_centers
 
     ## region Message builders
@@ -525,15 +528,16 @@ class CameraControlNode:
                 pts=[np.array(runner_mask, dtype=np.int32)],
                 color=mask_color,
             )
-            pos = [int(runner_center[0]), int(runner_center[1])]
-            debug_frame = cv2.drawMarker(
-                debug_frame,
-                pos,
-                center_color,
-                cv2.MARKER_TILTED_CROSS,
-                thickness=1,
-                markerSize=20,
-            )
+            if runner_center is not None:
+                pos = [int(runner_center[0]), int(runner_center[1])]
+                debug_frame = cv2.drawMarker(
+                    debug_frame,
+                    pos,
+                    center_color,
+                    cv2.MARKER_TILTED_CROSS,
+                    thickness=1,
+                    markerSize=20,
+                )
             if draw_conf:
                 pos = [int(runner_center[0]) + 15, int(runner_center[1]) - 5]
                 font = cv2.FONT_HERSHEY_SIMPLEX
