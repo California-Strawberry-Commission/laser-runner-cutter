@@ -19,6 +19,7 @@ export default function Controls() {
     laserDetectionEnabled,
     runnerDetectionEnabled,
     recordingVideo,
+    intervalCaptureActive,
     setExposure,
     autoExposure,
     startLaserDetection,
@@ -27,9 +28,12 @@ export default function Controls() {
     stopRunnerDetection,
     startRecordingVideo,
     stopRecordingVideo,
+    startIntervalCapture,
+    stopIntervalCapture,
     saveImage,
   } = useCameraNode(nodeName);
   const [exposureUs, setExposureUs] = useState<string>("200");
+  const [intervalSecs, setIntervalSecs] = useState<string>("5");
 
   const nodeInfos = useMemo(() => {
     return [rosbridgeNodeInfo, nodeInfo];
@@ -142,6 +146,42 @@ export default function Controls() {
         >
           Save Image
         </Button>
+        <Label className="flex-none w-16" htmlFor="interval">
+          Interval (s):
+        </Label>
+        <Input
+          className="flex-none w-20"
+          type="number"
+          id="interval"
+          name="interval"
+          step={1}
+          value={intervalSecs.toString()}
+          onChange={(event) => {
+            const value = Number(event.target.value);
+            if (!isNaN(value)) {
+              setIntervalSecs(event.target.value);
+            }
+          }}
+        />
+        {intervalCaptureActive ? (
+          <Button
+            disabled={disableButtons}
+            onClick={() => {
+              stopIntervalCapture();
+            }}
+          >
+            Stop Interval Capture
+          </Button>
+        ) : (
+          <Button
+            disabled={disableButtons}
+            onClick={() => {
+              startIntervalCapture(Number(intervalSecs));
+            }}
+          >
+            Start Interval Capture
+          </Button>
+        )}
       </div>
       <FramePreview topicName={"/camera0/debug_frame"} />
     </div>

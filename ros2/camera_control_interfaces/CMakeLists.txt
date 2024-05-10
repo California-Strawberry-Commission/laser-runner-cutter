@@ -34,6 +34,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetPositionsForPixels.srv"
   "srv/GetState.srv"
   "srv/SetExposure.srv"
+  "srv/StartIntervalCapture.srv"
   DEPENDENCIES sensor_msgs common_interfaces
 )
 if(BUILD_TESTING)

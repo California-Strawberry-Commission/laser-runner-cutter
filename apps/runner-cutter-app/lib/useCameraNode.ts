@@ -7,6 +7,7 @@ const INITIAL_STATE = {
   laser_detection_enabled: false,
   runner_detection_enabled: false,
   recording_video: false,
+  interval_capture_active: false,
 };
 
 export default function useCameraNode(nodeName: string) {
@@ -60,6 +61,14 @@ export default function useCameraNode(nodeName: string) {
       "camera_control_interfaces/State",
       (message) => {
         setNodeState(message);
+      }
+    );
+
+    const logSub = ros.subscribe(
+      `${nodeName}/log`,
+      "rcl_interfaces/Log",
+      (message) => {
+        console.log(`Received log: ${JSON.stringify(message)}`);
       }
     );
 
@@ -124,6 +133,25 @@ export default function useCameraNode(nodeName: string) {
     ros.callService(`${nodeName}/stop_recording_video`, "std_srvs/Trigger", {});
   }, [ros, nodeName]);
 
+  const startIntervalCapture = useCallback(
+    (intervalSecs: number) => {
+      ros.callService(
+        `${nodeName}/start_interval_capture`,
+        "camera_control_interfaces/StartIntervalCapture",
+        { interval_secs: intervalSecs }
+      );
+    },
+    [ros, nodeName]
+  );
+
+  const stopIntervalCapture = useCallback(() => {
+    ros.callService(
+      `${nodeName}/stop_interval_capture`,
+      "std_srvs/Trigger",
+      {}
+    );
+  }, [ros, nodeName]);
+
   const saveImage = useCallback(() => {
     ros.callService(`${nodeName}/save_image`, "std_srvs/Trigger", {});
   }, [ros, nodeName]);
@@ -134,6 +162,7 @@ export default function useCameraNode(nodeName: string) {
     laserDetectionEnabled: nodeState.laser_detection_enabled,
     runnerDetectionEnabled: nodeState.runner_detection_enabled,
     recordingVideo: nodeState.recording_video,
+    intervalCaptureActive: nodeState.interval_capture_active,
     setExposure,
     autoExposure,
     startLaserDetection,
@@ -142,6 +171,8 @@ export default function useCameraNode(nodeName: string) {
     stopRunnerDetection,
     startRecordingVideo,
     stopRecordingVideo,
+    startIntervalCapture,
+    stopIntervalCapture,
     saveImage,
   };
 }

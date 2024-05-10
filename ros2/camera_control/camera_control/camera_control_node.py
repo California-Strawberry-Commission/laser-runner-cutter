@@ -25,9 +25,11 @@ from camera_control_interfaces.srv import (
     GetPositionsForPixels,
     GetState,
     SetExposure,
+    StartIntervalCapture,
 )
 from common_interfaces.msg import Vector2, Vector3
 from common_interfaces.srv import GetBool
+from rcl_interfaces.msg import Log
 
 
 @dataclass
@@ -55,12 +57,17 @@ class CameraControlNode:
     debug_frame_topic = topic("~/debug_frame", Image, 1)
     laser_detections_topic = topic("~/laser_detections", DetectionResult, 5)
     runner_detections_topic = topic("~/runner_detections", DetectionResult, 5)
+    # ROS publishes logs on /rosout, but as it contains logs from all nodes and also contains
+    # every single log message, we create a node-specific topic here for logs that would
+    # potentially be displayed on UI
+    log_topic = topic("~/log", Log, 10)
 
     @start
     async def start(self):
         self.laser_detection_enabled = False
         self.runner_detection_enabled = False
         self.video_writer = None
+        self.interval_capture_task = None
         # For converting numpy array to image msg
         self.cv_bridge = CvBridge()
 
@@ -168,13 +175,15 @@ class CameraControlNode:
 
     @service("~/start_recording_video", Trigger)
     async def start_recording_video(self):
-        os.makedirs(self.camera_control_params.video_dir, exist_ok=True)
+        video_dir = os.path.expanduser(self.camera_control_params.video_dir)
+        os.makedirs(video_dir, exist_ok=True)
         ts = time.time()
         datetime_obj = datetime.fromtimestamp(ts)
         datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
         video_name = f"{datetime_string}.avi"
+        video_path = os.path.join(video_dir, video_name)
         self.video_writer = cv2.VideoWriter(
-            os.path.join(self.camera_control_params.video_dir, video_name),
+            video_path,
             cv2.VideoWriter_fourcc(*"XVID"),
             self.camera_control_params.fps,
             (
@@ -183,29 +192,71 @@ class CameraControlNode:
             ),
         )
         self._publish_state()
+        self._publish_log_message(f"Started recording video: {video_path}")
         return result(success=True)
 
     @service("~/stop_recording_video", Trigger)
     async def stop_recording_video(self):
         self.video_writer = None
         self._publish_state()
+        self._publish_log_message("Stopped recording video")
         return result(success=True)
 
     @service("~/save_image", Trigger)
     async def save_image(self):
-        if self.curr_frame is None:
-            return result()
+        if self._save_image() is None:
+            return result(success=False)
 
-        os.makedirs(self.camera_control_params.image_dir, exist_ok=True)
+        return result(success=True)
+
+    @service("~/start_interval_capture", StartIntervalCapture)
+    async def start_interval_capture(self, interval_secs):
+        if self.interval_capture_task is not None:
+            self.interval_capture_task.cancel()
+            self.interval_capture_task = None
+
+        self.interval_capture_task = asyncio.create_task(
+            self._interval_capture_task(interval_secs)
+        )
+        self._publish_state()
+        self._publish_log_message(
+            f"Started interval capture. Interval: {interval_secs}s"
+        )
+        return result(success=True)
+
+    @service("~/stop_interval_capture", Trigger)
+    async def stop_interval_capture(self):
+        if self.interval_capture_task is None:
+            return result(success=False)
+
+        self.interval_capture_task.cancel()
+        self.interval_capture_task = None
+        self._publish_state()
+        self._publish_log_message("Stopped interval capture")
+        return result(success=True)
+
+    async def _interval_capture_task(self, interval_secs: float):
+        while True:
+            self._save_image()
+            await asyncio.sleep(interval_secs)
+
+    def _save_image(self) -> Optional[str]:
+        if self.curr_frame is None:
+            return None
+
+        image_dir = os.path.expanduser(self.camera_control_params.image_dir)
+        os.makedirs(image_dir, exist_ok=True)
         ts = time.time()
         datetime_obj = datetime.fromtimestamp(ts)
         datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
         image_name = f"{datetime_string}.png"
+        image_path = os.path.join(image_dir, image_name)
         cv2.imwrite(
-            os.path.join(self.camera_control_params.image_dir, image_name),
+            image_path,
             cv2.cvtColor(self.curr_frame.color_frame, cv2.COLOR_RGB2BGR),
         )
-        return result(success=True)
+        self._publish_log_message(f"Saved image: {image_path}")
+        return image_path
 
     @service("~/get_state", GetState)
     async def get_state(self):
@@ -309,6 +360,7 @@ class CameraControlNode:
         state.laser_detection_enabled = self.laser_detection_enabled
         state.runner_detection_enabled = self.runner_detection_enabled
         state.recording_video = self.video_writer is not None
+        state.interval_capture_active = self.interval_capture_task is not None
         return state
 
     def _publish_state(self):
@@ -319,7 +371,20 @@ class CameraControlNode:
                 laser_detection_enabled=state.laser_detection_enabled,
                 runner_detection_enabled=state.runner_detection_enabled,
                 recording_video=state.recording_video,
+                interval_capture_active=state.interval_capture_active,
             )
+        )
+
+    def _publish_log_message(self, msg: str):
+        # TODO: Log levels
+        timestamp_millis = int(time.time() * 1000)
+        sec, nanosec = milliseconds_to_ros_time(timestamp_millis)
+        log_message = Log()
+        log_message.stamp.sec = sec
+        log_message.stamp.nanosec = nanosec
+        log_message.msg = msg
+        asyncio.create_task(
+            self.log_topic(stamp=log_message.stamp, msg=log_message.msg)
         )
 
     async def _get_laser_points(
