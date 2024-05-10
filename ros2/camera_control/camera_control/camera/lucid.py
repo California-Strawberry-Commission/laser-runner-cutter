@@ -191,7 +191,7 @@ class LucidCamera:
         """
         device_infos = system.device_infos
 
-        # If we don't have a serial number of a device, find one using camera_index
+        # If we don't have a serial number of a device, attempt to find one among connected devices using camera_index
         if self.serial_number is None:
             filtered_device_infos = [
                 device_info
@@ -207,7 +207,7 @@ class LucidCamera:
                 )
             self.serial_number = filtered_device_infos[self._camera_index]["serial"]
 
-        # Check if device is connected
+        # If the device is connected, set up and start streaming
         device_info = next(
             (
                 device_info
@@ -216,11 +216,38 @@ class LucidCamera:
             ),
             None,
         )
-        if device_info is None:
-            raise Exception(f"No device with serial {self.serial_number} found.")
+        if device_info is not None:
+            self._logger.info(f"Device {self.serial_number} found")
+            self._start_stream(device_info)
+        else:
+            self._logger.warn(f"Device {self.serial_number} was not found")
 
-        self._logger.info(f"Device {self.serial_number} is connected")
+        # TODO: use device disconnected callback
+        def check_connection_thread():
+            while self._check_connection:
+                connected_devices = [
+                    device_info["serial"] for device_info in system.device_infos
+                ]
+                connected = self.serial_number in connected_devices
+                if self.is_connected != connected:
+                    if connected:
+                        self._logger.info(f"Device {self.serial_number} connected")
+                        self.initialize()
+                    else:
+                        self._logger.info(f"Device {self.serial_number} disconnected")
+                        system.destroy_device()
+                        self._device = None
 
+                time.sleep(1)
+
+        if self._check_connection_thread is None:
+            self._check_connection = True
+            self._check_connection_thread = threading.Thread(
+                target=check_connection_thread, daemon=True
+            )
+            self._check_connection_thread.start()
+
+    def _start_stream(self, device_info):
         # Enable device
         self._device = system.create_device(device_info)[0]
 
@@ -260,32 +287,7 @@ class LucidCamera:
 
         self._device.start_stream(1)
 
-        # TODO: use device disconnected callback
-        def check_connection_thread():
-            while self._check_connection:
-                connected_devices = [
-                    device_info["serial"] for device_info in system.device_infos
-                ]
-                connected = self.serial_number in connected_devices
-                if self.is_connected != connected:
-                    if connected:
-                        self._logger.info(f"Device {self.serial_number} connected")
-                        self.initialize()
-                    else:
-                        self._logger.info(f"Device {self.serial_number} disconnected")
-                        system.destroy_device()
-                        self._device = None
-
-                time.sleep(1)
-
-        if self._check_connection_thread is None:
-            self._check_connection = True
-            self._check_connection_thread = threading.Thread(
-                target=check_connection_thread, daemon=True
-            )
-            self._check_connection_thread.start()
-
-        self._logger.info(f"Device {self.serial_number} is initialized")
+        self._logger.info(f"Device {self.serial_number} is now streaming")
 
     def set_exposure(self, exposure_us: float):
         """

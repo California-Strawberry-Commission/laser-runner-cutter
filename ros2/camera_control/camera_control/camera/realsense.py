@@ -188,7 +188,7 @@ class RealSense(RgbdCamera):
             for device in rs.context().query_devices()
         ]
 
-        # If we don't have a serial number of a device, find one using camera_index
+        # If we don't have a serial number of a device, attempt to find one among connected devices using camera_index
         if self.serial_number is None:
             if self._camera_index < 0 or self._camera_index >= len(connected_devices):
                 raise Exception(
@@ -196,12 +196,39 @@ class RealSense(RgbdCamera):
                 )
             self.serial_number = connected_devices[self._camera_index]
 
-        # Check if device is connected
-        if self.serial_number not in connected_devices:
-            raise Exception(f"No device with serial number {self.serial_number} found.")
+        # If the device is connected, set up and start streaming
+        if self.serial_number in connected_devices:
+            self._logger.info(f"Device {self.serial_number} found")
+            self._start_stream()
+        else:
+            self._logger.warn(f"Device {self.serial_number} was not found")
 
-        self._logger.info(f"Device {self.serial_number} is connected")
+        def check_connection_thread():
+            while self._check_connection:
+                connected_devices = [
+                    device.get_info(rs.camera_info.serial_number)
+                    for device in rs.context().query_devices()
+                ]
+                connected = self.serial_number in connected_devices
+                if self.is_connected != connected:
+                    if connected:
+                        self._logger.info(f"Device {self.serial_number} connected")
+                        self.initialize()
+                    else:
+                        self._logger.info(f"Device {self.serial_number} disconnected")
+                        self._pipeline.stop()
+                        self._pipeline = None
 
+                time.sleep(1)
+
+        if self._check_connection_thread is None:
+            self._check_connection = True
+            self._check_connection_thread = threading.Thread(
+                target=check_connection_thread, daemon=True
+            )
+            self._check_connection_thread.start()
+
+    def _start_stream(self):
         # Enable device
         config = rs.config()
         config.enable_device(self.serial_number)
@@ -238,10 +265,6 @@ class RealSense(RgbdCamera):
         depth_sensor = self._profile.get_device().first_depth_sensor()
         self._depth_scale = depth_sensor.get_depth_scale()
 
-        # General min and max possible depths pulled from realsense examples
-        self._depth_min_meters = 0.1
-        self._depth_max_meters = 10
-
         # Post-processing
         self._align = (
             rs.align(rs.stream.color) if self._align_depth_to_color_frame else None
@@ -253,32 +276,7 @@ class RealSense(RgbdCamera):
         # Exposure setting persists on device, so reset it to auto-exposure
         self.set_exposure(-1)
 
-        def check_connection_thread():
-            while self._check_connection:
-                connected_devices = [
-                    device.get_info(rs.camera_info.serial_number)
-                    for device in rs.context().query_devices()
-                ]
-                connected = self.serial_number in connected_devices
-                if self.is_connected != connected:
-                    if connected:
-                        self._logger.info(f"Device {self.serial_number} connected")
-                        self.initialize()
-                    else:
-                        self._logger.info(f"Device {self.serial_number} disconnected")
-                        self._pipeline.stop()
-                        self._pipeline = None
-
-                time.sleep(1)
-
-        if self._check_connection_thread is None:
-            self._check_connection = True
-            self._check_connection_thread = threading.Thread(
-                target=check_connection_thread, daemon=True
-            )
-            self._check_connection_thread.start()
-
-        self._logger.info(f"Device {self.serial_number} is initialized")
+        self._logger.info(f"Device {self.serial_number} is now streaming")
 
     def set_exposure(self, exposure_us: float):
         """
