@@ -20,6 +20,7 @@ export default function Controls() {
     runnerDetectionEnabled,
     recordingVideo,
     setExposure,
+    autoExposure,
     startLaserDetection,
     stopLaserDetection,
     startRunnerDetection,
@@ -67,7 +68,7 @@ export default function Controls() {
         <Button
           disabled={disableButtons}
           onClick={() => {
-            setExposure(-1.0);
+            autoExposure();
           }}
         >
           Auto Exposure

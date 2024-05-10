@@ -80,6 +80,10 @@ export default function useCameraNode(nodeName: string) {
     [ros, nodeName]
   );
 
+  const autoExposure = useCallback(() => {
+    ros.callService(`${nodeName}/auto_exposure`, "std_srvs/Trigger", {});
+  }, [ros, nodeName]);
+
   const startLaserDetection = useCallback(() => {
     ros.callService(
       `${nodeName}/start_laser_detection`,
@@ -131,6 +135,7 @@ export default function useCameraNode(nodeName: string) {
     runnerDetectionEnabled: nodeState.runner_detection_enabled,
     recordingVideo: nodeState.recording_video,
     setExposure,
+    autoExposure,
     startLaserDetection,
     stopLaserDetection,
     startRunnerDetection,
