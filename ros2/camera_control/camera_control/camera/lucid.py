@@ -281,6 +281,8 @@ class LucidCamera:
             nodemap["Scan3dCoordinateSelector"].value = "CoordinateC"
             z_offset = nodemap["Scan3dCoordinateOffset"].value
             self._xyz_offset = (x_offset, y_offset, z_offset)
+        # Set the following when Persistent IP is set on the camera
+        nodemap["GevPersistentARPConflictDetectionEnable"].value = False
 
         # Set auto exposure
         self.set_exposure(-1)
@@ -553,6 +555,7 @@ class LucidRgbd(RgbdCamera):
 
 if __name__ == "__main__":
     import sys
+    import os
 
     logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
     triton_serial = "241300039"
@@ -562,3 +565,7 @@ if __name__ == "__main__":
     time.sleep(1)
     frame = camera.get_frame()
     print(f"Got frame: {frame.shape}")
+    cv2.imwrite(
+        os.path.expanduser("~/Pictures/triton_image.png"),
+        cv2.cvtColor(frame, cv2.COLOR_RGB2BGR),
+    )
