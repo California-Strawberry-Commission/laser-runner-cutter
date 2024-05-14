@@ -1,6 +1,0 @@
-fastapi
-uvicorn[standard]
-pyrealsense2
-numpy
-opencv-python
-natsort
