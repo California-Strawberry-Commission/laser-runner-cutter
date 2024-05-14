@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import SideNav from "@/components/side-nav";
+import KeyboardProvider from "@/lib/keyboard/KeyboardProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -30,7 +31,9 @@ export default function RootLayout({
           <div className="flex-shrink-0 w-64 bg-gray-200 overflow-y-auto p-8">
             <SideNav />
           </div>
-          <div className="flex-1 overflow-y-auto p-8">{children}</div>
+          <KeyboardProvider>
+            <div className="flex-1 overflow-y-auto p-8">{children}</div>
+          </KeyboardProvider>
         </div>
       </body>
     </html>

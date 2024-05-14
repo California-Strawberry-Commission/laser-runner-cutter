@@ -55,10 +55,10 @@ export default function Controls() {
           name="exposure"
           step={10}
           value={exposureUs.toString()}
-          onChange={(event) => {
-            const value = Number(event.target.value);
+          onChange={(str) => {
+            const value = Number(str);
             if (!isNaN(value)) {
-              setExposureUs(event.target.value);
+              setExposureUs(str);
             }
           }}
         />
@@ -157,10 +157,10 @@ export default function Controls() {
           name="interval"
           step={1}
           value={intervalSecs.toString()}
-          onChange={(event) => {
-            const value = Number(event.target.value);
+          onChange={(str) => {
+            const value = Number(str);
             if (!isNaN(value)) {
-              setIntervalSecs(event.target.value);
+              setIntervalSecs(str);
             }
           }}
         />

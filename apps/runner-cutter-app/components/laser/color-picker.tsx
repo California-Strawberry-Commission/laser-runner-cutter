@@ -72,7 +72,7 @@ export default function ColorPicker({
           id="custom"
           value={color}
           className="col-span-2 mt-4 h-8"
-          onChange={(e) => onColorChange(e.currentTarget.value)}
+          onChange={(str) => onColorChange(str)}
         />
       </PopoverContent>
     </Popover>

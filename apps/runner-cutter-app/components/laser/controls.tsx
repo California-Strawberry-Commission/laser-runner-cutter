@@ -64,10 +64,10 @@ export default function Controls() {
           placeholder="x"
           step={0.1}
           value={x}
-          onChange={(event) => {
-            const value = Number(event.target.value);
+          onChange={(str) => {
+            const value = Number(str);
             if (!isNaN(value)) {
-              setX(event.target.value);
+              setX(str);
             }
           }}
         />
@@ -79,10 +79,10 @@ export default function Controls() {
           placeholder="y"
           step={0.1}
           value={y}
-          onChange={(event) => {
-            const value = Number(event.target.value);
+          onChange={(str) => {
+            const value = Number(str);
             if (!isNaN(value)) {
-              setY(event.target.value);
+              setY(str);
             }
           }}
         />

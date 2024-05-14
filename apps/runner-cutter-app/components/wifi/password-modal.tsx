@@ -40,8 +40,8 @@ export default function PasswordModal({
             type="password"
             className="col-span-3"
             value={password}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-              setPassword(e.target.value);
+            onChange={(str) => {
+              setPassword(str);
             }}
           />
         </div>
