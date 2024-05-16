@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 from arena_api.enums import PixelFormat
 from arena_api.system import system
-
+import ctypes
 from .calibration import calibrate_camera
 from .rgbd_camera import RgbdCamera
 from .rgbd_frame import RgbdFrame
@@ -320,6 +320,7 @@ class TritonCamera(LucidCamera):
         buffer = self._device.get_buffer()
 
         # Convert to numpy array
+        # buffer is a list of (buffer.width * buffer.height * 3) uint8s
         buffer_bytes_per_pixel = int(len(buffer.data) / (buffer.width * buffer.height))
         np_array = np.asarray(buffer.data, dtype=np.uint8)
         np_array = np_array.reshape(buffer.height, buffer.width, buffer_bytes_per_pixel)
@@ -384,23 +385,49 @@ class HeliosRayCamera(LucidCamera):
         # system.destroy_device), and buffers must be requeued
         buffer = self._device.get_buffer()
 
-        # Convert to numpy array
-        buffer_bytes_per_pixel = int(len(buffer.data) / (buffer.width * buffer.height))
-        dt = np.dtype(
-            [
-                ("x", np.float16),
-                ("y", np.float16),
-                ("z", np.float16),
-                ("i", np.uint16),
-            ]
-        )
+        # Convert to numpy structured array
+        # buffer is a list of (buffer.width * buffer.height * 8) 1-byte values. The 8 bytes per
+        # pixel represent 4 channels, 16 bits each:
+        #   - x position
+        #   - y postion
+        #   - z postion
+        #   - intensity
+        # Buffer.pdata is a (uint8, ctypes.c_ubyte) pointer. It is easier to deal with Buffer.pdata
+        # if it is cast to 16 bits so each channel value is read/accessed easily.
+        # PixelFormat.Coord3D_ABCY16 is unsigned, so we cast to a ctypes.c_uint16 pointer.
+        pdata_16bit = ctypes.cast(buffer.pdata, ctypes.POINTER(ctypes.c_uint16))
+        num_pixels = buffer.width * buffer.height
+        num_channels = 4
         np_array = np.frombuffer(
-            buffer.data, dtype=dt, count=(buffer.width * buffer.height)
+            (ctypes.c_int16 * num_pixels * num_channels).from_address(
+                ctypes.addressof(pdata_16bit.contents)
+            ),
+            dtype=np.dtype(
+                [
+                    ("x", np.uint16),
+                    ("y", np.uint16),
+                    ("z", np.uint16),
+                    ("i", np.uint16),
+                ]
+            ),
         )
+        np_array = np_array.astype(
+            np.dtype(
+                [
+                    ("x", "f"),
+                    ("y", "f"),
+                    ("z", "f"),
+                    ("i", np.uint16),
+                ]
+            )
+        )
+
+        # Apply scale and offsets to convert (x, y, z) to mm
         np_array["x"] = np_array["x"] * self._xyz_scale + self._xyz_offset[0]
         np_array["y"] = np_array["y"] * self._xyz_scale + self._xyz_offset[1]
         np_array["z"] = np_array["z"] * self._xyz_scale + self._xyz_offset[2]
-        np_array = np_array.reshape(buffer.height, buffer.width, buffer_bytes_per_pixel)
+
+        np_array = np_array.reshape(buffer.height, buffer.width)
 
         self._device.requeue_buffer(buffer)
         return np_array
@@ -578,9 +605,16 @@ class LucidRgbd(RgbdCamera):
             self._logger = logging.getLogger(__name__)
             self._logger.setLevel(logging.INFO)
 
+    @property
+    def is_connected(self) -> bool:
+        return self.color_camera.is_connected and self.depth_camera.is_connected
+
     def initialize(self):
         self.color_camera.initialize()
         self.depth_camera.initialize()
+
+    def set_exposure(self, exposure_us: float):
+        pass
 
     def get_frame(self):
         color_frame = self.color_camera.get_frame()
@@ -613,10 +647,32 @@ if __name__ == "__main__":
     logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
     triton_camera = TritonCamera((1920, 1080), serial_number="241300039")
     helios_camera = HeliosRayCamera(serial_number="241400544")
-    helios_camera.initialize()
+    lucid_rgbd = LucidRgbd(
+        triton_camera,
+        np.zeros(0),
+        np.zeros(0),
+        helios_camera,
+        np.zeros(0),
+        np.zeros(0),
+        np.zeros(0),
+        None,
+    )
+    lucid_rgbd.initialize()
     time.sleep(1)
-    frame = helios_camera.get_frame()
-    print(f"Got frame: {frame.shape}")
+
+    depth_frame = helios_camera.get_frame()
+    if depth_frame is not None:
+        print(depth_frame["i"].shape)
+
+    """
+    frame = lucid_rgbd.get_frame()
+    if frame is not None:
+        print(
+            f"Got frame. Color frame: {frame.color_frame.shape} / Depth frame: {frame.depth_frame.shape}"
+        )
+    else:
+        print(f"No frame")
+    """
     """
     cv2.imwrite(
         os.path.expanduser("~/Pictures/triton_image.png"),
