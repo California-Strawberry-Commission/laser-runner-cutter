@@ -1,25 +1,23 @@
+import ctypes
 import logging
-import threading
 import time
-from typing import List, Optional, Sequence, Tuple
-from abc import ABC, abstractmethod
+from typing import Optional, Tuple
+
 import cv2
 import numpy as np
 from arena_api.enums import PixelFormat
 from arena_api.system import system
-import ctypes
-from .calibration import calibrate_camera
+
+from .calibration import create_blob_detector
 from .rgbd_camera import RgbdCamera
 from .rgbd_frame import RgbdFrame
 
-CALIBRATION_GRID_SIZE = (4, 5)
-CALIBRATION_GRID_TYPE = cv2.CALIB_CB_SYMMETRIC_GRID
 # General min and max possible depths pulled from RealSense examples
 DEPTH_MIN_METERS = 0.1
 DEPTH_MAX_METERS = 10
 
 
-def _scale_grayscale_image(mono_image: np.ndarray) -> np.ndarray:
+def scale_grayscale_image(mono_image: np.ndarray) -> np.ndarray:
     """
     Scale a grayscale image so that it uses the full 8-bit range.
 
@@ -46,6 +44,37 @@ def _scale_grayscale_image(mono_image: np.ndarray) -> np.ndarray:
     mono_image = (mono_image * 255).astype(np.uint8)
 
     return mono_image
+
+
+def construct_extrinsic_matrix(rotation_vector, translation_vector):
+    # Convert rotation vector to rotation matrix using Rodrigues' formula
+    R, _ = cv2.Rodrigues(rotation_vector)
+
+    # Create the extrinsic matrix
+    extrinsic_matrix = np.eye(4)
+    extrinsic_matrix[:3, :3] = R
+    extrinsic_matrix[:3, 3] = translation_vector
+
+    return extrinsic_matrix
+
+
+def invert_extrinsic_matrix(extrinsic_matrix: np.ndarray):
+    # Extract the rotation matrix and translation vector
+    R = extrinsic_matrix[:3, :3]
+    t = extrinsic_matrix[:3, 3]
+
+    # Compute the inverse rotation matrix
+    R_inv = R.T
+
+    # Compute the new translation vector
+    t_inv = -R_inv @ t
+
+    # Construct the new extrinsic matrix
+    extrinsic_matrix_inv = np.eye(4)
+    extrinsic_matrix_inv[:3, :3] = R_inv
+    extrinsic_matrix_inv[:3, 3] = t_inv
+
+    return extrinsic_matrix_inv
 
 
 def get_extrinsics(
@@ -81,8 +110,8 @@ def get_extrinsics(
     # Based on https://support.thinklucid.com/app-note-helios-3d-point-cloud-with-rgb-color/
 
     # Scale images so that they each use the full 8-bit range
-    triton_mono_image = _scale_grayscale_image(triton_mono_image)
-    helios_intensity_image = _scale_grayscale_image(helios_intensity_image)
+    triton_mono_image = scale_grayscale_image(triton_mono_image)
+    helios_intensity_image = scale_grayscale_image(helios_intensity_image)
 
     # Find calibration circle centers on both cameras
     retval, triton_circle_centers = cv2.findCirclesGrid(
@@ -91,16 +120,19 @@ def get_extrinsics(
     if not retval:
         print("Could not get circle centers from Triton mono image.")
         return None, None
+    triton_circle_centers = np.squeeze(np.round(triton_circle_centers))
+
     retval, helios_circle_centers = cv2.findCirclesGrid(
         helios_intensity_image, grid_size, flags=grid_type, blobDetector=blob_detector
     )
     if not retval:
         print("Could not get circle centers from Helios intensity image.")
         return None, None
+    helios_circle_centers = np.squeeze(np.round(helios_circle_centers).astype(np.int32))
 
     # Get XYZ values from the Helios 3D image that match 2D locations on the Triton (corresponding points)
     helios_circle_positions = helios_xyz_image[
-        helios_circle_centers[:, 0], helios_circle_centers[:, 1]
+        helios_circle_centers[:, 1], helios_circle_centers[:, 0]
     ]
 
     retval, rvec, tvec = cv2.solvePnP(
@@ -113,324 +145,6 @@ def get_extrinsics(
         return rvec, tvec
     else:
         return None, None
-
-
-class LucidCamera(ABC):
-    """
-    Represents a single LUCID camera.
-    """
-
-    frame_size: Tuple[int, int]
-    serial_number: Optional[str]
-
-    def __init__(
-        self,
-        frame_size: Tuple[int, int],
-        serial_number: Optional[str] = None,
-        model_prefix: Optional[str] = None,
-        camera_index: int = 0,
-        logger: Optional[logging.Logger] = None,
-    ):
-        """
-        Args:
-            frame_size (Tuple[int, int]): (width, height) of the frame.
-            serial_number (Optional[str]): Serial number of device to connect to. If None, camera_index will be used.
-            model_prefix (Optional[str]): Prefix of model name to match camera_index against. Will only be used if serial_number is None.
-            camera_index (int): Index of detected camera to connect to. Will only be used if serial_number is None.
-            logger (Optional[logging.Logger]): Logger
-        """
-        self.frame_size = frame_size
-        self.serial_number = serial_number
-        self._model_prefix = model_prefix
-        self._camera_index = camera_index
-        if logger:
-            self._logger = logger
-        else:
-            self._logger = logging.getLogger(__name__)
-            self._logger.setLevel(logging.INFO)
-        self._check_connection = False
-        self._check_connection_thread = None
-        self._device = None
-
-    @property
-    def is_connected(self) -> bool:
-        """
-        Returns:
-            bool: Whether the camera is connected.
-        """
-        return self._device is not None
-
-    @property
-    @abstractmethod
-    def is_depth_camera(self) -> bool:
-        pass
-
-    def initialize(self):
-        """
-        Set up the camera. Finds the serial number if needed, enables the device, configures the
-        stream, and starts the stream.
-        """
-        device_infos = system.device_infos
-
-        # If we don't have a serial number of a device, attempt to find one among connected devices using camera_index
-        if self.serial_number is None:
-            filtered_device_infos = [
-                device_info
-                for device_info in device_infos
-                if self._model_prefix is None
-                or device_info["model"].startswith(self._model_prefix)
-            ]
-            if self._camera_index < 0 or self._camera_index >= len(
-                filtered_device_infos
-            ):
-                raise Exception(
-                    f"camera_index {self._camera_index} is out of bounds: {len(filtered_device_infos)} devices found with model prefix {self._model_prefix}"
-                )
-            self.serial_number = filtered_device_infos[self._camera_index]["serial"]
-
-        # If the device is connected, set up and start streaming
-        device_info = next(
-            (
-                device_info
-                for device_info in device_infos
-                if device_info["serial"] == self.serial_number
-            ),
-            None,
-        )
-        if device_info is not None:
-            self._logger.info(f"Device {self.serial_number} found")
-            self._start_stream(device_info)
-        else:
-            self._logger.warn(f"Device {self.serial_number} was not found")
-
-        # TODO: use device disconnected callback
-        def check_connection_thread():
-            while self._check_connection:
-                connected_devices = [
-                    device_info["serial"] for device_info in system.device_infos
-                ]
-                connected = self.serial_number in connected_devices
-                if self.is_connected != connected:
-                    if connected:
-                        self._logger.info(f"Device {self.serial_number} connected")
-                        self.initialize()
-                    else:
-                        self._logger.info(f"Device {self.serial_number} disconnected")
-                        system.destroy_device()
-                        self._device = None
-
-                time.sleep(1)
-
-        if self._check_connection_thread is None:
-            self._check_connection = True
-            self._check_connection_thread = threading.Thread(
-                target=check_connection_thread, daemon=True
-            )
-            self._check_connection_thread.start()
-
-    def _start_stream(self, device_info):
-        self._device = system.create_device(device_info)[0]
-        self._configure_nodemap(self._device)
-        self._device.start_stream(1)
-        self._logger.info(f"Device {self.serial_number} is now streaming")
-
-    @abstractmethod
-    def _configure_nodemap(self, device):
-        pass
-
-    @abstractmethod
-    def get_frame(self) -> Optional[np.ndarray]:
-        pass
-
-
-class TritonCamera(LucidCamera):
-    def __init__(
-        self,
-        frame_size: Tuple[int, int],
-        serial_number: Optional[str] = None,
-        camera_index: int = 0,
-        logger: Optional[logging.Logger] = None,
-    ):
-        super().__init__(
-            frame_size,
-            serial_number=serial_number,
-            model_prefix="TRI",
-            camera_index=camera_index,
-            logger=logger,
-        )
-
-    @property
-    def is_depth_camera(self) -> bool:
-        return False
-
-    def _configure_nodemap(self, device):
-        # Configure stream
-        nodemap = device.nodemap
-        stream_nodemap = device.tl_stream_nodemap
-        # Setting the buffer handling mode to "NewestOnly" ensures the most recent image
-        # is delivered, even if it means skipping frames
-        stream_nodemap["StreamBufferHandlingMode"].value = "NewestOnly"
-        # Enable stream auto negotiate packet size, which instructs the camera to receive
-        # the largest packet size that the system will allow
-        stream_nodemap["StreamAutoNegotiatePacketSize"].value = True
-        # Enable stream packet resend. If a packet is missed while receiving an image, a
-        # packet resend is requested which retrieves and redelivers the missing packet
-        # in the correct order.
-        stream_nodemap["StreamPacketResendEnable"].value = True
-        # Set frame size and pixel format
-        nodemap["Width"].value = self.frame_size[0]
-        nodemap["Height"].value = self.frame_size[1]
-        nodemap["PixelFormat"].value = PixelFormat.RGB8
-        # Set the following when Persistent IP is set on the camera
-        nodemap["GevPersistentARPConflictDetectionEnable"].value = False
-
-        # Set auto exposure
-        self.set_exposure(-1)
-
-    def set_exposure(self, exposure_us: float):
-        """
-        Set the exposure time of the camera.
-
-        Args:
-            exposure_us (float): Exposure time in microseconds.
-        """
-        if not self.is_connected:
-            return
-
-        nodemap = self._device.nodemap
-        exposureAutoNode = nodemap["ExposureAuto"]
-        exposureTimeNode = nodemap["ExposureTime"]
-        if exposure_us < 0:
-            exposureAutoNode.value = "Continuous"
-        elif exposureTimeNode is not None and exposureTimeNode.is_writable:
-            exposureAutoNode.value = "Off"
-            if exposure_us > exposureTimeNode.max:
-                exposureTimeNode.value = exposureTimeNode.max
-            elif exposure_us < exposureTimeNode.min:
-                exposureTimeNode.value = exposureTimeNode.min
-            else:
-                exposureTimeNode.value = exposure_us
-
-    def get_frame(self) -> Optional[np.ndarray]:
-        if not self.is_connected:
-            return None
-
-        # get_buffer must be called after start_stream and before stop_stream (or
-        # system.destroy_device), and buffers must be requeued
-        buffer = self._device.get_buffer()
-
-        # Convert to numpy array
-        # buffer is a list of (buffer.width * buffer.height * 3) uint8s
-        buffer_bytes_per_pixel = int(len(buffer.data) / (buffer.width * buffer.height))
-        np_array = np.asarray(buffer.data, dtype=np.uint8)
-        np_array = np_array.reshape(buffer.height, buffer.width, buffer_bytes_per_pixel)
-
-        self._device.requeue_buffer(buffer)
-        return np_array
-
-
-class HeliosRayCamera(LucidCamera):
-    def __init__(
-        self,
-        serial_number: Optional[str] = None,
-        camera_index: int = 0,
-        logger: Optional[logging.Logger] = None,
-    ):
-        super().__init__(
-            (640, 480),
-            serial_number=serial_number,
-            model_prefix="HTR",
-            camera_index=camera_index,
-            logger=logger,
-        )
-
-    @property
-    def is_depth_camera(self) -> bool:
-        return True
-
-    def _configure_nodemap(self, device):
-        # Configure stream
-        nodemap = device.nodemap
-        stream_nodemap = device.tl_stream_nodemap
-        # Setting the buffer handling mode to "NewestOnly" ensures the most recent image
-        # is delivered, even if it means skipping frames
-        stream_nodemap["StreamBufferHandlingMode"].value = "NewestOnly"
-        # Enable stream auto negotiate packet size, which instructs the camera to receive
-        # the largest packet size that the system will allow
-        stream_nodemap["StreamAutoNegotiatePacketSize"].value = True
-        # Enable stream packet resend. If a packet is missed while receiving an image, a
-        # packet resend is requested which retrieves and redelivers the missing packet
-        # in the correct order.
-        stream_nodemap["StreamPacketResendEnable"].value = True
-        # Set pixel format
-        nodemap["PixelFormat"].value = PixelFormat.Coord3D_ABCY16
-        # Set depth camera specific node values
-        nodemap["Scan3dOperatingMode"].value = "Distance3000mmSingleFreq"
-        self._xyz_scale = nodemap["Scan3dCoordinateScale"].value
-        nodemap["Scan3dCoordinateSelector"].value = "CoordinateA"
-        x_offset = nodemap["Scan3dCoordinateOffset"].value
-        nodemap["Scan3dCoordinateSelector"].value = "CoordinateB"
-        y_offset = nodemap["Scan3dCoordinateOffset"].value
-        nodemap["Scan3dCoordinateSelector"].value = "CoordinateC"
-        z_offset = nodemap["Scan3dCoordinateOffset"].value
-        self._xyz_offset = (x_offset, y_offset, z_offset)
-        # Set the following when Persistent IP is set on the camera
-        nodemap["GevPersistentARPConflictDetectionEnable"].value = False
-
-    def get_frame(self) -> Optional[np.ndarray]:
-        if not self.is_connected:
-            return None
-
-        # get_buffer must be called after start_stream and before stop_stream (or
-        # system.destroy_device), and buffers must be requeued
-        buffer = self._device.get_buffer()
-
-        # Convert to numpy structured array
-        # buffer is a list of (buffer.width * buffer.height * 8) 1-byte values. The 8 bytes per
-        # pixel represent 4 channels, 16 bits each:
-        #   - x position
-        #   - y postion
-        #   - z postion
-        #   - intensity
-        # Buffer.pdata is a (uint8, ctypes.c_ubyte) pointer. It is easier to deal with Buffer.pdata
-        # if it is cast to 16 bits so each channel value is read/accessed easily.
-        # PixelFormat.Coord3D_ABCY16 is unsigned, so we cast to a ctypes.c_uint16 pointer.
-        pdata_16bit = ctypes.cast(buffer.pdata, ctypes.POINTER(ctypes.c_uint16))
-        num_pixels = buffer.width * buffer.height
-        num_channels = 4
-        np_array = np.frombuffer(
-            (ctypes.c_int16 * num_pixels * num_channels).from_address(
-                ctypes.addressof(pdata_16bit.contents)
-            ),
-            dtype=np.dtype(
-                [
-                    ("x", np.uint16),
-                    ("y", np.uint16),
-                    ("z", np.uint16),
-                    ("i", np.uint16),
-                ]
-            ),
-        )
-        np_array = np_array.astype(
-            np.dtype(
-                [
-                    ("x", "f"),
-                    ("y", "f"),
-                    ("z", "f"),
-                    ("i", np.uint16),
-                ]
-            )
-        )
-
-        # Apply scale and offsets to convert (x, y, z) to mm
-        np_array["x"] = np_array["x"] * self._xyz_scale + self._xyz_offset[0]
-        np_array["y"] = np_array["y"] * self._xyz_scale + self._xyz_offset[1]
-        np_array["z"] = np_array["z"] * self._xyz_scale + self._xyz_offset[2]
-
-        np_array = np_array.reshape(buffer.height, buffer.width)
-
-        self._device.requeue_buffer(buffer)
-        return np_array
 
 
 class LucidFrame(RgbdFrame):
@@ -448,7 +162,6 @@ class LucidFrame(RgbdFrame):
         depth_camera_intrinsic_matrix: np.ndarray,
         depth_camera_distortion_coeffs: np.ndarray,
         color_to_depth_extrinsic_matrix: np.ndarray,
-        depth_to_color_extrinsic_matrix: np.ndarray,
     ):
         """
         Args:
@@ -468,7 +181,9 @@ class LucidFrame(RgbdFrame):
         self._depth_camera_intrinsic_matrix = depth_camera_intrinsic_matrix
         self._depth_camera_distortion_coeffs = depth_camera_distortion_coeffs
         self._color_to_depth_extrinsic_matrix = color_to_depth_extrinsic_matrix
-        self._depth_to_color_extrinsic_matrix = depth_to_color_extrinsic_matrix
+        self._depth_to_color_extrinsic_matrix = invert_extrinsic_matrix(
+            color_to_depth_extrinsic_matrix
+        )
 
     def get_position(
         self, color_pixel: Tuple[int, int]
@@ -580,99 +295,303 @@ class LucidFrame(RgbdFrame):
 
 
 class LucidRgbd(RgbdCamera):
+    """
+    Combined interface for a LUCID color camera (such as the Triton) and depth camera (such as the
+    Helios2). Unfortunately, we cannot modularize the LUCID cameras into individual instances, as
+    calling system.device_infos is time consuming, and calling system.create_device more than once
+    results in an error.
+    """
+
     def __init__(
         self,
-        color_camera: LucidCamera,
+        frame_size: Tuple[int, int],
+        color_camera_serial_number: str,
         color_camera_intrinsic_matrix: np.ndarray,
         color_camera_distortion_coeffs: np.ndarray,
-        depth_camera: LucidCamera,
+        depth_camera_serial_number: str,
         depth_camera_intrinsic_matrix: np.ndarray,
         depth_camera_distortion_coeffs: np.ndarray,
         color_to_depth_extrinsic_matrix: np.ndarray,
         logger: Optional[logging.Logger] = None,
     ):
-        self.color_camera = color_camera
-        self.depth_camera = depth_camera
+        self.frame_size = frame_size
+        self.color_camera_serial_number = color_camera_serial_number
         self._color_camera_intrinsic_matrix = color_camera_intrinsic_matrix
         self._color_camera_distortion_coeffs = color_camera_distortion_coeffs
+        self.depth_camera_serial_number = depth_camera_serial_number
         self._depth_camera_intrinsic_matrix = depth_camera_intrinsic_matrix
         self._depth_camera_distortion_coeffs = depth_camera_distortion_coeffs
         self._color_to_depth_extrinsic_matrix = color_to_depth_extrinsic_matrix
-
         if logger:
             self._logger = logger
         else:
             self._logger = logging.getLogger(__name__)
             self._logger.setLevel(logging.INFO)
+        self._check_connection = False
+        self._check_connection_thread = None
+        self._color_device = None
+        self._depth_device = None
 
     @property
     def is_connected(self) -> bool:
-        return self.color_camera.is_connected and self.depth_camera.is_connected
+        """
+        Returns:
+            bool: Whether the camera is connected.
+        """
+        return self._color_device is not None and self._depth_device is not None
 
     def initialize(self):
-        self.color_camera.initialize()
-        self.depth_camera.initialize()
+        # TODO: implement device disconnection and reconnection logic
+        device_infos = system.device_infos
+
+        color_device_info = next(
+            (
+                device_info
+                for device_info in device_infos
+                if device_info["serial"] == self.color_camera_serial_number
+            ),
+            None,
+        )
+        depth_device_info = next(
+            (
+                device_info
+                for device_info in device_infos
+                if device_info["serial"] == self.depth_camera_serial_number
+            ),
+            None,
+        )
+
+        devices = system.create_device([color_device_info, depth_device_info])
+        self._color_device = devices[0]
+        self._depth_device = devices[1]
+
+        # Configure color nodemap
+        nodemap = self._color_device.nodemap
+        stream_nodemap = self._color_device.tl_stream_nodemap
+        # Setting the buffer handling mode to "NewestOnly" ensures the most recent image
+        # is delivered, even if it means skipping frames
+        stream_nodemap["StreamBufferHandlingMode"].value = "NewestOnly"
+        # Enable stream auto negotiate packet size, which instructs the camera to receive
+        # the largest packet size that the system will allow
+        stream_nodemap["StreamAutoNegotiatePacketSize"].value = True
+        # Enable stream packet resend. If a packet is missed while receiving an image, a
+        # packet resend is requested which retrieves and redelivers the missing packet
+        # in the correct order.
+        stream_nodemap["StreamPacketResendEnable"].value = True
+        # Set frame size and pixel format
+        nodemap["Width"].value = self.frame_size[0]
+        nodemap["Height"].value = self.frame_size[1]
+        nodemap["PixelFormat"].value = PixelFormat.RGB8
+        # Set the following when Persistent IP is set on the camera
+        nodemap["GevPersistentARPConflictDetectionEnable"].value = False
+
+        # Configure depth nodemap
+        nodemap = self._depth_device.nodemap
+        stream_nodemap = self._depth_device.tl_stream_nodemap
+        # Setting the buffer handling mode to "NewestOnly" ensures the most recent image
+        # is delivered, even if it means skipping frames
+        stream_nodemap["StreamBufferHandlingMode"].value = "NewestOnly"
+        # Enable stream auto negotiate packet size, which instructs the camera to receive
+        # the largest packet size that the system will allow
+        stream_nodemap["StreamAutoNegotiatePacketSize"].value = True
+        # Enable stream packet resend. If a packet is missed while receiving an image, a
+        # packet resend is requested which retrieves and redelivers the missing packet
+        # in the correct order.
+        stream_nodemap["StreamPacketResendEnable"].value = True
+        # Set pixel format
+        nodemap["PixelFormat"].value = PixelFormat.Coord3D_ABCY16
+        # Set depth camera specific node values
+        nodemap["Scan3dOperatingMode"].value = "Distance3000mmSingleFreq"
+        self._xyz_scale = nodemap["Scan3dCoordinateScale"].value
+        nodemap["Scan3dCoordinateSelector"].value = "CoordinateA"
+        x_offset = nodemap["Scan3dCoordinateOffset"].value
+        nodemap["Scan3dCoordinateSelector"].value = "CoordinateB"
+        y_offset = nodemap["Scan3dCoordinateOffset"].value
+        nodemap["Scan3dCoordinateSelector"].value = "CoordinateC"
+        z_offset = nodemap["Scan3dCoordinateOffset"].value
+        self._xyz_offset = (x_offset, y_offset, z_offset)
+        # Set the following when Persistent IP is set on the camera
+        nodemap["GevPersistentARPConflictDetectionEnable"].value = False
+
+        # Set auto exposure
+        self.set_exposure(-1)
+
+        # Start streams
+        self._color_device.start_stream(1)
+        self._logger.info(f"Device {self.color_camera_serial_number} is now streaming")
+        self._depth_device.start_stream(1)
+        self._logger.info(f"Device {self.depth_camera_serial_number} is now streaming")
 
     def set_exposure(self, exposure_us: float):
-        pass
+        """
+        Set the exposure time of the camera.
 
-    def get_frame(self):
-        color_frame = self.color_camera.get_frame()
-        depth_frame = self.depth_camera.get_frame()
+        Args:
+            exposure_us (float): Exposure time in microseconds.
+        """
+        if not self.is_connected:
+            return
+
+        nodemap = self._color_device.nodemap
+        exposureAutoNode = nodemap["ExposureAuto"]
+        exposureTimeNode = nodemap["ExposureTime"]
+        if exposure_us < 0:
+            exposureAutoNode.value = "Continuous"
+        elif exposureTimeNode is not None and exposureTimeNode.is_writable:
+            exposureAutoNode.value = "Off"
+            if exposure_us > exposureTimeNode.max:
+                exposureTimeNode.value = exposureTimeNode.max
+            elif exposure_us < exposureTimeNode.min:
+                exposureTimeNode.value = exposureTimeNode.min
+            else:
+                exposureTimeNode.value = exposure_us
+
+    def get_color_frame(self) -> Optional[np.ndarray]:
+        if self._color_device is None:
+            return None
+
+        # get_buffer must be called after start_stream and before stop_stream (or
+        # system.destroy_device), and buffers must be requeued
+        buffer = self._color_device.get_buffer()
+
+        # Convert to numpy array
+        # buffer is a list of (buffer.width * buffer.height * 3) uint8s
+        buffer_bytes_per_pixel = int(len(buffer.data) / (buffer.width * buffer.height))
+        np_array = np.asarray(buffer.data, dtype=np.uint8)
+        np_array = np_array.reshape(buffer.height, buffer.width, buffer_bytes_per_pixel)
+
+        self._color_device.requeue_buffer(buffer)
+        return np_array
+
+    def get_depth_frame(self) -> Optional[np.ndarray]:
+        if self._depth_device is None:
+            return None
+
+        # get_buffer must be called after start_stream and before stop_stream (or
+        # system.destroy_device), and buffers must be requeued
+        buffer = self._depth_device.get_buffer()
+
+        # Convert to numpy structured array
+        # buffer is a list of (buffer.width * buffer.height * 8) 1-byte values. The 8 bytes per
+        # pixel represent 4 channels, 16 bits each:
+        #   - x position
+        #   - y postion
+        #   - z postion
+        #   - intensity
+        # Buffer.pdata is a (uint8, ctypes.c_ubyte) pointer. It is easier to deal with Buffer.pdata
+        # if it is cast to 16 bits so each channel value is read/accessed easily.
+        # PixelFormat.Coord3D_ABCY16 is unsigned, so we cast to a ctypes.c_uint16 pointer.
+        pdata_16bit = ctypes.cast(buffer.pdata, ctypes.POINTER(ctypes.c_uint16))
+        num_pixels = buffer.width * buffer.height
+        num_channels = 4
+        np_array = np.frombuffer(
+            (ctypes.c_int16 * num_pixels * num_channels).from_address(
+                ctypes.addressof(pdata_16bit.contents)
+            ),
+            dtype=np.dtype(
+                [
+                    ("x", np.uint16),
+                    ("y", np.uint16),
+                    ("z", np.uint16),
+                    ("i", np.uint16),
+                ]
+            ),
+        )
+        np_array = np_array.astype(
+            np.dtype(
+                [
+                    ("x", np.float32),
+                    ("y", np.float32),
+                    ("z", np.float32),
+                    ("i", np.uint16),
+                ]
+            )
+        )
+
+        # Apply scale and offsets to convert (x, y, z) to mm
+        np_array["x"] = np_array["x"] * self._xyz_scale + self._xyz_offset[0]
+        np_array["y"] = np_array["y"] * self._xyz_scale + self._xyz_offset[1]
+        np_array["z"] = np_array["z"] * self._xyz_scale + self._xyz_offset[2]
+
+        np_array = np_array.reshape(buffer.height, buffer.width)
+
+        self._depth_device.requeue_buffer(buffer)
+        return np_array
+
+    def get_frame(self) -> Optional[LucidFrame]:
+        color_frame = self.get_color_frame()
+        depth_frame = self.get_depth_frame()
         if color_frame is None or depth_frame is None:
             return None
 
+        cv2.imwrite(
+            os.path.expanduser("~/Pictures/triton_image.png"),
+            cv2.cvtColor(color_frame, cv2.COLOR_RGB2BGR),
+        )
+
+        depth_frame_intensity = (depth_frame["i"] / 256).astype(np.uint8)
         depth_frame_xyz = np.stack(
             [depth_frame["x"], depth_frame["y"], depth_frame["z"]], axis=-1
         )
-        timestamp_millis = time.time() * 1000
-
         return LucidFrame(
             color_frame,
-            depth_frame_xyz,
-            timestamp_millis,
+            depth_frame_xyz,  # type: ignore
+            time.time() * 1000,
             self._color_camera_intrinsic_matrix,
             self._color_camera_distortion_coeffs,
             self._depth_camera_intrinsic_matrix,
             self._depth_camera_distortion_coeffs,
             self._color_to_depth_extrinsic_matrix,
-            self._color_to_depth_extrinsic_matrix,
         )
 
 
 if __name__ == "__main__":
-    import sys
     import os
+    import sys
 
     logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
-    triton_camera = TritonCamera((1920, 1080), serial_number="241300039")
-    helios_camera = HeliosRayCamera(serial_number="241400544")
-    lucid_rgbd = LucidRgbd(
-        triton_camera,
-        np.zeros(0),
-        np.zeros(0),
-        helios_camera,
-        np.zeros(0),
-        np.zeros(0),
-        np.zeros(0),
-        None,
+
+    triton_intrinsic_matrix = np.load(
+        os.path.expanduser("~/Downloads/calibration/triton_intrinsic_matrix.npy")
     )
-    lucid_rgbd.initialize()
+    triton_distortion_coeffs = np.load(
+        os.path.expanduser("~/Downloads/calibration/triton_distortion_coeffs.npy")
+    )
+    triton_mono_image = np.load(
+        os.path.expanduser("~/Downloads/calibration/triton_mono_image.npy")
+    )
+    helios_intensity_image = np.load(
+        os.path.expanduser("~/Downloads/calibration/helios_intensity_image.npy")
+    )
+    helios_xyz = np.load(os.path.expanduser("~/Downloads/calibration/helios_xyz.npy"))
+
+    rvec, tvec = get_extrinsics(
+        triton_mono_image,  # type: ignore
+        helios_intensity_image,  # type: ignore
+        helios_xyz,  # type: ignore
+        triton_intrinsic_matrix,  # type: ignore
+        triton_distortion_coeffs,  # type: ignore
+        (5, 4),
+        grid_type=cv2.CALIB_CB_SYMMETRIC_GRID,
+        blob_detector=create_blob_detector(),
+    )
+    rvec = rvec.flatten()
+    tvec = tvec.flatten()
+    helios_to_triton_extrinsic_matrix = construct_extrinsic_matrix(rvec, tvec)
+    np.save(
+        os.path.expanduser(
+            "~/Downloads/calibration/helios_to_triton_extrinsic_matrix.npy"
+        ),
+        helios_to_triton_extrinsic_matrix,
+    )
+
+    """
+    camera = LucidRgbd((1920, 1080), "241300039", "241400544")
+    camera.initialize()
     time.sleep(1)
-
-    depth_frame = helios_camera.get_frame()
-    if depth_frame is not None:
-        print(depth_frame["i"].shape)
-
+    camera.get_frame()
     """
-    frame = lucid_rgbd.get_frame()
-    if frame is not None:
-        print(
-            f"Got frame. Color frame: {frame.color_frame.shape} / Depth frame: {frame.depth_frame.shape}"
-        )
-    else:
-        print(f"No frame")
-    """
+
     """
     cv2.imwrite(
         os.path.expanduser("~/Pictures/triton_image.png"),
