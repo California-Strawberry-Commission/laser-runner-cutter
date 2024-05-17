@@ -524,12 +524,8 @@ class LucidRgbd(RgbdCamera):
         if color_frame is None or depth_frame is None:
             return None
 
-        cv2.imwrite(
-            os.path.expanduser("~/Pictures/triton_image.png"),
-            cv2.cvtColor(color_frame, cv2.COLOR_RGB2BGR),
-        )
-
-        depth_frame_intensity = (depth_frame["i"] / 256).astype(np.uint8)
+        # depth_frame is a numpy structured array containing both xyz and intensity data
+        # depth_frame_intensity = (depth_frame["i"] / 256).astype(np.uint8)
         depth_frame_xyz = np.stack(
             [depth_frame["x"], depth_frame["y"], depth_frame["z"]], axis=-1
         )
