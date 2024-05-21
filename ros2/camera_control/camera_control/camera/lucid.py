@@ -1,14 +1,23 @@
 import ctypes
 import logging
+import os
 import time
 from typing import Optional, Tuple
+import argparse
+import sys
 
 import cv2
 import numpy as np
+from ament_index_python.packages import get_package_share_directory
 from arena_api.enums import PixelFormat
 from arena_api.system import system
 
-from .calibration import create_blob_detector
+from .calibration import (
+    construct_extrinsic_matrix,
+    create_blob_detector,
+    distort_pixel_coords,
+    invert_extrinsic_matrix,
+)
 from .rgbd_camera import RgbdCamera
 from .rgbd_frame import RgbdFrame
 
@@ -44,37 +53,6 @@ def scale_grayscale_image(mono_image: np.ndarray) -> np.ndarray:
     mono_image = (mono_image * 255).astype(np.uint8)
 
     return mono_image
-
-
-def construct_extrinsic_matrix(rotation_vector, translation_vector):
-    # Convert rotation vector to rotation matrix using Rodrigues' formula
-    R, _ = cv2.Rodrigues(rotation_vector)
-
-    # Create the extrinsic matrix
-    extrinsic_matrix = np.eye(4)
-    extrinsic_matrix[:3, :3] = R
-    extrinsic_matrix[:3, 3] = translation_vector
-
-    return extrinsic_matrix
-
-
-def invert_extrinsic_matrix(extrinsic_matrix: np.ndarray):
-    # Extract the rotation matrix and translation vector
-    R = extrinsic_matrix[:3, :3]
-    t = extrinsic_matrix[:3, 3]
-
-    # Compute the inverse rotation matrix
-    R_inv = R.T
-
-    # Compute the new translation vector
-    t_inv = -R_inv @ t
-
-    # Construct the new extrinsic matrix
-    extrinsic_matrix_inv = np.eye(4)
-    extrinsic_matrix_inv[:3, :3] = R_inv
-    extrinsic_matrix_inv[:3, 3] = t_inv
-
-    return extrinsic_matrix_inv
 
 
 def get_extrinsics(
@@ -185,6 +163,64 @@ class LucidFrame(RgbdFrame):
             color_to_depth_extrinsic_matrix
         )
 
+    def get_corresponding_depth_pixel(self, color_pixel: Tuple[int, int]):
+        # Undistort the pixel coordinate in color camera
+        distorted_color_pixel = np.array([[color_pixel]], dtype=np.float32)
+        print(f"distorted_color_pixel = {distorted_color_pixel}")
+        undistorted_color_pixel = cv2.undistortPoints(
+            distorted_color_pixel,
+            self._color_camera_intrinsic_matrix,
+            self._color_camera_distortion_coeffs,
+            P=self._color_camera_intrinsic_matrix,
+        ).reshape(-1)
+
+        print(f"undistorted_color_pixel = {undistorted_color_pixel}")
+        redistorted_color_pixel = distort_pixel_coords(
+            undistorted_color_pixel,
+            self._color_camera_intrinsic_matrix,
+            self._color_camera_distortion_coeffs,
+        )
+        print(f"redistorted_color_pixel = {redistorted_color_pixel}")
+
+        # Convert to normalized camera coordinates
+        normalized_color_pixel = np.linalg.inv(
+            self._color_camera_intrinsic_matrix
+        ) @ np.append(undistorted_color_pixel, 1)
+        print(f"normalized_color_pixel = {normalized_color_pixel}")
+
+        # Transform the normalized coordinates to depth camera using the extrinsic matrix
+        transformed_homogeneous_depth_pixel = (
+            self._color_to_depth_extrinsic_matrix @ np.append(normalized_color_pixel, 1)
+        )
+        print(
+            f"transformed_homogeneous_depth_pixel = {transformed_homogeneous_depth_pixel}"
+        )
+        normalized_depth_pixel = (
+            transformed_homogeneous_depth_pixel[:3]
+            / transformed_homogeneous_depth_pixel[3]
+        )
+        print(f"normalized_depth_pixel = {normalized_depth_pixel}")
+
+        # Convert to pixel coordinates in depth camera
+        undistorted_depth_pixel = (
+            self._depth_camera_intrinsic_matrix @ normalized_depth_pixel[:3]
+        )
+        undistorted_depth_pixel = (
+            undistorted_depth_pixel[:2] / undistorted_depth_pixel[2]
+        )
+
+        print(f"undistorted_depth_pixel = {undistorted_depth_pixel}")
+
+        # Apply distortion to the pixel coordinates in depth camera
+        distorted_depth_pixel = distort_pixel_coords(
+            undistorted_depth_pixel,
+            self._depth_camera_intrinsic_matrix,
+            self._depth_camera_distortion_coeffs,
+        )
+        print(f"distorted_depth_pixel = {distorted_depth_pixel}")
+
+        return (round(distorted_depth_pixel[0]), round(distorted_depth_pixel[1]))
+
     def get_position(
         self, color_pixel: Tuple[int, int]
     ) -> Optional[Tuple[float, float, float]]:
@@ -209,9 +245,9 @@ class LucidFrame(RgbdFrame):
             )
             return np.array(
                 [
-                    pixel_undistorted[0][0][0] * DEPTH_MIN_METERS,
-                    pixel_undistorted[0][0][1] * DEPTH_MIN_METERS,
-                    DEPTH_MIN_METERS,
+                    pixel_undistorted[0][0][0] * depth,
+                    pixel_undistorted[0][0][1] * depth,
+                    depth,
                 ]
             )
 
@@ -222,7 +258,7 @@ class LucidFrame(RgbdFrame):
 
         def project_position(position, camera_matrix, distortion_coeffs):
             pixels, _ = cv2.projectPoints(
-                [position],
+                np.array([[position]]),
                 np.eye(3),
                 np.zeros(3),
                 camera_matrix,
@@ -263,12 +299,15 @@ class LucidFrame(RgbdFrame):
             min_depth_depth_space_position,
             self._depth_camera_intrinsic_matrix,
             self._depth_camera_distortion_coeffs,
-        )
+        ).flatten()
         max_depth_pixel = project_position(
             max_depth_depth_space_position,
             self._depth_camera_intrinsic_matrix,
             self._depth_camera_distortion_coeffs,
-        )
+        ).flatten()
+
+        print(f"min_depth_pixel = {min_depth_pixel.flatten()}")
+        print(f"max_depth_pixel = {max_depth_pixel.flatten()}")
 
         # Make sure pixel coords are in boundary
         depth_frame_height, depth_frame_width, depth_channels = self.depth_frame.shape
@@ -279,6 +318,7 @@ class LucidFrame(RgbdFrame):
             max_depth_pixel, depth_frame_width, depth_frame_height
         )
 
+        """
         # Search along the line for the depth pixel for which its projected pixel is the closest
         # to the input pixel
         min_dist = -1
@@ -289,9 +329,7 @@ class LucidFrame(RgbdFrame):
             curr_pixel = next_pixel_in_line(
                 curr_pixel, min_depth_pixel, max_depth_pixel
             )
-
-        # TODO: WIP
-        pass
+        """
 
 
 class LucidRgbd(RgbdCamera):
@@ -541,25 +579,165 @@ class LucidRgbd(RgbdCamera):
         )
 
 
-if __name__ == "__main__":
-    import os
-    import sys
-
-    logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
-
+def _get_frame(output_dir):
+    output_dir = os.path.expanduser(output_dir)
+    package_share_directory = get_package_share_directory("camera_control")
+    calibration_params_dir = os.path.join(package_share_directory, "calibration_params")
     triton_intrinsic_matrix = np.load(
-        os.path.expanduser("~/Downloads/calibration/triton_intrinsic_matrix.npy")
+        os.path.join(calibration_params_dir, "triton_intrinsic_matrix.npy")
     )
     triton_distortion_coeffs = np.load(
-        os.path.expanduser("~/Downloads/calibration/triton_distortion_coeffs.npy")
+        os.path.join(calibration_params_dir, "triton_distortion_coeffs.npy")
     )
-    triton_mono_image = np.load(
-        os.path.expanduser("~/Downloads/calibration/triton_mono_image.npy")
+    helios_intrinsic_matrix = np.load(
+        os.path.join(calibration_params_dir, "helios_intrinsic_matrix.npy")
     )
-    helios_intensity_image = np.load(
-        os.path.expanduser("~/Downloads/calibration/helios_intensity_image.npy")
+    helios_distortion_coeffs = np.load(
+        os.path.join(calibration_params_dir, "helios_distortion_coeffs.npy")
     )
-    helios_xyz = np.load(os.path.expanduser("~/Downloads/calibration/helios_xyz.npy"))
+    helios_to_triton_extrinsic_matrix = np.load(
+        os.path.join(calibration_params_dir, "helios_to_triton_extrinsic_matrix.npy")
+    )
+    triton_to_helios_extrinsic_matrix = invert_extrinsic_matrix(
+        helios_to_triton_extrinsic_matrix  # type: ignore
+    )
+
+    camera = LucidRgbd(
+        (2048, 1536),
+        "241300039",
+        triton_intrinsic_matrix,  # type: ignore
+        triton_distortion_coeffs,  # type: ignore
+        "241400544",
+        helios_intrinsic_matrix,  # type: ignore
+        helios_distortion_coeffs,  # type: ignore
+        triton_to_helios_extrinsic_matrix,
+    )
+    camera.initialize()
+    time.sleep(1)
+    # camera.get_frame()
+
+    color_frame = camera.get_color_frame()
+    depth_frame = camera.get_depth_frame()
+
+    if color_frame is not None and depth_frame is not None:
+        triton_mono_image = cv2.cvtColor(color_frame, cv2.COLOR_RGB2GRAY)
+        helios_intensity_image = (depth_frame["i"] / 256).astype(np.uint8)
+        helios_xyz = np.stack(
+            [depth_frame["x"], depth_frame["y"], depth_frame["z"]], axis=-1
+        )
+
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        np.save(
+            os.path.join(output_dir, "triton_color_image.npy"),
+            color_frame,
+        )
+        cv2.imwrite(
+            os.path.join(output_dir, "triton_color_image.png"),
+            cv2.cvtColor(color_frame, cv2.COLOR_RGB2BGR),
+        )
+        np.save(
+            os.path.join(output_dir, "triton_mono_image.npy"),
+            triton_mono_image,
+        )
+        cv2.imwrite(
+            os.path.join(output_dir, "triton_mono_image.png"),
+            triton_mono_image,
+        )
+        np.save(
+            os.path.join(output_dir, "helios_intensity_image.npy"),
+            helios_intensity_image,
+        )
+        cv2.imwrite(
+            os.path.join(output_dir, "helios_intensity_image.png"),
+            helios_intensity_image,
+        )
+        np.save(os.path.join(output_dir, "helios_xyz.npy"), helios_xyz)
+
+
+def _get_position(
+    color_pixel, triton_mono_image_path, helios_intensity_image, helios_xyz_path
+):
+    package_share_directory = get_package_share_directory("camera_control")
+    calibration_params_dir = os.path.join(package_share_directory, "calibration_params")
+    triton_intrinsic_matrix = np.load(
+        os.path.join(calibration_params_dir, "triton_intrinsic_matrix.npy")
+    )
+    triton_distortion_coeffs = np.load(
+        os.path.join(calibration_params_dir, "triton_distortion_coeffs.npy")
+    )
+    helios_intrinsic_matrix = np.load(
+        os.path.join(calibration_params_dir, "helios_intrinsic_matrix.npy")
+    )
+    helios_distortion_coeffs = np.load(
+        os.path.join(calibration_params_dir, "helios_distortion_coeffs.npy")
+    )
+    helios_to_triton_extrinsic_matrix = np.load(
+        os.path.join(calibration_params_dir, "helios_to_triton_extrinsic_matrix.npy")
+    )
+    triton_to_helios_extrinsic_matrix = invert_extrinsic_matrix(
+        helios_to_triton_extrinsic_matrix  # type: ignore
+    )
+    triton_mono_image = np.load(os.path.expanduser(triton_mono_image_path))
+    triton_image = cv2.cvtColor(triton_mono_image, cv2.COLOR_GRAY2RGB)
+    helios_xyz = np.load(os.path.expanduser(helios_xyz_path))
+
+    frame = LucidFrame(
+        triton_image,
+        helios_xyz,  # type: ignore
+        time.time() * 1000,
+        triton_intrinsic_matrix,  # type: ignore
+        triton_distortion_coeffs,  # type: ignore
+        helios_intrinsic_matrix,  # type: ignore
+        helios_distortion_coeffs,  # type: ignore
+        triton_to_helios_extrinsic_matrix,  # type: ignore
+    )
+
+    depth_pixel = frame.get_corresponding_depth_pixel(color_pixel)
+    frame.get_position(color_pixel)
+
+    helios_intensity_image = np.load(os.path.expanduser(helios_intensity_image))
+    helios_intensity_image = cv2.cvtColor(helios_intensity_image, cv2.COLOR_GRAY2RGB)
+
+    cv2.drawMarker(
+        triton_image,
+        color_pixel,
+        (0, 0, 255),
+        markerType=cv2.MARKER_STAR,
+        markerSize=40,
+        thickness=2,
+    )
+    cv2.imshow("Color camera", triton_image)
+
+    cv2.drawMarker(
+        helios_intensity_image,
+        depth_pixel,
+        (0, 0, 255),
+        markerType=cv2.MARKER_STAR,
+        markerSize=40,
+        thickness=2,
+    )
+    cv2.imshow("Depth camera", helios_intensity_image)
+
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+
+def _get_extrinsic(
+    triton_mono_image_path, helios_intensity_image_path, helios_xyz_path, output_path
+):
+    output_path = os.path.expanduser(outputoutput_path_dir)
+    package_share_directory = get_package_share_directory("camera_control")
+    calibration_params_dir = os.path.join(package_share_directory, "calibration_params")
+    triton_intrinsic_matrix = np.load(
+        os.path.join(calibration_params_dir, "triton_intrinsic_matrix.npy")
+    )
+    triton_distortion_coeffs = np.load(
+        os.path.join(calibration_params_dir, "triton_distortion_coeffs.npy")
+    )
+    triton_mono_image = np.load(os.path.expanduser(triton_mono_image_path))
+    helios_intensity_image = np.load(os.path.expanduser(helios_intensity_image_path))
+    helios_xyz = np.load(os.path.expanduser(helios_xyz_path))
 
     rvec, tvec = get_extrinsics(
         triton_mono_image,  # type: ignore
@@ -571,26 +749,85 @@ if __name__ == "__main__":
         grid_type=cv2.CALIB_CB_SYMMETRIC_GRID,
         blob_detector=create_blob_detector(),
     )
+
     rvec = rvec.flatten()
     tvec = tvec.flatten()
     helios_to_triton_extrinsic_matrix = construct_extrinsic_matrix(rvec, tvec)
+
+    output_dir = os.path.dirname(output_path)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
     np.save(
-        os.path.expanduser(
-            "~/Downloads/calibration/helios_to_triton_extrinsic_matrix.npy"
-        ),
+        output_path,
         helios_to_triton_extrinsic_matrix,
     )
 
-    """
-    camera = LucidRgbd((1920, 1080), "241300039", "241400544")
-    camera.initialize()
-    time.sleep(1)
-    camera.get_frame()
-    """
 
-    """
-    cv2.imwrite(
-        os.path.expanduser("~/Pictures/triton_image.png"),
-        cv2.cvtColor(frame, cv2.COLOR_RGB2BGR),
+def tuple_type(arg_string):
+    try:
+        # Parse the input string as a tuple
+        parsed_tuple = tuple(map(int, arg_string.strip("()").split(",")))
+        return parsed_tuple
+    except Exception as e:
+        raise argparse.ArgumentTypeError(f"Invalid tuple value: {arg_string}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(title="Available Commands", dest="command")
+
+    get_frame_parser = subparsers.add_parser(
+        "get_frame",
     )
-    """
+    get_frame_parser.add_argument("--output_dir", type=str, default=None, required=True)
+
+    get_extrinsic_parser = subparsers.add_parser(
+        "get_extrinsic",
+        help="Calculate extrinsic matrix between Helios2 to Triton cameras",
+    )
+    get_extrinsic_parser.add_argument(
+        "--triton_mono_image", type=str, default=None, required=True
+    )
+    get_extrinsic_parser.add_argument(
+        "--helios_intensity_image", type=str, default=None, required=True
+    )
+    get_extrinsic_parser.add_argument(
+        "--helios_xyz", type=str, default=None, required=True
+    )
+    get_extrinsic_parser.add_argument("--output", type=str, default=None, required=True)
+
+    get_position_parser = subparsers.add_parser(
+        "get_position",
+        help="Given pixel coordinates in the Triton image, calculate the 3D position",
+    )
+    get_position_parser.add_argument("--pixel", type=tuple_type, default=f"(100, 200)")
+    get_position_parser.add_argument(
+        "--triton_mono_image", type=str, default=None, required=True
+    )
+    get_position_parser.add_argument(
+        "--helios_intensity_image", type=str, default=None, required=True
+    )
+    get_position_parser.add_argument(
+        "--helios_xyz", type=str, default=None, required=True
+    )
+
+    args = parser.parse_args()
+
+    if args.command == "get_frame":
+        _get_frame(args.output_dir)
+    elif args.command == "get_extrinsic":
+        _get_extrinsic(
+            args.triton_mono_image,
+            args.helios_intensity_image,
+            args.helios_xyz,
+            args.output,
+        )
+    elif args.command == "get_position":
+        _get_position(
+            args.pixel,
+            args.triton_mono_image,
+            args.helios_intensity_image,
+            args.helios_xyz,
+        )
+    else:
+        print("Invalid command.")

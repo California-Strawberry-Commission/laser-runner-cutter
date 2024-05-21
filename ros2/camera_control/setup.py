@@ -15,6 +15,10 @@ setup(
             os.path.join("share", package_name, "models"),
             glob(os.path.join("models/**/*.pt"), recursive=True),
         ),
+        (
+            os.path.join("share", package_name, "calibration_params"),
+            glob(os.path.join("calibration_params/**/*.npy"), recursive=True),
+        ),
     ],
     install_requires=["setuptools"],
     zip_safe=True,

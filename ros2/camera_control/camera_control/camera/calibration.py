@@ -59,7 +59,7 @@ def calibrate_camera(
             obj_points.append(calibration_points)
             img_points.append(centers)
         else:
-            print("Could not get circle centers. Ignoring image.")
+            print(f"Could not get circle centers. Ignoring image.")
 
     try:
         retval, camera_matrix, dist_coeffs, rvecs, tvecs = cv2.calibrateCamera(
@@ -138,6 +138,63 @@ def create_blob_detector():
     return cv2.SimpleBlobDetector_create(params)
 
 
+def construct_extrinsic_matrix(rotation_vector, translation_vector):
+    # Convert rotation vector to rotation matrix using Rodrigues' formula
+    R, _ = cv2.Rodrigues(rotation_vector)
+
+    # Create the extrinsic matrix
+    extrinsic_matrix = np.eye(4)
+    extrinsic_matrix[:3, :3] = R
+    extrinsic_matrix[:3, 3] = translation_vector
+
+    return extrinsic_matrix
+
+
+def invert_extrinsic_matrix(extrinsic_matrix: np.ndarray):
+    # Extract the rotation matrix and translation vector
+    R = extrinsic_matrix[:3, :3]
+    t = extrinsic_matrix[:3, 3]
+
+    # Compute the inverse rotation matrix
+    R_inv = R.T
+
+    # Compute the new translation vector
+    t_inv = -R_inv @ t
+
+    # Construct the new extrinsic matrix
+    extrinsic_matrix_inv = np.eye(4)
+    extrinsic_matrix_inv[:3, :3] = R_inv
+    extrinsic_matrix_inv[:3, 3] = t_inv
+
+    return extrinsic_matrix_inv
+
+
+def distort_pixel_coords(undistorted_pixel_coords, intrinsic_matrix, distortion_coeffs):
+    # Convert the undistorted pixel coordinates to normalized camera coordinates
+    fx, fy = intrinsic_matrix[0, 0], intrinsic_matrix[1, 1]
+    cx, cy = intrinsic_matrix[0, 2], intrinsic_matrix[1, 2]
+
+    normalized_coords = (undistorted_pixel_coords - [cx, cy]) / [fx, fy]
+    normalized_coords = np.append(normalized_coords, [1.0])
+
+    # Reshape to (1, 1, 3) for projectPoints input
+    normalized_coords = normalized_coords.reshape(1, 1, 3)
+
+    # Project the normalized coordinates to distorted pixel coordinates using projectPoints
+    distorted_pixel_coords, _ = cv2.projectPoints(
+        normalized_coords,
+        np.zeros((3, 1)),
+        np.zeros((3, 1)),
+        intrinsic_matrix,
+        distortion_coeffs,
+    )
+
+    # Extract the distorted pixel coordinates
+    distorted_pixel_coords = distorted_pixel_coords[0, 0, :2]
+
+    return distorted_pixel_coords
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Calculate camera intrinsics and distortion coefficients from images of a calibration pattern"
@@ -158,7 +215,6 @@ if __name__ == "__main__":
         cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_RGB2GRAY)
         for image_path in image_paths
     ]
-
     camera_matrix, dist_coeffs = calibrate_camera(
         images,
         (5, 4),
@@ -167,3 +223,17 @@ if __name__ == "__main__":
     )
     print(f"Calibrated intrins: {camera_matrix}")
     print(f"Distortion coeffs: {dist_coeffs}")
+
+    # Test calibration
+    img = images[10]
+    h, w = img.shape[:2]
+    newcameramtx, roi = cv2.getOptimalNewCameraMatrix(
+        camera_matrix, dist_coeffs, (w, h), 1, (w, h)
+    )
+    undistorted_img = cv2.undistort(img, camera_matrix, dist_coeffs, None, newcameramtx)
+    # crop the image
+    x, y, w, h = roi
+    undistorted_img = undistorted_img[y : y + h, x : x + w]
+    cv2.imshow("undistorted", undistorted_img)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
