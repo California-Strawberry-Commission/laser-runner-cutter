@@ -21,6 +21,7 @@ from .calibration import (
 from .rgbd_camera import RgbdCamera
 from .rgbd_frame import RgbdFrame
 
+TRITON_FRAME_SIZE = (2048, 1536)
 # General min and max possible depths pulled from RealSense examples
 DEPTH_MIN_METERS = 0.1
 DEPTH_MAX_METERS = 10
@@ -603,7 +604,7 @@ def _get_frame(output_dir):
     )
 
     camera = LucidRgbd(
-        (2048, 1536),
+        TRITON_FRAME_SIZE,
         "241300039",
         triton_intrinsic_matrix,  # type: ignore
         triton_distortion_coeffs,  # type: ignore
@@ -726,7 +727,7 @@ def _get_position(
 def _get_extrinsic(
     triton_mono_image_path, helios_intensity_image_path, helios_xyz_path, output_path
 ):
-    output_path = os.path.expanduser(outputoutput_path_dir)
+    output_path = os.path.expanduser(output_path)
     package_share_directory = get_package_share_directory("camera_control")
     calibration_params_dir = os.path.join(package_share_directory, "calibration_params")
     triton_intrinsic_matrix = np.load(
