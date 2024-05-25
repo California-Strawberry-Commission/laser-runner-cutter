@@ -22,9 +22,9 @@ from .rgbd_camera import RgbdCamera
 from .rgbd_frame import RgbdFrame
 
 TRITON_FRAME_SIZE = (2048, 1536)
-# General min and max possible depths pulled from RealSense examples
-DEPTH_MIN_METERS = 0.1
-DEPTH_MAX_METERS = 10
+# General min and max possible depths
+DEPTH_MIN_MM = 500
+DEPTH_MAX_MM = 10000
 
 
 def scale_grayscale_image(mono_image: np.ndarray) -> np.ndarray:
@@ -167,21 +167,12 @@ class LucidFrame(RgbdFrame):
     def get_corresponding_depth_pixel(self, color_pixel: Tuple[int, int]):
         # Undistort the pixel coordinate in color camera
         distorted_color_pixel = np.array([[color_pixel]], dtype=np.float32)
-        print(f"distorted_color_pixel = {distorted_color_pixel}")
         undistorted_color_pixel = cv2.undistortPoints(
             distorted_color_pixel,
             self._color_camera_intrinsic_matrix,
             self._color_camera_distortion_coeffs,
             P=self._color_camera_intrinsic_matrix,
         ).reshape(-1)
-
-        print(f"undistorted_color_pixel = {undistorted_color_pixel}")
-        redistorted_color_pixel = distort_pixel_coords(
-            undistorted_color_pixel,
-            self._color_camera_intrinsic_matrix,
-            self._color_camera_distortion_coeffs,
-        )
-        print(f"redistorted_color_pixel = {redistorted_color_pixel}")
 
         # Convert to normalized camera coordinates
         normalized_color_pixel = np.linalg.inv(
@@ -190,6 +181,7 @@ class LucidFrame(RgbdFrame):
         print(f"normalized_color_pixel = {normalized_color_pixel}")
 
         # Transform the normalized coordinates to depth camera using the extrinsic matrix
+        normalized_color_pixel *= DEPTH_MIN_MM
         transformed_homogeneous_depth_pixel = (
             self._color_to_depth_extrinsic_matrix @ np.append(normalized_color_pixel, 1)
         )
@@ -209,7 +201,6 @@ class LucidFrame(RgbdFrame):
         undistorted_depth_pixel = (
             undistorted_depth_pixel[:2] / undistorted_depth_pixel[2]
         )
-
         print(f"undistorted_depth_pixel = {undistorted_depth_pixel}")
 
         # Apply distortion to the pixel coordinates in depth camera
@@ -220,7 +211,10 @@ class LucidFrame(RgbdFrame):
         )
         print(f"distorted_depth_pixel = {distorted_depth_pixel}")
 
-        return (round(distorted_depth_pixel[0]), round(distorted_depth_pixel[1]))
+        return (
+            int(round(distorted_depth_pixel[0])),
+            int(round(distorted_depth_pixel[1])),
+        )
 
     def get_position(
         self, color_pixel: Tuple[int, int]
@@ -234,7 +228,7 @@ class LucidFrame(RgbdFrame):
         Returns:
             Optional[Tuple[float, float, float]]: (x, y, z) position with respect to the camera, or None if the position could not be determined.
         """
-        # TODO: See how RS does it: https://github.com/IntelRealSense/librealsense/blob/ff8a9fb213ec1227394de4060743b0ed61171985/src/rs.cpp#L4124
+        # Follows methodology RealSense uses: https://github.com/IntelRealSense/librealsense/blob/ff8a9fb213ec1227394de4060743b0ed61171985/src/rs.cpp#L4124
 
         def deproject_pixel(pixel, depth, camera_matrix, distortion_coeffs):
             # Normalized, undistorted pixel coord
@@ -265,24 +259,44 @@ class LucidFrame(RgbdFrame):
                 camera_matrix,
                 distortion_coeffs,
             )
-            return pixels[0]
+            pixel = pixels[0].flatten()
+            return (int(round(pixel[0])), int(round(pixel[1])))
 
         def adjust_pixel_to_bounds(pixel, width, height):
-            pixel = np.array(pixel)
-            pixel[0] = max(0, min(pixel[0], width))
-            pixel[1] = max(0, min(pixel[1], height))
-            return pixel
+            x = max(0, min(int(round(pixel[0])), width))
+            y = max(0, min(int(round(pixel[1])), height))
+            return (x, y)
+
+        def next_pixel_in_line(curr, start, end):
+            slope = (end[1] - start[1]) / (end[0] - start[0])
+            if abs(end[0] - curr[0]) > abs(end[1] - curr[1]):
+                x = curr[0] + 1 if end[0] > curr[0] else curr[0] - 1
+                y = end[1] - slope * (end[0] - curr[0])
+                return (int(round(x)), int(round(y)))
+            else:
+                y = end[1] > curr[1] + 1 if end[1] > curr[1] else curr[1] - 1
+                x = end[0] - ((end[1] - curr[1]) / slope)
+                return (int(round(x)), int(round(y)))
+
+        def is_pixel_in_line(curr, start, end):
+            return (
+                (end[0] >= start[0] and end[0] >= curr[0] and curr[0] >= start[0])
+                or (end[0] <= start[0] and end[0] <= curr[0] and curr[0] <= start[0])
+            ) and (
+                (end[1] >= start[1] and end[1] >= curr[1] and curr[1] >= start[1])
+                or (end[1] <= start[1] and end[1] <= curr[1] and curr[1] <= start[1])
+            )
 
         # Min-depth and max-depth positions in color camera-space
         min_depth_color_space_position = deproject_pixel(
             color_pixel,
-            DEPTH_MIN_METERS,
+            DEPTH_MIN_MM,
             self._color_camera_intrinsic_matrix,
             self._color_camera_distortion_coeffs,
         )
         max_depth_color_space_position = deproject_pixel(
             color_pixel,
-            DEPTH_MAX_METERS,
+            DEPTH_MAX_MM,
             self._color_camera_intrinsic_matrix,
             self._color_camera_distortion_coeffs,
         )
@@ -300,15 +314,12 @@ class LucidFrame(RgbdFrame):
             min_depth_depth_space_position,
             self._depth_camera_intrinsic_matrix,
             self._depth_camera_distortion_coeffs,
-        ).flatten()
+        )
         max_depth_pixel = project_position(
             max_depth_depth_space_position,
             self._depth_camera_intrinsic_matrix,
             self._depth_camera_distortion_coeffs,
-        ).flatten()
-
-        print(f"min_depth_pixel = {min_depth_pixel.flatten()}")
-        print(f"max_depth_pixel = {max_depth_pixel.flatten()}")
+        )
 
         # Make sure pixel coords are in boundary
         depth_frame_height, depth_frame_width, depth_channels = self.depth_frame.shape
@@ -319,18 +330,30 @@ class LucidFrame(RgbdFrame):
             max_depth_pixel, depth_frame_width, depth_frame_height
         )
 
-        """
         # Search along the line for the depth pixel for which its projected pixel is the closest
         # to the input pixel
         min_dist = -1
-        curr_pixel = min_depth_pixel
-        while is_pixel_in_line(curr_pixel, min_depth_pixel, max_depth_pixel):
-            depth_mm = self.depth_frame[curr_pixel[1]][curr_pixel[0]][2]
-
-            curr_pixel = next_pixel_in_line(
-                curr_pixel, min_depth_pixel, max_depth_pixel
+        closest_depth_pixel = min_depth_pixel
+        curr_depth_pixel = min_depth_pixel
+        while is_pixel_in_line(curr_depth_pixel, min_depth_pixel, max_depth_pixel):
+            xyz_mm = self.depth_frame[curr_depth_pixel[1]][curr_depth_pixel[0]]
+            curr_color_pixel = project_position(
+                xyz_mm,
+                self._color_camera_intrinsic_matrix,
+                self._color_camera_distortion_coeffs,
             )
-        """
+            distance = np.linalg.norm(
+                np.array(curr_color_pixel) - np.array(color_pixel)
+            )
+            if distance < min_dist or min_dist < 0:
+                min_dist = distance
+                closest_depth_pixel = curr_depth_pixel
+
+            curr_depth_pixel = next_pixel_in_line(
+                curr_depth_pixel, min_depth_pixel, max_depth_pixel
+            )
+
+        return self.depth_frame[closest_depth_pixel[1]][closest_depth_pixel[0]]
 
 
 class LucidRgbd(RgbdCamera):
@@ -683,6 +706,7 @@ def _get_position(
     triton_image = cv2.cvtColor(triton_mono_image, cv2.COLOR_GRAY2RGB)
     helios_xyz = np.load(os.path.expanduser(helios_xyz_path))
 
+    color_pixel = (632 * 2, 279 * 2)
     frame = LucidFrame(
         triton_image,
         helios_xyz,  # type: ignore
@@ -708,6 +732,8 @@ def _get_position(
         markerSize=40,
         thickness=2,
     )
+    h, w, c = triton_image.shape
+    triton_image = cv2.resize(triton_image, (int(w / 2), int(h / 2)))
     cv2.imshow("Color camera", triton_image)
 
     cv2.drawMarker(
@@ -764,6 +790,66 @@ def _get_extrinsic(
     )
 
 
+def _test_project(triton_mono_image_path, helios_intensity_image_path, helios_xyz_path):
+    package_share_directory = get_package_share_directory("camera_control")
+    calibration_params_dir = os.path.join(package_share_directory, "calibration_params")
+    triton_intrinsic_matrix = np.load(
+        os.path.join(calibration_params_dir, "triton_intrinsic_matrix.npy")
+    )
+    triton_distortion_coeffs = np.load(
+        os.path.join(calibration_params_dir, "triton_distortion_coeffs.npy")
+    )
+    helios_intrinsic_matrix = np.load(
+        os.path.join(calibration_params_dir, "helios_intrinsic_matrix.npy")
+    )
+    helios_distortion_coeffs = np.load(
+        os.path.join(calibration_params_dir, "helios_distortion_coeffs.npy")
+    )
+    helios_to_triton_extrinsic_matrix = np.load(
+        os.path.join(calibration_params_dir, "helios_to_triton_extrinsic_matrix.npy")
+    )
+    triton_to_helios_extrinsic_matrix = invert_extrinsic_matrix(
+        helios_to_triton_extrinsic_matrix  # type: ignore
+    )
+    triton_mono_image = np.load(os.path.expanduser(triton_mono_image_path))
+    helios_xyz = np.load(os.path.expanduser(helios_xyz_path))
+    helios_intensity_image = np.load(os.path.expanduser(helios_intensity_image_path))
+    h, w, c = helios_xyz.shape
+    object_points = helios_xyz.reshape(h * w, c)
+    depths = object_points[:, 2]
+    average_depth = np.mean(depths)
+    print(f"average_depth: {average_depth}")
+    helios_intensity_image = helios_intensity_image.flatten()
+    R = helios_to_triton_extrinsic_matrix[:3, :3]
+    t = helios_to_triton_extrinsic_matrix[:3, 3]
+    start = time.perf_counter()
+    image_points, jacobian = cv2.projectPoints(
+        object_points, R, t, triton_intrinsic_matrix, triton_distortion_coeffs
+    )  # (x, y), or (col, row)
+    print(f"projectPoints took {time.perf_counter()-start} s")
+    image_points = image_points.reshape(-1, 2)
+    triton_height = 1536
+    triton_width = 2048
+    # projected_image = np.zeros((triton_height, triton_width))
+    projected_image = np.zeros((triton_height, triton_width, 3), dtype=np.uint8)
+    # projected_image[:, :, 2] = triton_mono_image
+    start = time.perf_counter()
+    for point_idx in range(h * w):
+        point = image_points[point_idx]
+        col = round(point[0])
+        row = round(point[1])
+        if 0 <= col and col < triton_width and 0 <= row and row < triton_height:
+            intensity = helios_intensity_image[point_idx]
+            projected_image[row][col] = [intensity * 3, intensity * 3, intensity * 3]
+    print(f"populate image took {time.perf_counter()-start} s")
+    projected_image = cv2.resize(
+        projected_image, (int(triton_width / 2), int(triton_height / 2))
+    )
+    cv2.imshow("projected", projected_image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+
 def tuple_type(arg_string):
     try:
         # Parse the input string as a tuple
@@ -774,6 +860,14 @@ def tuple_type(arg_string):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+    """
+    _test_project(
+        "~/Downloads/lucid_frame/triton_mono_image.npy",
+        "~/Downloads/lucid_frame/helios_intensity_image.npy",
+        "~/Downloads/lucid_frame/helios_xyz.npy",
+    )
+    """
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(title="Available Commands", dest="command")
 
@@ -801,7 +895,7 @@ if __name__ == "__main__":
         "get_position",
         help="Given pixel coordinates in the Triton image, calculate the 3D position",
     )
-    get_position_parser.add_argument("--pixel", type=tuple_type, default=f"(100, 200)")
+    get_position_parser.add_argument("--pixel", type=tuple_type, default=f"(1024, 768)")
     get_position_parser.add_argument(
         "--triton_mono_image", type=str, default=None, required=True
     )
