@@ -240,6 +240,7 @@ class LucidFrame(RgbdFrame):
     ) -> Tuple[int, int]:
         """
         Given an (x, y) coordinate in the color frame, return the corresponding (x, y) coordinate in the depth frame.
+
         The general approach is as follows:
             1. Deproject the color image pixel coordinate to two positions in the color camera-space: one that corresponds to the
                position at the minimum depth, and one at the maximum depth.
@@ -249,6 +250,9 @@ class LucidFrame(RgbdFrame):
                iteratively move pixel by pixel along this line. For each depth image pixel, we grab the xyz data at the pixel,
                project it onto the color image plane, and see how far it is from the original color pixel coordinate. We find
                and return the closest match.
+
+        Note that in order to achieve the above, we require two extrinsic matrices - one for projecting the xyz positions to
+        the color camera image plane, and one for projecting the xyz positions to the depth camera image plane.
 
         Args:
             color_pixel (Sequence[int]): (x, y) coordinate in the color frame.
