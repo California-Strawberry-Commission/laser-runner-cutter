@@ -7,6 +7,7 @@ control0:
     burn_time_secs: 5
 camera0:
   ros__parameters:
+    camera_type: "lucid"
     camera_index: 0
     fps: 30
     rgb_size: [1280, 720]

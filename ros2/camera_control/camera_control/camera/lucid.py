@@ -21,6 +21,8 @@ from .calibration import (
 from .rgbd_camera import RgbdCamera
 from .rgbd_frame import RgbdFrame
 
+COLOR_CAMERA_MODEL_PREFIXES = ["ATL", "ATX", "PHX", "TRI", "TRT"]
+DEPTH_CAMERA_MODEL_PREFIXES = ["HTP", "HLT", "HTR", "HTW"]
 TRITON_FRAME_SIZE = (2048, 1536)
 # General min and max possible depths
 DEPTH_MIN_MM = 500
@@ -152,6 +154,8 @@ class LucidFrame(RgbdFrame):
             color_camera_distortion_coeffs (np.ndarray): Distortion coefficients of the color camera.
             depth_camera_intrinsic_matrix (np.ndarray): Intrinsic matrix of the depth camera.
             depth_camera_distortion_coeffs (np.ndarray): Distortion coefficients of the depth camera.
+            xyz_to_color_camera_extrinsic_matrix (np.ndarray): Extrinsic matrix from depth camera's XYZ positions to the color camera.
+            xyz_to_color_camera_extrinsic_matrix (np.ndarray): Extrinsic matrix from depth camera's XYZ positions to the depth camera.
         """
         self.color_frame = color_frame
         self.depth_frame = depth_frame
@@ -425,16 +429,29 @@ class LucidRgbd(RgbdCamera):
     def __init__(
         self,
         frame_size: Tuple[int, int],
-        color_camera_serial_number: str,
         color_camera_intrinsic_matrix: np.ndarray,
         color_camera_distortion_coeffs: np.ndarray,
-        depth_camera_serial_number: str,
         depth_camera_intrinsic_matrix: np.ndarray,
         depth_camera_distortion_coeffs: np.ndarray,
         xyz_to_color_camera_extrinsic_matrix: np.ndarray,
         xyz_to_depth_camera_extrinsic_matrix: np.ndarray,
+        color_camera_serial_number: Optional[str] = None,
+        depth_camera_serial_number: Optional[str] = None,
         logger: Optional[logging.Logger] = None,
     ):
+        """
+        Args:
+            frame_size (Tuple[int, int]): (width, height) of the color frame.
+            color_camera_intrinsic_matrix (np.ndarray): Intrinsic matrix of the color camera.
+            color_camera_distortion_coeffs (np.ndarray): Distortion coefficients of the color camera.
+            depth_camera_intrinsic_matrix (np.ndarray): Intrinsic matrix of the depth camera.
+            depth_camera_distortion_coeffs (np.ndarray): Distortion coefficients of the depth camera.
+            xyz_to_color_camera_extrinsic_matrix (np.ndarray): Extrinsic matrix from depth camera's XYZ positions to the color camera.
+            xyz_to_color_camera_extrinsic_matrix (np.ndarray): Extrinsic matrix from depth camera's XYZ positions to the depth camera.
+            color_camera_serial_number (Optional[str]): Serial number of color camera to connect to. If None, the first available color camera will be used.
+            depth_camera_serial_number (Optional[str]): Serial number of depth camera to connect to. If None, the first available depth camera will be used.
+            logger (Optional[logging.Logger]): Logger
+        """
         self.frame_size = frame_size
         self.color_camera_serial_number = color_camera_serial_number
         self._color_camera_intrinsic_matrix = color_camera_intrinsic_matrix
@@ -470,6 +487,33 @@ class LucidRgbd(RgbdCamera):
         # TODO: implement device disconnection and reconnection logic
         device_infos = system.device_infos
 
+        # If we don't have a serial number of a device, attempt to find one among connected devices
+        if self.color_camera_serial_number is None:
+            self.color_camera_serial_number = next(
+                (
+                    device_info["serial"]
+                    for device_info in device_infos
+                    if any(
+                        device_info["model"].startswith(prefix)
+                        for prefix in COLOR_CAMERA_MODEL_PREFIXES
+                    )
+                ),
+                None,
+            )
+        if self.depth_camera_serial_number is None:
+            self.depth_camera_serial_number = next(
+                (
+                    device_info["serial"]
+                    for device_info in device_infos
+                    if any(
+                        device_info["model"].startswith(prefix)
+                        for prefix in DEPTH_CAMERA_MODEL_PREFIXES
+                    )
+                ),
+                None,
+            )
+
+        # Set up devices
         color_device_info = next(
             (
                 device_info
@@ -486,7 +530,6 @@ class LucidRgbd(RgbdCamera):
             ),
             None,
         )
-
         devices = system.create_device([color_device_info, depth_device_info])
         self._color_device = devices[0]
         self._depth_device = devices[1]
@@ -669,11 +712,11 @@ class LucidRgbd(RgbdCamera):
 
 
 def create_lucid_rgbd_camera(
-    frame_size: Tuple[int, int],
-    color_camera_serial_number: str,
-    depth_camera_serial_number: str,
+    frame_size: Tuple[int, int] = TRITON_FRAME_SIZE,
+    color_camera_serial_number: Optional[str] = None,
+    depth_camera_serial_number: Optional[str] = None,
     logger: Optional[logging.Logger] = None,
-):
+) -> LucidRgbd:
     """
     Helper to create an instance of LucidRgbd using predefined calibration params.
     """
@@ -698,14 +741,14 @@ def create_lucid_rgbd_camera(
     )
     return LucidRgbd(
         frame_size,
-        color_camera_serial_number,
         triton_intrinsic_matrix,  # type: ignore
         triton_distortion_coeffs,  # type: ignore
-        depth_camera_serial_number,
         helios_intrinsic_matrix,  # type: ignore
         helios_distortion_coeffs,  # type: ignore
         xyz_to_triton_extrinsic_matrix,  # type: ignore
         xyz_to_helios_extrinsic_matrix,  # type: ignore
+        color_camera_serial_number,
+        depth_camera_serial_number,
         logger,
     )
 
@@ -720,8 +763,8 @@ def _get_frame(output_dir):
 
     camera = create_lucid_rgbd_camera(
         TRITON_FRAME_SIZE,
-        "241300039",
-        "241400544",
+        color_camera_serial_number="241300039",
+        depth_camera_serial_number="241400544",
     )
     camera.initialize()
     time.sleep(1)

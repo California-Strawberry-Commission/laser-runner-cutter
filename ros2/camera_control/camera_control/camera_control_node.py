@@ -17,6 +17,7 @@ from std_srvs.srv import Trigger
 
 from aioros2 import node, params, result, serve_nodes, service, start, timer, topic
 from camera_control.camera.realsense import RealSense
+from camera_control.camera.lucid import create_lucid_rgbd_camera
 from camera_control.camera.rgbd_frame import RgbdFrame
 from camera_control_interfaces.msg import DetectionResult, ObjectInstance, State
 from camera_control_interfaces.srv import (
@@ -34,6 +35,7 @@ from rcl_interfaces.msg import Log
 
 @dataclass
 class CameraControlParams:
+    camera_type: str = "lucid"  # "realsense" or "lucid"
     camera_index: int = 0
     fps: int = 30
     rgb_size: List[int] = field(default_factory=lambda: [1280, 720])
@@ -73,13 +75,21 @@ class CameraControlNode:
 
         # Camera
         self.curr_frame = None
-        self.camera = RealSense(
-            self.camera_control_params.rgb_size,
-            self.camera_control_params.depth_size,
-            fps=self.camera_control_params.fps,
-            camera_index=self.camera_control_params.camera_index,
-            logger=self.get_logger(),
-        )
+        if self.camera_control_params.camera_type == "realsense":
+            self.camera = RealSense(
+                self.camera_control_params.rgb_size,
+                self.camera_control_params.depth_size,
+                fps=self.camera_control_params.fps,
+                camera_index=self.camera_control_params.camera_index,
+                logger=self.get_logger(),
+            )
+        elif self.camera_control_params.camera_type == "lucid":
+            # TODO: Use camera_control_params
+            self.camera = create_lucid_rgbd_camera(logger=self.get_logger())
+        else:
+            raise Exception(
+                f"Unknown camera_type: {self.camera_control_params.camera_type}"
+            )
         self.camera.initialize()
 
         # ML models
