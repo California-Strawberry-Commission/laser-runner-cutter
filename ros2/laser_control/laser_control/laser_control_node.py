@@ -1,5 +1,6 @@
 import asyncio
 import os
+import platform
 from dataclasses import dataclass
 
 from ament_index_python.packages import get_package_share_directory
@@ -35,7 +36,9 @@ class LaserControlNode:
     async def start(self):
         # Initialize DAC
         include_dir = os.path.join(
-            get_package_share_directory("laser_control"), "include"
+            get_package_share_directory("laser_control"),
+            "include",
+            platform.machine(),
         )
         self.dac = None
         if self.laser_control_params.dac_type == "helios":
