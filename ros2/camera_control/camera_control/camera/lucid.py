@@ -605,7 +605,7 @@ class LucidRgbd(RgbdCamera):
         exposureTimeNode = nodemap["ExposureTime"]
         if exposure_us < 0:
             exposureAutoNode.value = "Continuous"
-        elif exposureTimeNode is not None and exposureTimeNode.is_writable:
+        elif exposureTimeNode is not None:
             exposureAutoNode.value = "Off"
             if exposure_us > exposureTimeNode.max:
                 exposureTimeNode.value = exposureTimeNode.max
