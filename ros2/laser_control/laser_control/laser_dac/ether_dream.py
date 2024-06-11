@@ -128,6 +128,17 @@ class EtherDreamDAC(LaserDAC):
             )
             self._check_connection_thread.start()
 
+    @property
+    def is_connected(self) -> bool:
+        """
+        Returns:
+            bool: Whether the DAC is connected.
+        """
+        return (
+            self.connected_dac_id >= 0
+            and self._lib.etherdream_is_connected(self.connected_dac_id) > 0
+        )
+
     def set_color(self, r: float, g: float, b: float, i: float):
         """
         Set the color of the laser.
@@ -288,6 +299,7 @@ class EtherDreamDAC(LaserDAC):
             if self._check_connection_thread:
                 self._check_connection_thread.join()
                 self._check_connection_thread = None
-        if self.connected_dac_id:
+        if self.connected_dac_id >= 0:
             self._lib.etherdream_stop(self.connected_dac_id)
             self._lib.etherdream_disconnect(self.connected_dac_id)
+            self.connected_dac_id = -1

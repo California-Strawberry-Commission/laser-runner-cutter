@@ -34,7 +34,6 @@ class LaserControlNode:
 
     @start
     async def start(self):
-        # Initialize DAC
         include_dir = os.path.join(
             get_package_share_directory("laser_control"),
             "include",
@@ -48,9 +47,26 @@ class LaserControlNode:
         else:
             raise Exception(f"Unknown dac_type: {self.laser_control_params.dac_type}")
 
+    @service("~/start_device", Trigger)
+    async def start_device(self):
+        if self.dac is None:
+            return result(success=False)
+
         num_dacs = self.dac.initialize()
         self.log(f"{num_dacs} DACs of type {self.laser_control_params.dac_type} found")
         self.dac.connect(self.laser_control_params.dac_index)
+
+        self._publish_state()
+        return result(success=True)
+
+    @service("~/close_device", Trigger)
+    async def close_device(self):
+        if self.dac is None:
+            return result(success=False)
+
+        self.dac.close()
+        self._publish_state()
+        return result(success=True)
 
     @service("~/set_color", SetColor)
     async def set_color(self, r, g, b, i):
@@ -134,7 +150,7 @@ class LaserControlNode:
         )
 
     def _get_state(self) -> State:
-        if self.dac is None:
+        if self.dac is None or not self.dac.is_connected:
             return State.DISCONNECTED
         elif self.dac.playing:
             return State.PLAYING

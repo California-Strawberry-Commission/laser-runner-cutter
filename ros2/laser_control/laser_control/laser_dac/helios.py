@@ -109,6 +109,14 @@ class HeliosDAC(LaserDAC):
             )
             self._check_connection_thread.start()
 
+    @property
+    def is_connected(self) -> bool:
+        """
+        Returns:
+            bool: Whether the DAC is connected.
+        """
+        return self.dac_idx >= 0 and self._get_status() >= 0
+
     def set_color(self, r: float, g: float, b: float, i: float):
         """
         Set the color of the laser.
@@ -271,6 +279,7 @@ class HeliosDAC(LaserDAC):
                 self._check_connection_thread.join()
                 self._check_connection_thread = None
         self._lib.CloseDevices()
+        self.dac_idx = -1
 
     def _get_status(self):
         # 1 means ready to receive frame

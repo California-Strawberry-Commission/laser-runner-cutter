@@ -19,6 +19,15 @@ class LaserDAC(ABC):
         """
         pass
 
+    @property
+    @abstractmethod
+    def is_connected(self) -> bool:
+        """
+        Returns:
+            bool: Whether the DAC is connected.
+        """
+        pass
+
     @abstractmethod
     def set_color(self, r: float, g: float, b: float, i: float):
         """
