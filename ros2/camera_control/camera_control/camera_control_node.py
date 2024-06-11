@@ -42,6 +42,7 @@ class CameraControlParams:
     depth_size: List[int] = field(default_factory=lambda: [1280, 720])
     video_dir: str = "~/Videos/runner-cutter-app"
     image_dir: str = "~/Pictures/runner-cutter-app"
+    debug_frame_width: int = 640
 
 
 def milliseconds_to_ros_time(milliseconds):
@@ -308,6 +309,9 @@ class CameraControlNode:
 
         self.curr_frame = frame
 
+        # We're not currently consuming the color_frame topic anywhere. Disable it for now
+        # to reduce CPU overhead
+        """
         msg = self._get_color_frame_msg(frame.color_frame, frame.timestamp_millis)
         asyncio.create_task(
             self.color_frame_topic(
@@ -320,6 +324,7 @@ class CameraControlNode:
                 data=msg.data,
             )
         )
+        """
 
     # TODO: Define interval using param
     @timer(1.0 / 30, allow_concurrent_execution=False)
@@ -359,6 +364,14 @@ class CameraControlNode:
                 )
             )
 
+        # Downscale debug_frame using INTER_NEAREST for best performance
+        h, w, _ = debug_frame.shape
+        aspect_ratio = h / w
+        new_width = self.camera_control_params.debug_frame_width
+        new_height = int(new_width * aspect_ratio)
+        debug_frame = cv2.resize(
+            debug_frame, (new_width, new_height), interpolation=cv2.INTER_NEAREST
+        )
         msg = self._get_color_frame_msg(debug_frame, frame.timestamp_millis)
         asyncio.create_task(
             self.debug_frame_topic(
