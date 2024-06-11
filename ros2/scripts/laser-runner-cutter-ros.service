@@ -1,0 +1,16 @@
+[Unit]
+Description="ROS2 nodes for Laser Runner Cutter"
+After=network.target
+
+[Service]
+Environment="LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1"
+WorkingDirectory=/home/csc-jetson1/laser-runner-cutter/ros2
+ExecStart=/home/csc-jetson1/laser-runner-cutter/ros2/scripts/run_ros.sh
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+RestartSec=5
+User=csc-jetson1
+
+[Install]
+WantedBy=multi-user.target
