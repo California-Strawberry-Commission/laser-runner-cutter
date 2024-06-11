@@ -23,7 +23,6 @@ from .rgbd_frame import RgbdFrame
 
 COLOR_CAMERA_MODEL_PREFIXES = ["ATL", "ATX", "PHX", "TRI", "TRT"]
 DEPTH_CAMERA_MODEL_PREFIXES = ["HTP", "HLT", "HTR", "HTW"]
-TRITON_FRAME_SIZE = (2048, 1536)
 # General min and max possible depths
 DEPTH_MIN_MM = 500
 DEPTH_MAX_MM = 10000
@@ -428,7 +427,6 @@ class LucidRgbd(RgbdCamera):
 
     def __init__(
         self,
-        frame_size: Tuple[int, int],
         color_camera_intrinsic_matrix: np.ndarray,
         color_camera_distortion_coeffs: np.ndarray,
         depth_camera_intrinsic_matrix: np.ndarray,
@@ -441,7 +439,6 @@ class LucidRgbd(RgbdCamera):
     ):
         """
         Args:
-            frame_size (Tuple[int, int]): (width, height) of the color frame.
             color_camera_intrinsic_matrix (np.ndarray): Intrinsic matrix of the color camera.
             color_camera_distortion_coeffs (np.ndarray): Distortion coefficients of the color camera.
             depth_camera_intrinsic_matrix (np.ndarray): Intrinsic matrix of the depth camera.
@@ -452,7 +449,6 @@ class LucidRgbd(RgbdCamera):
             depth_camera_serial_number (Optional[str]): Serial number of depth camera to connect to. If None, the first available depth camera will be used.
             logger (Optional[logging.Logger]): Logger
         """
-        self.frame_size = frame_size
         self.color_camera_serial_number = color_camera_serial_number
         self._color_camera_intrinsic_matrix = color_camera_intrinsic_matrix
         self._color_camera_distortion_coeffs = color_camera_distortion_coeffs
@@ -548,8 +544,8 @@ class LucidRgbd(RgbdCamera):
         # in the correct order.
         stream_nodemap["StreamPacketResendEnable"].value = True
         # Set frame size and pixel format
-        nodemap["Width"].value = self.frame_size[0]
-        nodemap["Height"].value = self.frame_size[1]
+        nodemap["Width"].value = nodemap["Width"].max
+        nodemap["Height"].value = nodemap["Height"].max
         nodemap["PixelFormat"].value = PixelFormat.RGB8
         # Set the following when Persistent IP is set on the camera
         nodemap["GevPersistentARPConflictDetectionEnable"].value = False
@@ -712,7 +708,6 @@ class LucidRgbd(RgbdCamera):
 
 
 def create_lucid_rgbd_camera(
-    frame_size: Tuple[int, int] = TRITON_FRAME_SIZE,
     color_camera_serial_number: Optional[str] = None,
     depth_camera_serial_number: Optional[str] = None,
     logger: Optional[logging.Logger] = None,
@@ -740,7 +735,6 @@ def create_lucid_rgbd_camera(
         os.path.join(calibration_params_dir, "xyz_to_helios_extrinsic_matrix.npy")
     )
     return LucidRgbd(
-        frame_size,
         triton_intrinsic_matrix,  # type: ignore
         triton_distortion_coeffs,  # type: ignore
         helios_intrinsic_matrix,  # type: ignore
@@ -762,7 +756,6 @@ def _get_frame(output_dir):
     output_dir = os.path.expanduser(output_dir)
 
     camera = create_lucid_rgbd_camera(
-        TRITON_FRAME_SIZE,
         color_camera_serial_number="241300039",
         depth_camera_serial_number="241400544",
     )
