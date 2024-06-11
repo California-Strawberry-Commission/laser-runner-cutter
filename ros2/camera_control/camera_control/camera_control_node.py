@@ -116,7 +116,7 @@ class CameraControlNode:
         self.connecting = True
         self._publish_state()
 
-        self.camera.initialize()
+        await asyncio.get_running_loop().run_in_executor(None, self.camera.initialize)
 
         self.connecting = False
         self._publish_state()
@@ -125,7 +125,7 @@ class CameraControlNode:
 
     @service("~/close_device", Trigger)
     async def close_device(self):
-        self.camera.close()
+        await asyncio.get_running_loop().run_in_executor(None, self.camera.close)
         self._publish_state()
         return result(success=True)
 
@@ -316,6 +316,7 @@ class CameraControlNode:
     @timer(1.0 / 30, allow_concurrent_execution=False)
     async def frame_callback(self):
         frame = self.camera.get_frame()
+
         if not frame:
             return
 

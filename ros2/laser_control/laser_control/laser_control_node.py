@@ -2,6 +2,7 @@ import asyncio
 import os
 import platform
 from dataclasses import dataclass
+import functools
 
 from ament_index_python.packages import get_package_share_directory
 from std_srvs.srv import Trigger
@@ -56,9 +57,11 @@ class LaserControlNode:
         self.connecting = True
         self._publish_state()
 
-        num_dacs = self.dac.initialize()
-        self.log(f"{num_dacs} DACs of type {self.laser_control_params.dac_type} found")
-        self.dac.connect(self.laser_control_params.dac_index)
+        await asyncio.get_running_loop().run_in_executor(None, self.dac.initialize)
+        await asyncio.get_running_loop().run_in_executor(
+            None,
+            functools.partial(self.dac.connect, self.laser_control_params.dac_index),
+        )
 
         self.connecting = False
         self._publish_state()
@@ -70,7 +73,7 @@ class LaserControlNode:
         if self.dac is None:
             return result(success=False)
 
-        self.dac.close()
+        await asyncio.get_running_loop().run_in_executor(None, self.dac.close)
         self._publish_state()
         return result(success=True)
 

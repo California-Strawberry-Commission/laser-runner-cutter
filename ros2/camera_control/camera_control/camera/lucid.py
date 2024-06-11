@@ -695,8 +695,11 @@ class LucidRgbd(RgbdCamera):
 
     def get_frame(self) -> Optional[LucidFrame]:
         color_frame = self.get_color_frame()
+        if color_frame is None:
+            return None
+
         depth_frame = self.get_depth_frame()
-        if color_frame is None or depth_frame is None:
+        if depth_frame is None:
             return None
 
         # depth_frame is a numpy structured array containing both xyz and intensity data
@@ -718,9 +721,12 @@ class LucidRgbd(RgbdCamera):
 
     def close(self):
         # Destroy all created devices. Note that this will automatically call stop_stream() for each device
+        # TODO: The following results in a crash
+        """
         system.destroy_device()
         self._color_device = None
         self._depth_device = None
+        """
 
 
 def create_lucid_rgbd_camera(
