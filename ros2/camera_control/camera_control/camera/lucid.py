@@ -620,21 +620,20 @@ class LucidRgbd(RgbdCamera):
 
         # get_buffer must be called after start_stream and before stop_stream (or
         # system.destroy_device), and buffers must be requeued
-        orig_buffer = self._color_device.get_buffer()
-        buffer = BufferFactory.copy(orig_buffer)
-        self._color_device.requeue_buffer(orig_buffer)
+        buffer = self._color_device.get_buffer()
 
         # Convert to numpy array
-        num_channels = 3
         # buffer is a list of (buffer.width * buffer.height * num_channels) uint8s
-        array = (
-            ctypes.c_ubyte * num_channels * buffer.width * buffer.height
-        ).from_address(ctypes.addressof(buffer.pbytes))
+        num_channels = 3
         np_array = np.ndarray(
-            buffer=array,
+            buffer=(
+                ctypes.c_ubyte * num_channels * buffer.width * buffer.height
+            ).from_address(ctypes.addressof(buffer.pbytes)),
             dtype=np.uint8,
             shape=(buffer.height, buffer.width, num_channels),
         )
+
+        self._color_device.requeue_buffer(buffer)
 
         return np_array
 
@@ -644,9 +643,7 @@ class LucidRgbd(RgbdCamera):
 
         # get_buffer must be called after start_stream and before stop_stream (or
         # system.destroy_device), and buffers must be requeued
-        orig_buffer = self._depth_device.get_buffer()
-        buffer = BufferFactory.copy(orig_buffer)
-        self._depth_device.requeue_buffer(orig_buffer)
+        buffer = self._depth_device.get_buffer()
 
         # Convert to numpy structured array
         # buffer is a list of (buffer.width * buffer.height * 8) 1-byte values. The 8 bytes per
@@ -691,6 +688,9 @@ class LucidRgbd(RgbdCamera):
         np_array["z"] = np_array["z"] * self._xyz_scale + self._xyz_offset[2]
 
         np_array = np_array.reshape(buffer.height, buffer.width)
+
+        self._depth_device.requeue_buffer(buffer)
+
         return np_array
 
     def get_frame(self) -> Optional[LucidFrame]:
