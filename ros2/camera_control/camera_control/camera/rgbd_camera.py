@@ -40,3 +40,10 @@ class RgbdCamera(ABC):
             Optional[RgbdFrame]: The color and depth frames, or None if not available.
         """
         pass
+
+    @abstractmethod
+    def close(self):
+        """
+        Close connection to the camera.
+        """
+        pass

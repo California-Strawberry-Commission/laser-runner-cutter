@@ -35,7 +35,7 @@ from rcl_interfaces.msg import Log
 
 @dataclass
 class CameraControlParams:
-    camera_type: str = "lucid"  # "realsense" or "lucid"
+    camera_type: str = "realsense"  # "realsense" or "lucid"
     camera_index: int = 0
     fps: int = 30
     rgb_size: List[int] = field(default_factory=lambda: [1280, 720])
@@ -90,7 +90,6 @@ class CameraControlNode:
             raise Exception(
                 f"Unknown camera_type: {self.camera_control_params.camera_type}"
             )
-        self.camera.initialize()
 
         # ML models
         package_share_directory = get_package_share_directory("camera_control")
@@ -104,6 +103,18 @@ class CameraControlNode:
         )
         self.laser_detection_model = Yolo(laser_weights_path)
         self.laser_detection_size = (640, 480)
+
+    @service("~/start_device", Trigger)
+    async def start_device(self):
+        self.camera.initialize()
+        self._publish_state()
+        return result(success=True)
+
+    @service("~/close_device", Trigger)
+    async def close_device(self):
+        self.camera.close()
+        self._publish_state()
+        return result(success=True)
 
     @service("~/has_frames", GetBool)
     async def has_frames(self):
@@ -366,7 +377,7 @@ class CameraControlNode:
 
     def _get_state(self) -> State:
         state = State()
-        state.connected = self.camera is not None
+        state.connected = self.camera is not None and self.camera.is_connected
         state.laser_detection_enabled = self.laser_detection_enabled
         state.runner_detection_enabled = self.runner_detection_enabled
         state.recording_video = self.video_writer is not None

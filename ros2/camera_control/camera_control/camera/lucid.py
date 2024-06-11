@@ -706,6 +706,12 @@ class LucidRgbd(RgbdCamera):
             self._xyz_to_depth_camera_extrinsic_matrix,
         )
 
+    def close(self):
+        # Destroy all created devices. Note that this will automatically call stop_stream() for each device
+        system.destroy_device()
+        self._color_device = None
+        self._depth_device = None
+
 
 def create_lucid_rgbd_camera(
     color_camera_serial_number: Optional[str] = None,

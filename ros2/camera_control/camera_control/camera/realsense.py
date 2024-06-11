@@ -341,3 +341,16 @@ class RealSense(RgbdCamera):
             self._depth_to_color_extrinsics,
             self._color_to_depth_extrinsics,
         )
+
+    def close(self):
+        """
+        Close connection to the camera.
+        """
+        if self._check_connection:
+            self._check_connection = False
+            if self._check_connection_thread:
+                self._check_connection_thread.join()
+                self._check_connection_thread = None
+        if self._pipeline is not None:
+            self._pipeline.stop()
+            self._pipeline = None
