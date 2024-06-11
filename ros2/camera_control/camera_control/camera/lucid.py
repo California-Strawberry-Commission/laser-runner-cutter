@@ -9,6 +9,7 @@ import sys
 import cv2
 import numpy as np
 from ament_index_python.packages import get_package_share_directory
+from arena_api.buffer import BufferFactory
 from arena_api.enums import PixelFormat
 from arena_api.system import system
 
@@ -533,6 +534,7 @@ class LucidRgbd(RgbdCamera):
         # Configure color nodemap
         nodemap = self._color_device.nodemap
         stream_nodemap = self._color_device.tl_stream_nodemap
+        nodemap["AcquisitionMode"].value = "Continuous"
         # Setting the buffer handling mode to "NewestOnly" ensures the most recent image
         # is delivered, even if it means skipping frames
         stream_nodemap["StreamBufferHandlingMode"].value = "NewestOnly"
@@ -553,6 +555,7 @@ class LucidRgbd(RgbdCamera):
         # Configure depth nodemap
         nodemap = self._depth_device.nodemap
         stream_nodemap = self._depth_device.tl_stream_nodemap
+        nodemap["AcquisitionMode"].value = "Continuous"
         # Setting the buffer handling mode to "NewestOnly" ensures the most recent image
         # is delivered, even if it means skipping frames
         stream_nodemap["StreamBufferHandlingMode"].value = "NewestOnly"
@@ -582,9 +585,9 @@ class LucidRgbd(RgbdCamera):
         self.set_exposure(-1)
 
         # Start streams
-        self._color_device.start_stream(1)
+        self._color_device.start_stream(10)
         self._logger.info(f"Device {self.color_camera_serial_number} is now streaming")
-        self._depth_device.start_stream(1)
+        self._depth_device.start_stream(10)
         self._logger.info(f"Device {self.depth_camera_serial_number} is now streaming")
 
     def set_exposure(self, exposure_us: float):
@@ -617,15 +620,22 @@ class LucidRgbd(RgbdCamera):
 
         # get_buffer must be called after start_stream and before stop_stream (or
         # system.destroy_device), and buffers must be requeued
-        buffer = self._color_device.get_buffer()
+        orig_buffer = self._color_device.get_buffer()
+        buffer = BufferFactory.copy(orig_buffer)
+        self._color_device.requeue_buffer(orig_buffer)
 
         # Convert to numpy array
-        # buffer is a list of (buffer.width * buffer.height * 3) uint8s
-        buffer_bytes_per_pixel = int(len(buffer.data) / (buffer.width * buffer.height))
-        np_array = np.asarray(buffer.data, dtype=np.uint8)
-        np_array = np_array.reshape(buffer.height, buffer.width, buffer_bytes_per_pixel)
+        num_channels = 3
+        # buffer is a list of (buffer.width * buffer.height * num_channels) uint8s
+        array = (
+            ctypes.c_ubyte * num_channels * buffer.width * buffer.height
+        ).from_address(ctypes.addressof(buffer.pbytes))
+        np_array = np.ndarray(
+            buffer=array,
+            dtype=np.uint8,
+            shape=(buffer.height, buffer.width, num_channels),
+        )
 
-        self._color_device.requeue_buffer(buffer)
         return np_array
 
     def get_depth_frame(self) -> Optional[np.ndarray]:
@@ -634,7 +644,9 @@ class LucidRgbd(RgbdCamera):
 
         # get_buffer must be called after start_stream and before stop_stream (or
         # system.destroy_device), and buffers must be requeued
-        buffer = self._depth_device.get_buffer()
+        orig_buffer = self._depth_device.get_buffer()
+        buffer = BufferFactory.copy(orig_buffer)
+        self._depth_device.requeue_buffer(orig_buffer)
 
         # Convert to numpy structured array
         # buffer is a list of (buffer.width * buffer.height * 8) 1-byte values. The 8 bytes per
@@ -679,8 +691,6 @@ class LucidRgbd(RgbdCamera):
         np_array["z"] = np_array["z"] * self._xyz_scale + self._xyz_offset[2]
 
         np_array = np_array.reshape(buffer.height, buffer.width)
-
-        self._depth_device.requeue_buffer(buffer)
         return np_array
 
     def get_frame(self) -> Optional[LucidFrame]:
