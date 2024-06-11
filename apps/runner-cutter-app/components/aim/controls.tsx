@@ -1,24 +1,15 @@
 "use client";
 
 import FramePreview from "@/components/camera/frame-preview";
-import NodeCards from "@/components/nodes/node-cards";
-import { Button } from "@/components/ui/button";
-import useROS from "@/lib/ros/useROS";
-import useCameraNode from "@/lib/useCameraNode";
 import useControlNode from "@/lib/useControlNode";
-import useLaserNode from "@/lib/useLaserNode";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 export default function Controls() {
-  const { nodeInfo: rosbridgeNodeInfo } = useROS();
   const {
     nodeInfo: controlNodeInfo,
     controlState,
-    calibrate,
     manualTargetAimLaser,
   } = useControlNode("/control0");
-  const { nodeInfo: cameraNodeInfo } = useCameraNode("/camera0");
-  const { nodeInfo: laserNodeInfo } = useLaserNode("/laser0");
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
 
   const onImageLoad = (event: any) => {
@@ -40,27 +31,8 @@ export default function Controls() {
     manualTargetAimLaser(scaledX, scaledY);
   };
 
-  const nodeInfos = useMemo(() => {
-    return [rosbridgeNodeInfo, controlNodeInfo, cameraNodeInfo, laserNodeInfo];
-  }, [rosbridgeNodeInfo, controlNodeInfo, cameraNodeInfo, laserNodeInfo]);
-  const disableButtons =
-    !rosbridgeNodeInfo.connected ||
-    !controlNodeInfo.connected ||
-    controlState !== "idle";
-
   return (
     <div className="flex flex-col gap-4 items-center">
-      <NodeCards nodeInfos={nodeInfos} />
-      <div className="flex flex-row items-center gap-4">
-        <Button
-          disabled={disableButtons}
-          onClick={() => {
-            calibrate();
-          }}
-        >
-          Start Calibration
-        </Button>
-      </div>
       <p className="text-center">
         Click on the image below to attempt to aim the laser to that point.
       </p>

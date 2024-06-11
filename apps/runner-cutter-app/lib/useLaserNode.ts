@@ -65,6 +65,14 @@ export default function useLaserNode(nodeName: string) {
     };
   }, [ros, nodeName, getState, setNodeConnected, setLaserState]);
 
+  const startDevice = useCallback(() => {
+    ros.callService(`${nodeName}/start_device`, "std_srvs/Trigger", {});
+  }, [ros, nodeName]);
+
+  const closeDevice = useCallback(() => {
+    ros.callService(`${nodeName}/close_device`, "std_srvs/Trigger", {});
+  }, [ros, nodeName]);
+
   const addPoint = useCallback(
     (x: number, y: number) => {
       ros.callService(
@@ -112,6 +120,8 @@ export default function useLaserNode(nodeName: string) {
   return {
     nodeInfo,
     laserState,
+    startDevice,
+    closeDevice,
     addPoint,
     clearPoints,
     play,

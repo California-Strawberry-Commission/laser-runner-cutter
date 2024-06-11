@@ -1,12 +1,5 @@
-import Controls from "@/components/runner-cutter/controls";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return (
-    <main className="flex flex-col h-full gap-4">
-      <h1 className="text-3xl font-bold">Laser Runner Cutter</h1>
-      <div className="items-center justify-center">
-        <Controls />
-      </div>
-    </main>
-  );
+  redirect("/setup");
 }

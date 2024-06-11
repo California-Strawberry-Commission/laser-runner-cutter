@@ -1,12 +1,11 @@
 "use client";
 
 import ColorPicker from "@/components/laser/color-picker";
-import NodeCards from "@/components/nodes/node-cards";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import useROS from "@/lib/ros/useROS";
 import useLaserNode from "@/lib/useLaserNode";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 function hexToRgb(hexColor: string) {
   hexColor = hexColor.replace("#", "");
@@ -30,31 +29,27 @@ export default function Controls() {
   const [x, setX] = useState<string>("0");
   const [y, setY] = useState<string>("0");
 
-  const nodeInfos = useMemo(() => {
-    return [rosbridgeNodeInfo, nodeInfo];
-  }, [rosbridgeNodeInfo, nodeInfo]);
   const disableButtons = !rosbridgeNodeInfo.connected || !nodeInfo.connected;
 
-  let laserButton = null;
+  let playbackButton = null;
   if (laserState === "stopped") {
-    laserButton = (
+    playbackButton = (
       <Button disabled={disableButtons} onClick={() => play()}>
         Start Laser
       </Button>
     );
   } else if (laserState === "playing") {
-    laserButton = (
+    playbackButton = (
       <Button disabled={disableButtons} onClick={() => stop()}>
         Stop Laser
       </Button>
     );
   } else {
-    laserButton = <Button disabled={true}>Laser Disconnected</Button>;
+    playbackButton = <Button disabled={true}>Laser Disconnected</Button>;
   }
 
   return (
     <div className="flex flex-col gap-4 items-center">
-      <NodeCards nodeInfos={nodeInfos} />
       <div className="flex flex-row gap-4 items-center">
         <Input
           className="flex-none w-20"
@@ -107,8 +102,8 @@ export default function Controls() {
             }
           }}
         />
+        {playbackButton}
       </div>
-      <div className="flex flex-row items-center gap-4">{laserButton}</div>
     </div>
   );
 }

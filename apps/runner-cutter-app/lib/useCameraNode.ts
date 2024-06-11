@@ -102,6 +102,14 @@ export default function useCameraNode(nodeName: string) {
     };
   }, [ros, nodeName, getState, setNodeConnected, setNodeState, addLogMessage]);
 
+  const startDevice = useCallback(() => {
+    ros.callService(`${nodeName}/start_device`, "std_srvs/Trigger", {});
+  }, [ros, nodeName]);
+
+  const closeDevice = useCallback(() => {
+    ros.callService(`${nodeName}/close_device`, "std_srvs/Trigger", {});
+  }, [ros, nodeName]);
+
   const setExposure = useCallback(
     (exposureUs: number) => {
       ros.callService(
@@ -188,6 +196,8 @@ export default function useCameraNode(nodeName: string) {
     recordingVideo: nodeState.recording_video,
     intervalCaptureActive: nodeState.interval_capture_active,
     logMessages,
+    startDevice,
+    closeDevice,
     setExposure,
     autoExposure,
     startLaserDetection,

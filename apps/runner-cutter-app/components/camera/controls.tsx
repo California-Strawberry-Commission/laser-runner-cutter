@@ -1,13 +1,12 @@
 "use client";
 
 import FramePreview from "@/components/camera/frame-preview";
-import NodeCards from "@/components/nodes/node-cards";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import useROS from "@/lib/ros/useROS";
 import useCameraNode from "@/lib/useCameraNode";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 export default function Controls() {
   const { nodeInfo: rosbridgeNodeInfo } = useROS();
@@ -15,7 +14,6 @@ export default function Controls() {
   const [nodeName, setNodeName] = useState<string>("/camera0");
   const {
     nodeInfo,
-    cameraConnected,
     laserDetectionEnabled,
     runnerDetectionEnabled,
     recordingVideo,
@@ -36,14 +34,10 @@ export default function Controls() {
   const [exposureUs, setExposureUs] = useState<string>("200");
   const [intervalSecs, setIntervalSecs] = useState<string>("5");
 
-  const nodeInfos = useMemo(() => {
-    return [rosbridgeNodeInfo, nodeInfo];
-  }, [rosbridgeNodeInfo, nodeInfo]);
   const disableButtons = !rosbridgeNodeInfo.connected || !nodeInfo.connected;
 
   return (
     <div className="flex flex-col gap-4 items-center">
-      <NodeCards nodeInfos={nodeInfos} />
       <div className="flex flex-row items-center gap-4">
         <Label className="flex-none w-16" htmlFor="exposure">
           Exposure (us):

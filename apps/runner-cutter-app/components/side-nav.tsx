@@ -12,8 +12,12 @@ type SideNavItem = {
 
 const SIDENAV_ITEMS: SideNavItem[] = [
   {
+    title: "Setup",
+    path: "/setup",
+  },
+  {
     title: "Runner Cutter",
-    path: "/",
+    path: "/runner-cutter",
   },
   {
     title: "Camera Test",
@@ -30,10 +34,6 @@ const SIDENAV_ITEMS: SideNavItem[] = [
   {
     title: "Aim Test",
     path: "/test/aim",
-  },
-  {
-    title: "Nodes",
-    path: "/nodes",
   },
   {
     title: "Wi-Fi",
