@@ -19,7 +19,12 @@ from aioros2 import node, params, result, serve_nodes, service, start, timer, to
 from camera_control.camera.realsense import RealSense
 from camera_control.camera.lucid import create_lucid_rgbd_camera
 from camera_control.camera.rgbd_frame import RgbdFrame
-from camera_control_interfaces.msg import DetectionResult, ObjectInstance, State
+from camera_control_interfaces.msg import (
+    DetectionResult,
+    DeviceState,
+    ObjectInstance,
+    State,
+)
 from camera_control_interfaces.srv import (
     GetDetectionResult,
     GetFrame,
@@ -91,6 +96,7 @@ class CameraControlNode:
             raise Exception(
                 f"Unknown camera_type: {self.camera_control_params.camera_type}"
             )
+        self.connecting = False
 
         # ML models
         package_share_directory = get_package_share_directory("camera_control")
@@ -107,8 +113,14 @@ class CameraControlNode:
 
     @service("~/start_device", Trigger)
     async def start_device(self):
-        self.camera.initialize()
+        self.connecting = True
         self._publish_state()
+
+        self.camera.initialize()
+
+        self.connecting = False
+        self._publish_state()
+
         return result(success=True)
 
     @service("~/close_device", Trigger)
@@ -388,9 +400,19 @@ class CameraControlNode:
         if self.video_writer is not None:
             self.video_writer.write(cv2.cvtColor(debug_frame, cv2.COLOR_RGB2BGR))
 
+    def _get_device_state(self) -> DeviceState:
+        if self.connecting:
+            return DeviceState.CONNECTING
+        elif self.camera is not None and self.camera.is_connected:
+            return DeviceState.STREAMING
+        else:
+            return DeviceState.DISCONNECTED
+
     def _get_state(self) -> State:
         state = State()
-        state.connected = self.camera is not None and self.camera.is_connected
+        device_state = DeviceState()
+        device_state.data = self._get_device_state()
+        state.device_state = device_state
         state.laser_detection_enabled = self.laser_detection_enabled
         state.runner_detection_enabled = self.runner_detection_enabled
         state.recording_video = self.video_writer is not None
@@ -401,7 +423,7 @@ class CameraControlNode:
         state = self._get_state()
         asyncio.create_task(
             self.state_topic(
-                connected=state.connected,
+                device_state=state.device_state,
                 laser_detection_enabled=state.laser_detection_enabled,
                 runner_detection_enabled=state.runner_detection_enabled,
                 recording_video=state.recording_video,

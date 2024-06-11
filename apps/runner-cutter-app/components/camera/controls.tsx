@@ -43,7 +43,7 @@ export default function Controls() {
           Exposure (us):
         </Label>
         <Input
-          className="flex-none w-20"
+          className="flex-none w-24"
           type="number"
           id="exposure"
           name="exposure"

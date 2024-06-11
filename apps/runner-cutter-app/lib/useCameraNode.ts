@@ -2,8 +2,9 @@ import type { NodeInfo } from "@/lib/NodeInfo";
 import useROS from "@/lib/ros/useROS";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+const DEVICE_STATES = ["disconnected", "connecting", "streaming"];
 const INITIAL_STATE = {
-  connected: false,
+  device_state: DEVICE_STATES[0],
   laser_detection_enabled: false,
   runner_detection_enabled: false,
   recording_video: false,
@@ -38,7 +39,10 @@ export default function useCameraNode(nodeName: string) {
       "camera_control_interfaces/GetState",
       {}
     );
-    setNodeState(result.state);
+    setNodeState({
+      ...result.state,
+      device_state: DEVICE_STATES[result.state.device_state.data],
+    });
   }, [ros, nodeName, setNodeState]);
 
   const addLogMessage = useCallback(
@@ -79,7 +83,10 @@ export default function useCameraNode(nodeName: string) {
       `${nodeName}/state`,
       "camera_control_interfaces/State",
       (message) => {
-        setNodeState(message);
+        setNodeState({
+          ...message,
+          device_state: DEVICE_STATES[message.device_state.data],
+        });
       }
     );
 
@@ -190,7 +197,7 @@ export default function useCameraNode(nodeName: string) {
 
   return {
     nodeInfo,
-    cameraConnected: nodeState.connected,
+    deviceState: nodeState.device_state,
     laserDetectionEnabled: nodeState.laser_detection_enabled,
     runnerDetectionEnabled: nodeState.runner_detection_enabled,
     recordingVideo: nodeState.recording_video,

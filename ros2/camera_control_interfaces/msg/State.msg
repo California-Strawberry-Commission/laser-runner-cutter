@@ -1,4 +1,4 @@
-bool connected
+DeviceState device_state
 bool laser_detection_enabled
 bool runner_detection_enabled
 bool recording_video

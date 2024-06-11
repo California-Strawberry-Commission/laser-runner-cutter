@@ -2,7 +2,7 @@ import type { NodeInfo } from "@/lib/NodeInfo";
 import useROS from "@/lib/ros/useROS";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-const LASER_STATES = ["disconnected", "stopped", "playing"];
+const LASER_STATES = ["disconnected", "connecting", "stopped", "playing"];
 const INITIAL_STATE = LASER_STATES[0];
 
 export default function useLaserNode(nodeName: string) {

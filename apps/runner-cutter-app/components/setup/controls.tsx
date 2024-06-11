@@ -7,6 +7,7 @@ import useROS from "@/lib/ros/useROS";
 import useCameraNode from "@/lib/useCameraNode";
 import useControlNode from "@/lib/useControlNode";
 import useLaserNode from "@/lib/useLaserNode";
+import { Loader2 } from "lucide-react";
 import { useMemo } from "react";
 
 export default function Controls() {
@@ -18,7 +19,7 @@ export default function Controls() {
   } = useControlNode("/control0");
   const {
     nodeInfo: cameraNodeInfo,
-    cameraConnected,
+    deviceState: cameraState,
     startDevice: connectCamera,
     closeDevice: disconnectCamera,
   } = useCameraNode("/camera0");
@@ -35,7 +36,19 @@ export default function Controls() {
 
   let cameraButton = null;
   const enableCameraButton = cameraNodeInfo.connected;
-  if (cameraConnected) {
+  if (cameraState === "disconnected") {
+    cameraButton = (
+      <Button disabled={!enableCameraButton} onClick={() => connectCamera()}>
+        Connect Camera
+      </Button>
+    );
+  } else if (cameraState === "connecting") {
+    cameraButton = (
+      <Button disabled>
+        <Loader2 className="h-4 w-4 animate-spin" />
+      </Button>
+    );
+  } else {
     cameraButton = (
       <Button
         disabled={!enableCameraButton}
@@ -43,12 +56,6 @@ export default function Controls() {
         onClick={() => disconnectCamera()}
       >
         Disconnect Camera
-      </Button>
-    );
-  } else {
-    cameraButton = (
-      <Button disabled={!enableCameraButton} onClick={() => connectCamera()}>
-        Connect Camera
       </Button>
     );
   }
@@ -59,6 +66,12 @@ export default function Controls() {
     laserButton = (
       <Button disabled={!enableLaserButton} onClick={() => connectLaser()}>
         Connect Laser
+      </Button>
+    );
+  } else if (laserState === "connecting") {
+    laserButton = (
+      <Button disabled>
+        <Loader2 className="h-4 w-4 animate-spin" />
       </Button>
     );
   } else {
@@ -76,7 +89,7 @@ export default function Controls() {
   const enableCalibrationButton =
     controlNodeInfo.connected &&
     controlState === "idle" &&
-    cameraConnected &&
+    cameraState === "streaming" &&
     laserState === "stopped";
 
   return (
