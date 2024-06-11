@@ -7,4 +7,4 @@ source /opt/ros/foxy/setup.sh
 
 # Build
 cd $ROS_WS_DIR
-colcon build --symlink-install
+colcon build

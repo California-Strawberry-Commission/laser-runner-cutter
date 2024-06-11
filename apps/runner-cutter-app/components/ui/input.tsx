@@ -48,7 +48,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       const newPropValue = propValue !== undefined ? String(propValue) : "";
       setValue(newPropValue);
       setKeyboardValue(newPropValue);
-    }, [propValue]);
+    }, [propValue, setValue, setKeyboardValue]);
 
     const onFocusInternal = (e: FocusEvent<HTMLInputElement>) => {
       onFocus && onFocus(e);

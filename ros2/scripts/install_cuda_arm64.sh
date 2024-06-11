@@ -29,3 +29,9 @@ git clone --branch v0.16.1 https://github.com/pytorch/vision torchvision
 cd torchvision
 export BUILD_VERSION=0.16.1
 python setup.py install
+
+# Append export to ~/.bashrc if it doesn't already exist
+line_to_append='export LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1'
+if ! grep -qxF "$line_to_append" ~/.bashrc; then
+    echo "$line_to_append" >> ~/.bashrc
+fi

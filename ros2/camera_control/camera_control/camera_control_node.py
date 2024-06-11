@@ -35,7 +35,7 @@ from rcl_interfaces.msg import Log
 
 @dataclass
 class CameraControlParams:
-    camera_type: str = "realsense"  # "realsense" or "lucid"
+    camera_type: str = "lucid"  # "realsense" or "lucid"
     camera_index: int = 0
     fps: int = 30
     rgb_size: List[int] = field(default_factory=lambda: [1280, 720])

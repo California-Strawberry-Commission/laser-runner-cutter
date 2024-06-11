@@ -19,6 +19,9 @@ if [ ! -f "$installed_file" ]; then
         bash ./install_cuda_arm64.sh
     fi
 
+    # Init submodules
+    git submodule update --init --recursive
+
     bash ./install_ros.sh
     bash ./install_realsense_ros.sh
     bash ./install_requirements.sh
