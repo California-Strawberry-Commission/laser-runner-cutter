@@ -61,6 +61,8 @@ def milliseconds_to_ros_time(milliseconds):
 class CameraControlNode:
     camera_control_params = params(CameraControlParams)
     state_topic = topic("~/state", State, 5)
+    # Increasing queue size for Image topics seems to help prevent web_video_server's subscription
+    # from stalling
     color_frame_topic = topic("~/color_frame", Image, 5)
     debug_frame_topic = topic("~/debug_frame", Image, 5)
     laser_detections_topic = topic("~/laser_detections", DetectionResult, 5)
