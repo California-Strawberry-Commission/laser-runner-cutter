@@ -481,7 +481,7 @@ class LucidRgbd(RgbdCamera):
         return self._color_device is not None and self._depth_device is not None
 
     def initialize(self):
-        # TODO: implement device disconnection and reconnection logic
+        # TODO: Implement device disconnection and reconnection logic
         device_infos = system.device_infos
 
         # If we don't have a serial number of a device, attempt to find one among connected devices

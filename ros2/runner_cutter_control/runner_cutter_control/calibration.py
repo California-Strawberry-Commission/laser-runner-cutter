@@ -59,8 +59,8 @@ class Calibration:
         """
         self.reset()
 
-        # TODO: Depth values are noisy when the laser is on. Figure out how to reduce noise, or
-        # use a depth frame obtained when the laser is off
+        # TODO: On RealSense, depth values are noisy when the laser is on. Figure out how to reduce noise,
+        # or use a depth frame obtained when the laser is off
 
         # Get camera color frame size
         result = await self._camera_node.get_frame()

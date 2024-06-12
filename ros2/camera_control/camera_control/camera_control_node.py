@@ -90,7 +90,6 @@ class CameraControlNode:
                 logger=self.get_logger(),
             )
         elif self.camera_control_params.camera_type == "lucid":
-            # TODO: Use camera_control_params
             self.camera = create_lucid_rgbd_camera(logger=self.get_logger())
         else:
             raise Exception(
@@ -433,7 +432,7 @@ class CameraControlNode:
         )
 
     def _publish_log_message(self, msg: str):
-        # TODO: Log levels
+        # TODO: Support log levels
         timestamp_millis = int(time.time() * 1000)
         sec, nanosec = milliseconds_to_ros_time(timestamp_millis)
         log_message = Log()
