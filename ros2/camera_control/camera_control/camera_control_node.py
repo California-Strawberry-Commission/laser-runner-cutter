@@ -61,8 +61,8 @@ def milliseconds_to_ros_time(milliseconds):
 class CameraControlNode:
     camera_control_params = params(CameraControlParams)
     state_topic = topic("~/state", State, 5)
-    color_frame_topic = topic("~/color_frame", Image, 1)
-    debug_frame_topic = topic("~/debug_frame", Image, 1)
+    color_frame_topic = topic("~/color_frame", Image, 5)
+    debug_frame_topic = topic("~/debug_frame", Image, 5)
     laser_detections_topic = topic("~/laser_detections", DetectionResult, 5)
     runner_detections_topic = topic("~/runner_detections", DetectionResult, 5)
     # ROS publishes logs on /rosout, but as it contains logs from all nodes and also contains
