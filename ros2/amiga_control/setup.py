@@ -11,9 +11,13 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
-
-        # From: https://roboticsbackend.com/ros2-yaml-params/
-        (f"share/{package_name}/config", glob('config/*'))
+        # Include all launch files.
+        (
+            os.path.join("share", package_name, "launch"),
+            glob(os.path.join("launch", "*launch.[pxy][yma]*")),
+        ),
+        # Include all config files.
+        (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
     ],
     install_requires=["setuptools"],
     zip_safe=True,

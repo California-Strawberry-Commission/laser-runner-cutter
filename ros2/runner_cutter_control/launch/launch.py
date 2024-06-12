@@ -1,7 +1,12 @@
-import launch
 import os
-import launch_ros.actions
+
 from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+
+from aioros2 import LaunchNode
+from camera_control import camera_control_node
+from laser_control import laser_control_node
+from runner_cutter_control import runner_cutter_control_node
 
 
 def generate_launch_description():
@@ -11,28 +16,16 @@ def generate_launch_description():
         "parameters.yaml",
     )
 
-    return launch.LaunchDescription(
+    return LaunchDescription(
         [
-            launch_ros.actions.Node(
-                package="camera_control",
-                executable="camera_control_node",
-                name="camera0",
-                arguments=["--ros-args", "--log-level", "info"],
-                parameters=[parameters_file],
+            LaunchNode(
+                camera_control_node, name="camera0", parameters=[parameters_file]
             ),
-            launch_ros.actions.Node(
-                package="laser_control",
-                executable="laser_control_node",
-                name="laser0",
-                arguments=["--ros-args", "--log-level", "info"],
-                parameters=[parameters_file],
-            ),
-            launch_ros.actions.Node(
-                package="runner_cutter_control",
-                executable="runner_cutter_control_node",
+            LaunchNode(laser_control_node, name="laser0", parameters=[parameters_file]),
+            LaunchNode(
+                runner_cutter_control_node,
                 name="control0",
-                arguments=["--ros-args", "--log-level", "info"],
                 parameters=[parameters_file],
             ),
         ]
-    )
+    )  # type: ignore
