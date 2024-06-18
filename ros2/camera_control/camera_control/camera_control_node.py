@@ -331,12 +331,21 @@ class CameraControlNode:
     @timer(1.0 / 30, allow_concurrent_execution=False)
     async def frame_callback(self):
         async with self._camera_lock:
-            frame = self.camera.get_frame()
+            # If the camera is not connected, set the current frame to None to prevent
+            # further processing on frames.
+            if not self.camera.is_connected:
+                await self.set_current_frame(None)
+                return
 
-        await self.set_current_frame(frame)
+            frame = await asyncio.get_running_loop().run_in_executor(
+                None,
+                self.camera.get_frame,
+            )
+            # The camera may not have a new frame available yet. In that case, do nothing.
+            if frame is None:
+                return
 
-        if not frame:
-            return
+            await self.set_current_frame(frame)
 
         # We're not currently consuming the color_frame topic anywhere. Disable it for now
         # to reduce CPU overhead
