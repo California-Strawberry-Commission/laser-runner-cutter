@@ -2,8 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
+// Based on https://github.com/farm-ng/amiga-app-template/blob/main/ts/src/components/ExitButton.tsx
 export default function ExitButton({ className }: { className?: string }) {
   const [appData, setAppData] = useState<{ [key: string]: any }>({});
 
