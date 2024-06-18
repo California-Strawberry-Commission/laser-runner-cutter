@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import ExitButton from "@/components/exit-button";
 
 type SideNavItem = {
   title: string;
@@ -45,7 +46,7 @@ export default function SideNav() {
   const pathname = usePathname();
 
   return (
-    <div className="flex flex-col gap-4 w-full">
+    <div className="flex flex-col gap-4 w-full h-full">
       {SIDENAV_ITEMS.map((item, idx) => {
         return (
           <Link key={idx} href={item.path}>
@@ -55,6 +56,9 @@ export default function SideNav() {
           </Link>
         );
       })}
+      <div className="mt-auto">
+        <ExitButton className="w-full" />
+      </div>
     </div>
   );
 }
