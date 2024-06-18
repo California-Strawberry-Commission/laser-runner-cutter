@@ -1,7 +1,6 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import ExitButton from "@/components/exit-button";
 
@@ -49,11 +48,15 @@ export default function SideNav() {
     <div className="flex flex-col gap-4 w-full h-full">
       {SIDENAV_ITEMS.map((item, idx) => {
         return (
-          <Link key={idx} href={item.path}>
+          // TODO: Unfortunately we don't use <Link> here because it is causing issues with the
+          // camera preview. When using <Link>, existing connections to web_video_server are
+          // not closed, and eventually we are not able to create a new connection (and thus the
+          // stream fails to render)
+          <a key={idx} href={item.path}>
             <Button className="w-full" disabled={item.path === pathname}>
               {item.icon} {item.title}
             </Button>
-          </Link>
+          </a>
         );
       })}
       <div className="mt-auto">
