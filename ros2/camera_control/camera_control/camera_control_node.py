@@ -72,6 +72,14 @@ class CameraControlNode:
     # potentially be displayed on UI
     log_topic = topic("~/log", Log, 10)
 
+    async def get_current_frame(self):
+        async with self._frame_lock:
+            return self.__current_frame
+
+    async def set_current_frame(self, frame):
+        async with self._frame_lock:
+            self.__current_frame = frame
+
     @start
     async def start(self):
         self.laser_detection_enabled = False
@@ -82,7 +90,9 @@ class CameraControlNode:
         self.cv_bridge = CvBridge()
 
         # Camera
-        self.curr_frame = None
+        self._frame_lock = asyncio.Lock()
+        self.__current_frame = None
+        self._camera_lock = asyncio.Lock()
         if self.camera_control_params.camera_type == "realsense":
             self.camera = RealSense(
                 self.camera_control_params.rgb_size,
@@ -117,7 +127,10 @@ class CameraControlNode:
         self.connecting = True
         self._publish_state()
 
-        await asyncio.get_running_loop().run_in_executor(None, self.camera.initialize)
+        async with self._camera_lock:
+            await asyncio.get_running_loop().run_in_executor(
+                None, self.camera.initialize
+            )
 
         self.connecting = False
         self._publish_state()
@@ -126,25 +139,29 @@ class CameraControlNode:
 
     @service("~/close_device", Trigger)
     async def close_device(self):
-        await asyncio.get_running_loop().run_in_executor(None, self.camera.close)
+        async with self._camera_lock:
+            await asyncio.get_running_loop().run_in_executor(None, self.camera.close)
+
         self._publish_state()
         return result(success=True)
 
     @service("~/has_frames", GetBool)
     async def has_frames(self):
-        return result(data=(self.curr_frame is not None))
+        frame = await self.get_current_frame()
+        return result(data=(frame is not None))
 
     @service("~/get_frame", GetFrame)
     async def get_frame(self):
-        if self.curr_frame is None:
+        frame = await self.get_current_frame()
+        if frame is None:
             return result()
 
         return result(
             color_frame=self._get_color_frame_msg(
-                self.curr_frame.color_frame, self.curr_frame.timestamp_millis
+                frame.color_frame, frame.timestamp_millis
             ),
             depth_frame=self._get_depth_frame_msg(
-                self.curr_frame.depth_frame, self.curr_frame.timestamp_millis
+                frame.depth_frame, frame.timestamp_millis
             ),
         )
 
@@ -160,28 +177,24 @@ class CameraControlNode:
 
     @service("~/get_laser_detection", GetDetectionResult)
     async def get_laser_detection(self):
-        if self.curr_frame is None:
+        frame = await self.get_current_frame()
+        if frame is None:
             return result()
 
-        laser_points, conf = await self._get_laser_points(self.curr_frame.color_frame)
-        return result(
-            result=self._create_detection_result_msg(laser_points, self.curr_frame)
-        )
+        laser_points, conf = await self._get_laser_points(frame.color_frame)
+        return result(result=self._create_detection_result_msg(laser_points, frame))
 
     @service("~/get_runner_detection", GetDetectionResult)
     async def get_runner_detection(self):
-        if self.curr_frame is None:
+        frame = await self.get_current_frame()
+        if frame is None:
             return result()
 
-        runner_masks, confs, track_ids = await self._get_runner_masks(
-            self.curr_frame.color_frame
-        )
+        runner_masks, confs, track_ids = await self._get_runner_masks(frame.color_frame)
         runner_centers = await self._get_runner_centers(runner_masks)
         runner_centers = [center for center in runner_centers if center is not None]
         return result(
-            result=self._create_detection_result_msg(
-                runner_centers, self.curr_frame, track_ids
-            )
+            result=self._create_detection_result_msg(runner_centers, frame, track_ids)
         )
 
     @service("~/start_laser_detection", Trigger)
@@ -239,7 +252,7 @@ class CameraControlNode:
 
     @service("~/save_image", Trigger)
     async def save_image(self):
-        if self._save_image() is None:
+        if (await self._save_image()) is None:
             return result(success=False)
 
         return result(success=True)
@@ -272,11 +285,12 @@ class CameraControlNode:
 
     async def _interval_capture_task(self, interval_secs: float):
         while True:
-            self._save_image()
+            await self._save_image()
             await asyncio.sleep(interval_secs)
 
-    def _save_image(self) -> Optional[str]:
-        if self.curr_frame is None:
+    async def _save_image(self) -> Optional[str]:
+        frame = await self.get_current_frame()
+        if frame is None:
             return None
 
         image_dir = os.path.expanduser(self.camera_control_params.image_dir)
@@ -288,7 +302,7 @@ class CameraControlNode:
         image_path = os.path.join(image_dir, image_name)
         cv2.imwrite(
             image_path,
-            cv2.cvtColor(self.curr_frame.color_frame, cv2.COLOR_RGB2BGR),
+            cv2.cvtColor(frame.color_frame, cv2.COLOR_RGB2BGR),
         )
         self._publish_log_message(f"Saved image: {image_path}")
         return image_path
@@ -299,29 +313,30 @@ class CameraControlNode:
 
     @service("~/get_positions_for_pixels", GetPositionsForPixels)
     async def get_positions_for_pixels(self, pixels):
-        if self.curr_frame is None:
+        frame = await self.get_current_frame()
+        if frame is None:
             return result()
 
         positions = []
-        if self.curr_frame is not None:
-            for pixel in pixels:
-                position = self.curr_frame.get_position((pixel.x, pixel.y))
-                positions.append(
-                    Vector3(x=position[0], y=position[1], z=position[2])
-                    if position is not None
-                    else Vector3(x=-1.0, y=-1.0, z=-1.0)
-                )
+        for pixel in pixels:
+            position = frame.get_position((pixel.x, pixel.y))
+            positions.append(
+                Vector3(x=position[0], y=position[1], z=position[2])
+                if position is not None
+                else Vector3(x=-1.0, y=-1.0, z=-1.0)
+            )
         return result(positions=positions)
 
     # TODO: Define interval using param
     @timer(1.0 / 30, allow_concurrent_execution=False)
     async def frame_callback(self):
-        frame = self.camera.get_frame()
+        async with self._camera_lock:
+            frame = self.camera.get_frame()
+
+        await self.set_current_frame(frame)
 
         if not frame:
             return
-
-        self.curr_frame = frame
 
         # We're not currently consuming the color_frame topic anywhere. Disable it for now
         # to reduce CPU overhead
@@ -343,10 +358,10 @@ class CameraControlNode:
     # TODO: Define interval using param
     @timer(1.0 / 30, allow_concurrent_execution=False)
     async def detection_callback(self):
-        if not self.curr_frame:
+        frame = await self.get_current_frame()
+        if frame is None:
             return
 
-        frame = self.curr_frame
         debug_frame = np.copy(frame.color_frame)
 
         if self.laser_detection_enabled:

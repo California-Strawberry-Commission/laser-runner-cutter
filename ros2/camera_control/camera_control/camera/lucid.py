@@ -534,6 +534,7 @@ class LucidRgbd(RgbdCamera):
         # Configure color nodemap
         nodemap = self._color_device.nodemap
         stream_nodemap = self._color_device.tl_stream_nodemap
+        nodemap["AcquisitionMode"].value = "Continuous"
         # Setting the buffer handling mode to "NewestOnly" ensures the most recent image
         # is delivered, even if it means skipping frames
         stream_nodemap["StreamBufferHandlingMode"].value = "NewestOnly"
@@ -550,16 +551,6 @@ class LucidRgbd(RgbdCamera):
         nodemap["PixelFormat"].value = PixelFormat.RGB8
         # Set the following when Persistent IP is set on the camera
         nodemap["GevPersistentARPConflictDetectionEnable"].value = False
-        nodemap["AcquisitionMode"].value = "Continuous"
-        # Automate the calculation of max FPS whenever the device settings change
-        nodemap["AcquisitionFrameRateEnable"].value = True
-        # Set FPS node to max FPS which was set to be automatically calculated based on
-        # current device settings
-        nodemap["AcquisitionFrameRate"].value = nodemap["AcquisitionFrameRate"].max
-        # Max FPS according to the current settings
-        nodemap["DeviceStreamChannelPacketSize"].value = nodemap[
-            "DeviceStreamChannelPacketSize"
-        ].max
 
         # Configure depth nodemap
         nodemap = self._depth_device.nodemap
@@ -730,12 +721,9 @@ class LucidRgbd(RgbdCamera):
 
     def close(self):
         # Destroy all created devices. Note that this will automatically call stop_stream() for each device
-        # TODO: The following results in a crash
-        """
-        system.destroy_device()
         self._color_device = None
         self._depth_device = None
-        """
+        system.destroy_device()
 
 
 def create_lucid_rgbd_camera(
