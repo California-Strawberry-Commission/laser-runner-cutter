@@ -178,7 +178,7 @@ export default function Controls() {
           </Button>
         )}
       </div>
-      <FramePreview topicName={"/camera0/debug_frame"} />
+      <FramePreview height={520} topicName={"/camera0/debug_frame"} />
       <div className="w-full">
         {logMessages.map((msg, index) => (
           <p className="text-xs" key={index}>

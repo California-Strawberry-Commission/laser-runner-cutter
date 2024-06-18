@@ -41,7 +41,7 @@ export default function Controls() {
           Stop
         </Button>
       </div>
-      <FramePreview topicName={"/camera0/debug_frame"} />
+      <FramePreview height={600} topicName={"/camera0/debug_frame"} />
     </div>
   );
 }

@@ -57,6 +57,7 @@ export default function Controls() {
         point and add a calibration point.
       </p>
       <FramePreview
+        height={600}
         topicName={"/camera0/debug_frame"}
         onImageLoad={onImageLoad}
         onImageClick={onImageClick}

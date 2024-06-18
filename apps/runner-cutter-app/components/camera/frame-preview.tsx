@@ -7,6 +7,7 @@ export default function FramePreview({
   onImageClick,
 }: {
   topicName?: string;
+  width?: number;
   height?: number;
   onImageLoad?: React.EventHandler<
     React.SyntheticEvent<HTMLImageElement, Event>
@@ -15,12 +16,13 @@ export default function FramePreview({
 }) {
   const videoServer =
     process.env.NEXT_PUBLIC_VIDEO_SERVER_URL ?? "http://localhost:8080";
-  const src = `${videoServer}/stream?topic=${topicName}`;
+  const streamUrl = `${videoServer}/stream?topic=${topicName}`;
+
   return (
     <div className="flex flex-col w-full items-center" style={{ height }}>
       {topicName ? (
         <img
-          src={src}
+          src={streamUrl}
           alt="Camera Color Frame"
           className="h-full w-auto max-h-full max-w-full"
           onLoad={onImageLoad}

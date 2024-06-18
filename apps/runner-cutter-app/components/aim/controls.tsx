@@ -37,6 +37,7 @@ export default function Controls() {
         Click on the image below to attempt to aim the laser to that point.
       </p>
       <FramePreview
+        height={600}
         topicName={"/camera0/debug_frame"}
         onImageLoad={onImageLoad}
         onImageClick={onImageClick}
