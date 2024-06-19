@@ -28,7 +28,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <div className="flex h-screen overflow-hidden">
-          <div className="flex-shrink-0 w-64 bg-gray-200 overflow-y-auto p-8">
+          <div className="flex-shrink-0 w-52 bg-gray-200 overflow-y-auto p-8">
             <SideNav />
           </div>
           <KeyboardProvider>

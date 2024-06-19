@@ -4,6 +4,11 @@ import FramePreview from "@/components/camera/frame-preview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import useROS from "@/lib/ros/useROS";
 import useCameraNode from "@/lib/useCameraNode";
 import { useState } from "react";
@@ -74,46 +79,6 @@ export default function Controls() {
         </Button>
       </div>
       <div className="flex flex-row items-center gap-4">
-        {laserDetectionEnabled ? (
-          <Button
-            disabled={disableButtons}
-            onClick={() => {
-              stopLaserDetection();
-            }}
-          >
-            Stop Laser Detection
-          </Button>
-        ) : (
-          <Button
-            disabled={disableButtons}
-            onClick={() => {
-              startLaserDetection();
-            }}
-          >
-            Start Laser Detection
-          </Button>
-        )}
-        {runnerDetectionEnabled ? (
-          <Button
-            disabled={disableButtons}
-            onClick={() => {
-              stopRunnerDetection();
-            }}
-          >
-            Stop Runner Detection
-          </Button>
-        ) : (
-          <Button
-            disabled={disableButtons}
-            onClick={() => {
-              startRunnerDetection();
-            }}
-          >
-            Start Runner Detection
-          </Button>
-        )}
-      </div>
-      <div className="flex flex-row items-center gap-4">
         {recordingVideo ? (
           <Button
             disabled={disableButtons}
@@ -178,14 +143,59 @@ export default function Controls() {
           </Button>
         )}
       </div>
-      <FramePreview height={520} topicName={"/camera0/debug_frame"} />
-      <div className="w-full">
-        {logMessages.map((msg, index) => (
-          <p className="text-xs" key={index}>
-            {msg}
-          </p>
-        ))}
+      <div className="flex flex-row items-center gap-4">
+        {laserDetectionEnabled ? (
+          <Button
+            disabled={disableButtons}
+            onClick={() => {
+              stopLaserDetection();
+            }}
+          >
+            Stop Laser Detection
+          </Button>
+        ) : (
+          <Button
+            disabled={disableButtons}
+            onClick={() => {
+              startLaserDetection();
+            }}
+          >
+            Start Laser Detection
+          </Button>
+        )}
+        {runnerDetectionEnabled ? (
+          <Button
+            disabled={disableButtons}
+            onClick={() => {
+              stopRunnerDetection();
+            }}
+          >
+            Stop Runner Detection
+          </Button>
+        ) : (
+          <Button
+            disabled={disableButtons}
+            onClick={() => {
+              startRunnerDetection();
+            }}
+          >
+            Start Runner Detection
+          </Button>
+        )}
       </div>
+      <FramePreview height={520} topicName={"/camera0/debug_frame"} />
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button className="fixed bottom-4 right-4">Show Logs</Button>
+        </PopoverTrigger>
+        <PopoverContent className="m-4 w-96 bg-black bg-opacity-70 border-0">
+          {logMessages.map((msg, index) => (
+            <p className="text-xs text-white" key={index}>
+              {msg}
+            </p>
+          ))}
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
