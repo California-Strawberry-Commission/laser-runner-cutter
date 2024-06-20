@@ -3,3 +3,5 @@ bool laser_detection_enabled
 bool runner_detection_enabled
 bool recording_video
 bool interval_capture_active
+float32 exposure_us
+string save_directory

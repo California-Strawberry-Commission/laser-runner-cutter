@@ -19,7 +19,7 @@ export default function Controls() {
   } = useControlNode("/control0");
   const {
     nodeInfo: cameraNodeInfo,
-    deviceState: cameraState,
+    nodeState: cameraNodeState,
     startDevice: connectCamera,
     closeDevice: disconnectCamera,
   } = useCameraNode("/camera0");
@@ -36,13 +36,13 @@ export default function Controls() {
 
   let cameraButton = null;
   const enableCameraButton = cameraNodeInfo.connected;
-  if (cameraState === "disconnected") {
+  if (cameraNodeState.deviceState === "disconnected") {
     cameraButton = (
       <Button disabled={!enableCameraButton} onClick={() => connectCamera()}>
         Connect Camera
       </Button>
     );
-  } else if (cameraState === "connecting") {
+  } else if (cameraNodeState.deviceState === "connecting") {
     cameraButton = (
       <Button disabled>
         <Loader2 className="h-4 w-4 animate-spin" />
@@ -89,7 +89,7 @@ export default function Controls() {
   const enableCalibrationButton =
     controlNodeInfo.connected &&
     controlState === "idle" &&
-    cameraState === "streaming" &&
+    cameraNodeState.deviceState === "streaming" &&
     laserState === "stopped";
 
   return (

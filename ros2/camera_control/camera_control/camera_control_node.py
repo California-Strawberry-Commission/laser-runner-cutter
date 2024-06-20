@@ -31,6 +31,7 @@ from camera_control_interfaces.srv import (
     GetPositionsForPixels,
     GetState,
     SetExposure,
+    SetSaveDirectory,
     StartIntervalCapture,
 )
 from common_interfaces.msg import Vector2, Vector3
@@ -45,8 +46,7 @@ class CameraControlParams:
     fps: int = 30
     rgb_size: List[int] = field(default_factory=lambda: [1280, 720])
     depth_size: List[int] = field(default_factory=lambda: [1280, 720])
-    video_dir: str = "~/Videos/runner-cutter-app"
-    image_dir: str = "~/Pictures/runner-cutter-app"
+    save_dir: str = "~/Pictures/runner-cutter-app"
     debug_frame_width: int = 640
 
 
@@ -167,12 +167,14 @@ class CameraControlNode:
 
     @service("~/set_exposure", SetExposure)
     async def set_exposure(self, exposure_us):
-        self.camera.set_exposure(exposure_us)
+        self.camera.exposure_us = exposure_us
+        self._publish_state()
         return result(success=True)
 
     @service("~/auto_exposure", Trigger)
     async def auto_exposure(self):
-        self.camera.set_exposure(-1.0)
+        self.camera.exposure_us = -1.0
+        self._publish_state()
         return result(success=True)
 
     @service("~/get_laser_detection", GetDetectionResult)
@@ -223,13 +225,13 @@ class CameraControlNode:
 
     @service("~/start_recording_video", Trigger)
     async def start_recording_video(self):
-        video_dir = os.path.expanduser(self.camera_control_params.video_dir)
-        os.makedirs(video_dir, exist_ok=True)
+        save_dir = os.path.expanduser(self.camera_control_params.save_dir)
+        os.makedirs(save_dir, exist_ok=True)
         ts = time.time()
         datetime_obj = datetime.fromtimestamp(ts)
         datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
         video_name = f"{datetime_string}.avi"
-        video_path = os.path.join(video_dir, video_name)
+        video_path = os.path.join(save_dir, video_name)
         self.video_writer = cv2.VideoWriter(
             video_path,
             cv2.VideoWriter_fourcc(*"XVID"),
@@ -283,6 +285,12 @@ class CameraControlNode:
         self._publish_log_message("Stopped interval capture")
         return result(success=True)
 
+    @service("~/set_save_directory", SetSaveDirectory)
+    async def set_save_directory(self, save_directory):
+        await self.camera_control_params.set(save_dir=save_directory)
+        self._publish_state()
+        return result(success=True)
+
     async def _interval_capture_task(self, interval_secs: float):
         while True:
             await self._save_image()
@@ -293,13 +301,13 @@ class CameraControlNode:
         if frame is None:
             return None
 
-        image_dir = os.path.expanduser(self.camera_control_params.image_dir)
-        os.makedirs(image_dir, exist_ok=True)
+        save_dir = os.path.expanduser(self.camera_control_params.save_dir)
+        os.makedirs(save_dir, exist_ok=True)
         ts = time.time()
         datetime_obj = datetime.fromtimestamp(ts)
         datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
         image_name = f"{datetime_string}.png"
-        image_path = os.path.join(image_dir, image_name)
+        image_path = os.path.join(save_dir, image_name)
         cv2.imwrite(
             image_path,
             cv2.cvtColor(frame.color_frame, cv2.COLOR_RGB2BGR),
@@ -443,6 +451,8 @@ class CameraControlNode:
         state.runner_detection_enabled = self.runner_detection_enabled
         state.recording_video = self.video_writer is not None
         state.interval_capture_active = self.interval_capture_task is not None
+        state.exposure_us = self.camera.exposure_us
+        state.save_directory = self.camera_control_params.save_dir
         return state
 
     def _publish_state(self):
@@ -454,6 +464,8 @@ class CameraControlNode:
                 runner_detection_enabled=state.runner_detection_enabled,
                 recording_video=state.recording_video,
                 interval_capture_active=state.interval_capture_active,
+                exposure_us=state.exposure_us,
+                save_directory=state.save_directory,
             )
         )
 
