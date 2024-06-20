@@ -21,8 +21,18 @@ class RgbdCamera(ABC):
         """
         pass
 
+    @property
     @abstractmethod
-    def set_exposure(self, exposure_us: float):
+    def exposure_us(self) -> float:
+        """
+        Returns:
+            float: Exposure time in microseconds.
+        """
+        pass
+
+    @exposure_us.setter
+    @abstractmethod
+    def exposure_us(self, exposure_us: float):
         """
         Set the exposure time of the camera.
 

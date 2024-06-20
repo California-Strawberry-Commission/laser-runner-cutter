@@ -6,10 +6,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 function NodeCard({ nodeInfo }: { nodeInfo: NodeInfo }) {
   return (
-    <Card className={`${nodeInfo.connected ? "bg-green-500" : "bg-red-500"}`}>
+    <Card
+      className={cn(
+        "max-w-72",
+        nodeInfo.connected ? "bg-green-500" : "bg-red-500"
+      )}
+    >
       <CardHeader className="p-4">
         <CardTitle>{nodeInfo.name}</CardTitle>
         <CardDescription className="text-foreground">
@@ -17,7 +23,9 @@ function NodeCard({ nodeInfo }: { nodeInfo: NodeInfo }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="p-4 pt-0 text-xs">
-        <pre>{JSON.stringify(nodeInfo.state, undefined, 2)}</pre>
+        <pre className="overflow-hidden text-ellipsis">
+          {JSON.stringify(nodeInfo.state, undefined, 2)}
+        </pre>
       </CardContent>
     </Card>
   );

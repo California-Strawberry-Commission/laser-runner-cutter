@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/popover";
 import useROS from "@/lib/ros/useROS";
 import useCameraNode from "@/lib/useCameraNode";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function Controls() {
   const { nodeInfo: rosbridgeNodeInfo } = useROS();
@@ -19,13 +19,11 @@ export default function Controls() {
   const [nodeName, setNodeName] = useState<string>("/camera0");
   const {
     nodeInfo,
-    laserDetectionEnabled,
-    runnerDetectionEnabled,
-    recordingVideo,
-    intervalCaptureActive,
+    nodeState,
     logMessages,
     setExposure,
     autoExposure,
+    setSaveDirectory,
     startLaserDetection,
     stopLaserDetection,
     startRunnerDetection,
@@ -37,9 +35,14 @@ export default function Controls() {
     saveImage,
   } = useCameraNode(nodeName);
   const [exposureUs, setExposureUs] = useState<string>("200");
+  const [saveDir, setSaveDir] = useState<string>("");
   const [intervalSecs, setIntervalSecs] = useState<string>("5");
 
   const disableButtons = !rosbridgeNodeInfo.connected || !nodeInfo.connected;
+
+  useEffect(() => {
+    setSaveDir(nodeState.saveDirectory);
+  }, [setSaveDir, nodeState.saveDirectory]);
 
   return (
     <div className="flex flex-col gap-4 items-center">
@@ -79,7 +82,30 @@ export default function Controls() {
         </Button>
       </div>
       <div className="flex flex-row items-center gap-4">
-        {recordingVideo ? (
+        <Label className="flex-none w-16" htmlFor="saveDir">
+          Save Directory:
+        </Label>
+        <Input
+          className="flex-none w-64"
+          type="text"
+          id="saveDir"
+          name="saveDir"
+          value={saveDir}
+          onChange={(str) => {
+            setSaveDir(str);
+          }}
+        />
+        <Button
+          disabled={disableButtons}
+          onClick={() => {
+            setSaveDirectory(saveDir);
+          }}
+        >
+          Set Save Directory
+        </Button>
+      </div>
+      <div className="flex flex-row items-center gap-4">
+        {nodeState.recordingVideo ? (
           <Button
             disabled={disableButtons}
             onClick={() => {
@@ -123,7 +149,7 @@ export default function Controls() {
             }
           }}
         />
-        {intervalCaptureActive ? (
+        {nodeState.intervalCaptureActive ? (
           <Button
             disabled={disableButtons}
             onClick={() => {
@@ -144,7 +170,7 @@ export default function Controls() {
         )}
       </div>
       <div className="flex flex-row items-center gap-4">
-        {laserDetectionEnabled ? (
+        {nodeState.laserDetectionEnabled ? (
           <Button
             disabled={disableButtons}
             onClick={() => {
@@ -163,7 +189,7 @@ export default function Controls() {
             Start Laser Detection
           </Button>
         )}
-        {runnerDetectionEnabled ? (
+        {nodeState.runnerDetectionEnabled ? (
           <Button
             disabled={disableButtons}
             onClick={() => {
@@ -183,7 +209,7 @@ export default function Controls() {
           </Button>
         )}
       </div>
-      <FramePreview height={520} topicName={"/camera0/debug_frame"} />
+      <FramePreview height={480} topicName={"/camera0/debug_frame"} />
       <Popover>
         <PopoverTrigger asChild>
           <Button className="fixed bottom-4 right-4">Show Logs</Button>

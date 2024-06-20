@@ -66,6 +66,8 @@ export default function useLaserNode(nodeName: string) {
   }, [ros, nodeName, getState, setNodeConnected, setLaserState]);
 
   const startDevice = useCallback(() => {
+    // Optimistically set device state to "connecting"
+    setLaserState(LASER_STATES[1]);
     ros.callService(`${nodeName}/start_device`, "std_srvs/Trigger", {});
   }, [ros, nodeName]);
 

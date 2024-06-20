@@ -274,11 +274,25 @@ class RealSense(RgbdCamera):
         self.hole_filling_filter = rs.hole_filling_filter()
 
         # Exposure setting persists on device, so reset it to auto-exposure
-        self.set_exposure(-1)
+        self.exposure_us = -1.0
 
         self._logger.info(f"Device {self.serial_number} is now streaming")
 
-    def set_exposure(self, exposure_us: float):
+    @property
+    def exposure_us(self) -> float:
+        if not self.is_connected:
+            return 0.0
+
+        color_sensor = self._profile.get_device().first_color_sensor()
+        auto_exposure = color_sensor.get_option(rs.option.enable_auto_exposure)
+        return (
+            -1.0
+            if auto_exposure
+            else float(color_sensor.get_option(rs.option.exposure))
+        )
+
+    @exposure_us.setter
+    def exposure_us(self, exposure_us: float):
         """
         Set the exposure time of the camera. A negative value sets auto exposure.
 

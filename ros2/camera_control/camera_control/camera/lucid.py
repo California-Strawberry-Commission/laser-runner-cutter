@@ -582,7 +582,7 @@ class LucidRgbd(RgbdCamera):
         nodemap["GevPersistentARPConflictDetectionEnable"].value = False
 
         # Set auto exposure
-        self.set_exposure(-1)
+        self.exposure_us = -1.0
 
         # Start streams
         self._color_device.start_stream(10)
@@ -590,12 +590,21 @@ class LucidRgbd(RgbdCamera):
         self._depth_device.start_stream(10)
         self._logger.info(f"Device {self.depth_camera_serial_number} is now streaming")
 
-    def set_exposure(self, exposure_us: float):
+    @property
+    def exposure_us(self) -> float:
+        if not self.is_connected:
+            return 0.0
+
+        nodemap = self._color_device.nodemap
+        return nodemap["ExposureTime"].value
+
+    @exposure_us.setter
+    def exposure_us(self, exposure_us: float):
         """
-        Set the exposure time of the camera.
+        Set the exposure time of the camera. A negative value sets auto exposure.
 
         Args:
-            exposure_us (float): Exposure time in microseconds.
+            exposure_us (float): Exposure time in microseconds. A negative value sets auto exposure.
         """
         if not self.is_connected:
             return

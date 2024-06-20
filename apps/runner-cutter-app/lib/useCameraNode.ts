@@ -2,14 +2,38 @@ import type { NodeInfo } from "@/lib/NodeInfo";
 import useROS from "@/lib/ros/useROS";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-const DEVICE_STATES = ["disconnected", "connecting", "streaming"];
-const INITIAL_STATE = {
-  device_state: DEVICE_STATES[0],
-  laser_detection_enabled: false,
-  runner_detection_enabled: false,
-  recording_video: false,
-  interval_capture_active: false,
+export type State = {
+  deviceState: string;
+  laserDetectionEnabled: boolean;
+  runnerDetectionEnabled: boolean;
+  recordingVideo: boolean;
+  intervalCaptureActive: boolean;
+  exposureUs: number;
+  saveDirectory: string;
 };
+
+const DEVICE_STATES = ["disconnected", "connecting", "streaming"];
+const INITIAL_STATE: State = {
+  deviceState: DEVICE_STATES[0],
+  laserDetectionEnabled: false,
+  runnerDetectionEnabled: false,
+  recordingVideo: false,
+  intervalCaptureActive: false,
+  exposureUs: 0.0,
+  saveDirectory: "",
+};
+
+function convertStateMessage(message: any): State {
+  return {
+    deviceState: DEVICE_STATES[message.device_state.data],
+    laserDetectionEnabled: message.laser_detection_enabled,
+    runnerDetectionEnabled: message.runner_detection_enabled,
+    recordingVideo: message.recording_video,
+    intervalCaptureActive: message.interval_capture_active,
+    exposureUs: message.exposure_us,
+    saveDirectory: message.save_directory,
+  };
+}
 
 function convertToLocalReadableTime(secondsSinceEpoch: number) {
   const date = new Date(secondsSinceEpoch * 1000);
@@ -22,7 +46,7 @@ function convertToLocalReadableTime(secondsSinceEpoch: number) {
 export default function useCameraNode(nodeName: string) {
   const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
   const [nodeConnected, setNodeConnected] = useState<boolean>(false);
-  const [nodeState, setNodeState] = useState(INITIAL_STATE);
+  const [nodeState, setNodeState] = useState<State>(INITIAL_STATE);
   const [logMessages, setLogMessages] = useState<string[]>([]);
 
   const nodeInfo: NodeInfo = useMemo(() => {
@@ -39,10 +63,7 @@ export default function useCameraNode(nodeName: string) {
       "camera_control_interfaces/GetState",
       {}
     );
-    setNodeState({
-      ...result.state,
-      device_state: DEVICE_STATES[result.state.device_state.data],
-    });
+    setNodeState(convertStateMessage(result.state));
   }, [ros, nodeName, setNodeState]);
 
   const addLogMessage = useCallback(
@@ -83,10 +104,7 @@ export default function useCameraNode(nodeName: string) {
       `${nodeName}/state`,
       "camera_control_interfaces/State",
       (message) => {
-        setNodeState({
-          ...message,
-          device_state: DEVICE_STATES[message.device_state.data],
-        });
+        setNodeState(convertStateMessage(message));
       }
     );
 
@@ -110,8 +128,15 @@ export default function useCameraNode(nodeName: string) {
   }, [ros, nodeName, getState, setNodeConnected, setNodeState, addLogMessage]);
 
   const startDevice = useCallback(() => {
+    // Optimistically set device state to "connecting"
+    setNodeState((state) => {
+      return {
+        ...state,
+        deviceState: DEVICE_STATES[1],
+      };
+    });
     ros.callService(`${nodeName}/start_device`, "std_srvs/Trigger", {});
-  }, [ros, nodeName]);
+  }, [ros, nodeName, setNodeState]);
 
   const closeDevice = useCallback(() => {
     ros.callService(`${nodeName}/close_device`, "std_srvs/Trigger", {});
@@ -131,6 +156,17 @@ export default function useCameraNode(nodeName: string) {
   const autoExposure = useCallback(() => {
     ros.callService(`${nodeName}/auto_exposure`, "std_srvs/Trigger", {});
   }, [ros, nodeName]);
+
+  const setSaveDirectory = useCallback(
+    (saveDir: string) => {
+      ros.callService(
+        `${nodeName}/set_save_directory`,
+        "camera_control_interfaces/SetSaveDirectory",
+        { save_directory: saveDir }
+      );
+    },
+    [ros, nodeName]
+  );
 
   const startLaserDetection = useCallback(() => {
     ros.callService(
@@ -197,16 +233,13 @@ export default function useCameraNode(nodeName: string) {
 
   return {
     nodeInfo,
-    deviceState: nodeState.device_state,
-    laserDetectionEnabled: nodeState.laser_detection_enabled,
-    runnerDetectionEnabled: nodeState.runner_detection_enabled,
-    recordingVideo: nodeState.recording_video,
-    intervalCaptureActive: nodeState.interval_capture_active,
+    nodeState,
     logMessages,
     startDevice,
     closeDevice,
     setExposure,
     autoExposure,
+    setSaveDirectory,
     startLaserDetection,
     stopLaserDetection,
     startRunnerDetection,
