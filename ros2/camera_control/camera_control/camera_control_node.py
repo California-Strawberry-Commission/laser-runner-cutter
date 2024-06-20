@@ -168,11 +168,13 @@ class CameraControlNode:
     @service("~/set_exposure", SetExposure)
     async def set_exposure(self, exposure_us):
         self.camera.exposure_us = exposure_us
+        self._publish_state()
         return result(success=True)
 
     @service("~/auto_exposure", Trigger)
     async def auto_exposure(self):
         self.camera.exposure_us = -1.0
+        self._publish_state()
         return result(success=True)
 
     @service("~/get_laser_detection", GetDetectionResult)

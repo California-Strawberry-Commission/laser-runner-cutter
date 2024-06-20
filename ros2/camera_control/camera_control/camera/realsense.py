@@ -167,6 +167,7 @@ class RealSense(RgbdCamera):
         self._check_connection = False
         self._check_connection_thread = None
         self._pipeline = None
+        self._exposure_us = 0.0
 
     @property
     def is_connected(self) -> bool:
@@ -283,13 +284,7 @@ class RealSense(RgbdCamera):
         if not self.is_connected:
             return 0.0
 
-        color_sensor = self._profile.get_device().first_color_sensor()
-        auto_exposure = color_sensor.get_option(rs.option.enable_auto_exposure)
-        return (
-            -1.0
-            if auto_exposure
-            else float(color_sensor.get_option(rs.option.exposure))
-        )
+        return self._exposure_us
 
     @exposure_us.setter
     def exposure_us(self, exposure_us: float):
@@ -304,10 +299,11 @@ class RealSense(RgbdCamera):
 
         color_sensor = self._profile.get_device().first_color_sensor()
         if exposure_us < 0:
+            self._exposure_us = -1.0
             color_sensor.set_option(rs.option.enable_auto_exposure, 1)
         else:
-            exposure_us = max(MIN_EXPOSURE_US, round(exposure_us))
-            color_sensor.set_option(rs.option.exposure, exposure_us)
+            self._exposure_us = max(MIN_EXPOSURE_US, round(exposure_us))
+            color_sensor.set_option(rs.option.exposure, self._exposure_us)
 
     def get_frame(self) -> Optional[RealSenseFrame]:
         """

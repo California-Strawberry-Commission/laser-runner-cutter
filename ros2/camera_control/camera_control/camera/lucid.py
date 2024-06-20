@@ -471,6 +471,7 @@ class LucidRgbd(RgbdCamera):
         self._check_connection_thread = None
         self._color_device = None
         self._depth_device = None
+        self._exposure_us = 0.0
 
     @property
     def is_connected(self) -> bool:
@@ -595,8 +596,7 @@ class LucidRgbd(RgbdCamera):
         if not self.is_connected:
             return 0.0
 
-        nodemap = self._color_device.nodemap
-        return nodemap["ExposureTime"].value
+        return self._exposure_us
 
     @exposure_us.setter
     def exposure_us(self, exposure_us: float):
@@ -610,18 +610,17 @@ class LucidRgbd(RgbdCamera):
             return
 
         nodemap = self._color_device.nodemap
-        exposureAutoNode = nodemap["ExposureAuto"]
-        exposureTimeNode = nodemap["ExposureTime"]
+        exposure_auto_node = nodemap["ExposureAuto"]
+        exposure_time_node = nodemap["ExposureTime"]
         if exposure_us < 0:
-            exposureAutoNode.value = "Continuous"
-        elif exposureTimeNode is not None:
-            exposureAutoNode.value = "Off"
-            if exposure_us > exposureTimeNode.max:
-                exposureTimeNode.value = exposureTimeNode.max
-            elif exposure_us < exposureTimeNode.min:
-                exposureTimeNode.value = exposureTimeNode.min
-            else:
-                exposureTimeNode.value = exposure_us
+            self._exposure_us = -1.0
+            exposure_auto_node.value = "Continuous"
+        elif exposure_time_node is not None:
+            exposure_auto_node.value = "Off"
+            self._exposure_us = max(
+                exposure_time_node.min, min(exposure_us, exposure_time_node.max)
+            )
+            exposure_time_node.value = self._exposure_us
 
     def get_color_frame(self) -> Optional[np.ndarray]:
         if self._color_device is None:
