@@ -34,16 +34,20 @@ export default function Controls() {
     stopIntervalCapture,
     saveImage,
   } = useCameraNode(nodeName);
-  const [exposureUs, setExposureUs] = useState<string>("");
+  const [exposureUs, setExposureUs] = useState<string>("0");
   const [saveDir, setSaveDir] = useState<string>("");
   const [intervalSecs, setIntervalSecs] = useState<string>("5");
 
   const disableButtons = !rosbridgeNodeInfo.connected || !nodeInfo.connected;
 
-  // Sync text inputs to node state
+  // Sync text inputs to node state if empty
   useEffect(() => {
-    setExposureUs(nodeState.exposureUs.toString());
-    setSaveDir(nodeState.saveDirectory);
+    if (exposureUs === "0") {
+      setExposureUs(nodeState.exposureUs.toString());
+    }
+    if (saveDir === "") {
+      setSaveDir(nodeState.saveDirectory);
+    }
   }, [
     setExposureUs,
     nodeState.exposureUs,
