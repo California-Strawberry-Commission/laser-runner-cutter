@@ -29,7 +29,6 @@ setup(
     entry_points={
         "console_scripts": [
             "amiga_control_node = amiga_control.amiga_control_node:main",
-            "circular_node = amiga_control.circular_node:main",
         ],
     },
 )

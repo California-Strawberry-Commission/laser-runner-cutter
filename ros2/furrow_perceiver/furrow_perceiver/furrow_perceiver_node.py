@@ -1,37 +1,44 @@
-import rclpy
-from rclpy.node import Node
-from example_interfaces.srv import SetBool
+import asyncio
+from typing import AsyncGenerator
+from amiga_control_interfaces.srv import SetTwist
+from amiga_control_interfaces.action import Run
+from dataclasses import dataclass
+from aioros2 import (
+    timer,
+    service,
+    action,
+    serve_nodes,
+    result,
+    feedback,
+    subscribe,
+    topic,
+    import_node,
+    params,
+    node,
+    subscribe_param,
+    param,
+    start,
+)
+from std_msgs.msg import String
+from common_interfaces.msg import Vector2
+
+@dataclass
+class PerceiverNodeParams:
+    depth_topic: str = "camera/image"
+
+# Executable to call to launch this node (defined in `setup.py`)
+@node("amiga_control_node")
+class FurrowPerceiverNode:
+    amiga_params = params(PerceiverNodeParams)
+    
+    # TODO: Allow these annotations using parameters
+    # @subscribe(amiga_params.depth_topic)
+    # @subscribe(amiga_params.rs_name + "/image")
 
 
-class FurrowPerceiverNode(Node):
-    def __init__(self):
-        super().__init__("furrow_perceiver")
-        self.activated_ = False
-        self.service_ = self.create_service(
-            SetBool, "activate_robot", self.callback_activate_robot)
+# Boilerplate below here.
+def main():
+    serve_nodes(FurrowPerceiverNode())
 
-    def callback_activate_robot(self, request, response):
-        self.activated_ = request.data
-        response.success = True
-        if self.activated_:
-            response.message = "Robot has been activated"
-        else:
-            response.message = "Robot has been deactivated"
-        return response
-
-    def on_shutdown(self):
-        pass
-
-
-def main(args=None):
-    rclpy.init(args=args)
-
-    node = FurrowPerceiverNode()
-    rclpy.spin(node)
-
-    node.on_shutdown()
-    rclpy.shutdown()
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

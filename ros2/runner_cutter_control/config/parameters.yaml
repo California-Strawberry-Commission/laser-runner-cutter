@@ -25,3 +25,8 @@ laser0:
       fps: 30
       pps: 30000
       transition_duration_ms: 0.5
+amiga0:
+  ros__parameters:
+    amiga_params:
+      amiga_host: "10.160.1.194"
+      canbus_service_port: 6001
