@@ -68,7 +68,7 @@ export default function Controls() {
             id="exposure"
             name="exposure"
             label="Exposure (µs)"
-            helper_text={`Valid range: [${nodeState.exposureUsRange[0]}, ${nodeState.exposureUsRange[1]}]. Auto: -1`}
+            helper_text={`Range: [${nodeState.exposureUsRange[0]}, ${nodeState.exposureUsRange[1]}]. Auto: -1`}
             step={10}
             value={exposureUs}
             onChange={(str) => {
@@ -104,7 +104,7 @@ export default function Controls() {
             id="gain"
             name="gain"
             label="Gain (dB)"
-            helper_text={`Valid range: [${nodeState.gainDbRange[0]}, ${nodeState.gainDbRange[1]}]. Auto: -1`}
+            helper_text={`Range: [${nodeState.gainDbRange[0]}, ${nodeState.gainDbRange[1]}]. Auto: -1`}
             step={1}
             value={gainDb}
             onChange={(str) => {
