@@ -14,8 +14,7 @@ camera0:
       fps: 30
       rgb_size: [1280, 720]
       depth_size: [1280, 720]
-      video_dir: "~/Videos/runner-cutter-app"
-      image_dir: "~/Pictures/runner-cutter-app"
+      save_dir: "~/Pictures/runner-cutter-app"
       debug_frame_width: 640
 laser0:
   ros__parameters:
