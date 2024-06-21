@@ -27,5 +27,6 @@ const InputWithLabel = React.forwardRef<HTMLInputElement, InputWithLabelProps>(
     );
   }
 );
+InputWithLabel.displayName = "InputWithLabel";
 
 export { InputWithLabel };
