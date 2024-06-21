@@ -593,6 +593,10 @@ class LucidRgbd(RgbdCamera):
 
     @property
     def exposure_us(self) -> float:
+        """
+        Returns:
+            float: Exposure time in microseconds.
+        """
         if not self.is_connected:
             return 0.0
 
@@ -612,15 +616,59 @@ class LucidRgbd(RgbdCamera):
         nodemap = self._color_device.nodemap
         exposure_auto_node = nodemap["ExposureAuto"]
         exposure_time_node = nodemap["ExposureTime"]
-        if exposure_us < 0:
+        if exposure_us < 0.0:
             self._exposure_us = -1.0
             exposure_auto_node.value = "Continuous"
+            self._logger.info(f"Auto exposure set")
         elif exposure_time_node is not None:
             exposure_auto_node.value = "Off"
             self._exposure_us = max(
                 exposure_time_node.min, min(exposure_us, exposure_time_node.max)
             )
             exposure_time_node.value = self._exposure_us
+            self._logger.info(f"Exposure set to {self._exposure_us}us")
+
+    def get_exposure_us_range(self) -> Tuple[float, float]:
+        """
+        Returns:
+            Tuple[float, float]: (min, max) exposure times in microseconds.
+        """
+        if not self.is_connected:
+            return (0.0, 0.0)
+
+        nodemap = self._color_device.nodemap
+        return (nodemap["ExposureTime"].min, nodemap["ExposureTime"].max)
+
+    @property
+    def gain_db(self) -> float:
+        """
+        Returns:
+            float: Gain level in dB.
+        """
+        # TODO
+        return 0.0
+
+    @gain_db.setter
+    def gain_db(self, gain_db: float):
+        """
+        Set the gain level of the camera.
+
+        Args:
+            gain_db (float): Gain level in dB.
+        """
+        # TODO
+        return
+
+    def get_gain_db_range(self) -> Tuple[float, float]:
+        """
+        Returns:
+            Tuple[float, float]: (min, max) gain levels in dB.
+        """
+        if not self.is_connected:
+            return (0.0, 0.0)
+
+        nodemap = self._color_device.nodemap
+        return (nodemap["Gain"].min, nodemap["Gain"].max)
 
     def get_color_frame(self) -> Optional[np.ndarray]:
         if self._color_device is None:

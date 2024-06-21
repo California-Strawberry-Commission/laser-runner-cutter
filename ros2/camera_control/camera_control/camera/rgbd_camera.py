@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional
-
+from typing import Optional, Tuple
 from .rgbd_frame import RgbdFrame
 
 
@@ -38,6 +37,42 @@ class RgbdCamera(ABC):
 
         Args:
             exposure_us (float): Exposure time in microseconds.
+        """
+        pass
+
+    @abstractmethod
+    def get_exposure_us_range(self) -> Tuple[float, float]:
+        """
+        Returns:
+            Tuple[float, float]: (min, max) exposure times in microseconds.
+        """
+        pass
+
+    @property
+    @abstractmethod
+    def gain_db(self) -> float:
+        """
+        Returns:
+            float: Gain level in dB.
+        """
+        pass
+
+    @gain_db.setter
+    @abstractmethod
+    def gain_db(self, gain_db: float):
+        """
+        Set the gain level of the camera.
+
+        Args:
+            gain_db (float): Gain level in dB.
+        """
+        pass
+
+    @abstractmethod
+    def get_gain_db_range(self) -> Tuple[float, float]:
+        """
+        Returns:
+            Tuple[float, float]: (min, max) gain levels in dB.
         """
         pass
 

@@ -31,6 +31,7 @@ from camera_control_interfaces.srv import (
     GetPositionsForPixels,
     GetState,
     SetExposure,
+    SetGain,
     SetSaveDirectory,
     StartIntervalCapture,
 )
@@ -174,6 +175,18 @@ class CameraControlNode:
     @service("~/auto_exposure", Trigger)
     async def auto_exposure(self):
         self.camera.exposure_us = -1.0
+        self._publish_state()
+        return result(success=True)
+
+    @service("~/set_gain", SetGain)
+    async def set_gain(self, gain_db):
+        self.camera.gain_db = gain_db
+        self._publish_state()
+        return result(success=True)
+
+    @service("~/auto_gain", Trigger)
+    async def auto_gain(self):
+        self.camera.gain_db = -1.0
         self._publish_state()
         return result(success=True)
 
@@ -452,6 +465,13 @@ class CameraControlNode:
         state.recording_video = self.video_writer is not None
         state.interval_capture_active = self.interval_capture_task is not None
         state.exposure_us = self.camera.exposure_us
+        exposure_us_range = self.camera.get_exposure_us_range()
+        state.exposure_us_range = Vector2(
+            x=exposure_us_range[0], y=exposure_us_range[1]
+        )
+        state.gain_db = self.camera.gain_db
+        gain_db_range = self.camera.get_gain_db_range()
+        state.gain_db_range = Vector2(x=gain_db_range[0], y=gain_db_range[1])
         state.save_directory = self.camera_control_params.save_dir
         return state
 
@@ -465,6 +485,9 @@ class CameraControlNode:
                 recording_video=state.recording_video,
                 interval_capture_active=state.interval_capture_active,
                 exposure_us=state.exposure_us,
+                exposure_us_range=state.exposure_us_range,
+                gain_db=state.gain_db,
+                gain_db_range=state.gain_db_range,
                 save_directory=state.save_directory,
             )
         )

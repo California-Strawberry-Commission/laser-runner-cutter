@@ -23,6 +23,8 @@ export default function Controls() {
     logMessages,
     setExposure,
     autoExposure,
+    setGain,
+    autoGain,
     setSaveDirectory,
     startLaserDetection,
     stopLaserDetection,
@@ -35,22 +37,22 @@ export default function Controls() {
     saveImage,
   } = useCameraNode(nodeName);
   const [exposureUs, setExposureUs] = useState<string>("0");
+  const [gainDb, setGainDb] = useState<string>("0");
   const [saveDir, setSaveDir] = useState<string>("");
   const [intervalSecs, setIntervalSecs] = useState<string>("5");
 
   const disableButtons = !rosbridgeNodeInfo.connected || !nodeInfo.connected;
 
-  // Sync text inputs to node state if empty
+  // Sync text inputs to node state
   useEffect(() => {
-    if (exposureUs === "0") {
-      setExposureUs(nodeState.exposureUs.toString());
-    }
-    if (saveDir === "") {
-      setSaveDir(nodeState.saveDirectory);
-    }
+    setExposureUs(String(nodeState.exposureUs));
+    setGainDb(String(nodeState.gainDb));
+    setSaveDir(nodeState.saveDirectory);
   }, [
     setExposureUs,
     nodeState.exposureUs,
+    setGainDb,
+    nodeState.gainDb,
     setSaveDir,
     nodeState.saveDirectory,
   ]);
@@ -62,12 +64,12 @@ export default function Controls() {
           Exposure (us):
         </Label>
         <Input
-          className="flex-none w-24"
+          className="flex-none w-20"
           type="number"
           id="exposure"
           name="exposure"
           step={10}
-          value={exposureUs.toString()}
+          value={exposureUs}
           onChange={(str) => {
             const value = Number(str);
             if (!isNaN(value)) {
@@ -90,6 +92,39 @@ export default function Controls() {
           }}
         >
           Auto Exposure
+        </Button>
+        <Label className="flex-none w-12" htmlFor="gain">
+          Gain (dB):
+        </Label>
+        <Input
+          className="flex-none w-16"
+          type="number"
+          id="gain"
+          name="gain"
+          step={1}
+          value={gainDb}
+          onChange={(str) => {
+            const value = Number(str);
+            if (!isNaN(value)) {
+              setGainDb(str);
+            }
+          }}
+        />
+        <Button
+          disabled={disableButtons}
+          onClick={() => {
+            setGain(Number(gainDb));
+          }}
+        >
+          Set Gain
+        </Button>
+        <Button
+          disabled={disableButtons}
+          onClick={() => {
+            autoGain();
+          }}
+        >
+          Auto Gain
         </Button>
       </div>
       <div className="flex flex-row items-center gap-4">
@@ -152,7 +187,7 @@ export default function Controls() {
           id="interval"
           name="interval"
           step={1}
-          value={intervalSecs.toString()}
+          value={intervalSecs}
           onChange={(str) => {
             const value = Number(str);
             if (!isNaN(value)) {
