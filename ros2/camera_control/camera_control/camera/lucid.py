@@ -472,6 +472,7 @@ class LucidRgbd(RgbdCamera):
         self._color_device = None
         self._depth_device = None
         self._exposure_us = 0.0
+        self._gain_db = 0.0
 
     @property
     def is_connected(self) -> bool:
@@ -582,8 +583,9 @@ class LucidRgbd(RgbdCamera):
         # Set the following when Persistent IP is set on the camera
         nodemap["GevPersistentARPConflictDetectionEnable"].value = False
 
-        # Set auto exposure
+        # Set auto exposure and auto gain
         self.exposure_us = -1.0
+        self.gain_db = -1.0
 
         # Start streams
         self._color_device.start_stream(10)
@@ -595,7 +597,7 @@ class LucidRgbd(RgbdCamera):
     def exposure_us(self) -> float:
         """
         Returns:
-            float: Exposure time in microseconds.
+            float: Exposure time of the color camera in microseconds.
         """
         if not self.is_connected:
             return 0.0
@@ -605,7 +607,7 @@ class LucidRgbd(RgbdCamera):
     @exposure_us.setter
     def exposure_us(self, exposure_us: float):
         """
-        Set the exposure time of the camera. A negative value sets auto exposure.
+        Set the exposure time of the color camera. A negative value sets auto exposure.
 
         Args:
             exposure_us (float): Exposure time in microseconds. A negative value sets auto exposure.
@@ -631,7 +633,7 @@ class LucidRgbd(RgbdCamera):
     def get_exposure_us_range(self) -> Tuple[float, float]:
         """
         Returns:
-            Tuple[float, float]: (min, max) exposure times in microseconds.
+            Tuple[float, float]: (min, max) exposure times of the color camera in microseconds.
         """
         if not self.is_connected:
             return (0.0, 0.0)
@@ -643,26 +645,41 @@ class LucidRgbd(RgbdCamera):
     def gain_db(self) -> float:
         """
         Returns:
-            float: Gain level in dB.
+            float: Gain level of the color camera in dB.
         """
-        # TODO
-        return 0.0
+        if not self.is_connected:
+            return 0.0
+
+        return self._gain_db
 
     @gain_db.setter
     def gain_db(self, gain_db: float):
         """
-        Set the gain level of the camera.
+        Set the gain level of the color camera.
 
         Args:
             gain_db (float): Gain level in dB.
         """
-        # TODO
-        return
+        if not self.is_connected:
+            return
+
+        nodemap = self._color_device.nodemap
+        gain_auto_node = nodemap["GainAuto"]
+        gain_node = nodemap["Gain"]
+        if gain_db < 0.0:
+            self._gain_db = -1.0
+            gain_auto_node.value = "Continuous"
+            self._logger.info(f"Auto gain set")
+        elif gain_node is not None:
+            gain_auto_node.value = "Off"
+            self._gain_db = max(gain_node.min, min(gain_db, gain_node.max))
+            gain_node.value = self._gain_db
+            self._logger.info(f"Gain set to {self._gain_db} dB")
 
     def get_gain_db_range(self) -> Tuple[float, float]:
         """
         Returns:
-            Tuple[float, float]: (min, max) gain levels in dB.
+            Tuple[float, float]: (min, max) gain levels of the color camera in dB.
         """
         if not self.is_connected:
             return (0.0, 0.0)
