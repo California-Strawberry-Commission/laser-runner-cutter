@@ -1,10 +1,11 @@
+import argparse
+import concurrent.futures
 import ctypes
 import logging
 import os
+import sys
 import time
 from typing import Optional, Tuple
-import argparse
-import sys
 
 import cv2
 import numpy as np
@@ -767,12 +768,13 @@ class LucidRgbd(RgbdCamera):
         return np_array
 
     def get_frame(self) -> Optional[LucidFrame]:
-        color_frame = self.get_color_frame()
-        if color_frame is None:
-            return None
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future_color_frame = executor.submit(self.get_color_frame)
+            future_depth_frame = executor.submit(self.get_depth_frame)
+            color_frame = future_color_frame.result()
+            depth_frame = future_depth_frame.result()
 
-        depth_frame = self.get_depth_frame()
-        if depth_frame is None:
+        if color_frame is None or depth_frame is None:
             return None
 
         # depth_frame is a numpy structured array containing both xyz and intensity data
