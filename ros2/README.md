@@ -51,7 +51,7 @@ Linux systems require udev rules to allow access to USB devices without root pri
 
 ## Native libraries
 
-C/C++ libraries included were compiled for linux-x86_64 from the following sources:
+C/C++ libraries included were compiled for linux-x86_64 and linux-aarch64 from the following sources:
 
 - Helios DAC: https://github.com/Grix/helios_dac
 - Ether Dream 4 DAC: https://github.com/genkikondo/ether-dream-sdk

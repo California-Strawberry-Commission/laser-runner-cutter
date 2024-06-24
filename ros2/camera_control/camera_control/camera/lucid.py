@@ -551,6 +551,8 @@ class LucidRgbd(RgbdCamera):
         # Set frame size and pixel format
         nodemap["Width"].value = nodemap["Width"].max
         nodemap["Height"].value = nodemap["Height"].max
+        color_frame_width = nodemap["Width"].value
+        color_frame_height = nodemap["Height"].value
         nodemap["PixelFormat"].value = PixelFormat.RGB8
         # Set the following when Persistent IP is set on the camera
         nodemap["GevPersistentARPConflictDetectionEnable"].value = False
@@ -590,9 +592,13 @@ class LucidRgbd(RgbdCamera):
 
         # Start streams
         self._color_device.start_stream(10)
-        self._logger.info(f"Device {self.color_camera_serial_number} is now streaming")
+        self._logger.info(
+            f"Device (color) {self.color_camera_serial_number} is now streaming at {color_frame_width} x {color_frame_height}"
+        )
         self._depth_device.start_stream(10)
-        self._logger.info(f"Device {self.depth_camera_serial_number} is now streaming")
+        self._logger.info(
+            f"Device (depth) {self.depth_camera_serial_number} is now streaming"
+        )
 
     @property
     def exposure_us(self) -> float:
