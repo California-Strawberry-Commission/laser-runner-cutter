@@ -15,7 +15,7 @@ export default function FramePreview({
   onImageClick?: React.MouseEventHandler<HTMLImageElement>;
 }) {
   const videoServer =
-    process.env.NEXT_PUBLIC_VIDEO_SERVER_URL ?? "http://localhost:8080";
+    process.env.NEXT_PUBLIC_VIDEO_SERVER_URL ?? `http://${window.location.hostname}:8080`;
   const streamUrl = `${videoServer}/stream?topic=${topicName}`;
 
   return (
