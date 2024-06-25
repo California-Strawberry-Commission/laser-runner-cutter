@@ -10,4 +10,4 @@ labelbox[data]
 ndjson
 natsort
 opencv-contrib-python
-../ml_utils
+-e ../ml_utils --config-settings editable_mode=strict

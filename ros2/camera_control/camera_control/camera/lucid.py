@@ -1,10 +1,11 @@
+import argparse
+import concurrent.futures
 import ctypes
 import logging
 import os
+import sys
 import time
 from typing import Optional, Tuple
-import argparse
-import sys
 
 import cv2
 import numpy as np
@@ -472,6 +473,7 @@ class LucidRgbd(RgbdCamera):
         self._color_device = None
         self._depth_device = None
         self._exposure_us = 0.0
+        self._gain_db = 0.0
 
     @property
     def is_connected(self) -> bool:
@@ -549,6 +551,8 @@ class LucidRgbd(RgbdCamera):
         # Set frame size and pixel format
         nodemap["Width"].value = nodemap["Width"].max
         nodemap["Height"].value = nodemap["Height"].max
+        color_frame_width = nodemap["Width"].value
+        color_frame_height = nodemap["Height"].value
         nodemap["PixelFormat"].value = PixelFormat.RGB8
         # Set the following when Persistent IP is set on the camera
         nodemap["GevPersistentARPConflictDetectionEnable"].value = False
@@ -582,17 +586,26 @@ class LucidRgbd(RgbdCamera):
         # Set the following when Persistent IP is set on the camera
         nodemap["GevPersistentARPConflictDetectionEnable"].value = False
 
-        # Set auto exposure
+        # Set auto exposure and auto gain
         self.exposure_us = -1.0
+        self.gain_db = -1.0
 
         # Start streams
         self._color_device.start_stream(10)
-        self._logger.info(f"Device {self.color_camera_serial_number} is now streaming")
+        self._logger.info(
+            f"Device (color) {self.color_camera_serial_number} is now streaming at {color_frame_width} x {color_frame_height}"
+        )
         self._depth_device.start_stream(10)
-        self._logger.info(f"Device {self.depth_camera_serial_number} is now streaming")
+        self._logger.info(
+            f"Device (depth) {self.depth_camera_serial_number} is now streaming"
+        )
 
     @property
     def exposure_us(self) -> float:
+        """
+        Returns:
+            float: Exposure time of the color camera in microseconds.
+        """
         if not self.is_connected:
             return 0.0
 
@@ -601,7 +614,7 @@ class LucidRgbd(RgbdCamera):
     @exposure_us.setter
     def exposure_us(self, exposure_us: float):
         """
-        Set the exposure time of the camera. A negative value sets auto exposure.
+        Set the exposure time of the color camera. A negative value sets auto exposure.
 
         Args:
             exposure_us (float): Exposure time in microseconds. A negative value sets auto exposure.
@@ -612,15 +625,74 @@ class LucidRgbd(RgbdCamera):
         nodemap = self._color_device.nodemap
         exposure_auto_node = nodemap["ExposureAuto"]
         exposure_time_node = nodemap["ExposureTime"]
-        if exposure_us < 0:
+        if exposure_us < 0.0:
             self._exposure_us = -1.0
             exposure_auto_node.value = "Continuous"
+            self._logger.info(f"Auto exposure set")
         elif exposure_time_node is not None:
             exposure_auto_node.value = "Off"
             self._exposure_us = max(
                 exposure_time_node.min, min(exposure_us, exposure_time_node.max)
             )
             exposure_time_node.value = self._exposure_us
+            self._logger.info(f"Exposure set to {self._exposure_us}us")
+
+    def get_exposure_us_range(self) -> Tuple[float, float]:
+        """
+        Returns:
+            Tuple[float, float]: (min, max) exposure times of the color camera in microseconds.
+        """
+        if not self.is_connected:
+            return (0.0, 0.0)
+
+        nodemap = self._color_device.nodemap
+        return (nodemap["ExposureTime"].min, nodemap["ExposureTime"].max)
+
+    @property
+    def gain_db(self) -> float:
+        """
+        Returns:
+            float: Gain level of the color camera in dB.
+        """
+        if not self.is_connected:
+            return 0.0
+
+        return self._gain_db
+
+    @gain_db.setter
+    def gain_db(self, gain_db: float):
+        """
+        Set the gain level of the color camera.
+
+        Args:
+            gain_db (float): Gain level in dB.
+        """
+        if not self.is_connected:
+            return
+
+        nodemap = self._color_device.nodemap
+        gain_auto_node = nodemap["GainAuto"]
+        gain_node = nodemap["Gain"]
+        if gain_db < 0.0:
+            self._gain_db = -1.0
+            gain_auto_node.value = "Continuous"
+            self._logger.info(f"Auto gain set")
+        elif gain_node is not None:
+            gain_auto_node.value = "Off"
+            self._gain_db = max(gain_node.min, min(gain_db, gain_node.max))
+            gain_node.value = self._gain_db
+            self._logger.info(f"Gain set to {self._gain_db} dB")
+
+    def get_gain_db_range(self) -> Tuple[float, float]:
+        """
+        Returns:
+            Tuple[float, float]: (min, max) gain levels of the color camera in dB.
+        """
+        if not self.is_connected:
+            return (0.0, 0.0)
+
+        nodemap = self._color_device.nodemap
+        return (nodemap["Gain"].min, nodemap["Gain"].max)
 
     def get_color_frame(self) -> Optional[np.ndarray]:
         if self._color_device is None:
@@ -702,12 +774,13 @@ class LucidRgbd(RgbdCamera):
         return np_array
 
     def get_frame(self) -> Optional[LucidFrame]:
-        color_frame = self.get_color_frame()
-        if color_frame is None:
-            return None
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future_color_frame = executor.submit(self.get_color_frame)
+            future_depth_frame = executor.submit(self.get_depth_frame)
+            color_frame = future_color_frame.result()
+            depth_frame = future_depth_frame.result()
 
-        depth_frame = self.get_depth_frame()
-        if depth_frame is None:
+        if color_frame is None or depth_frame is None:
             return None
 
         # depth_frame is a numpy structured array containing both xyz and intensity data

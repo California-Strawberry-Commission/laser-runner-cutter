@@ -42,9 +42,14 @@ class LaserControlNode:
         )
         self.dac = None
         if self.laser_control_params.dac_type == "helios":
-            self.dac = HeliosDAC(os.path.join(include_dir, "libHeliosDacAPI.so"))
+            self.dac = HeliosDAC(
+                os.path.join(include_dir, "libHeliosDacAPI.so"),
+                logger=self.get_logger(),
+            )
         elif self.laser_control_params.dac_type == "ether_dream":
-            self.dac = EtherDreamDAC(os.path.join(include_dir, "libEtherDream.so"))
+            self.dac = EtherDreamDAC(
+                os.path.join(include_dir, "libEtherDream.so"), logger=self.get_logger()
+            )
         else:
             raise Exception(f"Unknown dac_type: {self.laser_control_params.dac_type}")
         self.connecting = False

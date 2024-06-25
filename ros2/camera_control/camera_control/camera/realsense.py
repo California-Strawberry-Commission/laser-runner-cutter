@@ -9,8 +9,6 @@ import pyrealsense2 as rs
 from .rgbd_camera import RgbdCamera
 from .rgbd_frame import RgbdFrame
 
-# D435 has a minimum exposure time of 1us
-MIN_EXPOSURE_US = 1
 # General min and max possible depths pulled from RealSense examples
 DEPTH_MIN_METERS = 0.1
 DEPTH_MAX_METERS = 10
@@ -168,6 +166,7 @@ class RealSense(RgbdCamera):
         self._check_connection_thread = None
         self._pipeline = None
         self._exposure_us = 0.0
+        self._gain_db = 0.0
 
     @property
     def is_connected(self) -> bool:
@@ -281,6 +280,10 @@ class RealSense(RgbdCamera):
 
     @property
     def exposure_us(self) -> float:
+        """
+        Returns:
+            float: Exposure time in microseconds.
+        """
         if not self.is_connected:
             return 0.0
 
@@ -301,9 +304,76 @@ class RealSense(RgbdCamera):
         if exposure_us < 0:
             self._exposure_us = -1.0
             color_sensor.set_option(rs.option.enable_auto_exposure, 1)
+            self._logger.info(f"Auto exposure set")
+            # Setting auto exposure also means auto gain
+            self._gain_db = -1.0
         else:
-            self._exposure_us = max(MIN_EXPOSURE_US, round(exposure_us))
+            exposure_us_range = self.get_exposure_us_range()
+            self._exposure_us = max(
+                exposure_us_range[0], min(exposure_us, exposure_us_range[1])
+            )
             color_sensor.set_option(rs.option.exposure, self._exposure_us)
+            self._logger.info(f"Exposure set to {self._exposure_us}us")
+            # Setting manual exposure also automatically turns on manual gain
+            self._gain_db = color_sensor.get_option(rs.option.gain)
+
+    def get_exposure_us_range(self) -> Tuple[float, float]:
+        """
+        Returns:
+            Tuple[float, float]: (min, max) exposure times in microseconds.
+        """
+        if not self.is_connected:
+            return (0.0, 0.0)
+
+        color_sensor = self._profile.get_device().first_color_sensor()
+        exposure_us_range = color_sensor.get_option_range(rs.option.exposure)
+        return (exposure_us_range.min, exposure_us_range.max)
+
+    @property
+    def gain_db(self) -> float:
+        """
+        Returns:
+            float: Gain level in dB.
+        """
+        if not self.is_connected:
+            return 0.0
+
+        return self._gain_db
+
+    @gain_db.setter
+    def gain_db(self, gain_db: float):
+        """
+        Set the gain level of the camera.
+
+        Args:
+            gain_db (float): Gain level in dB.
+        """
+        if not self.is_connected:
+            return
+
+        if gain_db < 0:
+            # Auto gain just sets auto exposure mode
+            self.exposure_us = -1.0
+        else:
+            gain_range = self.get_gain_db_range()
+            self._gain_db = max(gain_range[0], min(gain_db, gain_range[1]))
+            color_sensor = self._profile.get_device().first_color_sensor()
+            color_sensor.set_option(rs.option.gain, self._gain_db)
+            self._logger.info(f"Gain set to {self._gain_db} dB")
+            # Setting manual gain also automatically turns on manual exposure
+            self._exposure_us = color_sensor.get_option(rs.option.exposure)
+
+    def get_gain_db_range(self) -> Tuple[float, float]:
+        """
+        Returns:
+            Tuple[float, float]: (min, max) gain levels in dB.
+        """
+        if not self.is_connected:
+            return (0.0, 0.0)
+
+        color_sensor = self._profile.get_device().first_color_sensor()
+        gain_db_range = color_sensor.get_option_range(rs.option.gain)
+        return (gain_db_range.min, gain_db_range.max)
 
     def get_frame(self) -> Optional[RealSenseFrame]:
         """

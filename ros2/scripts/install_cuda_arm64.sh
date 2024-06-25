@@ -20,18 +20,24 @@ sudo apt-get -y install cuda
 # Install specific versions of PyTorch and torchvision.
 # Based on https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048
 # PyTorch:
-sudo apt-get install python3-pip libopenblas-base libopenmpi-dev libomp-dev
+sudo apt-get -y install python3-pip libopenblas-base libopenmpi-dev libomp-dev libcudnn8
 wget https://developer.download.nvidia.cn/compute/redist/jp/v512/pytorch/torch-2.1.0a0+41361538.nv23.06-cp38-cp38-linux_aarch64.whl
 pip install 'Cython<3' numpy torch-2.1.0a0+41361538.nv23.06-cp38-cp38-linux_aarch64.whl
 # torchvision:
-sudo apt-get install libjpeg-dev zlib1g-dev libpython3-dev libopenblas-dev libavcodec-dev libavformat-dev libswscale-dev
+sudo apt-get -y install libjpeg-dev zlib1g-dev libpython3-dev libopenblas-dev libavcodec-dev libavformat-dev libswscale-dev
 git clone --branch v0.16.1 https://github.com/pytorch/vision torchvision
 cd torchvision
 export BUILD_VERSION=0.16.1
 python setup.py install
 
-# Append export to ~/.bashrc if it doesn't already exist
-line_to_append='export LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1'
-if ! grep -qxF "$line_to_append" ~/.bashrc; then
-    echo "$line_to_append" >> ~/.bashrc
-fi
+# Append exports to ~/.bashrc if it doesn't already exist
+lines_to_append=(
+    'export PATH=/usr/local/cuda-11.8/bin:$PATH'
+    'export LD_LIBRARY_PATH=/usr/local/cuda-11.8/lib64:$LD_LIBRARY_PATH'
+    'export LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1'
+)
+for line in "${lines_to_append[@]}"; do
+    if ! grep -qxF "$line" ~/.bashrc; then
+        echo "$line" >> ~/.bashrc
+    fi
+done

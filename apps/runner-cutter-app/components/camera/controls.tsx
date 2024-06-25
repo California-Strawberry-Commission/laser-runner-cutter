@@ -9,6 +9,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { InputWithLabel } from "@/components/ui/input-with-label";
 import useROS from "@/lib/ros/useROS";
 import useCameraNode from "@/lib/useCameraNode";
 import { useEffect, useState } from "react";
@@ -23,6 +24,8 @@ export default function Controls() {
     logMessages,
     setExposure,
     autoExposure,
+    setGain,
+    autoGain,
     setSaveDirectory,
     startLaserDetection,
     stopLaserDetection,
@@ -35,85 +38,123 @@ export default function Controls() {
     saveImage,
   } = useCameraNode(nodeName);
   const [exposureUs, setExposureUs] = useState<string>("0");
+  const [gainDb, setGainDb] = useState<string>("0");
   const [saveDir, setSaveDir] = useState<string>("");
   const [intervalSecs, setIntervalSecs] = useState<string>("5");
 
   const disableButtons = !rosbridgeNodeInfo.connected || !nodeInfo.connected;
 
-  // Sync text inputs to node state if empty
+  // Sync text inputs to node state
   useEffect(() => {
-    if (exposureUs === "0") {
-      setExposureUs(nodeState.exposureUs.toString());
-    }
-    if (saveDir === "") {
-      setSaveDir(nodeState.saveDirectory);
-    }
+    setExposureUs(String(nodeState.exposureUs));
+    setGainDb(String(nodeState.gainDb));
+    setSaveDir(nodeState.saveDirectory);
   }, [
     setExposureUs,
     nodeState.exposureUs,
+    setGainDb,
+    nodeState.gainDb,
     setSaveDir,
     nodeState.saveDirectory,
   ]);
 
   return (
     <div className="flex flex-col gap-4 items-center">
-      <div className="flex flex-row items-center gap-4">
-        <Label className="flex-none w-16" htmlFor="exposure">
-          Exposure (us):
-        </Label>
-        <Input
-          className="flex-none w-24"
-          type="number"
-          id="exposure"
-          name="exposure"
-          step={10}
-          value={exposureUs.toString()}
-          onChange={(str) => {
-            const value = Number(str);
-            if (!isNaN(value)) {
-              setExposureUs(str);
-            }
-          }}
-        />
-        <Button
-          disabled={disableButtons}
-          onClick={() => {
-            setExposure(Number(exposureUs));
-          }}
-        >
-          Set Exposure
-        </Button>
-        <Button
-          disabled={disableButtons}
-          onClick={() => {
-            autoExposure();
-          }}
-        >
-          Auto Exposure
-        </Button>
-      </div>
-      <div className="flex flex-row items-center gap-4">
-        <Label className="flex-none w-16" htmlFor="saveDir">
-          Save Directory:
-        </Label>
-        <Input
-          className="flex-none w-64"
-          type="text"
-          id="saveDir"
-          name="saveDir"
-          value={saveDir}
-          onChange={(str) => {
-            setSaveDir(str);
-          }}
-        />
-        <Button
-          disabled={disableButtons}
-          onClick={() => {
-            setSaveDirectory(saveDir);
-          }}
-        >
-          Set Save Directory
-        </Button>
+      <div className="flex flex-row items-center gap-4 mb-4">
+        <div className="flex flex-row items-center gap-[1px]">
+          <InputWithLabel
+            className="flex-none w-24 rounded-r-none"
+            type="number"
+            id="exposure"
+            name="exposure"
+            label="Exposure (µs)"
+            helper_text={`Range: [${nodeState.exposureUsRange[0]}, ${nodeState.exposureUsRange[1]}]. Auto: -1`}
+            step={10}
+            value={exposureUs}
+            onChange={(str) => {
+              const value = Number(str);
+              if (!isNaN(value)) {
+                setExposureUs(str);
+              }
+            }}
+          />
+          <Button
+            className="rounded-none"
+            disabled={disableButtons}
+            onClick={() => {
+              setExposure(Number(exposureUs));
+            }}
+          >
+            Set
+          </Button>
+          <Button
+            className="rounded-l-none"
+            disabled={disableButtons}
+            onClick={() => {
+              autoExposure();
+            }}
+          >
+            Auto
+          </Button>
+        </div>
+        <div className="flex flex-row items-center gap-[1px]">
+          <InputWithLabel
+            className="flex-none w-20 rounded-r-none"
+            type="number"
+            id="gain"
+            name="gain"
+            label="Gain (dB)"
+            helper_text={`Range: [${nodeState.gainDbRange[0]}, ${nodeState.gainDbRange[1]}]. Auto: -1`}
+            step={1}
+            value={gainDb}
+            onChange={(str) => {
+              const value = Number(str);
+              if (!isNaN(value)) {
+                setGainDb(str);
+              }
+            }}
+          />
+          <Button
+            className="rounded-none"
+            disabled={disableButtons}
+            onClick={() => {
+              setGain(Number(gainDb));
+            }}
+          >
+            Set
+          </Button>
+          <Button
+            className="rounded-l-none"
+            disabled={disableButtons}
+            onClick={() => {
+              autoGain();
+            }}
+          >
+            Auto
+          </Button>
+        </div>
+        <div className="flex flex-row items-center">
+          <InputWithLabel
+            className="flex-none w-64 rounded-r-none"
+            type="text"
+            id="saveDir"
+            name="saveDir"
+            label="Save Directory"
+            value={saveDir}
+            onChange={(str) => {
+              setSaveDir(str);
+            }}
+          />
+          <Button
+            className="rounded-l-none"
+            disabled={disableButtons}
+            onClick={() => {
+              setSaveDirectory(saveDir);
+            }}
+          >
+            Set
+          </Button>
+        </div>
       </div>
       <div className="flex flex-row items-center gap-4">
         {nodeState.recordingVideo ? (
@@ -143,42 +184,44 @@ export default function Controls() {
         >
           Save Image
         </Button>
-        <Label className="flex-none w-16" htmlFor="interval">
-          Interval (s):
-        </Label>
-        <Input
-          className="flex-none w-20"
-          type="number"
-          id="interval"
-          name="interval"
-          step={1}
-          value={intervalSecs.toString()}
-          onChange={(str) => {
-            const value = Number(str);
-            if (!isNaN(value)) {
-              setIntervalSecs(str);
-            }
-          }}
-        />
-        {nodeState.intervalCaptureActive ? (
-          <Button
-            disabled={disableButtons}
-            onClick={() => {
-              stopIntervalCapture();
+        <div className="flex flex-row items-center">
+          <InputWithLabel
+            className="flex-none w-20 rounded-r-none"
+            type="number"
+            id="interval"
+            name="interval"
+            label="Interval (s)"
+            step={1}
+            value={intervalSecs}
+            onChange={(str) => {
+              const value = Number(str);
+              if (!isNaN(value)) {
+                setIntervalSecs(str);
+              }
             }}
-          >
-            Stop Interval Capture
-          </Button>
-        ) : (
-          <Button
-            disabled={disableButtons}
-            onClick={() => {
-              startIntervalCapture(Number(intervalSecs));
-            }}
-          >
-            Start Interval Capture
-          </Button>
-        )}
+          />
+          {nodeState.intervalCaptureActive ? (
+            <Button
+              className="rounded-l-none"
+              disabled={disableButtons}
+              onClick={() => {
+                stopIntervalCapture();
+              }}
+            >
+              Stop Interval Capture
+            </Button>
+          ) : (
+            <Button
+              className="rounded-l-none"
+              disabled={disableButtons}
+              onClick={() => {
+                startIntervalCapture(Number(intervalSecs));
+              }}
+            >
+              Start Interval Capture
+            </Button>
+          )}
+        </div>
       </div>
       <div className="flex flex-row items-center gap-4">
         {nodeState.laserDetectionEnabled ? (
@@ -220,7 +263,7 @@ export default function Controls() {
           </Button>
         )}
       </div>
-      <FramePreview height={480} topicName={"/camera0/debug_frame"} />
+      <FramePreview height={520} topicName={"/camera0/debug_frame"} />
       <Popover>
         <PopoverTrigger asChild>
           <Button className="fixed bottom-4 right-4">Show Logs</Button>

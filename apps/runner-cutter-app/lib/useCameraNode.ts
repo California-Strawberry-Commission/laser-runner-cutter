@@ -9,6 +9,9 @@ export type State = {
   recordingVideo: boolean;
   intervalCaptureActive: boolean;
   exposureUs: number;
+  exposureUsRange: [number, number];
+  gainDb: number;
+  gainDbRange: [number, number];
   saveDirectory: string;
 };
 
@@ -20,6 +23,9 @@ const INITIAL_STATE: State = {
   recordingVideo: false,
   intervalCaptureActive: false,
   exposureUs: 0.0,
+  exposureUsRange: [0.0, 0.0],
+  gainDb: 0.0,
+  gainDbRange: [0.0, 0.0],
   saveDirectory: "",
 };
 
@@ -31,6 +37,9 @@ function convertStateMessage(message: any): State {
     recordingVideo: message.recording_video,
     intervalCaptureActive: message.interval_capture_active,
     exposureUs: message.exposure_us,
+    exposureUsRange: [message.exposure_us_range.x, message.exposure_us_range.y],
+    gainDb: message.gain_db,
+    gainDbRange: [message.gain_db_range.x, message.gain_db_range.y],
     saveDirectory: message.save_directory,
   };
 }
@@ -157,6 +166,21 @@ export default function useCameraNode(nodeName: string) {
     ros.callService(`${nodeName}/auto_exposure`, "std_srvs/Trigger", {});
   }, [ros, nodeName]);
 
+  const setGain = useCallback(
+    (gainDb: number) => {
+      ros.callService(
+        `${nodeName}/set_gain`,
+        "camera_control_interfaces/SetGain",
+        { gain_db: gainDb }
+      );
+    },
+    [ros, nodeName]
+  );
+
+  const autoGain = useCallback(() => {
+    ros.callService(`${nodeName}/auto_gain`, "std_srvs/Trigger", {});
+  }, [ros, nodeName]);
+
   const setSaveDirectory = useCallback(
     (saveDir: string) => {
       ros.callService(
@@ -239,6 +263,8 @@ export default function useCameraNode(nodeName: string) {
     closeDevice,
     setExposure,
     autoExposure,
+    setGain,
+    autoGain,
     setSaveDirectory,
     startLaserDetection,
     stopLaserDetection,

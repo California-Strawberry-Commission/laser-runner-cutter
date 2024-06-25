@@ -11,5 +11,7 @@ if [ ! -d $VENV_DIR ]; then
     python3 -m venv $VENV_DIR --system-site-packages --symlinks 
 
     # Update pip - old pip will run into install problems.
-    $VENV_DIR/bin/python -m pip install --upgrade pip setuptools
+    $VENV_DIR/bin/python -m pip install --upgrade pip
+    # Latest setuptools (v70) doesn't work with PyTorch, so downgrade to a specific version...
+    $VENV_DIR/bin/python -m pip install setuptools==69.5.1
 fi
