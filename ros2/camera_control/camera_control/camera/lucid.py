@@ -160,9 +160,9 @@ class LucidFrame(RgbdFrame):
         """
         self.color_frame = color_frame
         self._depth_frame_xyz = depth_frame_xyz
-        self.depth_frame = depth_frame_xyz[
-            :, :, 2
-        ]  # Extract the "z" value to represent the depth
+        self.depth_frame = depth_frame_xyz[:, :, 2].astype(
+            np.uint16
+        )  # Extract the "z" value to represent the depth and convert to mono16
         self.timestamp_millis = timestamp_millis
         self._color_camera_intrinsic_matrix = color_camera_intrinsic_matrix
         self._color_camera_distortion_coeffs = color_camera_distortion_coeffs
@@ -580,7 +580,7 @@ class LucidRgbd(RgbdCamera):
         # Set pixel format
         nodemap["PixelFormat"].value = PixelFormat.Coord3D_ABCY16
         # Set depth camera specific node values
-        nodemap["Scan3dOperatingMode"].value = "Distance3000mmSingleFreq"
+        nodemap["Scan3dOperatingMode"].value = "Distance1250mmSingleFreq"
         self._xyz_scale = nodemap["Scan3dCoordinateScale"].value
         nodemap["Scan3dCoordinateSelector"].value = "CoordinateA"
         x_offset = nodemap["Scan3dCoordinateOffset"].value
