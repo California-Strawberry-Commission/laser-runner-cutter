@@ -13,4 +13,4 @@ albumentations
 torchmetrics
 tqdm
 git+https://github.com/facebookresearch/detectron2.git
-../ml_utils
+-e ../ml_utils --config-settings editable_mode=strict

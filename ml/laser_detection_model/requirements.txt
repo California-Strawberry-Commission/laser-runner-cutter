@@ -9,4 +9,4 @@ labelbox
 labelbox[data]
 ndjson
 natsort
-../../ros2/laser_control
+-e ../../ros2/laser_control --config-settings editable_mode=strict
