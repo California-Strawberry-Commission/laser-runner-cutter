@@ -227,6 +227,7 @@ class StateMachine:
         await self._laser_node.stop()
         await self._laser_node.clear_points()
         await self._camera_node.auto_exposure()
+        await self._camera_node.auto_gain()
         self._runner_tracker.clear()
 
     async def on_enter_calibration(self):
@@ -329,8 +330,9 @@ class StateMachine:
     async def _aim(
         self, target_position: Tuple[float, float, float], target_pixel: Tuple[int, int]
     ) -> Optional[Tuple[float, float]]:
-        # TODO: set exposure automatically when detecting laser
+        # TODO: set exposure/gain automatically when detecting laser
         await self._camera_node.set_exposure(exposure_us=1.0)
+        await self._camera_node.set_gain(gain_db=0.0)
         initial_laser_coord = self._calibration.camera_point_to_laser_coord(
             target_position
         )
@@ -348,6 +350,7 @@ class StateMachine:
             target_pixel, initial_laser_coord
         )
         await self._laser_node.stop()
+        await self._camera_node.auto_gain()
         await self._camera_node.auto_exposure()
         return corrected_laser_coord
 
@@ -371,7 +374,7 @@ class StateMachine:
                 )
             # No lasers detected. Try again.
             # TODO: optimize the frame callback time and reduce this
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.5)
             attempt += 1
         return None, None
 
@@ -389,7 +392,7 @@ class StateMachine:
             )
             # Wait for galvo to settle and for camera frame capture
             # TODO: optimize the frame callback time and reduce this
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.5)
             laser_pixel, laser_pos = await self._get_laser_pixel_and_pos()
             if laser_pixel is None or laser_pos is None:
                 self._logger.info("Could not detect laser.")

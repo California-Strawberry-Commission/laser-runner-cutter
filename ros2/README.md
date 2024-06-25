@@ -42,6 +42,10 @@ Linux systems require udev rules to allow access to USB devices without root pri
 
 1.  Issue the command `sudo udevadm control --reload` (or restart the computer).
 
+### Using LUCID cameras (Triton and Helios2)
+
+Download and install the Arena SDK and the Arena Python Package which can be found at https://thinklucid.com/downloads-hub/
+
 ## Run
 
 1.  Launch ROS2 nodes using the launch file

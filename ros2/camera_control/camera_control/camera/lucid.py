@@ -137,7 +137,7 @@ class LucidFrame(RgbdFrame):
     def __init__(
         self,
         color_frame: np.ndarray,
-        depth_frame: np.ndarray,
+        depth_frame_xyz: np.ndarray,
         timestamp_millis: float,
         color_camera_intrinsic_matrix: np.ndarray,
         color_camera_distortion_coeffs: np.ndarray,
@@ -159,7 +159,10 @@ class LucidFrame(RgbdFrame):
             xyz_to_color_camera_extrinsic_matrix (np.ndarray): Extrinsic matrix from depth camera's XYZ positions to the depth camera.
         """
         self.color_frame = color_frame
-        self.depth_frame = depth_frame
+        self._depth_frame_xyz = depth_frame_xyz
+        self.depth_frame = depth_frame_xyz[
+            :, :, 2
+        ]  # Extract the "z" value to represent the depth
         self.timestamp_millis = timestamp_millis
         self._color_camera_intrinsic_matrix = color_camera_intrinsic_matrix
         self._color_camera_distortion_coeffs = color_camera_distortion_coeffs
@@ -303,8 +306,8 @@ class LucidFrame(RgbdFrame):
             return (int(round(pixel[0])), int(round(pixel[1])))
 
         def adjust_pixel_to_bounds(pixel, width, height):
-            x = max(0, min(int(round(pixel[0])), width))
-            y = max(0, min(int(round(pixel[1])), height))
+            x = max(0, min(int(round(pixel[0])), width - 1))
+            y = max(0, min(int(round(pixel[1])), height - 1))
             return (x, y)
 
         def next_pixel_in_line(curr, start, end):
@@ -359,7 +362,9 @@ class LucidFrame(RgbdFrame):
         )
 
         # Make sure pixel coords are in boundary
-        depth_frame_height, depth_frame_width, depth_channels = self.depth_frame.shape
+        depth_frame_height, depth_frame_width, depth_channels = (
+            self._depth_frame_xyz.shape
+        )
         min_depth_pixel = adjust_pixel_to_bounds(
             min_depth_pixel, depth_frame_width, depth_frame_height
         )
@@ -373,7 +378,7 @@ class LucidFrame(RgbdFrame):
         closest_depth_pixel = min_depth_pixel
         curr_depth_pixel = min_depth_pixel
         while True:
-            xyz_mm = self.depth_frame[curr_depth_pixel[1]][curr_depth_pixel[0]]
+            xyz_mm = self._depth_frame_xyz[curr_depth_pixel[1]][curr_depth_pixel[0]]
             curr_color_pixel = project_position(
                 xyz_mm,
                 self._color_camera_intrinsic_matrix,
@@ -416,7 +421,8 @@ class LucidFrame(RgbdFrame):
             Optional[Tuple[float, float, float]]: (x, y, z) position with respect to the camera, or None if the position could not be determined.
         """
         depth_pixel = self.get_corresponding_depth_pixel(color_pixel)
-        return self.depth_frame[depth_pixel[1]][depth_pixel[0]]
+        position = self._depth_frame_xyz[depth_pixel[1]][depth_pixel[0]]
+        return (float(position[0]), float(position[1]), float(position[2]))
 
 
 class LucidRgbd(RgbdCamera):
