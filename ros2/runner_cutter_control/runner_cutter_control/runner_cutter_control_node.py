@@ -92,27 +92,29 @@ class RunnerCutterControlNode:
         return result(success=True)
 
     @service("~/add_calibration_points", AddCalibrationPoints)
-    async def add_calibration_points(self, camera_pixels):
+    async def add_calibration_points(self, normalized_pixel_coords):
         if self.state_machine.state != "idle":
             return result(success=False)
 
-        camera_pixels = [(round(pixel.x), round(pixel.y)) for pixel in camera_pixels]
         asyncio.create_task(
-            self.state_machine.run_add_calibration_points(camera_pixels)
+            self.state_machine.run_add_calibration_points(
+                [
+                    (normalized_pixel_coord.x, normalized_pixel_coord.y)
+                    for normalized_pixel_coord in normalized_pixel_coords
+                ]
+            )
         )
         return result(success=True)
 
     @service("~/manual_target_aim_laser", ManualTargetAimLaser)
-    async def manual_target_aim_laser(self, camera_pixel):
+    async def manual_target_aim_laser(self, normalized_pixel_coord):
         if self.state_machine.state != "idle":
             return result(success=False)
 
-        camera_pixel = (
-            round(camera_pixel.x),
-            round(camera_pixel.y),
-        )
         asyncio.create_task(
-            self.state_machine.run_manual_target_aim_laser(camera_pixel)
+            self.state_machine.run_manual_target_aim_laser(
+                (normalized_pixel_coord.x, normalized_pixel_coord.y)
+            )
         )
         return result(success=True)
 
@@ -236,13 +238,17 @@ class StateMachine:
         await self.calibration_complete()
 
     async def on_enter_add_calibration_points(
-        self, camera_pixels: List[Tuple[int, int]]
+        self, normalized_pixel_coords: List[Tuple[float, float]]
     ):
         self._node.publish_state()
         # For each camera pixel, find the 3D position wrt the camera
-        result = await self._camera_node.get_positions_for_pixels(
-            pixels=[
-                Vector2(x=float(pixel[0]), y=float(pixel[1])) for pixel in camera_pixels
+        result = await self._camera_node.get_positions(
+            normalized_pixel_coords=[
+                Vector2(
+                    x=normalized_pixel_coord[0],
+                    y=normalized_pixel_coord[1],
+                )
+                for normalized_pixel_coord in normalized_pixel_coords
             ]
         )
         positions = [
@@ -260,11 +266,15 @@ class StateMachine:
         )
         await self.add_calibration_points_complete()
 
-    async def on_enter_manual_target_aim_laser(self, camera_pixel: Tuple[int, int]):
+    async def on_enter_manual_target_aim_laser(
+        self, normalized_pixel_coord: Tuple[float, float]
+    ):
         self._node.publish_state()
         # Find the 3D position wrt the camera
-        result = await self._camera_node.get_positions_for_pixels(
-            pixels=[Vector2(x=float(camera_pixel[0]), y=float(camera_pixel[1]))]
+        result = await self._camera_node.get_positions(
+            normalized_pixel_coords=[
+                Vector2(x=normalized_pixel_coord[0], y=normalized_pixel_coord[1])
+            ]
         )
         positions = [
             (position.x, position.y, position.z) for position in result.positions

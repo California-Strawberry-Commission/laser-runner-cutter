@@ -1,3 +1,3 @@
-common_interfaces/Vector2 camera_pixel
+common_interfaces/Vector2 normalized_pixel_coord
 ---
 bool success
