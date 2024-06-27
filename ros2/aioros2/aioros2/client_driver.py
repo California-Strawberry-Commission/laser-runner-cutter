@@ -59,24 +59,24 @@ class ClientDriver(AsyncDriver):
         self, node_def, server_node, node_name, node_namespace=None, logger=None
     ):
         self._node: "server_driver.ServerDriver" = server_node
-        self._node_name = node_name
-        self._node_namespace = node_namespace if node_namespace is not None else "/"
+
 
         if logger is None:
-            logger = rclpy.logging.get_logger(self._get_logger_name())
-        super().__init__(node_def, logger)
+            logger = rclpy.logging.get_logger(self._get_logger_name(node_name, node_namespace))
+
+        super().__init__(node_def, logger, node_name, node_namespace)
 
         self._callback_group = ReentrantCallbackGroup()
 
         self._attach()
 
-    def _get_logger_name(self):
+    def _get_logger_name(self, name, ns):
         """Returns a pretty name for this client's logger"""
-        if self._node_namespace == "/":
-            return f"{self._node_name}-client"
+        if name == "/":
+            return f"{name}-client"
         else:
-            ns = self._node_namespace.lstrip("/")
-            return f"{ns}.{self._node_name}-client"
+            ns = ns.lstrip("/")
+            return f"{ns}.{name}-client"
 
     def _process_import(self, attr, ros_import: RosImport):
         self.log_debug("[CLIENT] Process import")
@@ -87,6 +87,7 @@ class ClientDriver(AsyncDriver):
 
     def _attach_publisher(self, attr, ros_topic: RosTopic):
         # Don't create topic publisher on clients, but keep definition populated
+        ros_topic.node = self
         return ros_topic
 
     def _attach_timer(self, attr, ros_timer: RosTimer):
@@ -103,7 +104,7 @@ class ClientDriver(AsyncDriver):
 
     def _attach_subscriber(self, attr, ros_sub: RosSubscription):
         # TODO: This doesn't work as expected for 2nd order imports
-        topic = ros_sub.get_fqt(self._node_name, self._node_namespace)
+        topic = ros_sub.get_fqt()
 
         # Creates a publisher for this channel
         self.log_debug(f"[CLIENT] Attach subscriber publisher @ >{topic.path}<")

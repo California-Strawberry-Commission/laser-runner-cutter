@@ -220,7 +220,7 @@ class ParamsDriver:
 class ServerDriver(AsyncDriver, Node):
     def __init__(self, async_node):
         Node.__init__(self, self.__class__.__name__)
-        AsyncDriver.__init__(self, async_node, self.get_logger())
+        AsyncDriver.__init__(self, async_node, self.get_logger(), None, None)
 
         self._attach()
 
@@ -340,7 +340,7 @@ class ServerDriver(AsyncDriver, Node):
         return ros_action.handler
 
     def _attach_subscriber(self, attr, ros_sub: RosSubscription):
-        fqt = ros_sub.get_fqt(self.get_name(), self.get_namespace())
+        fqt = ros_sub.get_fqt()
 
         self.log_debug(f"[SERVER] Attach subscriber >{attr}<")
 
@@ -352,6 +352,7 @@ class ServerDriver(AsyncDriver, Node):
 
     def _attach_publisher(self, attr, ros_topic: RosTopic):
         self.log_debug(f"[SERVER] Attach publisher {attr} @ >{ros_topic.path}<")
+        ros_topic.node = self
 
         pub = self.create_publisher(ros_topic.idl, ros_topic.path, ros_topic.qos)
 

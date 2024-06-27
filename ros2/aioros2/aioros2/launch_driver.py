@@ -47,7 +47,7 @@ class LaunchNode(RclpyNode, AsyncDriver):
         self._executable = node_def._aioros2_executable
 
         self.__init_rclpy_node()
-        AsyncDriver.__init__(self, node_def, get_logger(f"LAUNCH-{namespace}-{name}"))
+        AsyncDriver.__init__(self, node_def, get_logger(f"LAUNCH-{namespace}-{name}"), name, namespace)
 
         self.log_debug(f"Launching node >{self._package}< >{self._executable}<")
 

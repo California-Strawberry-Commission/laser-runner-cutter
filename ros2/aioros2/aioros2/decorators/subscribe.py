@@ -11,10 +11,10 @@ class RosSubscription(RosDefinition):
         self.topic = topic
         self.handler = server_handler
 
-
-    def get_fqt(self, node_name, node_ns) -> RosTopic:
+    def get_fqt(self) -> RosTopic:
         """Returns a fully-qualified topic name for this topic's path under the passed node."""
-        fully_qual = expand_topic_name(self.topic.path, node_name, node_ns)
+        # self.topic.node
+        fully_qual = expand_topic_name(self.topic.path, self.topic.node._node_name, self.topic.node._node_namespace)
         return RosTopic(fully_qual, self.topic.idl, self.topic.qos)
     
 
@@ -23,6 +23,10 @@ class RosSubscription(RosDefinition):
 def subscribe(topic: Union[Any, str], idl: Union[Any, None] = None, qos_queue=10):
     def _subscribe(fn):
         if type(topic) == str:
+            # Do arg checks
+            if idl is None:
+                raise ValueError("An IDL must be provided for a string-based topic")
+            
             return RosSubscription.raw_topic(topic, idl, qos_queue, fn)
         else:
             return RosSubscription(topic, fn)

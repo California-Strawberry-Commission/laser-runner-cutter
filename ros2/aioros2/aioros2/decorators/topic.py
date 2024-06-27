@@ -6,6 +6,7 @@ class RosTopic(RosDefinition):
         self.path = namespace
         self.idl = msg_idl
         self.qos = qos
+        self.node = None
 
 
 def topic(namespace: str, idl: Any, queue: int = 10):
