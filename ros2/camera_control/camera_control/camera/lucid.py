@@ -160,9 +160,10 @@ class LucidFrame(RgbdFrame):
         """
         self.color_frame = color_frame
         self._depth_frame_xyz = depth_frame_xyz
-        self.depth_frame = depth_frame_xyz[:, :, 2].astype(
+        self.depth_frame = np.sqrt(np.sum(np.square(depth_frame_xyz), axis=-1)).astype(
             np.uint16
-        )  # Extract the "z" value to represent the depth and convert to mono16
+        )  # Represent the depth frame as the L2 norm, and convert to mono16
+
         self.timestamp_millis = timestamp_millis
         self._color_camera_intrinsic_matrix = color_camera_intrinsic_matrix
         self._color_camera_distortion_coeffs = color_camera_distortion_coeffs
@@ -579,8 +580,9 @@ class LucidRgbd(RgbdCamera):
         stream_nodemap["StreamPacketResendEnable"].value = True
         # Set pixel format
         nodemap["PixelFormat"].value = PixelFormat.Coord3D_ABCY16
-        # Set depth camera specific node values
-        nodemap["Scan3dOperatingMode"].value = "Distance1250mmSingleFreq"
+        # Set Scan 3D node values
+        nodemap["Scan3dOperatingMode"].value = "Distance3000mmSingleFreq"
+        nodemap["ExposureTimeSelector"].value = "Exp350Us"
         self._xyz_scale = nodemap["Scan3dCoordinateScale"].value
         nodemap["Scan3dCoordinateSelector"].value = "CoordinateA"
         x_offset = nodemap["Scan3dCoordinateOffset"].value
@@ -589,6 +591,9 @@ class LucidRgbd(RgbdCamera):
         nodemap["Scan3dCoordinateSelector"].value = "CoordinateC"
         z_offset = nodemap["Scan3dCoordinateOffset"].value
         self._xyz_offset = (x_offset, y_offset, z_offset)
+        # Set confidence threshold
+        nodemap["Scan3dConfidenceThresholdEnable"].value = True
+        nodemap["Scan3dConfidenceThresholdMin"].value = 500
         # Set the following when Persistent IP is set on the camera
         nodemap["GevPersistentARPConflictDetectionEnable"].value = False
 
@@ -794,7 +799,7 @@ class LucidRgbd(RgbdCamera):
         depth_frame_xyz = np.stack(
             [depth_frame["x"], depth_frame["y"], depth_frame["z"]], axis=-1
         )
-        return LucidFrame(
+        frame = LucidFrame(
             color_frame,
             depth_frame_xyz,  # type: ignore
             time.time() * 1000,
@@ -805,6 +810,7 @@ class LucidRgbd(RgbdCamera):
             self._xyz_to_color_camera_extrinsic_matrix,
             self._xyz_to_depth_camera_extrinsic_matrix,
         )
+        return frame
 
     def close(self):
         # Destroy all created devices. Note that this will automatically call stop_stream() for each device
