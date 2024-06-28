@@ -73,11 +73,11 @@ class CameraControlNode:
     # potentially be displayed on UI
     log_topic = topic("~/log", Log, 10)
 
-    async def get_current_frame(self):
+    async def get_current_frame(self) -> Optional[RgbdFrame]:
         async with self._frame_lock:
             return self.__current_frame
 
-    async def set_current_frame(self, frame):
+    async def set_current_frame(self, frame: Optional[RgbdFrame]):
         async with self._frame_lock:
             self.__current_frame = frame
 
@@ -637,6 +637,9 @@ class CameraControlNode:
                 msg.instances.append(object_instance)
             else:
                 msg.invalid_points.append(point_msg)
+        self.log(
+            f"{len(msg.instances)} instances had valid positions, out of {len(points)} total detected"
+        )
         return msg
 
     def _get_color_frame_msg(

@@ -423,6 +423,10 @@ class LucidFrame(RgbdFrame):
         """
         depth_pixel = self.get_corresponding_depth_pixel(color_pixel)
         position = self._depth_frame_xyz[depth_pixel[1]][depth_pixel[0]]
+        # Negative depth indicates an invalid position
+        if position[2] < 0.0:
+            return None
+
         return (float(position[0]), float(position[1]), float(position[2]))
 
 
@@ -579,6 +583,8 @@ class LucidRgbd(RgbdCamera):
         # in the correct order.
         stream_nodemap["StreamPacketResendEnable"].value = True
         # Set pixel format
+        depth_frame_width = nodemap["Width"].value
+        depth_frame_height = nodemap["Height"].value
         nodemap["PixelFormat"].value = PixelFormat.Coord3D_ABCY16
         # Set Scan 3D node values
         nodemap["Scan3dOperatingMode"].value = "Distance3000mmSingleFreq"
@@ -604,11 +610,11 @@ class LucidRgbd(RgbdCamera):
         # Start streams
         self._color_device.start_stream(10)
         self._logger.info(
-            f"Device (color) {self.color_camera_serial_number} is now streaming at {color_frame_width} x {color_frame_height}"
+            f"Device (color) {self.color_camera_serial_number} is now streaming at {color_frame_width}x{color_frame_height}"
         )
         self._depth_device.start_stream(10)
         self._logger.info(
-            f"Device (depth) {self.depth_camera_serial_number} is now streaming"
+            f"Device (depth) {self.depth_camera_serial_number} is now streaming at {depth_frame_width}x{depth_frame_height}"
         )
 
     @property
@@ -777,6 +783,14 @@ class LucidRgbd(RgbdCamera):
         np_array["x"] = np_array["x"] * self._xyz_scale + self._xyz_offset[0]
         np_array["y"] = np_array["y"] * self._xyz_scale + self._xyz_offset[1]
         np_array["z"] = np_array["z"] * self._xyz_scale + self._xyz_offset[2]
+
+        # In unsigned pixel formats (such as ABCY16), values below the confidence threshold will have
+        # their x, y, z, and intensity values set to 0xFFFF (denoting invalid). For these invalid pixels,
+        # set (x, y, z) to (-1, -1, -1).
+        invalid_pixels = np_array["i"] == 65535
+        np_array["x"][invalid_pixels] = -1.0
+        np_array["y"][invalid_pixels] = -1.0
+        np_array["z"][invalid_pixels] = -1.0
 
         np_array = np_array.reshape(buffer.height, buffer.width)
 
