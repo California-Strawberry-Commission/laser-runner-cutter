@@ -10,6 +10,10 @@ cd $script_dir
 installed_file=".installed"
 if [ ! -f "$installed_file" ]; then
     echo "Not installed - installing"
+
+    # Init submodules
+    git submodule update --init --recursive
+
     bash ./install_python_venv.sh
 
     arch=$(uname -i)
@@ -19,9 +23,7 @@ if [ ! -f "$installed_file" ]; then
         bash ./install_cuda_arm64.sh
     fi
 
-    # Init submodules
-    git submodule update --init --recursive
-
+    bash ./install_arena_sdk.sh
     bash ./install_ros.sh
     bash ./install_realsense_ros.sh
     bash ./install_requirements.sh
