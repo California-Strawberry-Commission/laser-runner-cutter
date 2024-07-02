@@ -1,5 +1,5 @@
 from queue import Empty, SimpleQueue
-
+from rcl_interfaces.srv import DescribeParameters, GetParameters, GetParameterTypes
 import rclpy
 import rclpy.logging
 import rclpy.node
@@ -53,8 +53,12 @@ class AsyncActionClient:
             return val.feedback
 
 
-# TODO: Receive fully qualified node path here.
+
 class ClientDriver(AsyncDriver):
+    """
+    Generates an interface to communicate with an imported node from a server driver.
+    """
+
     def __init__(
         self, node_def, server_node, node_name, node_namespace=None, logger=None
     ):
@@ -79,11 +83,52 @@ class ClientDriver(AsyncDriver):
             return f"{ns}.{name}-client"
 
     def _process_import(self, attr, ros_import: RosImport):
-        self.log_debug("[CLIENT] Process import")
-        # DON'T create a client from a client.
-        # Resolve import to raw node definition
-        # TODO: Change this to properly resolve 2nd order imports
-        return ros_import.resolve()
+        self.log_debug("Processing client import")
+
+        # Get node name and namespace for the import
+        node_name_param_name = f"{attr}.name"
+        node_namespace_param_name = f"{attr}.ns"
+
+        # Lookup the import parameters on the remote server node
+        # Need to use param api because these params are not local to this server node.
+        fqt = expand_topic_name("~/get_parameters", self._node_name, self._node_namespace)
+
+        param_cli = self._node.create_client(GetParameters, fqt)
+
+        while not param_cli.wait_for_service(timeout_sec=1.0):
+            self.log_debug(f'>{fqt}< service not available.')
+
+        req = GetParameters.Request(names=[node_name_param_name, node_namespace_param_name])
+
+        # Block asyncio to perform this service call - initialization is sync so this
+        # call needs to be too.
+        res = param_cli.call_async(req)
+        while rclpy.ok():
+            rclpy.spin_once(self._node)
+            if res.done():
+                res = res.result()
+                break
+        
+        import_name_param, import_ns_param = res.values
+
+        # The configured import name and namespace!
+        import_name = import_name_param.string_value
+        import_ns = import_ns_param.string_value or "/"
+
+        if import_name == '':
+            self.log_warn(f"Could not complete import for >{attr}< - "
+                          f"Service was found, but params >{node_name_param_name}< "
+                          f"or >{node_namespace_param_name}< were not set.")
+
+        # If the referenced node is the same as the serverDriver (circular reference)
+        # DON'T create a client driver. Return the server driver.
+        if import_name == self._node._node_name and import_ns == self._node._node_namespace:
+            return self._node
+
+        node_def = ros_import.resolve()
+
+        # Create a new clientdriver for this node
+        return ClientDriver(node_def, self._node, import_name, import_ns)
 
     def _attach_publisher(self, attr, ros_topic: RosTopic):
         # Don't create topic publisher on clients, but keep definition populated

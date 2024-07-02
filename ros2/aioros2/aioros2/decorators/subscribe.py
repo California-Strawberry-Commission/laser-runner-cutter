@@ -13,7 +13,9 @@ class RosSubscription(RosDefinition):
 
     def get_fqt(self) -> RosTopic:
         """Returns a fully-qualified topic name for this topic's path under the passed node."""
-        # self.topic.node
+        if not self.topic.node:
+            raise RuntimeError(f"Node for topic >{self.topic.path}< was never set!a")
+        
         fully_qual = expand_topic_name(self.topic.path, self.topic.node._node_name, self.topic.node._node_namespace)
         return RosTopic(fully_qual, self.topic.idl, self.topic.qos)
     

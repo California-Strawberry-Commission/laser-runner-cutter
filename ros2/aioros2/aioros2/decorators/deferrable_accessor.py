@@ -20,8 +20,6 @@ class _DeferrableAccessor:
         if not self.__instance:
             self.__instance = self.__create_self()
         
-        print(self.__dict__)
-
         return self.__instance
     
     def __getattr__(self, attr: str) -> Any:

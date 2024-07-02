@@ -357,7 +357,10 @@ class ServerDriver(AsyncDriver, Node):
         pub = self.create_publisher(ros_topic.idl, ros_topic.path, ros_topic.qos)
 
         async def _dispatch_pub(*args, **kwargs):
-            msg = ros_topic.idl(*args, **kwargs)
+            if len(args) == 1:
+                 msg = args[0]
+            else:
+                msg = ros_topic.idl(*args, **kwargs)
             await self.run_executor(pub.publish, msg)
 
         return _dispatch_pub
