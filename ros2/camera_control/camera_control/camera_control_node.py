@@ -28,7 +28,7 @@ from camera_control_interfaces.msg import (
 from camera_control_interfaces.srv import (
     GetDetectionResult,
     GetFrame,
-    GetPositionsForPixels,
+    GetPositions,
     GetState,
     SetExposure,
     SetGain,
@@ -73,11 +73,11 @@ class CameraControlNode:
     # potentially be displayed on UI
     log_topic = topic("~/log", Log, 10)
 
-    async def get_current_frame(self):
+    async def get_current_frame(self) -> Optional[RgbdFrame]:
         async with self._frame_lock:
             return self.__current_frame
 
-    async def set_current_frame(self, frame):
+    async def set_current_frame(self, frame: Optional[RgbdFrame]):
         async with self._frame_lock:
             self.__current_frame = frame
 
@@ -332,15 +332,19 @@ class CameraControlNode:
     async def get_state(self):
         return result(state=self._get_state())
 
-    @service("~/get_positions_for_pixels", GetPositionsForPixels)
-    async def get_positions_for_pixels(self, pixels):
+    @service("~/get_positions", GetPositions)
+    async def get_positions(self, normalized_pixel_coords):
         frame = await self.get_current_frame()
         if frame is None:
             return result()
 
+        h, w, _ = frame.color_frame.shape
+
         positions = []
-        for pixel in pixels:
-            position = frame.get_position((pixel.x, pixel.y))
+        for normalized_pixel_coord in normalized_pixel_coords:
+            x = round(min(max(0.0, normalized_pixel_coord.x), 1.0) * w)
+            y = round(min(max(0.0, normalized_pixel_coord.y), 1.0) * h)
+            position = frame.get_position((x, y))
             positions.append(
                 Vector3(x=position[0], y=position[1], z=position[2])
                 if position is not None
@@ -633,6 +637,9 @@ class CameraControlNode:
                 msg.instances.append(object_instance)
             else:
                 msg.invalid_points.append(point_msg)
+        self.log(
+            f"{len(msg.instances)} instances had valid positions, out of {len(points)} total detected"
+        )
         return msg
 
     def _get_color_frame_msg(

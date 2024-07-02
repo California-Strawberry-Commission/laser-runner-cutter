@@ -44,7 +44,7 @@ class Calibration:
         self._calibration_camera_points = []
         self.is_calibrated = False
 
-    async def calibrate(self) -> bool:
+    async def calibrate(self, grid_size: Tuple[int, int] = (5, 5)) -> bool:
         """
         Use image correspondences to compute the transformation matrix from camera to laser.
         Note that calling this resets the point correspondences.
@@ -54,6 +54,8 @@ class Calibration:
         3. Identify the corresponding point in the camera frame
         4. Compute the transformation matrix from camera to laser
 
+        Args:
+            grid_size (Tuple[int, int]): Number of points in the x and y directions to use as calibration points.
         Returns:
             bool: Whether calibration was successful or not.
         """
@@ -63,11 +65,11 @@ class Calibration:
         # or use a depth frame obtained when the laser is off
 
         # Get camera color frame size
-        result = await self._camera_node.get_frame()
-        self.camera_frame_size = (result.color_frame.width, result.color_frame.height)
+        frame = await self._camera_node.get_frame()
+        h, w, _ = frame.color_frame.shape
+        self.camera_frame_size = (w, h)
 
         # Get calibration points
-        grid_size = (5, 5)
         x_step = 1.0 / (grid_size[0] - 1)
         y_step = 1.0 / (grid_size[1] - 1)
         pending_calibration_laser_coords = []
@@ -106,12 +108,13 @@ class Calibration:
         and then optionally recalculate the transform.
 
         Args:
-            laser_coords (List[Tuple[float, float]]): laser coordinates to find point correspondences with
+            laser_coords (List[Tuple[float, float]]): Laser coordinates to find point correspondences with
             update_transform (bool): Whether to recalculate the camera-space position to laser coord transform
         """
 
-        # TODO: set exposure on camera node automatically when detecting laser
+        # TODO: set exposure/gain on camera node automatically when detecting laser
         await self._camera_node.set_exposure(exposure_us=1.0)
+        await self._camera_node.set_gain(gain_db=0.0)
         await self._laser_node.set_color(r=0.0, g=0.0, b=0.0, i=0.0)
         await self._laser_node.play()
         for laser_coord in laser_coords:
@@ -126,7 +129,7 @@ class Calibration:
             )
             # Wait for galvo to settle and for camera frame capture
             # TODO: optimize the frame callback time and reduce this
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.5)
             camera_point = await self._find_point_correspondence(laser_coord)
             if camera_point is not None:
                 await self.add_point_correspondence(laser_coord, camera_point)
@@ -134,6 +137,7 @@ class Calibration:
             await self._laser_node.set_color(r=0.0, g=0.0, b=0.0, i=0.0)
 
         await self._laser_node.stop()
+        await self._camera_node.auto_gain()
         await self._camera_node.auto_exposure()
 
         if update_transform:
@@ -180,7 +184,7 @@ class Calibration:
                 )
                 return (instance.position.x, instance.position.y, instance.position.z)
             # TODO: optimize the frame callback time and reduce this
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.5)
         self._logger.info(
             f"Failed to find point. {len(self._calibration_laser_coords)} total correspondences."
         )

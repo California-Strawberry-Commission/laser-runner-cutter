@@ -72,22 +72,22 @@ export default function useControlNode(nodeName: string) {
   }, [ros, nodeName]);
 
   const addCalibrationPoint = useCallback(
-    (x: number, y: number) => {
+    (normalizedX: number, normalizedY: number) => {
       ros.callService(
         `${nodeName}/add_calibration_points`,
         "runner_cutter_control_interfaces/AddCalibrationPoints",
-        { camera_pixels: [{ x, y }] }
+        { normalized_pixel_coords: [{ x: normalizedX, y: normalizedY }] }
       );
     },
     [ros, nodeName]
   );
 
   const manualTargetAimLaser = useCallback(
-    (x: number, y: number) => {
+    (normalizedX: number, normalizedY: number) => {
       ros.callService(
         `${nodeName}/manual_target_aim_laser`,
         "runner_cutter_control_interfaces/ManualTargetAimLaser",
-        { camera_pixel: { x, y } }
+        { normalized_pixel_coord: { x: normalizedX, y: normalizedY } }
       );
     },
     [ros, nodeName]

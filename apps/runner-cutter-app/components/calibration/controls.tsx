@@ -29,10 +29,9 @@ export default function Controls() {
     const boundingRect = event.target.getBoundingClientRect();
     const x = Math.round(event.clientX - boundingRect.left);
     const y = Math.round(event.clientY - boundingRect.top);
-    // Scale x, y from rendered size to actual image size
-    const scaledX = (imageSize.width / boundingRect.width) * x;
-    const scaledY = (imageSize.height / boundingRect.height) * y;
-    addCalibrationPoint(scaledX, scaledY);
+    const normalizedX = x / boundingRect.width;
+    const normalizedY = y / boundingRect.height;
+    addCalibrationPoint(normalizedX, normalizedY);
   };
 
   const disableButtons =

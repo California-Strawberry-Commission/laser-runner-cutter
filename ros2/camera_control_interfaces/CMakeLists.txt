@@ -32,7 +32,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/State.msg"
   "srv/GetDetectionResult.srv"
   "srv/GetFrame.srv"
-  "srv/GetPositionsForPixels.srv"
+  "srv/GetPositions.srv"
   "srv/GetState.srv"
   "srv/SetExposure.srv"
   "srv/SetGain.srv"
