@@ -1,5 +1,5 @@
 from setuptools import find_packages, setup
-
+from glob import glob
 package_name = 'furrow_perceiver'
 
 setup(
@@ -10,6 +10,7 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        ('lib/' + package_name, glob(f"{package_name}/{package_name}/*.py")),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

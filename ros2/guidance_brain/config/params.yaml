@@ -1,0 +1,7 @@
+furrow0:
+  ros__parameters:
+    realsense:
+      name: cam0
+cam0:
+  ros__parameters:
+    filters: hole_filling,decimation

@@ -1,3 +1,5 @@
+from glob import glob
+import os
 from setuptools import find_packages, setup
 
 package_name = 'guidance_brain'
@@ -10,6 +12,13 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        # Include all launch files.
+        (
+            os.path.join("share", package_name, "launch"),
+            glob(os.path.join("launch", "*launch.[pxy][yma]*")),
+        ),
+        # Include all config files.
+        (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -20,7 +29,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'guidance_brain = guidance_brain.guidance_brain:main'
+            'guidance_brain = guidance_brain.guidance_brain_node:main'
         ],
     },
 )

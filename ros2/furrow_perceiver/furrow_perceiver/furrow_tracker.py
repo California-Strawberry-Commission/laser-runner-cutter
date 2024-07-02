@@ -1,10 +1,9 @@
 import time
 from typing import List
 import numpy as np
-import cv2
 import time
 from scipy.stats import linregress
-from furrow_strip_tracker import FurrowStripTracker
+from .furrow_strip_tracker import FurrowStripTracker
 
 MARKER_SIZE = 10
 DISPLAY_LINES = True
@@ -31,7 +30,7 @@ class FurrowTracker:
     def init(self, depth_img):
         if self.width and self.height:
             return
-
+        depth_img = np.asarray(depth_img)
         depth_shape = depth_img.shape
         self.height, self.width = depth_shape
         self.strip_height = self.height // self.num_strips

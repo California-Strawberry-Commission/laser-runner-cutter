@@ -1,38 +1,78 @@
-import launch
+from aioros2.launch_driver import LaunchNode
+from furrow_perceiver import realsense_stub
+from amiga_control import amiga_control_node
+from furrow_perceiver import furrow_perceiver_node
+from guidance_brain import guidance_brain_node
+
 import os
 import launch_ros.actions
 from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import (
+    PythonLaunchDescriptionSource,
+    FrontendLaunchDescriptionSource,
+)
 
 
 def generate_launch_description():
     parameters_file = os.path.join(
-        get_package_share_directory("runner_cutter_control"),
+        get_package_share_directory("guidance_brain"),
         "config",
-        "parameters.yaml",
+        "params.yaml",
     )
 
-    return launch.LaunchDescription(
-        [
-            launch_ros.actions.Node(
-                package="camera_control",
-                executable="camera_control_node",
-                name="camera0",
-                arguments=["--ros-args", "--log-level", "info"],
-                parameters=[parameters_file],
-            ),
-            launch_ros.actions.Node(
-                package="laser_control",
-                executable="laser_control_node",
-                name="laser0",
-                arguments=["--ros-args", "--log-level", "info"],
-                parameters=[parameters_file],
-            ),
-            launch_ros.actions.Node(
-                package="runner_cutter_control",
-                executable="runner_cutter_control_node",
-                name="control0",
-                arguments=["--ros-args", "--log-level", "info"],
-                parameters=[parameters_file],
-            ),
-        ]
+    rs_node = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [
+                os.path.join(
+                    get_package_share_directory("realsense2_camera"), "launch"
+                ),
+                "/rs_launch.py",
+            ]
+        ),
+        launch_arguments={
+            "camera_name": "cam0",
+            "filters": "decimation,spatial,temporal,hole_filling",
+        }.items(),
     )
+
+    rosbridge = IncludeLaunchDescription(
+        FrontendLaunchDescriptionSource(
+            [
+                get_package_share_directory("rosbridge_server"),
+                "/launch/rosbridge_websocket_launch.xml",
+            ]
+        ),
+    )
+
+    amiga = LaunchNode(amiga_control_node, name="amiga0", parameters=[parameters_file])
+
+    furrow_perc = LaunchNode(
+        furrow_perceiver_node,
+        name="furrow0",
+        parameters=[parameters_file],
+        output="screen",
+        emulate_tty=True,
+    )
+
+    brain = LaunchNode(
+        guidance_brain_node,
+        name="brain0",
+        parameters=[parameters_file],
+        output="screen",
+        emulate_tty=True,
+    )
+
+    # Link nodes
+    brain.perceiver.link(furrow_perc)
+
+    return LaunchDescription(
+        [
+            # rosbridge,
+            amiga,
+            furrow_perc,
+            brain,
+            rs_node
+        ]
+    )  # type: ignore rs_node
