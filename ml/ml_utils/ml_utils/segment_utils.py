@@ -173,12 +173,15 @@ def convert_mask_to_polygons(mask):
     return polygons
 
 
-def convert_contour_to_mask(contour):
+def convert_contour_to_mask(contour, mask_size=None):
     contour = np.array(contour, dtype=np.int32)
     contour = contour.reshape(-1, 1, 2)
-    max_x = np.max(contour[:, 0, 0])
-    max_y = np.max(contour[:, 0, 1])
-    mask = np.zeros((math.ceil(max_y), math.ceil(max_x)), dtype=np.uint8)
+    if mask_size is None:
+        max_x = np.max(contour[:, 0, 0])
+        max_y = np.max(contour[:, 0, 1])
+        mask_size = (math.ceil(max_x), math.ceil(max_y))
+
+    mask = np.zeros((mask_size[1], mask_size[0]), dtype=np.uint8)
     cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
 
     return mask
