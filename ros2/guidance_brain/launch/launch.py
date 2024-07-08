@@ -64,15 +64,18 @@ def generate_launch_description():
         emulate_tty=True,
     )
 
+    video_server = launch_ros.actions.Node(package='web_video_server', executable='web_video_server', name="wvs")
+
     # Link nodes
     brain.perceiver.link(furrow_perc)
 
     return LaunchDescription(
         [
-            # rosbridge,
+            rosbridge,
+            video_server,
             amiga,
             furrow_perc,
             brain,
-            rs_node
+            rs_node,
         ]
     )  # type: ignore rs_node

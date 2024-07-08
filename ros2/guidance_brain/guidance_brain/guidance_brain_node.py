@@ -30,7 +30,7 @@ class GuidanceBrainNode:
     async def s(self):
         self.log("STARTING BRAIN")
     
-    @subscribe(perceiver.track_result)
+    @subscribe(perceiver.tracker_result_topic)
     async def on_ft_result(self, linear_deviation, heading):
         print("FTRES", linear_deviation, heading)
 

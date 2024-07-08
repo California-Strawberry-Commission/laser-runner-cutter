@@ -67,7 +67,7 @@ class FurrowPerceiverNode:
     realsense: realsense_stub.RealsenseStub = import_node(realsense_stub)
 
     debug_img_topic = topic("~/debug_img", Image)
-    track_result = topic("~/track_result", PositionResult)
+    tracker_result_topic = topic("~/tracker_result", PositionResult)
     
     tracker = None
     annotator = None
@@ -98,7 +98,7 @@ class FurrowPerceiverNode:
         
         print(self.tracker.get_error())
 
-        m = self.cvb.cv2_to_imgmsg(depth_colormap)
+        m = self.cvb.cv2_to_imgmsg(depth_colormap, "bgr8")
         await self.debug_img_topic(m)
     
     @service("get_state", GetState)
