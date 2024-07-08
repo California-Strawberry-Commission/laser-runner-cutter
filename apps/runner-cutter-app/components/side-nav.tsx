@@ -39,6 +39,10 @@ const SIDENAV_ITEMS: SideNavItem[] = [
     title: "Wi-Fi",
     path: "/wifi",
   },
+  {
+    title: "Navigation",
+    path: "/test/navigation",
+  },
 ];
 
 export default function SideNav() {

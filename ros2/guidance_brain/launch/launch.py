@@ -1,6 +1,6 @@
 from aioros2.launch_driver import LaunchNode
-from furrow_perceiver import realsense_stub
 from amiga_control import amiga_control_node
+from furrow_perceiver import realsense_stub
 from furrow_perceiver import furrow_perceiver_node
 from guidance_brain import guidance_brain_node
 

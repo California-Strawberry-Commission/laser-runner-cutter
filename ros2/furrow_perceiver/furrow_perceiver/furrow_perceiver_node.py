@@ -1,7 +1,7 @@
 import asyncio
 from typing import AsyncGenerator
 from .furrow_tracker import FurrowTracker
-from furrow_perceiver_interfaces.msg import State
+from furrow_perceiver_interfaces.msg import State, PositionResult
 from furrow_perceiver_interfaces.srv import GetState
 from dataclasses import dataclass
 import cv2
@@ -67,6 +67,7 @@ class FurrowPerceiverNode:
     realsense: realsense_stub.RealsenseStub = import_node(realsense_stub)
 
     debug_img_topic = topic("~/debug_img", Image)
+    track_result = topic("~/track_result", PositionResult)
     
     tracker = None
     annotator = None
