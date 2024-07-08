@@ -2,7 +2,7 @@ import asyncio
 import functools
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional, Tuple
 
@@ -11,13 +11,15 @@ import numpy as np
 from ament_index_python.packages import get_package_share_directory
 from cv_bridge import CvBridge
 from ml_utils.mask_center import contour_center
+from rcl_interfaces.msg import Log
 from runner_segmentation.yolo import Yolo
 from sensor_msgs.msg import CompressedImage, Image
 from std_srvs.srv import Trigger
 
-from aioros2 import node, params, result, serve_nodes, service, start, timer, topic
-from camera_control.camera.realsense import RealSense
-from camera_control.camera.lucid import create_lucid_rgbd_camera
+from aioros2 import node, params, result, serve_nodes, service, start, topic
+from camera_control.camera.lucid_camera import create_lucid_rgbd_camera
+from camera_control.camera.realsense_camera import RealSenseCamera
+from camera_control.camera.rgbd_camera import State as RgbdCameraState
 from camera_control.camera.rgbd_frame import RgbdFrame
 from camera_control_interfaces.msg import (
     DetectionResult,
@@ -37,16 +39,12 @@ from camera_control_interfaces.srv import (
 )
 from common_interfaces.msg import Vector2, Vector3
 from common_interfaces.srv import GetBool
-from rcl_interfaces.msg import Log
 
 
 @dataclass
 class CameraControlParams:
     camera_type: str = "lucid"  # "realsense" or "lucid"
     camera_index: int = 0
-    fps: int = 30
-    rgb_size: List[int] = field(default_factory=lambda: [1280, 720])
-    depth_size: List[int] = field(default_factory=lambda: [1280, 720])
     save_dir: str = "~/Pictures/runner-cutter-app"
     debug_frame_width: int = 640
 
@@ -73,14 +71,6 @@ class CameraControlNode:
     # potentially be displayed on UI
     log_topic = topic("~/log", Log, 10)
 
-    async def get_current_frame(self) -> Optional[RgbdFrame]:
-        async with self._frame_lock:
-            return self.__current_frame
-
-    async def set_current_frame(self, frame: Optional[RgbdFrame]):
-        async with self._frame_lock:
-            self.__current_frame = frame
-
     @start
     async def start(self):
         self.laser_detection_enabled = False
@@ -91,24 +81,29 @@ class CameraControlNode:
         self.cv_bridge = CvBridge()
 
         # Camera
-        self._frame_lock = asyncio.Lock()
-        self.__current_frame = None
-        self._camera_lock = asyncio.Lock()
+        loop = asyncio.get_running_loop()
+
+        def state_change_callback(state: RgbdCameraState):
+            loop.call_soon_threadsafe(self._publish_state)
+
+        self.current_frame = None  # Don't need a lock for this since read/write only happens on main event loop
+        self._detection_cv = asyncio.Condition()
+        self._detection_running = False  # Don't need a lock for this since read/write only happens on main event loop
+        self._should_run_detection = False
         if self.camera_control_params.camera_type == "realsense":
-            self.camera = RealSense(
-                self.camera_control_params.rgb_size,
-                self.camera_control_params.depth_size,
-                fps=self.camera_control_params.fps,
+            self.camera = RealSenseCamera(
                 camera_index=self.camera_control_params.camera_index,
+                state_change_callback=state_change_callback,
                 logger=self.get_logger(),
             )
         elif self.camera_control_params.camera_type == "lucid":
-            self.camera = create_lucid_rgbd_camera(logger=self.get_logger())
+            self.camera = create_lucid_rgbd_camera(
+                state_change_callback=state_change_callback, logger=self.get_logger()
+            )
         else:
             raise Exception(
                 f"Unknown camera_type: {self.camera_control_params.camera_type}"
             )
-        self.connecting = False
 
         # ML models
         package_share_directory = get_package_share_directory("camera_control")
@@ -125,35 +120,35 @@ class CameraControlNode:
 
     @service("~/start_device", Trigger)
     async def start_device(self):
-        self.connecting = True
-        self._publish_state()
+        loop = asyncio.get_running_loop()
 
-        async with self._camera_lock:
-            await asyncio.get_running_loop().run_in_executor(
-                None, self.camera.initialize
-            )
+        def frame_callback(frame: RgbdFrame):
+            asyncio.run_coroutine_threadsafe(self._frame_callback(frame), loop)
 
-        self.connecting = False
-        self._publish_state()
+        self.camera.start(frame_callback)
+        self._should_run_detection = True
 
         return result(success=True)
 
     @service("~/close_device", Trigger)
     async def close_device(self):
-        async with self._camera_lock:
-            await asyncio.get_running_loop().run_in_executor(None, self.camera.close)
+        self._should_run_detection = False
+        # Wait until detection completes
+        async with self._detection_cv:
+            await self._detection_cv.wait_for(lambda: not self._detection_running)
+        self.camera.stop()
+        self.current_frame = None
 
-        self._publish_state()
         return result(success=True)
 
     @service("~/has_frames", GetBool)
     async def has_frames(self):
-        frame = await self.get_current_frame()
+        frame = self.current_frame
         return result(data=(frame is not None))
 
     @service("~/get_frame", GetFrame)
     async def get_frame(self):
-        frame = await self.get_current_frame()
+        frame = self.current_frame
         if frame is None:
             return result()
 
@@ -192,7 +187,7 @@ class CameraControlNode:
 
     @service("~/get_laser_detection", GetDetectionResult)
     async def get_laser_detection(self):
-        frame = await self.get_current_frame()
+        frame = self.current_frame
         if frame is None:
             return result()
 
@@ -201,7 +196,7 @@ class CameraControlNode:
 
     @service("~/get_runner_detection", GetDetectionResult)
     async def get_runner_detection(self):
-        frame = await self.get_current_frame()
+        frame = self.current_frame
         if frame is None:
             return result()
 
@@ -310,7 +305,7 @@ class CameraControlNode:
             await asyncio.sleep(interval_secs)
 
     async def _save_image(self) -> Optional[str]:
-        frame = await self.get_current_frame()
+        frame = self.current_frame
         if frame is None:
             return None
 
@@ -334,7 +329,7 @@ class CameraControlNode:
 
     @service("~/get_positions", GetPositions)
     async def get_positions(self, normalized_pixel_coords):
-        frame = await self.get_current_frame()
+        frame = self.current_frame
         if frame is None:
             return result()
 
@@ -352,49 +347,20 @@ class CameraControlNode:
             )
         return result(positions=positions)
 
-    # TODO: Define interval using param
-    @timer(1.0 / 30, allow_concurrent_execution=False)
-    async def frame_callback(self):
-        async with self._camera_lock:
-            # If the camera is not connected, set the current frame to None to prevent
-            # further processing on frames.
-            if not self.camera.is_connected:
-                await self.set_current_frame(None)
-                return
+    async def _frame_callback(self, frame: RgbdFrame):
+        self.current_frame = frame
 
-            frame = await asyncio.get_running_loop().run_in_executor(
-                None,
-                self.camera.get_frame,
-            )
-            # The camera may not have a new frame available yet. In that case, do nothing.
-            if frame is None:
-                return
-
-            await self.set_current_frame(frame)
-
-        # We're not currently consuming the color_frame topic anywhere. Disable it for now
-        # to reduce CPU overhead
-        """
-        msg = self._get_color_frame_msg(frame.color_frame, frame.timestamp_millis)
-        asyncio.create_task(
-            self.color_frame_topic(
-                header=msg.header,
-                height=msg.height,
-                width=msg.width,
-                encoding=msg.encoding,
-                is_bigendian=msg.is_bigendian,
-                step=msg.step,
-                data=msg.data,
-            )
-        )
-        """
-
-    # TODO: Define interval using param
-    @timer(1.0 / 30, allow_concurrent_execution=False)
-    async def detection_callback(self):
-        frame = await self.get_current_frame()
-        if frame is None:
+        if not self._should_run_detection:
             return
+
+        # Detection could take longer than it takes for subsequent frames to come in. We don't
+        # want multiple detections running concurrently.
+        if self._detection_running:
+            # TODO: Instead of skipping, queue up a task. See ServerDriver._attach_timer()
+            return
+
+        async with self._detection_cv:
+            self._detection_running = True
 
         debug_frame = np.copy(frame.color_frame)
 
@@ -451,10 +417,17 @@ class CameraControlNode:
         if self.video_writer is not None:
             self.video_writer.write(cv2.cvtColor(debug_frame, cv2.COLOR_RGB2BGR))
 
+        async with self._detection_cv:
+            self._detection_running = False
+            self._detection_cv.notify_all()
+
     def _get_device_state(self) -> DeviceState:
-        if self.connecting:
+        if self.camera is None:
+            return DeviceState.DISCONNECTED
+
+        if self.camera.state == RgbdCameraState.CONNECTING:
             return DeviceState.CONNECTING
-        elif self.camera is not None and self.camera.is_connected:
+        elif self.camera.state == RgbdCameraState.STREAMING:
             return DeviceState.STREAMING
         else:
             return DeviceState.DISCONNECTED

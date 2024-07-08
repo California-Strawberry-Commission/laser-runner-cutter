@@ -1,22 +1,43 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple
+from enum import Enum, auto
+from typing import Callable, Optional, Tuple
+
 from .rgbd_frame import RgbdFrame
+
+
+class State(Enum):
+    DISCONNECTED = auto()
+    CONNECTING = auto()
+    STREAMING = auto()
 
 
 class RgbdCamera(ABC):
     @property
     @abstractmethod
-    def is_connected(self) -> bool:
+    def state(self) -> State:
         """
         Returns:
-            bool: Whether the camera is connected.
+            State: Current state of the camera device.
         """
         pass
 
     @abstractmethod
-    def initialize(self):
+    def start(
+        self,
+        frame_callback: Optional[Callable[[RgbdFrame], None]],
+    ):
         """
-        Set up the camera.
+        Connects device and starts streaming.
+
+        Args:
+            frame_callback (Callable[[RgbdFrame], None]): Callback that gets called when a new frame is available.
+        """
+        pass
+
+    @abstractmethod
+    def stop(self):
+        """
+        Stops streaming and disconnects device.
         """
         pass
 
@@ -73,22 +94,5 @@ class RgbdCamera(ABC):
         """
         Returns:
             Tuple[float, float]: (min, max) gain levels in dB.
-        """
-        pass
-
-    @abstractmethod
-    def get_frame(self) -> Optional[RgbdFrame]:
-        """
-        Get the latest available color and depth frames from the camera.
-
-        Returns:
-            Optional[RgbdFrame]: The color and depth frames, or None if not available.
-        """
-        pass
-
-    @abstractmethod
-    def close(self):
-        """
-        Close connection to the camera.
         """
         pass
