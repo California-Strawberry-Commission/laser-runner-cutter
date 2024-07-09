@@ -9,6 +9,7 @@ from scipy.optimize import least_squares, minimize
 from camera_control.camera_control_node import CameraControlNode
 from common_interfaces.msg import Vector2
 from laser_control.laser_control_node import LaserControlNode
+from runner_cutter_control.camera_context import CameraContext
 
 
 class Calibration:
@@ -25,6 +26,7 @@ class Calibration:
     ):
         self._laser_node = laser_node
         self._camera_node = camera_node
+        self._camera_context = CameraContext(camera_node)
         self._laser_color = laser_color
         if logger:
             self._logger = logger
@@ -66,8 +68,7 @@ class Calibration:
 
         # Get camera color frame size
         frame = await self._camera_node.get_frame()
-        h, w, _ = frame.color_frame.shape
-        self.camera_frame_size = (w, h)
+        self.camera_frame_size = (frame.color_frame.width, frame.color_frame.height)
 
         # Get calibration points
         x_step = 1.0 / (grid_size[0] - 1)
@@ -113,32 +114,31 @@ class Calibration:
         """
 
         # TODO: set exposure/gain on camera node automatically when detecting laser
-        await self._camera_node.set_exposure(exposure_us=1.0)
-        await self._camera_node.set_gain(gain_db=0.0)
-        await self._laser_node.set_color(r=0.0, g=0.0, b=0.0, i=0.0)
-        await self._laser_node.play()
-        for laser_coord in laser_coords:
-            await self._laser_node.set_points(
-                points=[Vector2(x=laser_coord[0], y=laser_coord[1])]
-            )
-            await self._laser_node.set_color(
-                r=self._laser_color[0],
-                g=self._laser_color[1],
-                b=self._laser_color[2],
-                i=0.0,
-            )
-            # Wait for galvo to settle and for camera frame capture
-            # TODO: optimize the frame callback time and reduce this
-            await asyncio.sleep(0.5)
-            camera_point = await self._find_point_correspondence(laser_coord)
-            if camera_point is not None:
-                await self.add_point_correspondence(laser_coord, camera_point)
-            # We use set_color instead of stop_laser as it is faster to temporarily turn off the laser
+        async with self._camera_context.laser_detection_settings():
+            await self._laser_node.clear_points()
             await self._laser_node.set_color(r=0.0, g=0.0, b=0.0, i=0.0)
-
-        await self._laser_node.stop()
-        await self._camera_node.auto_gain()
-        await self._camera_node.auto_exposure()
+            try:
+                await self._laser_node.play()
+                for laser_coord in laser_coords:
+                    await self._laser_node.set_points(
+                        points=[Vector2(x=laser_coord[0], y=laser_coord[1])]
+                    )
+                    await self._laser_node.set_color(
+                        r=self._laser_color[0],
+                        g=self._laser_color[1],
+                        b=self._laser_color[2],
+                        i=0.0,
+                    )
+                    # Wait for galvo to settle and for camera frame capture
+                    # TODO: optimize the frame callback time and reduce this
+                    await asyncio.sleep(0.5)
+                    camera_point = await self._find_point_correspondence(laser_coord)
+                    if camera_point is not None:
+                        await self.add_point_correspondence(laser_coord, camera_point)
+                    # We use set_color() instead of stop() as it is faster to temporarily turn off the laser
+                    await self._laser_node.set_color(r=0.0, g=0.0, b=0.0, i=0.0)
+            finally:
+                await self._laser_node.stop()
 
         if update_transform:
             await self._update_transform_nonlinear_least_squares()
