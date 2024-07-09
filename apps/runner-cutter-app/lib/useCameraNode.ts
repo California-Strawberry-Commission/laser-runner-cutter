@@ -66,15 +66,6 @@ export default function useCameraNode(nodeName: string) {
     };
   }, [nodeName, rosbridgeNodeInfo, nodeConnected, nodeState]);
 
-  const getState = useCallback(async () => {
-    const result = await ros.callService(
-      `${nodeName}/get_state`,
-      "camera_control_interfaces/GetState",
-      {}
-    );
-    setNodeState(convertStateMessage(result.state));
-  }, [ros, nodeName, setNodeState]);
-
   const addLogMessage = useCallback(
     (logMessage: string) => {
       setLogMessages((prevLogMessages) => {
@@ -85,14 +76,11 @@ export default function useCameraNode(nodeName: string) {
     [setLogMessages]
   );
 
-  // Initial node state
+  // Initial node connected state
   useEffect(() => {
     const connected = ros.isNodeConnected(nodeName);
-    if (connected) {
-      getState();
-    }
     setNodeConnected(connected);
-  }, [ros, nodeName, getState, setNodeConnected]);
+  }, [ros, nodeName, setNodeConnected]);
 
   // Subscriptions
   useEffect(() => {
@@ -100,11 +88,6 @@ export default function useCameraNode(nodeName: string) {
       (connectedNodeName, connected) => {
         if (connectedNodeName === nodeName) {
           setNodeConnected(connected);
-          if (connected) {
-            getState();
-          } else {
-            setNodeState(INITIAL_STATE);
-          }
         }
       }
     );
@@ -113,6 +96,7 @@ export default function useCameraNode(nodeName: string) {
       `${nodeName}/state`,
       "camera_control_interfaces/State",
       (message) => {
+        console.log(`state sub message: ${JSON.stringify(message)}`);
         setNodeState(convertStateMessage(message));
       }
     );
@@ -134,7 +118,7 @@ export default function useCameraNode(nodeName: string) {
       stateSub.unsubscribe();
       logSub.unsubscribe();
     };
-  }, [ros, nodeName, getState, setNodeConnected, setNodeState, addLogMessage]);
+  }, [ros, nodeName, setNodeConnected, setNodeState, addLogMessage]);
 
   const startDevice = useCallback(() => {
     // Optimistically set device state to "connecting"

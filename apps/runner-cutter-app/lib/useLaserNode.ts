@@ -8,7 +8,7 @@ const INITIAL_STATE = LASER_STATES[0];
 export default function useLaserNode(nodeName: string) {
   const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
   const [nodeConnected, setNodeConnected] = useState<boolean>(false);
-  const [laserState, setLaserState] = useState<string>(LASER_STATES[0]);
+  const [laserState, setLaserState] = useState<string>(INITIAL_STATE);
 
   const nodeInfo: NodeInfo = useMemo(() => {
     return {
@@ -18,23 +18,11 @@ export default function useLaserNode(nodeName: string) {
     };
   }, [nodeName, rosbridgeNodeInfo, nodeConnected, laserState]);
 
-  const getState = useCallback(async () => {
-    const result = await ros.callService(
-      `${nodeName}/get_state`,
-      "laser_control_interfaces/GetState",
-      {}
-    );
-    setLaserState(LASER_STATES[result.state.data]);
-  }, [ros, nodeName, setLaserState]);
-
-  // Initial node state
+  // Initial node connected state
   useEffect(() => {
     const connected = ros.isNodeConnected(nodeName);
-    if (connected) {
-      getState();
-    }
     setNodeConnected(connected);
-  }, [ros, nodeName, getState, setNodeConnected]);
+  }, [ros, nodeName, setNodeConnected]);
 
   // Subscriptions
   useEffect(() => {
@@ -42,11 +30,6 @@ export default function useLaserNode(nodeName: string) {
       (connectedNodeName, connected) => {
         if (connectedNodeName === nodeName) {
           setNodeConnected(connected);
-          if (connected) {
-            getState();
-          } else {
-            setLaserState(INITIAL_STATE);
-          }
         }
       }
     );
@@ -63,7 +46,7 @@ export default function useLaserNode(nodeName: string) {
       onNodeConnectedSub.unsubscribe();
       stateSub.unsubscribe();
     };
-  }, [ros, nodeName, getState, setNodeConnected, setLaserState]);
+  }, [ros, nodeName, setNodeConnected, setLaserState]);
 
   const startDevice = useCallback(() => {
     // Optimistically set device state to "connecting"
