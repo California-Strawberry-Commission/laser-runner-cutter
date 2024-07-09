@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 import numpy as np
+from rclpy.qos import QoSDurabilityPolicy, QoSProfile
 from std_srvs.srv import Trigger
 from transitions.extensions.asyncio import AsyncMachine
 
@@ -51,7 +52,15 @@ class RunnerCutterControlParams:
 @node("runner_cutter_control_node")
 class RunnerCutterControlNode:
     runner_cutter_control_params = params(RunnerCutterControlParams)
-    state_topic = topic("~/state", State, 5)
+    state_topic = topic(
+        "~/state",
+        State,
+        qos=QoSProfile(
+            depth=1,
+            # Setting durability to Transient Local will persist samples for late joiners
+            durability=QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL,
+        ),
+    )
 
     @start
     async def start(self):
@@ -81,6 +90,9 @@ class RunnerCutterControlNode:
             self.runner_cutter_control_params.burn_time_secs,
             self.get_logger(),
         )
+
+        # Publish initial state
+        self.publish_state()
 
     # TODO: use action instead once there's a new release of roslib. Currently
     # roslib does not support actions with ROS2
