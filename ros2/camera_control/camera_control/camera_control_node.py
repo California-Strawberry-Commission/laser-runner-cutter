@@ -81,15 +81,35 @@ class CameraControlNode:
         self.cv_bridge = CvBridge()
 
         # Camera
+
+        # After starting a camera device, when a new frame is available, a callback is called by
+        # the camera interface. When a new frame is received, we queue a detection task. In order
+        # to prevent multiple detection tasks running concurrently, we use a task queue of size 1
+        # and a queue processor task. One additional consideration is that the camera device can
+        # be closed at any time, and therefore we need to make sure that the detection task does
+        # not use a frame after the device has been closed.
+
+        # We don't need locks for these since read/write only happens on main event loop
+        self.current_frame = None
+        self._detection_task_queue = asyncio.Queue(1)
+        self._detection_completed_event = (
+            asyncio.Event()
+        )  # used to notify when a detection task has completed
+        self._detection_completed_event.set()
+        self._camera_started = False
+
+        async def process_detection_task_queue():
+            while True:
+                task_func = await self._detection_task_queue.get()
+                await task_func()
+                self._detection_task_queue.task_done()
+
         loop = asyncio.get_running_loop()
+        loop.create_task(process_detection_task_queue())
 
         def state_change_callback(state: RgbdCameraState):
             loop.call_soon_threadsafe(self._publish_state)
 
-        self.current_frame = None  # Don't need a lock for this since read/write only happens on main event loop
-        self._detection_cv = asyncio.Condition()
-        self._detection_running = False  # Don't need a lock for this since read/write only happens on main event loop
-        self._should_run_detection = False
         if self.camera_control_params.camera_type == "realsense":
             self.camera = RealSenseCamera(
                 camera_index=self.camera_control_params.camera_index,
@@ -126,16 +146,15 @@ class CameraControlNode:
             asyncio.run_coroutine_threadsafe(self._frame_callback(frame), loop)
 
         self.camera.start(frame_callback)
-        self._should_run_detection = True
+        self._camera_started = True
 
         return result(success=True)
 
     @service("~/close_device", Trigger)
     async def close_device(self):
-        self._should_run_detection = False
+        self._camera_started = False
         # Wait until detection completes
-        async with self._detection_cv:
-            await self._detection_cv.wait_for(lambda: not self._detection_running)
+        await self._detection_completed_event.wait()
         self.camera.stop()
         self.current_frame = None
 
@@ -348,78 +367,84 @@ class CameraControlNode:
         return result(positions=positions)
 
     async def _frame_callback(self, frame: RgbdFrame):
+        if not self._camera_started or self.camera.state != RgbdCameraState.STREAMING:
+            return
+
         self.current_frame = frame
 
-        if not self._should_run_detection:
+        if self._detection_task_queue.empty():
+            await self._detection_task_queue.put(self._detection_task)
+
+    async def _detection_task(self):
+        if not self._camera_started or self.camera.state != RgbdCameraState.STREAMING:
             return
 
-        # Detection could take longer than it takes for subsequent frames to come in. We don't
-        # want multiple detections running concurrently.
-        if self._detection_running:
-            # TODO: Instead of skipping, queue up a task. See ServerDriver._attach_timer()
-            return
+        try:
+            self._detection_completed_event.clear()
 
-        async with self._detection_cv:
-            self._detection_running = True
+            frame = self.current_frame
+            if frame is None:
+                return
 
-        debug_frame = np.copy(frame.color_frame)
+            debug_frame = np.copy(frame.color_frame)
 
-        if self.laser_detection_enabled:
-            laser_points, confs = await self._get_laser_points(frame.color_frame)
-            debug_frame = self._debug_draw_lasers(debug_frame, laser_points, confs)
-            msg = self._create_detection_result_msg(laser_points, frame)
+            if self.laser_detection_enabled:
+                laser_points, confs = await self._get_laser_points(frame.color_frame)
+                debug_frame = self._debug_draw_lasers(debug_frame, laser_points, confs)
+                msg = self._create_detection_result_msg(laser_points, frame)
+                asyncio.create_task(
+                    self.laser_detections_topic(
+                        timestamp=msg.timestamp,
+                        instances=msg.instances,
+                        invalid_points=msg.invalid_points,
+                    )
+                )
+
+            if self.runner_detection_enabled:
+                runner_masks, confs, track_ids = await self._get_runner_masks(
+                    frame.color_frame
+                )
+                runner_centers = await self._get_runner_centers(runner_masks)
+                debug_frame = self._debug_draw_runners(
+                    debug_frame, runner_masks, runner_centers, confs, track_ids
+                )
+                msg = self._create_detection_result_msg(
+                    runner_centers, frame, track_ids
+                )
+                asyncio.create_task(
+                    self.runner_detections_topic(
+                        timestamp=msg.timestamp,
+                        instances=msg.instances,
+                        invalid_points=msg.invalid_points,
+                    )
+                )
+
+            # Downscale debug_frame using INTER_NEAREST for best performance
+            h, w, _ = debug_frame.shape
+            aspect_ratio = h / w
+            new_width = self.camera_control_params.debug_frame_width
+            new_height = int(new_width * aspect_ratio)
+            debug_frame = cv2.resize(
+                debug_frame, (new_width, new_height), interpolation=cv2.INTER_NEAREST
+            )
+            msg = self._get_color_frame_msg(debug_frame, frame.timestamp_millis)
             asyncio.create_task(
-                self.laser_detections_topic(
-                    timestamp=msg.timestamp,
-                    instances=msg.instances,
-                    invalid_points=msg.invalid_points,
+                self.debug_frame_topic(
+                    header=msg.header,
+                    height=msg.height,
+                    width=msg.width,
+                    encoding=msg.encoding,
+                    is_bigendian=msg.is_bigendian,
+                    step=msg.step,
+                    data=msg.data,
                 )
             )
 
-        if self.runner_detection_enabled:
-            runner_masks, confs, track_ids = await self._get_runner_masks(
-                frame.color_frame
-            )
-            runner_centers = await self._get_runner_centers(runner_masks)
-            debug_frame = self._debug_draw_runners(
-                debug_frame, runner_masks, runner_centers, confs, track_ids
-            )
-            msg = self._create_detection_result_msg(runner_centers, frame, track_ids)
-            asyncio.create_task(
-                self.runner_detections_topic(
-                    timestamp=msg.timestamp,
-                    instances=msg.instances,
-                    invalid_points=msg.invalid_points,
-                )
-            )
+            if self.video_writer is not None:
+                self.video_writer.write(cv2.cvtColor(debug_frame, cv2.COLOR_RGB2BGR))
 
-        # Downscale debug_frame using INTER_NEAREST for best performance
-        h, w, _ = debug_frame.shape
-        aspect_ratio = h / w
-        new_width = self.camera_control_params.debug_frame_width
-        new_height = int(new_width * aspect_ratio)
-        debug_frame = cv2.resize(
-            debug_frame, (new_width, new_height), interpolation=cv2.INTER_NEAREST
-        )
-        msg = self._get_color_frame_msg(debug_frame, frame.timestamp_millis)
-        asyncio.create_task(
-            self.debug_frame_topic(
-                header=msg.header,
-                height=msg.height,
-                width=msg.width,
-                encoding=msg.encoding,
-                is_bigendian=msg.is_bigendian,
-                step=msg.step,
-                data=msg.data,
-            )
-        )
-
-        if self.video_writer is not None:
-            self.video_writer.write(cv2.cvtColor(debug_frame, cv2.COLOR_RGB2BGR))
-
-        async with self._detection_cv:
-            self._detection_running = False
-            self._detection_cv.notify_all()
+        finally:
+            self._detection_completed_event.set()
 
     def _get_device_state(self) -> DeviceState:
         if self.camera is None:
