@@ -3,6 +3,7 @@ from ._decorators import RosDefinition
 from .topic import RosTopic
 from rclpy.expand_topic_name import expand_topic_name
 
+
 class RosSubscription(RosDefinition):
     def raw_topic(namespace, idl, qos_queue, server_handler):
         return RosSubscription(RosTopic(namespace, idl, qos_queue), server_handler)
@@ -18,8 +19,6 @@ class RosSubscription(RosDefinition):
         
         fully_qual = expand_topic_name(self.topic.path, self.topic.node._node_name, self.topic.node._node_namespace)
         return RosTopic(fully_qual, self.topic.idl, self.topic.qos)
-    
-
 
 
 def subscribe(topic: Union[Any, str], idl: Union[Any, None] = None, qos_queue=10):
@@ -32,6 +31,5 @@ def subscribe(topic: Union[Any, str], idl: Union[Any, None] = None, qos_queue=10
             return RosSubscription.raw_topic(topic, idl, qos_queue, fn)
         else:
             return RosSubscription(topic, fn)
-
 
     return _subscribe

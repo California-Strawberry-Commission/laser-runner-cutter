@@ -5,29 +5,25 @@ import logging
 import os
 import sys
 import time
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 import cv2
 import numpy as np
 from ament_index_python.packages import get_package_share_directory
-from arena_api.buffer import BufferFactory
 from arena_api.enums import PixelFormat
 from arena_api.system import system
 
 from .calibration import (
     construct_extrinsic_matrix,
     create_blob_detector,
-    distort_pixel_coords,
-    invert_extrinsic_matrix,
 )
-from .rgbd_camera import RgbdCamera
+from .rgbd_camera import RgbdCamera, State
 from .rgbd_frame import RgbdFrame
+from .lucid_frame import LucidFrame
+import threading
 
 COLOR_CAMERA_MODEL_PREFIXES = ["ATL", "ATX", "PHX", "TRI", "TRT"]
 DEPTH_CAMERA_MODEL_PREFIXES = ["HTP", "HLT", "HTR", "HTW"]
-# General min and max possible depths
-DEPTH_MIN_MM = 500
-DEPTH_MAX_MM = 10000
 
 
 def scale_grayscale_image(mono_image: np.ndarray) -> np.ndarray:
@@ -129,314 +125,18 @@ def get_extrinsics(
         return None, None
 
 
-class LucidFrame(RgbdFrame):
-    color_frame: np.ndarray
-    depth_frame: np.ndarray
-    timestamp_millis: float
-
-    def __init__(
-        self,
-        color_frame: np.ndarray,
-        depth_frame_xyz: np.ndarray,
-        timestamp_millis: float,
-        color_camera_intrinsic_matrix: np.ndarray,
-        color_camera_distortion_coeffs: np.ndarray,
-        depth_camera_intrinsic_matrix: np.ndarray,
-        depth_camera_distortion_coeffs: np.ndarray,
-        xyz_to_color_camera_extrinsic_matrix: np.ndarray,
-        xyz_to_depth_camera_extrinsic_matrix: np.ndarray,
-    ):
-        """
-        Args:
-            color_frame (np.ndarray): The color frame in RGB8 format.
-            depth_frame_xyz (np.ndarray): The depth frame in Coord3D_ABC16 format.
-            timestamp_millis (float): The timestamp of the frame, in milliseconds since the device was started.
-            color_camera_intrinsic_matrix (np.ndarray): Intrinsic matrix of the color camera.
-            color_camera_distortion_coeffs (np.ndarray): Distortion coefficients of the color camera.
-            depth_camera_intrinsic_matrix (np.ndarray): Intrinsic matrix of the depth camera.
-            depth_camera_distortion_coeffs (np.ndarray): Distortion coefficients of the depth camera.
-            xyz_to_color_camera_extrinsic_matrix (np.ndarray): Extrinsic matrix from depth camera's XYZ positions to the color camera.
-            xyz_to_color_camera_extrinsic_matrix (np.ndarray): Extrinsic matrix from depth camera's XYZ positions to the depth camera.
-        """
-        self.color_frame = color_frame
-        self._depth_frame_xyz = depth_frame_xyz
-        self.depth_frame = np.sqrt(np.sum(np.square(depth_frame_xyz), axis=-1)).astype(
-            np.uint16
-        )  # Represent the depth frame as the L2 norm, and convert to mono16
-
-        self.timestamp_millis = timestamp_millis
-        self._color_camera_intrinsic_matrix = color_camera_intrinsic_matrix
-        self._color_camera_distortion_coeffs = color_camera_distortion_coeffs
-        self._depth_camera_intrinsic_matrix = depth_camera_intrinsic_matrix
-        self._depth_camera_distortion_coeffs = depth_camera_distortion_coeffs
-        self._xyz_to_color_camera_extrinsic_matrix = (
-            xyz_to_color_camera_extrinsic_matrix
-        )
-        self._xyz_to_depth_camera_extrinsic_matrix = (
-            xyz_to_depth_camera_extrinsic_matrix
-        )
-        self._color_to_depth_extrinsic_matrix = (
-            xyz_to_depth_camera_extrinsic_matrix
-            @ invert_extrinsic_matrix(xyz_to_color_camera_extrinsic_matrix)
-        )
-
-    def get_corresponding_depth_pixel_deprecated(
-        self, color_pixel: Tuple[int, int]
-    ) -> Tuple[int, int]:
-        """
-        Given an (x, y) coordinate in the color frame, return the corresponding (x, y) coordinate in the depth frame.
-
-        Args:
-            color_pixel (Sequence[int]): (x, y) coordinate in the color frame.
-
-        Returns:
-            Tuple[int, int]: (x, y) coordinate in the depth frame.
-        """
-
-        # Undistort the pixel coordinate in color camera
-        distorted_color_pixel = np.array([[color_pixel]], dtype=np.float32)
-        undistorted_color_pixel = cv2.undistortPoints(
-            distorted_color_pixel,
-            self._color_camera_intrinsic_matrix,
-            self._color_camera_distortion_coeffs,
-            P=self._color_camera_intrinsic_matrix,
-        ).reshape(-1)
-
-        # Convert to normalized camera coordinates
-        normalized_color_pixel = np.linalg.inv(
-            self._color_camera_intrinsic_matrix
-        ) @ np.append(undistorted_color_pixel, 1)
-        print(f"normalized_color_pixel = {normalized_color_pixel}")
-
-        # Transform the normalized coordinates to depth camera using the extrinsic matrix
-        normalized_color_pixel *= DEPTH_MIN_MM
-        transformed_homogeneous_depth_pixel = (
-            self._color_to_depth_extrinsic_matrix @ np.append(normalized_color_pixel, 1)
-        )
-        print(
-            f"transformed_homogeneous_depth_pixel = {transformed_homogeneous_depth_pixel}"
-        )
-        normalized_depth_pixel = (
-            transformed_homogeneous_depth_pixel[:3]
-            / transformed_homogeneous_depth_pixel[3]
-        )
-        print(f"normalized_depth_pixel = {normalized_depth_pixel}")
-
-        # Convert to pixel coordinates in depth camera
-        undistorted_depth_pixel = (
-            self._depth_camera_intrinsic_matrix @ normalized_depth_pixel[:3]
-        )
-        undistorted_depth_pixel = (
-            undistorted_depth_pixel[:2] / undistorted_depth_pixel[2]
-        )
-        print(f"undistorted_depth_pixel = {undistorted_depth_pixel}")
-
-        # Apply distortion to the pixel coordinates in depth camera
-        distorted_depth_pixel = distort_pixel_coords(
-            undistorted_depth_pixel,
-            self._depth_camera_intrinsic_matrix,
-            self._depth_camera_distortion_coeffs,
-        )
-        print(f"distorted_depth_pixel = {distorted_depth_pixel}")
-
-        return (
-            int(round(distorted_depth_pixel[0])),
-            int(round(distorted_depth_pixel[1])),
-        )
-
-    def get_corresponding_depth_pixel(
-        self, color_pixel: Tuple[int, int]
-    ) -> Tuple[int, int]:
-        """
-        Given an (x, y) coordinate in the color frame, return the corresponding (x, y) coordinate in the depth frame.
-
-        The general approach is as follows:
-            1. Deproject the color image pixel coordinate to two positions in the color camera-space: one that corresponds to the
-               position at the minimum depth, and one at the maximum depth.
-            2. Transform the two positions from color camera-space to depth camera-space.
-            3. Project the two positions to their respective depth image pixel coordinates.
-            4. The target lies somewhere along the line formed by the two pixel coordinates found in the previous step. We
-               iteratively move pixel by pixel along this line. For each depth image pixel, we grab the xyz data at the pixel,
-               project it onto the color image plane, and see how far it is from the original color pixel coordinate. We find
-               and return the closest match.
-
-        Note that in order to achieve the above, we require two extrinsic matrices - one for projecting the xyz positions to
-        the color camera image plane, and one for projecting the xyz positions to the depth camera image plane.
-
-        Args:
-            color_pixel (Sequence[int]): (x, y) coordinate in the color frame.
-
-        Returns:
-            Tuple[int, int]: (x, y) coordinate in the depth frame.
-        """
-
-        def deproject_pixel(pixel, depth, camera_matrix, distortion_coeffs):
-            # Normalized, undistorted pixel coord
-            pixel = np.array([[[pixel[0], pixel[1]]]], dtype=np.float32)
-            pixel_undistorted = cv2.undistortPoints(
-                pixel,
-                camera_matrix,
-                distortion_coeffs,
-            )
-            return np.array(
-                [
-                    pixel_undistorted[0][0][0] * depth,
-                    pixel_undistorted[0][0][1] * depth,
-                    depth,
-                ]
-            )
-
-        def transform_position(position, extrinsic_matrix):
-            position = np.array(position)
-            homogeneous_position = np.append(position, 1)
-            return np.dot(extrinsic_matrix, homogeneous_position)[:3]
-
-        def project_position(
-            position, camera_matrix, distortion_coeffs, extrinsic_matrix=None
-        ):
-            R = extrinsic_matrix[:3, :3] if extrinsic_matrix is not None else np.eye(3)
-            t = extrinsic_matrix[:3, 3] if extrinsic_matrix is not None else np.zeros(3)
-            pixels, _ = cv2.projectPoints(
-                np.array([[position]]),
-                R,
-                t,
-                camera_matrix,
-                distortion_coeffs,
-            )
-            pixel = pixels[0].flatten()
-            return (int(round(pixel[0])), int(round(pixel[1])))
-
-        def adjust_pixel_to_bounds(pixel, width, height):
-            x = max(0, min(int(round(pixel[0])), width - 1))
-            y = max(0, min(int(round(pixel[1])), height - 1))
-            return (x, y)
-
-        def next_pixel_in_line(curr, start, end):
-            # Move one pixel from curr to end
-            curr = np.array(curr)
-            end = np.array(end)
-            direction = end - curr
-            direction = direction / np.linalg.norm(direction)
-            next = curr + direction
-            return (int(round(next[0])), int(round(next[1])))
-
-        def is_pixel_in_line(curr, start, end):
-            min_x = min(start[0], end[0])
-            max_x = max(start[0], end[0])
-            min_y = min(start[1], end[1])
-            max_y = max(start[1], end[1])
-
-            return min_x <= curr[0] <= max_x and min_y <= curr[1] <= max_y
-
-        # Min-depth and max-depth positions in color camera-space
-        min_depth_position_color_space = deproject_pixel(
-            color_pixel,
-            DEPTH_MIN_MM,
-            self._color_camera_intrinsic_matrix,
-            self._color_camera_distortion_coeffs,
-        )
-        max_depth_position_color_space = deproject_pixel(
-            color_pixel,
-            DEPTH_MAX_MM,
-            self._color_camera_intrinsic_matrix,
-            self._color_camera_distortion_coeffs,
-        )
-
-        # Min-depth and max-depth positions in depth camera-space
-        min_depth_position_depth_space = transform_position(
-            min_depth_position_color_space, self._color_to_depth_extrinsic_matrix
-        )
-        max_depth_position_depth_space = transform_position(
-            max_depth_position_color_space, self._color_to_depth_extrinsic_matrix
-        )
-
-        # Project depth camera-space positions to depth pixels
-        min_depth_pixel = project_position(
-            min_depth_position_depth_space,
-            self._depth_camera_intrinsic_matrix,
-            self._depth_camera_distortion_coeffs,
-        )
-        max_depth_pixel = project_position(
-            max_depth_position_depth_space,
-            self._depth_camera_intrinsic_matrix,
-            self._depth_camera_distortion_coeffs,
-        )
-
-        # Make sure pixel coords are in boundary
-        depth_frame_height, depth_frame_width, depth_channels = (
-            self._depth_frame_xyz.shape
-        )
-        min_depth_pixel = adjust_pixel_to_bounds(
-            min_depth_pixel, depth_frame_width, depth_frame_height
-        )
-        max_depth_pixel = adjust_pixel_to_bounds(
-            max_depth_pixel, depth_frame_width, depth_frame_height
-        )
-
-        # Search along the line for the depth pixel for which its corresponding projected color pixel is the closest
-        # to the target color pixel
-        min_dist = -1
-        closest_depth_pixel = min_depth_pixel
-        curr_depth_pixel = min_depth_pixel
-        while True:
-            xyz_mm = self._depth_frame_xyz[curr_depth_pixel[1]][curr_depth_pixel[0]]
-            curr_color_pixel = project_position(
-                xyz_mm,
-                self._color_camera_intrinsic_matrix,
-                self._color_camera_distortion_coeffs,
-                self._xyz_to_color_camera_extrinsic_matrix,
-            )
-            distance = np.linalg.norm(
-                np.array(curr_color_pixel) - np.array(color_pixel)
-            )
-            if distance < min_dist or min_dist < 0:
-                min_dist = distance
-                closest_depth_pixel = curr_depth_pixel
-
-            # Stop if we've processed the max_depth_pixel
-            if (
-                curr_depth_pixel[0] == max_depth_pixel[0]
-                and curr_depth_pixel[1] == max_depth_pixel[1]
-            ):
-                break
-
-            # Otherwise, find the next pixel along the line we should try
-            curr_depth_pixel = next_pixel_in_line(
-                curr_depth_pixel, min_depth_pixel, max_depth_pixel
-            )
-            if not is_pixel_in_line(curr_depth_pixel, min_depth_pixel, max_depth_pixel):
-                break
-
-        return closest_depth_pixel
-
-    def get_position(
-        self, color_pixel: Tuple[int, int]
-    ) -> Optional[Tuple[float, float, float]]:
-        """
-        Given an (x, y) coordinate in the color frame, return the (x, y, z) position with respect to the camera.
-
-        Args:
-            color_pixel (Sequence[int]): (x, y) coordinate in the color frame.
-
-        Returns:
-            Optional[Tuple[float, float, float]]: (x, y, z) position with respect to the camera, or None if the position could not be determined.
-        """
-        depth_pixel = self.get_corresponding_depth_pixel(color_pixel)
-        position = self._depth_frame_xyz[depth_pixel[1]][depth_pixel[0]]
-        # Negative depth indicates an invalid position
-        if position[2] < 0.0:
-            return None
-
-        return (float(position[0]), float(position[1]), float(position[2]))
-
-
-class LucidRgbd(RgbdCamera):
+class LucidRgbdCamera(RgbdCamera):
     """
     Combined interface for a LUCID color camera (such as the Triton) and depth camera (such as the
     Helios2). Unfortunately, we cannot modularize the LUCID cameras into individual instances, as
     calling system.device_infos is time consuming, and calling system.create_device more than once
     results in an error.
     """
+
+    color_camera_serial_number: Optional[str]
+    depth_camera_serial_number: Optional[str]
+    color_frame_size: Tuple[int, int]
+    depth_frame_size: Tuple[int, int]
 
     def __init__(
         self,
@@ -448,6 +148,7 @@ class LucidRgbd(RgbdCamera):
         xyz_to_depth_camera_extrinsic_matrix: np.ndarray,
         color_camera_serial_number: Optional[str] = None,
         depth_camera_serial_number: Optional[str] = None,
+        state_change_callback: Optional[Callable[[State], None]] = None,
         logger: Optional[logging.Logger] = None,
     ):
         """
@@ -460,12 +161,15 @@ class LucidRgbd(RgbdCamera):
             xyz_to_color_camera_extrinsic_matrix (np.ndarray): Extrinsic matrix from depth camera's XYZ positions to the depth camera.
             color_camera_serial_number (Optional[str]): Serial number of color camera to connect to. If None, the first available color camera will be used.
             depth_camera_serial_number (Optional[str]): Serial number of depth camera to connect to. If None, the first available depth camera will be used.
+            state_change_callback (Optional[Callable[[State], None]]): Callback that gets called when the camera device state changes.
             logger (Optional[logging.Logger]): Logger
         """
         self.color_camera_serial_number = color_camera_serial_number
+        self.color_frame_size = (0, 0)
         self._color_camera_intrinsic_matrix = color_camera_intrinsic_matrix
         self._color_camera_distortion_coeffs = color_camera_distortion_coeffs
         self.depth_camera_serial_number = depth_camera_serial_number
+        self.depth_frame_size = (0, 0)
         self._depth_camera_intrinsic_matrix = depth_camera_intrinsic_matrix
         self._depth_camera_distortion_coeffs = depth_camera_distortion_coeffs
         self._xyz_to_color_camera_extrinsic_matrix = (
@@ -474,78 +178,221 @@ class LucidRgbd(RgbdCamera):
         self._xyz_to_depth_camera_extrinsic_matrix = (
             xyz_to_depth_camera_extrinsic_matrix
         )
+        self._state_change_callback = state_change_callback
         if logger:
             self._logger = logger
         else:
             self._logger = logging.getLogger(__name__)
             self._logger.setLevel(logging.INFO)
-        self._check_connection = False
-        self._check_connection_thread = None
+
         self._color_device = None
         self._depth_device = None
         self._exposure_us = 0.0
         self._gain_db = 0.0
 
+        self._cv = threading.Condition()
+        self._is_running = False
+        self._connection_thread = None
+        self._acquisition_thread = None
+
     @property
-    def is_connected(self) -> bool:
+    def state(self) -> State:
         """
         Returns:
-            bool: Whether the camera is connected.
+            State: Current state of the camera device.
         """
-        return self._color_device is not None and self._depth_device is not None
+        if self._color_device is not None and self._depth_device is not None:
+            return State.STREAMING
+        else:
+            if self._is_running:
+                return State.CONNECTING
+            else:
+                return State.DISCONNECTED
 
-    def initialize(self):
-        # TODO: Implement device disconnection and reconnection logic
-        device_infos = system.device_infos
+    def start(self, frame_callback: Optional[Callable[[RgbdFrame], None]] = None):
+        """
+        Connects device and starts streaming.
 
-        # If we don't have a serial number of a device, attempt to find one among connected devices
-        if self.color_camera_serial_number is None:
-            self.color_camera_serial_number = next(
-                (
-                    device_info["serial"]
-                    for device_info in device_infos
-                    if any(
-                        device_info["model"].startswith(prefix)
-                        for prefix in COLOR_CAMERA_MODEL_PREFIXES
-                    )
-                ),
-                None,
-            )
-        if self.depth_camera_serial_number is None:
-            self.depth_camera_serial_number = next(
-                (
-                    device_info["serial"]
-                    for device_info in device_infos
-                    if any(
-                        device_info["model"].startswith(prefix)
-                        for prefix in DEPTH_CAMERA_MODEL_PREFIXES
-                    )
-                ),
-                None,
-            )
+        Args:
+            frame_callback (Optional[Callable[[RgbdFrame], None]]): Callback that gets called when a new frame is available.
+        """
+        if self._is_running:
+            return
 
-        # Set up devices
-        color_device_info = next(
-            (
-                device_info
-                for device_info in device_infos
-                if device_info["serial"] == self.color_camera_serial_number
-            ),
-            None,
+        self._is_running = True
+        self._call_state_change_callback()
+
+        # Start connection thread and acquisition thread
+        self._connection_thread = threading.Thread(
+            target=self._connection_thread_fn, daemon=True
         )
-        depth_device_info = next(
-            (
-                device_info
-                for device_info in device_infos
-                if device_info["serial"] == self.depth_camera_serial_number
-            ),
-            None,
+        self._connection_thread.start()
+        self._acquisition_thread = threading.Thread(
+            target=self._acquisition_thread_fn, args=(frame_callback,), daemon=True
         )
+        self._acquisition_thread.start()
+
+    def stop(self):
+        """
+        Stops streaming and disconnects device.
+        """
+        if not self._is_running:
+            return
+
+        self._is_running = False
+        self._call_state_change_callback()
+
+        with self._cv:
+            self._cv.notify_all()  # Notify all waiting threads to wake up
+
+        # Join the threads to ensure they have finished
+        if self._connection_thread is not None:
+            self._connection_thread.join()
+        if self._acquisition_thread is not None:
+            self._acquisition_thread.join()
+
+    def _connection_thread_fn(self):
+        found_devices = False
+
+        with self._cv:
+            while self._is_running:
+                if found_devices:
+                    self._logger.info(f"Devices found. Signaling acquisition thread")
+                    self._cv.notify()
+                    self._cv.wait()
+
+                # Clean up existing connection if needed
+                self._stop_stream()
+
+                # Create new connection
+                if self._is_running:
+                    found_devices = False
+
+                    device_infos = system.device_infos
+
+                    # If we don't have a serial number of a device, attempt to find one among connected devices
+                    if self.color_camera_serial_number is None:
+                        self.color_camera_serial_number = next(
+                            (
+                                device_info["serial"]
+                                for device_info in device_infos
+                                if any(
+                                    device_info["model"].startswith(prefix)
+                                    for prefix in COLOR_CAMERA_MODEL_PREFIXES
+                                )
+                            ),
+                            None,
+                        )
+                    if self.depth_camera_serial_number is None:
+                        self.depth_camera_serial_number = next(
+                            (
+                                device_info["serial"]
+                                for device_info in device_infos
+                                if any(
+                                    device_info["model"].startswith(prefix)
+                                    for prefix in DEPTH_CAMERA_MODEL_PREFIXES
+                                )
+                            ),
+                            None,
+                        )
+
+                    # Set up devices
+                    color_device_info = next(
+                        (
+                            device_info
+                            for device_info in device_infos
+                            if device_info["serial"] == self.color_camera_serial_number
+                        ),
+                        None,
+                    )
+                    depth_device_info = next(
+                        (
+                            device_info
+                            for device_info in device_infos
+                            if device_info["serial"] == self.depth_camera_serial_number
+                        ),
+                        None,
+                    )
+
+                    # If the devices are connected, set up and start streaming
+                    if color_device_info is not None and depth_device_info is not None:
+                        found_devices = True
+                        self._logger.info(
+                            f"Device (color) {self.color_camera_serial_number} and device (depth) {self.depth_camera_serial_number} found"
+                        )
+                        self._start_stream(color_device_info, depth_device_info)
+                    else:
+                        self._logger.warn(
+                            f"Either device (color) {self.color_camera_serial_number} or device (depth) {self.depth_camera_serial_number} was not found"
+                        )
+                        time.sleep(5)
+
+            # Clean up existing connection
+            self._stop_stream()
+
+        self._logger.info(f"Terminating connection thread")
+
+    def _acquisition_thread_fn(
+        self, frame_callback: Optional[Callable[[RgbdFrame], None]] = None
+    ):
+        with self._cv:
+            while self._is_running:
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future_color_frame = executor.submit(self._get_color_frame)
+                    future_depth_frame = executor.submit(self._get_depth_frame)
+
+                    try:
+                        color_frame = future_color_frame.result()
+                        depth_frame = future_depth_frame.result()
+                    except:
+                        self._logger.warn(
+                            f"There was an issue with the camera. Signaling connection thread"
+                        )
+                        self._cv.notify()
+                        self._cv.wait()
+                        continue
+
+                if color_frame is None or depth_frame is None:
+                    self._logger.warn(
+                        f"No frame available. Signaling connection thread"
+                    )
+                    self._cv.notify()
+                    self._cv.wait()
+                    continue
+
+                # depth_frame is a numpy structured array containing both xyz and intensity data
+                # depth_frame_intensity = (depth_frame["i"] / 256).astype(np.uint8)
+                depth_frame_xyz = np.stack(
+                    [depth_frame["x"], depth_frame["y"], depth_frame["z"]], axis=-1
+                )
+
+                if frame_callback is not None:
+                    frame_callback(
+                        LucidFrame(
+                            color_frame,
+                            depth_frame_xyz,  # type: ignore
+                            time.time() * 1000,
+                            self._color_camera_intrinsic_matrix,
+                            self._color_camera_distortion_coeffs,
+                            self._depth_camera_intrinsic_matrix,
+                            self._depth_camera_distortion_coeffs,
+                            self._xyz_to_color_camera_extrinsic_matrix,
+                            self._xyz_to_depth_camera_extrinsic_matrix,
+                        )
+                    )
+
+        self._logger.info(f"Terminating acquisition thread")
+
+    def _start_stream(self, color_device_info, depth_device_info):
+        if self._color_device is not None or self._depth_device is not None:
+            return
+
         devices = system.create_device([color_device_info, depth_device_info])
         self._color_device = devices[0]
         self._depth_device = devices[1]
+        self._call_state_change_callback()
 
-        # Configure color nodemap
+        # Configure color device nodemap
         nodemap = self._color_device.nodemap
         stream_nodemap = self._color_device.tl_stream_nodemap
         nodemap["AcquisitionMode"].value = "Continuous"
@@ -562,13 +409,12 @@ class LucidRgbd(RgbdCamera):
         # Set frame size and pixel format
         nodemap["Width"].value = nodemap["Width"].max
         nodemap["Height"].value = nodemap["Height"].max
-        color_frame_width = nodemap["Width"].value
-        color_frame_height = nodemap["Height"].value
+        self.color_frame_size = (nodemap["Width"].value, nodemap["Height"].value)
         nodemap["PixelFormat"].value = PixelFormat.RGB8
         # Set the following when Persistent IP is set on the camera
         nodemap["GevPersistentARPConflictDetectionEnable"].value = False
 
-        # Configure depth nodemap
+        # Configure depth device nodemap
         nodemap = self._depth_device.nodemap
         stream_nodemap = self._depth_device.tl_stream_nodemap
         nodemap["AcquisitionMode"].value = "Continuous"
@@ -583,12 +429,11 @@ class LucidRgbd(RgbdCamera):
         # in the correct order.
         stream_nodemap["StreamPacketResendEnable"].value = True
         # Set pixel format
-        depth_frame_width = nodemap["Width"].value
-        depth_frame_height = nodemap["Height"].value
+        self.depth_frame_size = (nodemap["Width"].value, nodemap["Height"].value)
         nodemap["PixelFormat"].value = PixelFormat.Coord3D_ABCY16
         # Set Scan 3D node values
         nodemap["Scan3dOperatingMode"].value = "Distance3000mmSingleFreq"
-        nodemap["ExposureTimeSelector"].value = "Exp350Us"
+        nodemap["ExposureTimeSelector"].value = "Exp88Us"
         self._xyz_scale = nodemap["Scan3dCoordinateScale"].value
         nodemap["Scan3dCoordinateSelector"].value = "CoordinateA"
         x_offset = nodemap["Scan3dCoordinateOffset"].value
@@ -610,12 +455,26 @@ class LucidRgbd(RgbdCamera):
         # Start streams
         self._color_device.start_stream(10)
         self._logger.info(
-            f"Device (color) {self.color_camera_serial_number} is now streaming at {color_frame_width}x{color_frame_height}"
+            f"Device (color) {self.color_camera_serial_number} is now streaming at {self.color_frame_size[0]}x{self.color_frame_size[1]}"
         )
         self._depth_device.start_stream(10)
         self._logger.info(
-            f"Device (depth) {self.depth_camera_serial_number} is now streaming at {depth_frame_width}x{depth_frame_height}"
+            f"Device (depth) {self.depth_camera_serial_number} is now streaming at {self.depth_frame_size[0]}x{self.depth_frame_size[1]}"
         )
+
+    def _stop_stream(self):
+        if self._color_device is None and self._depth_device is None:
+            return
+
+        self._color_device = None
+        self._depth_device = None
+        # Destroy all created devices. Note that this will automatically call stop_stream() for each device
+        system.destroy_device()
+        self._call_state_change_callback()
+
+    def _call_state_change_callback(self):
+        if self._state_change_callback is not None:
+            self._state_change_callback(self.state)
 
     @property
     def exposure_us(self) -> float:
@@ -623,7 +482,7 @@ class LucidRgbd(RgbdCamera):
         Returns:
             float: Exposure time of the color camera in microseconds.
         """
-        if not self.is_connected:
+        if self.state != State.STREAMING:
             return 0.0
 
         return self._exposure_us
@@ -636,7 +495,7 @@ class LucidRgbd(RgbdCamera):
         Args:
             exposure_us (float): Exposure time in microseconds. A negative value sets auto exposure.
         """
-        if not self.is_connected:
+        if self.state != State.STREAMING:
             return
 
         nodemap = self._color_device.nodemap
@@ -659,7 +518,7 @@ class LucidRgbd(RgbdCamera):
         Returns:
             Tuple[float, float]: (min, max) exposure times of the color camera in microseconds.
         """
-        if not self.is_connected:
+        if self.state != State.STREAMING:
             return (0.0, 0.0)
 
         nodemap = self._color_device.nodemap
@@ -671,7 +530,7 @@ class LucidRgbd(RgbdCamera):
         Returns:
             float: Gain level of the color camera in dB.
         """
-        if not self.is_connected:
+        if self.state != State.STREAMING:
             return 0.0
 
         return self._gain_db
@@ -684,7 +543,7 @@ class LucidRgbd(RgbdCamera):
         Args:
             gain_db (float): Gain level in dB.
         """
-        if not self.is_connected:
+        if self.state != State.STREAMING:
             return
 
         nodemap = self._color_device.nodemap
@@ -705,16 +564,13 @@ class LucidRgbd(RgbdCamera):
         Returns:
             Tuple[float, float]: (min, max) gain levels of the color camera in dB.
         """
-        if not self.is_connected:
+        if self.state != State.STREAMING:
             return (0.0, 0.0)
 
         nodemap = self._color_device.nodemap
         return (nodemap["Gain"].min, nodemap["Gain"].max)
 
-    def get_color_frame(self) -> Optional[np.ndarray]:
-        if self._color_device is None:
-            return None
-
+    def _get_color_frame(self) -> Optional[np.ndarray]:
         # get_buffer must be called after start_stream and before stop_stream (or
         # system.destroy_device), and buffers must be requeued
         buffer = self._color_device.get_buffer()
@@ -734,10 +590,7 @@ class LucidRgbd(RgbdCamera):
 
         return np_array
 
-    def get_depth_frame(self) -> Optional[np.ndarray]:
-        if self._depth_device is None:
-            return None
-
+    def _get_depth_frame(self) -> Optional[np.ndarray]:
         # get_buffer must be called after start_stream and before stop_stream (or
         # system.destroy_device), and buffers must be requeued
         buffer = self._depth_device.get_buffer()
@@ -798,46 +651,13 @@ class LucidRgbd(RgbdCamera):
 
         return np_array
 
-    def get_frame(self) -> Optional[LucidFrame]:
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future_color_frame = executor.submit(self.get_color_frame)
-            future_depth_frame = executor.submit(self.get_depth_frame)
-            color_frame = future_color_frame.result()
-            depth_frame = future_depth_frame.result()
-
-        if color_frame is None or depth_frame is None:
-            return None
-
-        # depth_frame is a numpy structured array containing both xyz and intensity data
-        # depth_frame_intensity = (depth_frame["i"] / 256).astype(np.uint8)
-        depth_frame_xyz = np.stack(
-            [depth_frame["x"], depth_frame["y"], depth_frame["z"]], axis=-1
-        )
-        frame = LucidFrame(
-            color_frame,
-            depth_frame_xyz,  # type: ignore
-            time.time() * 1000,
-            self._color_camera_intrinsic_matrix,
-            self._color_camera_distortion_coeffs,
-            self._depth_camera_intrinsic_matrix,
-            self._depth_camera_distortion_coeffs,
-            self._xyz_to_color_camera_extrinsic_matrix,
-            self._xyz_to_depth_camera_extrinsic_matrix,
-        )
-        return frame
-
-    def close(self):
-        # Destroy all created devices. Note that this will automatically call stop_stream() for each device
-        self._color_device = None
-        self._depth_device = None
-        system.destroy_device()
-
 
 def create_lucid_rgbd_camera(
     color_camera_serial_number: Optional[str] = None,
     depth_camera_serial_number: Optional[str] = None,
+    state_change_callback: Optional[Callable[[State], None]] = None,
     logger: Optional[logging.Logger] = None,
-) -> LucidRgbd:
+) -> LucidRgbdCamera:
     """
     Helper to create an instance of LucidRgbd using predefined calibration params.
     """
@@ -860,16 +680,17 @@ def create_lucid_rgbd_camera(
     xyz_to_helios_extrinsic_matrix = np.load(
         os.path.join(calibration_params_dir, "xyz_to_helios_extrinsic_matrix.npy")
     )
-    return LucidRgbd(
+    return LucidRgbdCamera(
         triton_intrinsic_matrix,  # type: ignore
         triton_distortion_coeffs,  # type: ignore
         helios_intrinsic_matrix,  # type: ignore
         helios_distortion_coeffs,  # type: ignore
         xyz_to_triton_extrinsic_matrix,  # type: ignore
         xyz_to_helios_extrinsic_matrix,  # type: ignore
-        color_camera_serial_number,
-        depth_camera_serial_number,
-        logger,
+        color_camera_serial_number=color_camera_serial_number,
+        depth_camera_serial_number=depth_camera_serial_number,
+        state_change_callback=state_change_callback,
+        logger=logger,
     )
 
 
@@ -885,12 +706,11 @@ def _get_frame(output_dir):
         color_camera_serial_number="241300039",
         depth_camera_serial_number="241400544",
     )
-    camera.initialize()
+    camera.start()
     time.sleep(1)
-    # camera.get_frame()
 
-    color_frame = camera.get_color_frame()
-    depth_frame = camera.get_depth_frame()
+    color_frame = camera._get_color_frame()
+    depth_frame = camera._get_depth_frame()
 
     if color_frame is not None and depth_frame is not None:
         triton_mono_image = cv2.cvtColor(color_frame, cv2.COLOR_RGB2GRAY)

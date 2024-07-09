@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 import numpy as np
+from rclpy.qos import QoSDurabilityPolicy, QoSProfile
 from std_srvs.srv import Trigger
 from transitions.extensions.asyncio import AsyncMachine
 
@@ -29,6 +30,7 @@ from camera_control.camera_control_node import CameraControlNode
 from common_interfaces.msg import Vector2
 from laser_control.laser_control_node import LaserControlNode
 from runner_cutter_control.calibration import Calibration
+from runner_cutter_control.camera_context import CameraContext
 from runner_cutter_control.tracker import Track, Tracker, TrackState
 from runner_cutter_control_interfaces.msg import State
 from runner_cutter_control_interfaces.srv import (
@@ -50,7 +52,15 @@ class RunnerCutterControlParams:
 @node("runner_cutter_control_node")
 class RunnerCutterControlNode:
     runner_cutter_control_params = params(RunnerCutterControlParams)
-    state_topic = topic("~/state", State, 5)
+    state_topic = topic(
+        "~/state",
+        State,
+        qos=QoSProfile(
+            depth=1,
+            # Setting durability to Transient Local will persist samples for late joiners
+            durability=QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL,
+        ),
+    )
 
     @start
     async def start(self):
@@ -80,6 +90,9 @@ class RunnerCutterControlNode:
             self.runner_cutter_control_params.burn_time_secs,
             self.get_logger(),
         )
+
+        # Publish initial state
+        self.publish_state()
 
     # TODO: use action instead once there's a new release of roslib. Currently
     # roslib does not support actions with ROS2
@@ -174,6 +187,7 @@ class StateMachine:
         self._node = node
         self._laser_node = laser_node
         self._camera_node = camera_node
+        self._camera_context = CameraContext(camera_node)
         self._calibration = calibration
         self._runner_tracker = runner_tracker
         self._tracking_laser_color = tracking_laser_color
@@ -228,8 +242,6 @@ class StateMachine:
         self._node.publish_state()
         await self._laser_node.stop()
         await self._laser_node.clear_points()
-        await self._camera_node.auto_exposure()
-        await self._camera_node.auto_gain()
         self._runner_tracker.clear()
 
     async def on_enter_calibration(self):
@@ -341,27 +353,27 @@ class StateMachine:
         self, target_position: Tuple[float, float, float], target_pixel: Tuple[int, int]
     ) -> Optional[Tuple[float, float]]:
         # TODO: set exposure/gain automatically when detecting laser
-        await self._camera_node.set_exposure(exposure_us=1.0)
-        await self._camera_node.set_gain(gain_db=0.0)
-        initial_laser_coord = self._calibration.camera_point_to_laser_coord(
-            target_position
-        )
-        await self._laser_node.set_points(
-            points=[Vector2(x=initial_laser_coord[0], y=initial_laser_coord[1])]
-        )
-        await self._laser_node.set_color(
-            r=self._tracking_laser_color[0],
-            g=self._tracking_laser_color[1],
-            b=self._tracking_laser_color[2],
-            i=0.0,
-        )
-        await self._laser_node.play()
-        corrected_laser_coord = await self._correct_laser(
-            target_pixel, initial_laser_coord
-        )
-        await self._laser_node.stop()
-        await self._camera_node.auto_gain()
-        await self._camera_node.auto_exposure()
+        async with self._camera_context.laser_detection_settings():
+            initial_laser_coord = self._calibration.camera_point_to_laser_coord(
+                target_position
+            )
+            await self._laser_node.set_points(
+                points=[Vector2(x=initial_laser_coord[0], y=initial_laser_coord[1])]
+            )
+            await self._laser_node.set_color(
+                r=self._tracking_laser_color[0],
+                g=self._tracking_laser_color[1],
+                b=self._tracking_laser_color[2],
+                i=0.0,
+            )
+            try:
+                await self._laser_node.play()
+                corrected_laser_coord = await self._correct_laser(
+                    target_pixel, initial_laser_coord
+                )
+            finally:
+                await self._laser_node.stop()
+
         return corrected_laser_coord
 
     async def _get_laser_pixel_and_pos(
@@ -460,9 +472,11 @@ class StateMachine:
             b=self._burn_laser_color[2],
             i=0.0,
         )
-        await self._laser_node.play()
-        await asyncio.sleep(self._burn_time_secs)
-        await self._laser_node.stop_laser()
+        try:
+            await self._laser_node.play()
+            await asyncio.sleep(self._burn_time_secs)
+        finally:
+            await self._laser_node.stop()
         target.state = TrackState.COMPLETED
         await self.burn_complete()
 

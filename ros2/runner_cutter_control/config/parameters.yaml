@@ -11,9 +11,6 @@ camera0:
     camera_control_params:
       camera_type: "lucid"
       camera_index: 0
-      fps: 30
-      rgb_size: [1280, 720]
-      depth_size: [1280, 720]
       save_dir: "~/Pictures/runner-cutter-app"
       debug_frame_width: 640
 laser0:
