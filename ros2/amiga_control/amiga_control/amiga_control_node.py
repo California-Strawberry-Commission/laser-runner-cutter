@@ -60,6 +60,7 @@ class AmigaControlNode:
     amiga = None
     
     amiga_params = params(AmigaParams)
+    
     amiga_available = latched_topic("~/available", Bool)
 
     @start

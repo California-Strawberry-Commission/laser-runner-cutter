@@ -37,15 +37,12 @@ class GuidanceBrainNode:
     async def emit_state(self):
         await self.state(active=self.active)
 
-    @subscribe(amiga.amiga_available)
-    async def amiga_available(self, data):
-        print(data)
-
     @timer(0.1, False)
     async def s(self):
+        print(self.amiga.amiga_available.value)
         print("RUN SET TWIST")
-        if not self.active:
-            await self.amiga.set_twist(twist=Vector2(x=0., y=0.))
+        # if not self.active:
+        #     await self.amiga.set_twist(twist=Vector2(x=0., y=0.))
             
     @subscribe(perceiver.tracker_result_topic)
     async def on_ft_result(self, linear_deviation, heading, is_valid):

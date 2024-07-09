@@ -18,7 +18,22 @@ from .decorators.timer import RosTimer
 from .decorators.topic import RosTopic
 from .decorators.start import RosStart
 
+class CachedTopic(RosTopic):
+    def __init__(self, topic: RosTopic, client: "ClientDriver"):
+        super().__init__(topic.path, topic.idl, topic.qos)
+        self.node = client
+        self.value = None 
 
+        fqt = expand_topic_name(topic.path, client._node_name, client._node_namespace)
+
+        client.log_debug(f"[SERVER] Attach topic cache >{fqt}<")
+
+        def cb(msg):
+            self.value = msg
+
+        client._node.create_subscription(topic.idl, fqt, cb, topic.qos)
+        
+        
 class AsyncActionClient:
     _action_complete = False
     result = None
@@ -130,10 +145,10 @@ class ClientDriver(AsyncDriver):
         # Create a new clientdriver for this node
         return ClientDriver(node_def, self._node, import_name, import_ns)
 
-    def _attach_publisher(self, attr, ros_topic: RosTopic):
-        # Don't create topic publisher on clients, but keep definition populated
-        ros_topic.node = self
-        return ros_topic
+    def _attach_publisher(self, attr, topic: RosTopic):
+        topic.node = self # Set topic node in definition so other attachers know about it.
+        
+        return CachedTopic(topic, self)
 
     def _attach_timer(self, attr, ros_timer: RosTimer):
         # Unused on clients

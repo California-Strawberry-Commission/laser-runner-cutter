@@ -356,13 +356,18 @@ class ServerDriver(AsyncDriver, Node):
 
         pub = self.create_publisher(ros_topic.idl, ros_topic.path, ros_topic.qos)
 
+        _dp = None # Captures dispatch function so it can reference itself
         async def _dispatch_pub(*args, **kwargs):
             if len(args) == 1:
                  msg = args[0]
             else:
                 msg = ros_topic.idl(*args, **kwargs)
+            _dp.value = msg
             await self.run_executor(pub.publish, msg)
-
+        
+        setattr(_dispatch_pub, "value", None)
+        _dp = _dispatch_pub
+        
         return _dispatch_pub
 
     # TODO: Better error handling.
