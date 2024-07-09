@@ -433,7 +433,7 @@ class LucidRgbdCamera(RgbdCamera):
         nodemap["PixelFormat"].value = PixelFormat.Coord3D_ABCY16
         # Set Scan 3D node values
         nodemap["Scan3dOperatingMode"].value = "Distance3000mmSingleFreq"
-        nodemap["ExposureTimeSelector"].value = "Exp350Us"
+        nodemap["ExposureTimeSelector"].value = "Exp88Us"
         self._xyz_scale = nodemap["Scan3dCoordinateScale"].value
         nodemap["Scan3dCoordinateSelector"].value = "CoordinateA"
         x_offset = nodemap["Scan3dCoordinateOffset"].value
