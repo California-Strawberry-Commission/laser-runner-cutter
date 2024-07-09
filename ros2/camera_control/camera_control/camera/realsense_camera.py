@@ -80,12 +80,19 @@ class RealSenseCamera(RgbdCamera):
             else:
                 return State.DISCONNECTED
 
-    def start(self, frame_callback: Optional[Callable[[RgbdFrame], None]] = None):
+    def start(
+        self,
+        exposure_us: float = -1.0,
+        gain_db: float = -1.0,
+        frame_callback: Optional[Callable[[RgbdFrame], None]] = None,
+    ):
         """
         Connects device and starts streaming.
 
         Args:
-            frame_callback (Optional[Callable[[RgbdFrame], None]]): Callback that gets called when a new frame is available.
+            exposure_us (float): Exposure time in microseconds. A negative value sets auto exposure.
+            gain_db (float): Gain level in dB. A negative value sets auto gain.
+            frame_callback (Callable[[RgbdFrame], None]): Callback that gets called when a new frame is available.
         """
         if self._is_running:
             return
@@ -95,7 +102,12 @@ class RealSenseCamera(RgbdCamera):
 
         # Start connection thread and acquisition thread
         self._connection_thread = threading.Thread(
-            target=self._connection_thread_fn, daemon=True
+            target=self._connection_thread_fn,
+            args=(
+                exposure_us,
+                gain_db,
+            ),
+            daemon=True,
         )
         self._connection_thread.start()
         self._acquisition_thread = threading.Thread(
@@ -122,12 +134,13 @@ class RealSenseCamera(RgbdCamera):
         if self._acquisition_thread is not None:
             self._acquisition_thread.join()
 
-    def _connection_thread_fn(self):
-        found_device = False
+    def _connection_thread_fn(self, exposure_us: float = -1.0, gain_db: float = -1.0):
+        device_connected = False
+        device_was_ever_connected = False
 
         with self._cv:
             while self._is_running:
-                if found_device:
+                if device_connected:
                     self._logger.info(f"Device found. Signaling acquisition thread")
                     self._cv.notify()
                     self._cv.wait()
@@ -137,7 +150,7 @@ class RealSenseCamera(RgbdCamera):
 
                 # Create new connection
                 if self._is_running:
-                    found_device = False
+                    device_connected = False
 
                     connected_devices = [
                         device.get_info(rs.camera_info.serial_number)
@@ -156,9 +169,17 @@ class RealSenseCamera(RgbdCamera):
 
                     # If the device is connected, set up and start streaming
                     if self.serial_number in connected_devices:
-                        found_device = True
                         self._logger.info(f"Device {self.serial_number} found")
-                        self._start_stream()
+                        # Only set exposure/gain if this is the first time the device is connected
+                        self._start_stream(
+                            **(
+                                {}
+                                if device_was_ever_connected
+                                else {"exposure_us": exposure_us, "gain_db": gain_db}
+                            )
+                        )
+                        device_was_ever_connected = True
+                        device_connected = True
                     else:
                         self._logger.warn(f"Device {self.serial_number} was not found")
                         time.sleep(5)
@@ -225,7 +246,9 @@ class RealSenseCamera(RgbdCamera):
 
         self._logger.info(f"Terminating acquisition thread")
 
-    def _start_stream(self):
+    def _start_stream(
+        self, exposure_us: Optional[float] = None, gain_db: Optional[float] = None
+    ):
         if self._pipeline is not None:
             return
 
@@ -252,7 +275,6 @@ class RealSenseCamera(RgbdCamera):
         # Start pipeline
         self._pipeline = rs.pipeline()
         self._profile = self._pipeline.start(config)
-        self._call_state_change_callback()
 
         # Get camera intrinsics and extrinsics
         color_prof = self._profile.get_stream(rs.stream.color)
@@ -274,10 +296,14 @@ class RealSenseCamera(RgbdCamera):
         # self.spatial_filter = rs.spatial_filter()  # Doesn't seem to help much. Disabling for now.
         self.hole_filling_filter = rs.hole_filling_filter()
 
-        # Exposure setting persists on device, so reset it to auto-exposure
-        self.exposure_us = -1.0
+        # Set exposure and gain
+        if exposure_us is not None:
+            self.exposure_us = exposure_us
+        if gain_db is not None:
+            self.gain_db = gain_db
 
         self._logger.info(f"Device {self.serial_number} is now streaming")
+        self._call_state_change_callback()
 
     def _stop_stream(self):
         if self._pipeline is None:
