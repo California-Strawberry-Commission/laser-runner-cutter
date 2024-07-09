@@ -5,3 +5,5 @@ float64 linear_deviation
 # Heading, in rads, within the furrow.
 # Negative means towards robot's left
 float64 heading
+
+bool is_valid

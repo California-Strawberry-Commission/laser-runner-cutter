@@ -28,6 +28,7 @@ from common_interfaces.msg import Vector2
 from . import realsense_stub
 from sensor_msgs.msg import Image
 from .furrow_tracker_annotator import FurrowTrackerAnnotator
+
 #                              /\                         X
 #  #####________________________________________________#####
 #  #####________________________________________________#####
@@ -48,9 +49,9 @@ from .furrow_tracker_annotator import FurrowTrackerAnnotator
 #  #####                                                #####
 
 
-
 # ros2 run furrow_perceiver furrow_perceiver --ros-args -p "realsense.name:=camera1" -p "realsense.ns:=/"
 # ros2 run realsense2_camera realsense2_camera_node --ros-args -r __node:=camera1
+
 
 @dataclass
 class PerceiverNodeParams:
@@ -68,43 +69,65 @@ class FurrowPerceiverNode:
 
     debug_img_topic = topic("~/debug_img", Image)
     tracker_result_topic = topic("~/tracker_result", PositionResult)
-    
+
     tracker = None
     annotator = None
+
     @start
     async def s(self):
         self.log("STARTING FURROW TRACKER")
-        
-    # TODO: Allow these annotations using parameters
-    # @subscribe(amiga_params.depth_topic)
-    # @subscribe(amiga_params.rs_name + "/image")
+
     @subscribe(realsense.depth_image_topic)
-    async def on_depth_image(self, header, height, width, encoding, is_bigendian, step, data):
-        self.log("GOT IMAGE!!")
-        cv_image = self.cvb.imgmsg_to_cv2(Image(header=header, height=height, width=width, encoding=encoding, is_bigendian=is_bigendian, step=step, data=data))
-        print(cv_image[100][100])
-        
+    async def on_depth_image(
+        self, header, height, width, encoding, is_bigendian, step, data
+    ):
+        """Takes a realsense depth image, processes it, and emits a debug image"""
+
+        cv_image = self.cvb.imgmsg_to_cv2(
+            Image(
+                header=header,
+                height=height,
+                width=width,
+                encoding=encoding,
+                is_bigendian=is_bigendian,
+                step=step,
+                data=data,
+            )
+        )
+
+        # Initialize tracker on first image
         if not self.tracker:
             self.tracker = FurrowTracker()
             self.tracker.init(cv_image)
             self.annotator = FurrowTrackerAnnotator(self.tracker)
-        
-        
+
+        # Process image for guidance
         self.tracker.process(cv_image)
+        
+        err = self.tracker.get_error()
+        
+        if err is None:
+            await self.tracker_result_topic(
+                linear_deviation=0.0, heading=0.0, is_valid=False
+            )
+        else:
+            await self.tracker_result_topic(
+                linear_deviation=float(err), heading=0.0, is_valid=True
+            )
+
+        # Create & publish debug image
         depth_colormap = cv2.applyColorMap(
             cv2.convertScaleAbs(cv_image, alpha=0.09), cv2.COLORMAP_JET
         )
         self.annotator.annotate(depth_colormap)
-        
-        print(self.tracker.get_error())
-
         m = self.cvb.cv2_to_imgmsg(depth_colormap, "bgr8")
         await self.debug_img_topic(m)
-    
-    @service("get_state", GetState)
+
+    @service("~/get_state", GetState)
     async def get_state(self):
         return result(state=State(fps=0, camera_connected=False))
-    
+
+
 # Boilerplate below here.
 def main():
     serve_nodes(FurrowPerceiverNode())

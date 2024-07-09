@@ -52,8 +52,8 @@ def generate_launch_description():
         furrow_perceiver_node,
         name="furrow0",
         parameters=[parameters_file],
-        output="screen",
-        emulate_tty=True,
+        # output="screen",
+        # emulate_tty=True,
     )
 
     brain = LaunchNode(
@@ -68,6 +68,7 @@ def generate_launch_description():
 
     # Link nodes
     brain.perceiver.link(furrow_perc)
+    brain.amiga.link(amiga)
 
     return LaunchDescription(
         [

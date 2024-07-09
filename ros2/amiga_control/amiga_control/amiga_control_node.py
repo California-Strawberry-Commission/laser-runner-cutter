@@ -12,6 +12,7 @@ from aioros2 import (
     feedback,
     subscribe,
     topic,
+    latched_topic,
     import_node,
     params,
     node,
@@ -19,7 +20,7 @@ from aioros2 import (
     param,
     start,
 )
-from std_msgs.msg import String
+from std_msgs.msg import String, Bool
 from common_interfaces.msg import Vector2
 from .amiga_controller import AmigaController
 
@@ -45,6 +46,7 @@ from .amiga_controller import AmigaController
 
 #########################
 
+
 @dataclass
 class AmigaParams:
     amiga_host: str = "127.0.0.1"
@@ -56,25 +58,33 @@ class AmigaParams:
 @node("amiga_control_node")
 class AmigaControlNode:
     amiga = None
-
+    
     amiga_params = params(AmigaParams)
+    amiga_available = latched_topic("~/available", Bool)
 
     @start
     async def comm_amiga(self):
         self.amiga = AmigaController(
             self.amiga_params.amiga_host, self.amiga_params.canbus_service_port
         )
- 
+        
+        await self.amiga_available(data=False)
+        
+        await self.amiga.wait_for_clients()
+        
+        await self.amiga_available(data=True)
+
+
     # ros2 service call /set_twist amiga_control_interfaces/srv/SetTwist "{twist: {x: 1.0, y: 1.0}}"
-    @service("set_twist", SetTwist)
+    @service("~/set_twist", SetTwist)
     async def set_twist(self, twist) -> bool:
-        await self.amiga.set_twist(twist.y, twist.x)
-        return result(success=True)
+        return result(success=await self.amiga.set_twist(twist.y, twist.x))
 
 
 # Boilerplate below here.
 def main():
     serve_nodes(AmigaControlNode())
+
 
 if __name__ == "__main__":
     main()

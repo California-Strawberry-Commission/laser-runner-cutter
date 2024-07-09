@@ -11,8 +11,15 @@ class AmigaController:
         self.cli_canbus = EventClient(
             config=EventServiceConfig(name="canbus", port=canbus_port, host=host)
         )
+    
+    async def wait_for_clients(self):
+        await self.cli_canbus._try_connect()
 
     async def set_twist(self, lin_vel, ang_vel):
-        t = Twist2d(angular_velocity=lin_vel, linear_velocity_x=ang_vel)
-        print("SET TWIST", lin_vel, ang_vel)
-        await self.cli_canbus.request_reply("/twist", t)
+        
+        if await self.cli_canbus._try_connect():
+            t = Twist2d(angular_velocity=lin_vel, linear_velocity_x=ang_vel)
+            await self.cli_canbus.request_reply("/twist", t)
+            return True
+        else:
+            return False

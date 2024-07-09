@@ -3,7 +3,7 @@ from .param_subscription import subscribe_param
 from .service import service
 from .timer import timer
 from .subscribe import subscribe
-from .topic import topic
+from .topic import topic, latched_topic
 from .params import params
 from ._decorators import RosDefinition, idl_to_kwargs
 from .node import node, RosNode
