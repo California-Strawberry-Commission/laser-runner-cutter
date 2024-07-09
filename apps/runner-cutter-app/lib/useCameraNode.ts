@@ -76,12 +76,6 @@ export default function useCameraNode(nodeName: string) {
     [setLogMessages]
   );
 
-  // Initial node connected state
-  useEffect(() => {
-    const connected = ros.isNodeConnected(nodeName);
-    setNodeConnected(connected);
-  }, [ros, nodeName, setNodeConnected]);
-
   // Subscriptions
   useEffect(() => {
     const onNodeConnectedSub = ros.onNodeConnected(

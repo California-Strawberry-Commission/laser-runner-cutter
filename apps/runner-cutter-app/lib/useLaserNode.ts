@@ -18,12 +18,6 @@ export default function useLaserNode(nodeName: string) {
     };
   }, [nodeName, rosbridgeNodeInfo, nodeConnected, laserState]);
 
-  // Initial node connected state
-  useEffect(() => {
-    const connected = ros.isNodeConnected(nodeName);
-    setNodeConnected(connected);
-  }, [ros, nodeName, setNodeConnected]);
-
   // Subscriptions
   useEffect(() => {
     const onNodeConnectedSub = ros.onNodeConnected(

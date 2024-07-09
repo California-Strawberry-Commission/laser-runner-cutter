@@ -20,12 +20,6 @@ export default function useControlNode(nodeName: string) {
     };
   }, [nodeName, rosbridgeNodeInfo, nodeConnected, nodeState]);
 
-  // Initial node connected state
-  useEffect(() => {
-    const connected = ros.isNodeConnected(nodeName);
-    setNodeConnected(connected);
-  }, [ros, nodeName, setNodeConnected]);
-
   // Subscriptions
   useEffect(() => {
     const onNodeConnectedSub = ros.onNodeConnected(
