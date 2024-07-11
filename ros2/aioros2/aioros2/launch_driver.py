@@ -27,7 +27,7 @@ class LaunchNode(RclpyNode, AsyncDriver):
             **self._kwargs
             )
         
-    def __init__(self, node_package, name: str = None, namespace: str = None, **kwargs):
+    def __init__(self, node_package, name: str = None, namespace: str = "/", **kwargs):
         # TODO: Check this logic to make sure it actually extracts the top level package correctly in all cases
         self._package = node_package.__name__.split(".")[0]
         
@@ -43,11 +43,15 @@ class LaunchNode(RclpyNode, AsyncDriver):
         
         if not node_def:
             raise ImportError(f"Launched module >{node_package.__name__}< does not contain a valid aioros2 node. Make sure your aioros2 class is annotated with >@node<!")
+        
+        # Set defaults for namespace and name if not provided.
+        if self._name is None:
+            self.log_warn(f"Name not provided for node of package >{node_package.__name__}<. Setting default name >{node_def._aioros2_executable}<!")
+            self._name = node_def._aioros2_executable
 
         self._executable = node_def._aioros2_executable
-
         self.__init_rclpy_node()
-        AsyncDriver.__init__(self, node_def, get_logger(f"LAUNCH-{namespace}-{name}"))
+        AsyncDriver.__init__(self, node_def, get_logger(f"LAUNCH-{namespace}-{name}"), name, namespace)
 
         self.log_debug(f"Launching node >{self._package}< >{self._executable}<")
 
@@ -66,4 +70,29 @@ class LaunchNode(RclpyNode, AsyncDriver):
         
     def _process_import(self, attr, imp):
         return ImportLinker(attr, self._link_node)
+
+    # Dummy attachment implementations to silence warnings
+    def _attach_service(self, attr, ros_service):
+        pass
+
+    def _attach_subscriber(self, attr, ros_sub):
+        pass
+
+    def _attach_publisher(self, attr, ros_topic):
+        pass
+
+    def _attach_action(self, attr, ros_action):
+        pass
+
+    def _attach_timer(self, attr, ros_timer):
+        pass
+
+    def _attach_params(self, attr, ros_params):
+        pass
+
+    def _attach_param_subscription(self, attr, ros_param_sub):
+        pass
+
+    def _process_start(self, attr, ros_start):
+        pass
             

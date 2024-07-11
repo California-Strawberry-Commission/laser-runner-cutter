@@ -220,7 +220,7 @@ class ParamsDriver:
 class ServerDriver(AsyncDriver, Node):
     def __init__(self, async_node):
         Node.__init__(self, self.__class__.__name__)
-        AsyncDriver.__init__(self, async_node, self.get_logger())
+        AsyncDriver.__init__(self, async_node, self.get_logger(), None, None)
 
         self._attach()
 
@@ -340,7 +340,7 @@ class ServerDriver(AsyncDriver, Node):
         return ros_action.handler
 
     def _attach_subscriber(self, attr, ros_sub: RosSubscription):
-        fqt = ros_sub.get_fqt(self.get_name(), self.get_namespace())
+        fqt = ros_sub.get_fqt()
 
         self.log_debug(f"[SERVER] Attach subscriber >{attr}<")
 
@@ -352,13 +352,22 @@ class ServerDriver(AsyncDriver, Node):
 
     def _attach_publisher(self, attr, ros_topic: RosTopic):
         self.log_debug(f"[SERVER] Attach publisher {attr} @ >{ros_topic.path}<")
+        ros_topic.node = self
 
         pub = self.create_publisher(ros_topic.idl, ros_topic.path, ros_topic.qos)
 
+        _dp = None # Captures dispatch function so it can reference itself
         async def _dispatch_pub(*args, **kwargs):
-            msg = ros_topic.idl(*args, **kwargs)
+            if len(args) == 1:
+                 msg = args[0]
+            else:
+                msg = ros_topic.idl(*args, **kwargs)
+            _dp.value = msg
             await self.run_executor(pub.publish, msg)
-
+        
+        setattr(_dispatch_pub, "value", None)
+        _dp = _dispatch_pub
+        
         return _dispatch_pub
 
     # TODO: Better error handling.
