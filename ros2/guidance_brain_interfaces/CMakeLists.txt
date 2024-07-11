@@ -27,7 +27,8 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/State.msg"
-  "srv/GetState.srv"
+  "srv/SetPID.srv"
+
   DEPENDENCIES sensor_msgs common_interfaces
 )
 if(BUILD_TESTING)

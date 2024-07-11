@@ -20,35 +20,11 @@ export default function useFurrowPerceiverNode(nodeName: string) {
     };
   }, [nodeName, rosbridgeNodeInfo, nodeConnected, nodeState]);
 
-  const getState = useCallback(async () => {
-    const result = await ros.callService(
-      `${nodeName}/get_state`,
-      "furrow_perceiver_interfaces/GetState",
-      {}
-    );
-    setNodeState(result.state);
-  }, [ros, nodeName, setNodeState]);
-
-  // Initial node state
-  useEffect(() => {
-    const connected = ros.isNodeConnected(nodeName);
-    if (connected) {
-      getState();
-    }
-    setNodeConnected(connected);
-  }, [ros, nodeName, getState, setNodeConnected]);
-
-  // Subscriptions
   useEffect(() => {
     const onNodeConnectedSub = ros.onNodeConnected(
       (connectedNodeName, connected) => {
         if (connectedNodeName === nodeName) {
           setNodeConnected(connected);
-          if (connected) {
-            getState();
-          } else {
-            setNodeState(INITIAL_STATE);
-          }
         }
       }
     );
@@ -65,7 +41,7 @@ export default function useFurrowPerceiverNode(nodeName: string) {
       onNodeConnectedSub.unsubscribe();
       stateSub.unsubscribe();
     };
-  }, [ros, nodeName, getState, setNodeConnected, setNodeState]);
+  }, [ros, nodeName, setNodeConnected, setNodeState]);
 
   // const calibrate = useCallback(() => {
   //   ros.callService(`${nodeName}/calibrate`, "std_srvs/Trigger", {});

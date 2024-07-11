@@ -1,114 +1,34 @@
 import type { NodeInfo } from "@/lib/NodeInfo";
 import useROS from "@/lib/ros/useROS";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useROSNode from "./ros/useROSNode";
 
 const INITIAL_STATE = {
-  active: false,
+  guidance_active: false,
+  amiga_connected: false,
+  follower_pid: { p: 0, i: 0, d: 0 }
 };
 
 export default function useGuidanceBrainNode(nodeName: string) {
-  const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
-  const [nodeConnected, setNodeConnected] = useState<boolean>(false);
-  const [nodeState, setNodeState] = useState(INITIAL_STATE);
+  const node = useROSNode(nodeName, INITIAL_STATE);
 
-  const nodeInfo: NodeInfo = useMemo(() => {
-    return {
-      name: nodeName,
-      connected: rosbridgeNodeInfo.connected && nodeConnected,
-      state: nodeState,
-    };
-  }, [nodeName, rosbridgeNodeInfo, nodeConnected, nodeState]);
+  const setActive = node.service(
+    "~/set_active",
+    "std_srvs/SetBool",
+    (active: boolean) => ({ data: active }), // maps request message to a JS api & solidifies typing info
+    (_data) => null, // maps incoming response & solidifies typing info
+  );
 
-  const getState = useCallback(async () => {
-    const result = await ros.callService(
-      `${nodeName}/get_state`,
-      "guidance_brain_interfaces/GetState",
-      {}
-    );
-    setNodeState(result.state);
-  }, [ros, nodeName, setNodeState]);
-
-  // Initial node state
-  useEffect(() => {
-    const connected = ros.isNodeConnected(nodeName);
-    if (connected) {
-      getState();
-    }
-    setNodeConnected(connected);
-  }, [ros, nodeName, getState, setNodeConnected]);
-
-  // Subscriptions
-  useEffect(() => {
-    const onNodeConnectedSub = ros.onNodeConnected(
-      (connectedNodeName, connected) => {
-        if (connectedNodeName === nodeName) {
-          setNodeConnected(connected);
-          if (connected) {
-            getState();
-          } else {
-            setNodeState(INITIAL_STATE);
-          }
-        }
-      }
-    );
-
-    const stateSub = ros.subscribe(
-      `${nodeName}/state`,
-      "guidance_brain_interfaces/State",
-      (message) => {
-        setNodeState(message);
-      }
-    );
-
-    return () => {
-      onNodeConnectedSub.unsubscribe();
-      stateSub.unsubscribe();
-    };
-  }, [ros, nodeName, getState, setNodeConnected, setNodeState]);
-
-  const setActive = useCallback((active: boolean) => {
-    ros.callService(`${nodeName}/set_active`, "std_srvs/SetBool", { data: active });
-  }, [ros, nodeName]);
-
-  // const calibrate = useCallback(() => {
-  //   ros.callService(`${nodeName}/calibrate`, "std_srvs/Trigger", {});
-  // }, [ros, nodeName]);
-
-  // const addCalibrationPoint = useCallback(
-  //   (x: number, y: number) => {
-  //     ros.callService(
-  //       `${nodeName}/add_calibration_points`,
-  //       "runner_cutter_control_interfaces/AddCalibrationPoints",
-  //       { camera_pixels: [{ x, y }] }
-  //     );
-  //   },
-  //   [ros, nodeName]
-  // );
-
-  // const manualTargetAimLaser = useCallback(
-  //   (x: number, y: number) => {
-  //     ros.callService(
-  //       `${nodeName}/manual_target_aim_laser`,
-  //       "runner_cutter_control_interfaces/ManualTargetAimLaser",
-  //       { camera_pixel: { x, y } }
-  //     );
-  //   },
-  //   [ros, nodeName]
-  // );
-
-  // const startRunnerCutter = useCallback(() => {
-  //   ros.callService(`${nodeName}/start_runner_cutter`, "std_srvs/Trigger", {});
-  // }, [ros, nodeName]);
-
-  // const stop = useCallback(() => {
-  //   ros.callService(`${nodeName}/stop`, "std_srvs/Trigger", {});
-  // }, [ros, nodeName]);
+  const setPID = node.service(
+    "~/set_follower_pid",
+    "guidance_brain_interfaces/SetPID",
+    (p: number, i: number, d: number) => ({ pid: { p, i, d } }),
+    () => undefined,
+  )
 
   return {
-    nodeInfo,
-    connected: nodeConnected,
-    nodeState,
-    stop,
-    setActive
+    ...node,
+    setActive,
+    setPID
   };
 }

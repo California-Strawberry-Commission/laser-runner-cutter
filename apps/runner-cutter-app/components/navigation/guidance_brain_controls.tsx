@@ -3,22 +3,22 @@
 import { Input } from "@/components/ui/input";
 import useROS from "@/lib/ros/useROS";
 import useLaserNode from "@/lib/useFurrowPerceiverNode";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { InputWithLabel } from "@/components/ui/input-with-label";
 import { Button } from "@/components/ui/button";
 import useGuidanceBrainNode from "@/lib/useGuidanceBrainNode";
 
 export default function GuidanceBrainControls() {
-    const { nodeInfo: rosbridgeNodeInfo } = useROS();
+    const node = useGuidanceBrainNode("/brain0");
 
-    // TODO: add ability to select node name
-    const [nodeName, setNodeName] = useState<string>("/brain0");
 
-    const node = useGuidanceBrainNode(nodeName);
+    const [pid, setPid] = useState(node.state.follower_pid);
+    useEffect(() => {
+        setPid(node.state.follower_pid)
+    }, [node.state.follower_pid])
 
-    const disableButtons = !rosbridgeNodeInfo.connected || !node.nodeInfo.connected;
 
-    let playbackButton = null;
+    const disableButtons = !node.connected;
 
     <input type="number">lsls</input>
 
@@ -29,7 +29,7 @@ export default function GuidanceBrainControls() {
             id="exposure"
             label="Speed (ft/min)"
             step={10}
-            value={0}
+            value={pid.p}
             onChange={(str) => {
                 const value = Number(str);
             }}
@@ -40,9 +40,9 @@ export default function GuidanceBrainControls() {
             id="exposure"
             label="P Gain"
             step={10}
-            value={0}
+            value={pid.p}
             onChange={(str) => {
-                const value = Number(str);
+                setPid({...pid, p: Number(str)})
             }}
         />
         <InputWithLabel
@@ -51,9 +51,9 @@ export default function GuidanceBrainControls() {
             id="exposure"
             label="I Gain"
             step={10}
-            value={0}
+            value={pid.i}
             onChange={(str) => {
-                const value = Number(str);
+                setPid({...pid, i: Number(str)})
             }}
         />
         <InputWithLabel
@@ -62,21 +62,31 @@ export default function GuidanceBrainControls() {
             id="exposure"
             label="D Gain"
             step={10}
-            value={0}
+            value={pid.d}
             onChange={(str) => {
-                const value = Number(str);
+                setPid({...pid, d: Number(str)})
             }}
         />
+
 
         <Button
             disabled={disableButtons}
             onClick={() => {
-                node.setActive(!node.nodeState.active)
+                node.setPID(pid.p, pid.i, pid.d);
             }}
         >
-            {node.nodeState.active ? "Deactivate" : "Activate"}
+            set pid
+        </Button>
+        
+        <Button
+            disabled={disableButtons}
+            onClick={() => {
+                node.setActive(!node.state.guidance_active)
+            }}
+        >
+            {node.state.guidance_active ? "Deactivate" : "Activate"}
         </Button>
 
-        <p>{node.nodeInfo.connected ? "CONN" : "DISCONN"}</p>
+        <p>{node.connected ? "CONN" : "DISCONN"}</p>
     </div>);
 }

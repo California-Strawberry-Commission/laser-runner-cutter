@@ -1,1 +1,3 @@
-bool active
+bool guidance_active
+bool amiga_connected
+common_interfaces/PID follower_pid
