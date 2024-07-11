@@ -209,11 +209,18 @@ class LucidRgbdCamera(RgbdCamera):
             else:
                 return State.DISCONNECTED
 
-    def start(self, frame_callback: Optional[Callable[[RgbdFrame], None]] = None):
+    def start(
+        self,
+        exposure_us: float = -1.0,
+        gain_db: float = -1.0,
+        frame_callback: Optional[Callable[[RgbdFrame], None]] = None,
+    ):
         """
         Connects device and starts streaming.
 
         Args:
+            exposure_us (float): Exposure time in microseconds. A negative value sets auto exposure.
+            gain_db (float): Gain level in dB. A negative value sets auto gain.
             frame_callback (Optional[Callable[[RgbdFrame], None]]): Callback that gets called when a new frame is available.
         """
         if self._is_running:
@@ -224,7 +231,12 @@ class LucidRgbdCamera(RgbdCamera):
 
         # Start connection thread and acquisition thread
         self._connection_thread = threading.Thread(
-            target=self._connection_thread_fn, daemon=True
+            target=self._connection_thread_fn,
+            args=(
+                exposure_us,
+                gain_db,
+            ),
+            daemon=True,
         )
         self._connection_thread.start()
         self._acquisition_thread = threading.Thread(
@@ -251,12 +263,13 @@ class LucidRgbdCamera(RgbdCamera):
         if self._acquisition_thread is not None:
             self._acquisition_thread.join()
 
-    def _connection_thread_fn(self):
-        found_devices = False
+    def _connection_thread_fn(self, exposure_us: float = -1.0, gain_db: float = -1.0):
+        device_connected = False
+        device_was_ever_connected = False
 
         with self._cv:
             while self._is_running:
-                if found_devices:
+                if device_connected:
                     self._logger.info(f"Devices found. Signaling acquisition thread")
                     self._cv.notify()
                     self._cv.wait()
@@ -266,7 +279,7 @@ class LucidRgbdCamera(RgbdCamera):
 
                 # Create new connection
                 if self._is_running:
-                    found_devices = False
+                    device_connected = False
 
                     device_infos = system.device_infos
 
@@ -316,11 +329,21 @@ class LucidRgbdCamera(RgbdCamera):
 
                     # If the devices are connected, set up and start streaming
                     if color_device_info is not None and depth_device_info is not None:
-                        found_devices = True
                         self._logger.info(
                             f"Device (color) {self.color_camera_serial_number} and device (depth) {self.depth_camera_serial_number} found"
                         )
-                        self._start_stream(color_device_info, depth_device_info)
+                        # Only set exposure/gain if this is the first time the device is connected
+                        self._start_stream(
+                            color_device_info,
+                            depth_device_info,
+                            **(
+                                {}
+                                if device_was_ever_connected
+                                else {"exposure_us": exposure_us, "gain_db": gain_db}
+                            ),
+                        )
+                        device_was_ever_connected = True
+                        device_connected = True
                     else:
                         self._logger.warn(
                             f"Either device (color) {self.color_camera_serial_number} or device (depth) {self.depth_camera_serial_number} was not found"
@@ -383,14 +406,19 @@ class LucidRgbdCamera(RgbdCamera):
 
         self._logger.info(f"Terminating acquisition thread")
 
-    def _start_stream(self, color_device_info, depth_device_info):
+    def _start_stream(
+        self,
+        color_device_info,
+        depth_device_info,
+        exposure_us: Optional[float] = None,
+        gain_db: Optional[float] = None,
+    ):
         if self._color_device is not None or self._depth_device is not None:
             return
 
         devices = system.create_device([color_device_info, depth_device_info])
         self._color_device = devices[0]
         self._depth_device = devices[1]
-        self._call_state_change_callback()
 
         # Configure color device nodemap
         nodemap = self._color_device.nodemap
@@ -448,9 +476,11 @@ class LucidRgbdCamera(RgbdCamera):
         # Set the following when Persistent IP is set on the camera
         nodemap["GevPersistentARPConflictDetectionEnable"].value = False
 
-        # Set auto exposure and auto gain
-        self.exposure_us = -1.0
-        self.gain_db = -1.0
+        # Set exposure and gain
+        if exposure_us is not None:
+            self.exposure_us = exposure_us
+        if gain_db is not None:
+            self.gain_db = gain_db
 
         # Start streams
         self._color_device.start_stream(10)
@@ -461,6 +491,7 @@ class LucidRgbdCamera(RgbdCamera):
         self._logger.info(
             f"Device (depth) {self.depth_camera_serial_number} is now streaming at {self.depth_frame_size[0]}x{self.depth_frame_size[1]}"
         )
+        self._call_state_change_callback()
 
     def _stop_stream(self):
         if self._color_device is None and self._depth_device is None:

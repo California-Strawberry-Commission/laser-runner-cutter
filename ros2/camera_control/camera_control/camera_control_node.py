@@ -46,6 +46,8 @@ from common_interfaces.srv import GetBool
 class CameraControlParams:
     camera_type: str = "lucid"  # "realsense" or "lucid"
     camera_index: int = 0
+    exposure_us: float = -1.0
+    gain_db: float = -1.0
     save_dir: str = "~/Pictures/runner-cutter-app"
     debug_frame_width: int = 640
 
@@ -157,7 +159,11 @@ class CameraControlNode:
         def frame_callback(frame: RgbdFrame):
             asyncio.run_coroutine_threadsafe(self._frame_callback(frame), loop)
 
-        self.camera.start(frame_callback)
+        self.camera.start(
+            exposure_us=self.camera_control_params.exposure_us,
+            gain_db=self.camera_control_params.gain_db,
+            frame_callback=frame_callback,
+        )
         self._camera_started = True
 
         return result(success=True)
@@ -194,24 +200,28 @@ class CameraControlNode:
 
     @service("~/set_exposure", SetExposure)
     async def set_exposure(self, exposure_us):
+        await self.camera_control_params.set(exposure_us=exposure_us)
         self.camera.exposure_us = exposure_us
         self._publish_state()
         return result(success=True)
 
     @service("~/auto_exposure", Trigger)
     async def auto_exposure(self):
+        await self.camera_control_params.set(exposure_us=-1.0)
         self.camera.exposure_us = -1.0
         self._publish_state()
         return result(success=True)
 
     @service("~/set_gain", SetGain)
     async def set_gain(self, gain_db):
+        await self.camera_control_params.set(gain_db=gain_db)
         self.camera.gain_db = gain_db
         self._publish_state()
         return result(success=True)
 
     @service("~/auto_gain", Trigger)
     async def auto_gain(self):
+        await self.camera_control_params.set(gain_db=-1.0)
         self.camera.gain_db = -1.0
         self._publish_state()
         return result(success=True)

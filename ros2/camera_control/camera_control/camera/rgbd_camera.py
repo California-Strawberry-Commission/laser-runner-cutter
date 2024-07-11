@@ -24,12 +24,16 @@ class RgbdCamera(ABC):
     @abstractmethod
     def start(
         self,
+        exposure_us: float,
+        gain_db: float,
         frame_callback: Optional[Callable[[RgbdFrame], None]],
     ):
         """
         Connects device and starts streaming.
 
         Args:
+            exposure_us (float): Exposure time in microseconds.
+            gain_db (float): Gain level in dB.
             frame_callback (Callable[[RgbdFrame], None]): Callback that gets called when a new frame is available.
         """
         pass
