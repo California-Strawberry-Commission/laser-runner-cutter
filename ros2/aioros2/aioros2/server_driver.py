@@ -219,7 +219,7 @@ class ParamsDriver:
 
 class ServerDriver(AsyncDriver, Node):
     def __init__(self, async_node):
-        Node.__init__(self, self.__class__.__name__)
+        Node.__init__(self, async_node.__class__.__name__)
         AsyncDriver.__init__(self, async_node, self.get_logger(), None, None)
 
         self._attach()
