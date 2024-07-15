@@ -56,15 +56,9 @@ class AsyncDriver:
     def run_coroutine(self, fn, *args, **kwargs):
         """Runs asyncio code from ANOTHER SYNC THREAD"""
 
-        async def _wrap_coro(coro):
-            try:
-                return await coro
-            except Exception:
-                self.log_error(traceback.format_exc())
-
         # https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.call_soon_threadsafe
         return asyncio.run_coroutine_threadsafe(
-            _wrap_coro(fn(*args, **kwargs)), self._loop
+            fn(*args, **kwargs), self._loop
         )
 
     def log_debug(self, msg: str):
