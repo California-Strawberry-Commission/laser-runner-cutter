@@ -4,7 +4,6 @@ from rclpy.qos import (
     QoSProfile,
     QoSDurabilityPolicy,
     QoSHistoryPolicy,
-    qos_profile_system_default,
 )
 
 QOS_LATCHED = QoSProfile(
@@ -23,9 +22,11 @@ class RosTopic(RosDefinition):
         self.node = None
 
 
-def topic(namespace: str, idl: Any, qos: Union[QoSProfile, int] = 10):
-    return RosTopic(namespace, idl, qos)
+def topic(namespace: str, idl: Any, qos: Union[QoSProfile, int] = 10, latched=False):
 
-def latched_topic(namespace: str, idl: Any):
-    return RosTopic(namespace, idl, qos=QOS_LATCHED)
+    # Shortcut for latched topics
+    if latched:
+        qos=QOS_LATCHED
+
+    return RosTopic(namespace, idl, qos)
 
