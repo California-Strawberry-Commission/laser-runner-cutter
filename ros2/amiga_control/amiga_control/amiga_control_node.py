@@ -46,7 +46,7 @@ from .amiga_controller import AmigaController
 
 @dataclass
 class AmigaParams:
-    amiga_host: str = "192.168.10.203"
+    amiga_host: str = "192.168.10.8"
 
     canbus_service_port: int = 6001
 
@@ -70,6 +70,7 @@ class AmigaControlNode:
         
         await self.amiga.wait_for_clients()
         
+        self.log("Got amiga connection!")
         await self.amiga_available(data=True)
 
 

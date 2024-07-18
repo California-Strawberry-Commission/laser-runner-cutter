@@ -1,7 +1,7 @@
 from farm_ng.canbus.canbus_pb2 import Twist2d
 from farm_ng.core.event_client import EventClient
 from farm_ng.core.event_service_pb2 import EventServiceConfig
-
+import asyncio
 
 class AmigaController:
     def __init__(self, host, canbus_port) -> None:
@@ -13,7 +13,9 @@ class AmigaController:
         )
     
     async def wait_for_clients(self):
-        await self.cli_canbus._try_connect()
+        while not await self.cli_canbus._try_connect():
+            print("No amiga connection...")
+            asyncio.sleep(1)
 
     async def set_twist(self, lin_vel, ang_vel):
         
