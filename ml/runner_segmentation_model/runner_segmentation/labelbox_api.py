@@ -6,9 +6,12 @@ from glob import glob
 import cv2
 import labelbox as lb
 import labelbox.types as lb_types
+import ndjson
 import numpy as np
+import requests
 from dotenv import load_dotenv
 from natsort import natsorted
+from tqdm import tqdm
 
 from ml_utils.segment_utils import convert_contour_to_mask
 
@@ -24,8 +27,9 @@ DATA_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "../data",
 )
-IMAGES_DIR = os.path.join(DATA_DIR, "images")
-LABELS_DIR = os.path.join(DATA_DIR, "labels")
+IMAGES_DIR = os.path.join(DATA_DIR, "raw", "runner1800", "images")
+LABELS_DIR = os.path.join(DATA_DIR, "raw", "runner1800", "labels")
+MASKS_DIR = os.path.join(DATA_DIR, "raw", "runner1800", "masks")
 MODELS_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "../models",
@@ -43,7 +47,7 @@ def import_images(dataset_name=DATASET_NAME, images_dir=IMAGES_DIR):
         os.path.join(images_dir, "*.png")
     )
     img_paths = natsorted(img_paths)
-    for img_path in img_paths:
+    for img_path in tqdm(img_paths):
         _, img_name = os.path.split(img_path)
         dataset.create_data_row({"row_data": img_path, "global_key": img_name})
         print(f"Uploaded {img_name}")
@@ -63,7 +67,7 @@ def upload_yolo_predictions(
         os.path.join(images_dir, "*.png")
     )
     img_paths = natsorted(img_paths)
-    for img_path in img_paths[400:]:
+    for img_path in tqdm(img_paths):
         _, img_name = os.path.split(img_path)
         img = cv2.imread(img_path)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -128,6 +132,40 @@ def upload_yolo_predictions(
         print(f"Failed to upload predictions: {exc}")
 
 
+def create_masks_from_labelbox_export(
+    labelbox_export_file, masks_dir=MASKS_DIR, project_name=PROJECT_NAME
+):
+    with open(labelbox_export_file, "r") as f:
+        rows = ndjson.load(f)
+
+    project = CLIENT.get_projects(where=lb.Project.name == project_name).get_one()
+    api_key = os.getenv("LABELBOX_API_KEY")
+
+    for row in tqdm(rows):
+        image_filename = row["data_row"]["global_key"]
+        mask_subdir = os.path.join(masks_dir, os.path.splitext(image_filename)[0])
+        if not os.path.exists(mask_subdir):
+            os.makedirs(mask_subdir)
+
+        label = row["projects"][project.uid]["labels"][0]
+        objects = [
+            annotation
+            for annotation in label["annotations"]["objects"]
+            if annotation["name"] == "Runner"
+        ]
+        for idx, object in enumerate(objects):
+            url = object["mask"]["url"]
+            # Download mask
+            headers = {"Authorization": api_key}
+            with requests.get(url, headers=headers, stream=True) as r:
+                r.raw.decode_content = True
+                mask = np.asarray(bytearray(r.raw.read()), dtype="uint8")
+                mask = cv2.imdecode(mask, cv2.IMREAD_GRAYSCALE)
+                _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
+                output_file = os.path.join(mask_subdir, f"{idx}.png")
+                cv2.imwrite(output_file, mask)
+
+
 def tuple_type(arg_string):
     try:
         # Parse the input string as a tuple
@@ -190,6 +228,29 @@ if __name__ == "__main__":
         help="Labelbox project name",
     )
 
+    create_masks_parser = subparsers.add_parser(
+        "create_masks",
+        help="Create binary mask image files from Labelbox annotation export file",
+    )
+    create_masks_parser.add_argument(
+        "-i",
+        "--input_file",
+        required=True,
+        help="Path to the Labelbox export ndjson file",
+    )
+    create_masks_parser.add_argument(
+        "-o",
+        "--output_dir",
+        default=MASKS_DIR,
+        help="Path to write the binary mask image files",
+    )
+    create_masks_parser.add_argument(
+        "-n",
+        "--project_name",
+        default=PROJECT_NAME,
+        help="Labelbox project name",
+    )
+
     args = parser.parse_args()
 
     if args.command == "import_images":
@@ -197,6 +258,10 @@ if __name__ == "__main__":
     elif args.command == "upload_predictions":
         upload_yolo_predictions(
             args.input_dir, args.model, args.model_image_size, args.project_name
+        )
+    elif args.command == "create_masks":
+        create_masks_from_labelbox_export(
+            args.input_file, args.output_dir, args.project_name
         )
     else:
         print("Invalid command.")
