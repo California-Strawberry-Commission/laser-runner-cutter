@@ -11,13 +11,6 @@ import useGuidanceBrainNode from "@/lib/useGuidanceBrainNode";
 export default function GuidanceBrainControls() {
     const node = useGuidanceBrainNode("/brain0");
 
-
-    const [pid, setPid] = useState(node.state.follower_pid);
-    useEffect(() => {
-        setPid(node.state.follower_pid)
-    }, [node.state.follower_pid])
-
-
     const disableButtons = !node.connected;
 
     <input type="number">lsls</input>
@@ -28,33 +21,31 @@ export default function GuidanceBrainControls() {
             type="number"
             id="exposure"
             label="Speed (ft/min)"
-            step={10}
-            value={pid.p}
-            onChange={(str) => {
-                const value = Number(str);
-            }}
+            step={1}
+            min={0}
+            max={30}
+            value={node.state.speed}
+            onChange={(str) => node.setSpeed(Number(str))}
         />
         <InputWithLabel
             className="flex-none w-24 rounded-r-none"
             type="number"
             id="exposure"
             label="P Gain"
-            step={10}
-            value={pid.p}
-            onChange={(str) => {
-                setPid({...pid, p: Number(str)})
-            }}
+            step={5}
+            min={0}
+            max={100}
+            value={node.state.follower_pid.p}
+            onChange={(str) => node.setP(Number(str))}
         />
-        <InputWithLabel
+        {/* <InputWithLabel
             className="flex-none w-24 rounded-r-none"
             type="number"
             id="exposure"
             label="I Gain"
             step={10}
-            value={pid.i}
-            onChange={(str) => {
-                setPid({...pid, i: Number(str)})
-            }}
+            value={node.state.follower_pid.i}
+            onChange={(str) => node.setI(Number(str))}
         />
         <InputWithLabel
             className="flex-none w-24 rounded-r-none"
@@ -62,21 +53,9 @@ export default function GuidanceBrainControls() {
             id="exposure"
             label="D Gain"
             step={10}
-            value={pid.d}
-            onChange={(str) => {
-                setPid({...pid, d: Number(str)})
-            }}
-        />
-
-
-        <Button
-            disabled={disableButtons}
-            onClick={() => {
-                node.setPID(pid.p, pid.i, pid.d);
-            }}
-        >
-            set pid
-        </Button>
+            value={node.state.follower_pid.d}
+            onChange={(str) => node.setD(Number(str))}
+        /> */}
         
         <Button
             disabled={disableButtons}

@@ -18,7 +18,7 @@ class AmigaController:
     async def set_twist(self, lin_vel, ang_vel):
         
         if await self.cli_canbus._try_connect():
-            t = Twist2d(angular_velocity=lin_vel, linear_velocity_x=ang_vel)
+            t = Twist2d(angular_velocity=ang_vel, linear_velocity_x=lin_vel)
             await self.cli_canbus.request_reply("/twist", t)
             return True
         else:

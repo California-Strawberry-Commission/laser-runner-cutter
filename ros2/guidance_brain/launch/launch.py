@@ -22,7 +22,7 @@ def generate_launch_description():
         "params.yaml",
     )
 
-    rs_node = IncludeLaunchDescription(
+    rs_node0 = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             [
                 os.path.join(
@@ -32,9 +32,38 @@ def generate_launch_description():
             ]
         ),
         launch_arguments={
+            "camera": "camera_1",
             "camera_name": "cam0",
             "filters": "decimation,spatial,temporal,hole_filling",
         }.items(),
+    )
+
+    rs_node1 = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [
+                os.path.join(
+                    get_package_share_directory("realsense2_camera"), "launch"
+                ),
+                "/rs_launch.py",
+            ]
+        ),
+        launch_arguments={
+            "camera": "camera_2",
+            "camera_name": "cam1",
+            "filters": "decimation,spatial,temporal,hole_filling",
+        }.items(),
+    )
+
+    furrow_perc0 = LaunchNode(
+        furrow_perceiver_node,
+        name="furrow0",
+        parameters=[parameters_file],
+    )
+
+    furrow_perc1 = LaunchNode(
+        furrow_perceiver_node,
+        name="furrow1",
+        parameters=[parameters_file],
     )
 
     rosbridge = IncludeLaunchDescription(
@@ -46,14 +75,12 @@ def generate_launch_description():
         ),
     )
 
-    amiga = LaunchNode(amiga_control_node, name="amiga0", parameters=[parameters_file])
-
-    furrow_perc = LaunchNode(
-        furrow_perceiver_node,
-        name="furrow0",
+    amiga = LaunchNode(
+        amiga_control_node,
+        name="amiga0",
         parameters=[parameters_file],
-        # output="screen",
-        # emulate_tty=True,
+        output="screen",
+        emulate_tty=True,
     )
 
     brain = LaunchNode(
@@ -64,19 +91,23 @@ def generate_launch_description():
         emulate_tty=True,
     )
 
-    video_server = launch_ros.actions.Node(package='web_video_server', executable='web_video_server', name="wvs")
+    video_server = launch_ros.actions.Node(
+        package="web_video_server", executable="web_video_server", name="wvs"
+    )
 
     # Link nodes
-    brain.perceiver.link(furrow_perc)
+    brain.perceiver.link(furrow_perc0)
     brain.amiga.link(amiga)
 
     return LaunchDescription(
         [
+            amiga,
+            brain,
             rosbridge,
             video_server,
-            amiga,
-            furrow_perc,
-            brain,
-            rs_node,
+            rs_node0,
+            furrow_perc0,
+            # rs_node1,
+            # furrow_perc1,
         ]
-    )  # type: ignore rs_node
+    )

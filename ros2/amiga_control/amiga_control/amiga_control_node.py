@@ -8,11 +8,8 @@ from aioros2 import (
     service,
     action,
     serve_nodes,
-    result,
-    feedback,
     subscribe,
     topic,
-    latched_topic,
     import_node,
     params,
     node,
@@ -49,7 +46,7 @@ from .amiga_controller import AmigaController
 
 @dataclass
 class AmigaParams:
-    amiga_host: str = "127.0.0.1"
+    amiga_host: str = "192.168.10.203"
 
     canbus_service_port: int = 6001
 
@@ -61,7 +58,7 @@ class AmigaControlNode:
     
     amiga_params = params(AmigaParams)
     
-    amiga_available = latched_topic("~/available", Bool)
+    amiga_available = topic("~/available", Bool, latched=True)
 
     @start
     async def comm_amiga(self):
@@ -79,7 +76,12 @@ class AmigaControlNode:
     # ros2 service call /set_twist amiga_control_interfaces/srv/SetTwist "{twist: {x: 1.0, y: 1.0}}"
     @service("~/set_twist", SetTwist)
     async def set_twist(self, twist) -> bool:
-        return result(success=await self.amiga.set_twist(twist.y, twist.x))
+        print("SET TWIST", twist)
+        
+        if self.amiga_available.value:
+            await self.amiga.set_twist(twist.y, twist.x)
+            
+        return {"success": True}
 
 
 # Boilerplate below here.

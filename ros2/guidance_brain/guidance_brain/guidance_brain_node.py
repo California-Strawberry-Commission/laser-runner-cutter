@@ -3,6 +3,7 @@ import amiga_control.amiga_control_node as acn
 
 from std_srvs.srv import SetBool
 from common_interfaces.msg import Vector2, PID
+from common_interfaces.srv import SetFloat32
 
 from guidance_brain_interfaces.msg import State
 from guidance_brain_interfaces.srv import SetPID 
@@ -23,7 +24,6 @@ from aioros2 import (
     subscribe_param,
     param,
     start,
-    latched_topic
 )
 
 # Executable to call to launch this node (defined in `setup.py`)
@@ -35,45 +35,76 @@ class GuidanceBrainNode:
     # State Vars
     state = State(
         guidance_active = False,
-        follower_pid = PID(),
+        amiga_connected = False,
+        
+        speed = 10., # Default - 10ft/min
+        follower_pid = PID(p=20.),
+        
+        perceiver_valid = False,
+        error = 0.,
+        command = 0.,
     )
 
     # Emits state.
-    state_topic = latched_topic("~/state", State)
+    state_topic = topic("~/state", State, latched=True)
     
     async def emit_state(self):
         await self.state_topic(self.state)
 
-    @timer(0.1, False)
-    async def s(self):        
-        if not self.amiga.amiga_available.value:
+    @timer(0.05, False)
+    async def s(self):      
+        await self.emit_state()
+  
+        # if not self.state.amiga_connected:
+        #     return
+        
+        if not (self.state.guidance_active and self.state.perceiver_valid):
+            self.state.command = 0.
+            await self.amiga.set_twist(twist=Vector2(x=0., y=0.))
             return
         
-        if not self.state.guidance_active:
-            await self.amiga.set_twist(twist=Vector2(x=0., y=0.))
-            
+        # Run PID
+        self.state.command = self.state.follower_pid.p * self.state.error / 5000.
+        speed_ms = self.state.speed * 0.00508
+        await self.amiga.set_twist(twist=Vector2(
+            x=self.state.command,
+            y=speed_ms
+        ))
+
+        
+    @subscribe(amiga.amiga_available)
+    async def on_amiga_available(self, data):
+        self.state.amiga_connected = data
+        
     @subscribe(perceiver.tracker_result_topic)
     async def on_ft_result(self, linear_deviation, heading, is_valid):
-        # print("FTRES", linear_deviation, heading)
-        pass
+        self.state.perceiver_valid = is_valid
+        self.state.error = linear_deviation
     
     @service("~/set_active", SetBool)
     async def set_active(self, data: bool):
         self.state.guidance_active = data
-        print("SET ACTIVE CALLED")
+        return {}
+    
+    @service("~/set_p", SetFloat32)
+    async def set_p(self, data: float):
+        self.state.follower_pid.p = data
+        return {}
+    
+    @service("~/set_i", SetFloat32)
+    async def set_i(self, data: float):
+        self.state.follower_pid.i = data
+        return {}
 
-        await self.emit_state()
-        
-        return result()
-        
-    @service("~/set_follower_pid", SetPID)
-    async def set_pid(self, pid: PID):
-        print("SET PID CALLED")
-        self.state.follower_pid = pid
-
-        await self.emit_state()
-        
-        return result()
+    @service("~/set_d", SetFloat32)
+    async def set_d(self, data: float):
+        self.state.follower_pid.d = data
+        return {}
+    
+    @service("~/set_speed", SetFloat32)
+    async def set_speed(self, data: float):
+        self.state.speed = data
+        return {}
     
 # Boilerplate below here.
 def main():
