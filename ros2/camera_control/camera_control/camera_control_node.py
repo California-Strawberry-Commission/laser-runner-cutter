@@ -139,7 +139,7 @@ class CameraControlNode:
         # ML models
         package_share_directory = get_package_share_directory("camera_control")
         runner_weights_path = os.path.join(
-            package_share_directory, "models", "RunnerSegYoloV8m.pt"
+            package_share_directory, "models", "RunnerSegYoloV8l.pt"
         )
         self.runner_seg_model = Yolo(runner_weights_path)
         self.runner_seg_size = (1024, 768)
