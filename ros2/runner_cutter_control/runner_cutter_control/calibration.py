@@ -151,6 +151,8 @@ class Calibration:
 
         Args:
             position (Tuple[float, float, float]): A 3D position (x, y, z) in camera-space.
+        Returns:
+            Tuple[float, float]: (x, y) laser coordinates.
         """
         homogeneous_camera_point = np.hstack((position, 1))
         transformed_point = homogeneous_camera_point @ self.camera_to_laser_transform
@@ -166,6 +168,8 @@ class Calibration:
         Args:
             laser_coord (Tuple[float, float]): Laser coordinate (x, y) to find point correspondence for.
             num_attempts (int): Number of tries to detect the laser and find the point correspondence.
+        Returns:
+            Optional[Tuple[float, float, float]]: 3D position in camera-space, or None if the laser could not be detected.
         """
         attempt = 0
         while attempt < num_attempts:
