@@ -12,11 +12,7 @@ import { useMemo } from "react";
 
 export default function Controls() {
   const { nodeInfo: rosbridgeNodeInfo } = useROS();
-  const {
-    nodeInfo: controlNodeInfo,
-    controlState,
-    calibrate,
-  } = useControlNode("/control0");
+
   const {
     nodeInfo: cameraNodeInfo,
     nodeState: cameraNodeState,
@@ -29,10 +25,11 @@ export default function Controls() {
     startDevice: connectLaser,
     closeDevice: disconnectLaser,
   } = useLaserNode("/laser0");
+  const { nodeInfo: controlNodeInfo } = useControlNode("/control0");
 
   const nodeInfos = useMemo(() => {
-    return [rosbridgeNodeInfo, controlNodeInfo, cameraNodeInfo, laserNodeInfo];
-  }, [rosbridgeNodeInfo, controlNodeInfo, cameraNodeInfo, laserNodeInfo]);
+    return [rosbridgeNodeInfo, cameraNodeInfo, laserNodeInfo, controlNodeInfo];
+  }, [rosbridgeNodeInfo, cameraNodeInfo, laserNodeInfo, controlNodeInfo]);
 
   let cameraButton = null;
   const enableCameraButton = cameraNodeInfo.connected;
@@ -86,26 +83,12 @@ export default function Controls() {
     );
   }
 
-  const enableCalibrationButton =
-    controlNodeInfo.connected &&
-    controlState === "idle" &&
-    cameraNodeState.deviceState === "streaming" &&
-    laserState === "stopped";
-
   return (
     <div className="flex flex-col gap-4 items-center">
       <NodeCards nodeInfos={nodeInfos} />
       <div className="flex flex-row items-center gap-4">
         {cameraButton}
         {laserButton}
-        <Button
-          disabled={!enableCalibrationButton}
-          onClick={() => {
-            calibrate();
-          }}
-        >
-          Start Calibration
-        </Button>
       </div>
       <FramePreview topicName={"/camera0/debug_frame"} />
     </div>

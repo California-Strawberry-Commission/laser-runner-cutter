@@ -13,6 +13,7 @@ export default function Controls() {
     calibrate,
     addCalibrationPoint,
   } = useControlNode("/control0");
+
   const onImageClick = (event: any) => {
     if (controlState !== "idle") {
       return;
