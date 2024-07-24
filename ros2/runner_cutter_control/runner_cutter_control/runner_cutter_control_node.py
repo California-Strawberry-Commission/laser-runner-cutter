@@ -401,7 +401,7 @@ class StateMachine:
         self._logger.info(f"Attempting to aim laser at target track {target.id}...")
         corrected_laser_coord = await self._aim(target.position, target.pixel)
         if corrected_laser_coord is not None:
-            self._logger.info(f"Aim successful.")
+            self._logger.info(f"Aim at track {target.id} successful.")
             await self.aim_successful(target, corrected_laser_coord)
         else:
             self._logger.info(
@@ -524,6 +524,7 @@ class StateMachine:
     ):
         self._node.publish_state()
 
+        self._logger.info(f"Burning track {target.id}...")
         await self._laser_node.set_points(
             points=[Vector2(x=laser_coord[0], y=laser_coord[1])]
         )
