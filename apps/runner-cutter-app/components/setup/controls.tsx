@@ -4,7 +4,7 @@ import FramePreview from "@/components/camera/frame-preview";
 import NodeCards from "@/components/nodes/node-cards";
 import { Button } from "@/components/ui/button";
 import useROS from "@/lib/ros/useROS";
-import useCameraNode from "@/lib/useCameraNode";
+import useCameraNode, { DeviceState } from "@/lib/useCameraNode";
 import useControlNode from "@/lib/useControlNode";
 import useLaserNode from "@/lib/useLaserNode";
 import { Loader2 } from "lucide-react";
@@ -33,13 +33,13 @@ export default function Controls() {
 
   let cameraButton = null;
   const enableCameraButton = cameraNodeInfo.connected;
-  if (cameraNodeState.deviceState === "disconnected") {
+  if (cameraNodeState.deviceState === DeviceState.Disconnected) {
     cameraButton = (
       <Button disabled={!enableCameraButton} onClick={() => connectCamera()}>
         Connect Camera
       </Button>
     );
-  } else if (cameraNodeState.deviceState === "connecting") {
+  } else if (cameraNodeState.deviceState === DeviceState.Connecting) {
     cameraButton = (
       <Button disabled>
         <Loader2 className="h-4 w-4 animate-spin" />

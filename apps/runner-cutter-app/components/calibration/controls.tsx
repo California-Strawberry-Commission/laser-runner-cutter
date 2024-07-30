@@ -9,13 +9,13 @@ export default function Controls() {
   const { nodeInfo: rosbridgeNodeInfo } = useROS();
   const {
     nodeInfo: controlNodeInfo,
-    controlState,
+    nodeState: controlNodeState,
     calibrate,
     addCalibrationPoint,
   } = useControlNode("/control0");
 
   const onImageClick = (event: any) => {
-    if (controlState !== "idle") {
+    if (controlNodeState.state !== "idle") {
       return;
     }
 
@@ -30,7 +30,7 @@ export default function Controls() {
   const disableButtons =
     !rosbridgeNodeInfo.connected ||
     !controlNodeInfo.connected ||
-    controlState !== "idle";
+    controlNodeState.state !== "idle";
 
   return (
     <div className="flex flex-col gap-4 items-center">

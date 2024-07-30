@@ -2,23 +2,13 @@
 
 import FramePreview from "@/components/camera/frame-preview";
 import useControlNode from "@/lib/useControlNode";
-import { useState } from "react";
 
 export default function Controls() {
-  const {
-    nodeInfo: controlNodeInfo,
-    controlState,
-    manualTargetAimLaser,
-  } = useControlNode("/control0");
-  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
-
-  const onImageLoad = (event: any) => {
-    const { naturalWidth: width, naturalHeight: height } = event.target;
-    setImageSize({ width, height });
-  };
+  const { nodeState: controlNodeState, manualTargetAimLaser } =
+    useControlNode("/control0");
 
   const onImageClick = (event: any) => {
-    if (controlState !== "idle") {
+    if (controlNodeState.state !== "idle") {
       return;
     }
 
@@ -38,7 +28,6 @@ export default function Controls() {
       <FramePreview
         height={600}
         topicName={"/camera0/debug_frame"}
-        onImageLoad={onImageLoad}
         onImageClick={onImageClick}
       />
     </div>

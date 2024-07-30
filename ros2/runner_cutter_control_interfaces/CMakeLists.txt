@@ -26,6 +26,7 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/State.msg"
+  "msg/Track.msg"
   "srv/AddCalibrationPoints.srv"
   "srv/GetState.srv"
   "srv/ManualTargetAimLaser.srv"

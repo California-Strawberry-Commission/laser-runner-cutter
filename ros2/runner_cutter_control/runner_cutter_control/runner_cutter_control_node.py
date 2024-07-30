@@ -32,7 +32,7 @@ from laser_control.laser_control_node import LaserControlNode
 from runner_cutter_control.calibration import Calibration
 from runner_cutter_control.camera_context import CameraContext
 from runner_cutter_control.tracker import Track, Tracker, TrackState
-from runner_cutter_control_interfaces.msg import State
+from runner_cutter_control_interfaces.msg import State, Track as TrackMsg
 from runner_cutter_control_interfaces.srv import (
     AddCalibrationPoints,
     GetState,
@@ -150,15 +150,38 @@ class RunnerCutterControlNode:
 
     def publish_state(self):
         state = self._get_state()
-        self.log(f"Entered state <{state.state}>")
         asyncio.create_task(
-            self.state_topic(calibrated=state.calibrated, state=state.state)
+            self.state_topic(
+                calibrated=state.calibrated, state=state.state, tracks=state.tracks
+            )
         )
 
     def _get_state(self) -> State:
-        return State(
+        state_msg = State(
             calibrated=self.state_machine.is_calibrated, state=self.state_machine.state
         )
+
+        for track in self.runner_tracker.tracks.values():
+            track_msg = TrackMsg()
+            track_msg.id = track.id
+            frame_size = self.calibration.camera_frame_size
+            track_msg.normalized_pixel_coords = Vector2(
+                x=(track.pixel[0] / frame_size[0] if frame_size[0] > 0 else -1.0),
+                y=(track.pixel[1] / frame_size[1] if frame_size[1] > 0 else -1.0),
+            )
+            if track.state == TrackState.PENDING:
+                track_msg.state = TrackMsg.PENDING
+            elif track.state == TrackState.ACTIVE:
+                track_msg.state = TrackMsg.ACTIVE
+            elif track.state == TrackState.COMPLETED:
+                track_msg.state = TrackMsg.COMPLETED
+            elif track.state == TrackState.OUT_OF_LASER_BOUNDS:
+                track_msg.state = TrackMsg.OUT_OF_LASER_BOUNDS
+            elif track.state == TrackState.OUT_OF_FRAME:
+                track_msg.state = TrackMsg.OUT_OF_FRAME
+            state_msg.tracks.append(track_msg)
+
+        return state_msg
 
 
 class StateMachine:
@@ -243,12 +266,14 @@ class StateMachine:
         return self._calibration.is_calibrated
 
     async def on_enter_idle(self):
-        self._node.publish_state()
+        self._logger.info(f"Entered state <idle>")
         await self._laser_node.stop()
         await self._laser_node.clear_points()
         self._runner_tracker.clear()
+        self._node.publish_state()
 
     async def on_enter_calibration(self):
+        self._logger.info(f"Entered state <calibration>")
         self._node.publish_state()
         await self._calibration.calibrate()
         await self.calibration_complete()
@@ -256,6 +281,7 @@ class StateMachine:
     async def on_enter_add_calibration_points(
         self, normalized_pixel_coords: List[Tuple[float, float]]
     ):
+        self._logger.info(f"Entered state <add_calibration_points>")
         self._node.publish_state()
         # For each camera pixel, find the 3D position wrt the camera
         result = await self._camera_node.get_positions(
@@ -285,6 +311,7 @@ class StateMachine:
     async def on_enter_manual_target_aim_laser(
         self, normalized_pixel_coord: Tuple[float, float]
     ):
+        self._logger.info(f"Entered state <manual_target_aim_laser>")
         self._node.publish_state()
         # Find the 3D position wrt the camera
         result = await self._camera_node.get_positions(
@@ -310,14 +337,6 @@ class StateMachine:
         result = await self._camera_node.get_runner_detection()
         detection_result = result.result
 
-        prev_pending_track_ids = set(
-            [
-                track.id
-                for track in self._runner_tracker.tracks.values()
-                if track.state == TrackState.PENDING
-            ]
-        )
-
         detected_track_ids = set()
         for instance in detection_result.instances:
             pixel = (int(instance.point.x), int(instance.point.y))
@@ -336,23 +355,40 @@ class StateMachine:
 
             detected_track_ids.add(instance.track_id)
 
-            # Put tracks that were formerly out of bounds into the pending queue as they could now potentially be in bounds
-            if track.state == TrackState.OUT_OF_BOUNDS:
+            # Put detected tracks that are neither active nor complete into the pending queue, as they could
+            # now potentially be in bounds
+            if (
+                track.state != TrackState.ACTIVE
+                and track.state != TrackState.COMPLETED
+                and track.state != TrackState.PENDING
+            ):
                 self._runner_tracker.process_track(track.id, TrackState.PENDING)
 
         self._logger.info(
             f"Detected {len(detected_track_ids)} tracks with IDs {detected_track_ids}."
         )
 
-        # Mark any pending tracks that are no longer detected as out of bounds
-        oob_track_ids = prev_pending_track_ids - detected_track_ids
-        for track_id in oob_track_ids:
-            self._logger.info(
-                f"Track {track_id} was pending but is no longer detected. Marking as out of bounds."
+        # Mark any tracks that are neither active nor complete, and are no longer detected, as out of frame
+        out_of_frame_track_ids = (
+            set(
+                [
+                    track.id
+                    for track in self._runner_tracker.tracks.values()
+                    if track.state != TrackState.ACTIVE
+                    and track.state != TrackState.COMPLETED
+                    and track.state != TrackState.OUT_OF_FRAME
+                ]
             )
-            self._runner_tracker.process_track(track_id, TrackState.OUT_OF_BOUNDS)
+            - detected_track_ids
+        )
+        for track_id in out_of_frame_track_ids:
+            self._logger.info(
+                f"Track {track_id} is no longer detected. Marking as out of frame."
+            )
+            self._runner_tracker.process_track(track_id, TrackState.OUT_OF_FRAME)
 
     async def on_enter_acquire_target(self):
+        self._logger.info(f"Entered state <acquire_target>")
         self._node.publish_state()
 
         # Detect runners and create/update tracks
@@ -384,8 +420,10 @@ class StateMachine:
                 or laser_coord[1] < 0.0
                 or laser_coord[1] > 1.0
             ):
-                self._logger.info(f"Track {track.id} is out of bounds.")
-                self._runner_tracker.process_track(track.id, TrackState.OUT_OF_BOUNDS)
+                self._logger.info(f"Track {track.id} is out of laser bounds.")
+                self._runner_tracker.process_track(
+                    track.id, TrackState.OUT_OF_LASER_BOUNDS
+                )
                 continue
             else:
                 self._logger.info(f"Setting track {track.id} as target.")
@@ -396,6 +434,7 @@ class StateMachine:
         await self.no_target_found()
 
     async def on_enter_aim_laser(self, target: Track):
+        self._logger.info(f"Entered state <aim_laser>")
         self._node.publish_state()
 
         self._logger.info(f"Attempting to aim laser at target track {target.id}...")
@@ -405,9 +444,11 @@ class StateMachine:
             await self.aim_successful(target, corrected_laser_coord)
         else:
             self._logger.info(
-                f"Failed to aim laser at track {target.id}. Marking track as out of bounds."
+                f"Failed to aim laser at track {target.id}. Marking track as out of laser bounds."
             )
-            self._runner_tracker.process_track(target.id, TrackState.OUT_OF_BOUNDS)
+            self._runner_tracker.process_track(
+                target.id, TrackState.OUT_OF_LASER_BOUNDS
+            )
             await self.aim_failed()
 
     async def _aim(
@@ -522,6 +563,7 @@ class StateMachine:
     async def on_enter_burn_target(
         self, target: Track, laser_coord: Tuple[float, float]
     ):
+        self._logger.info(f"Entered state <burn_target>")
         self._node.publish_state()
 
         self._logger.info(f"Burning track {target.id}...")

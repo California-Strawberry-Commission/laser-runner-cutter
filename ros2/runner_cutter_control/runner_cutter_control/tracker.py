@@ -1,14 +1,15 @@
 import logging
 from enum import Enum
-from typing import Deque, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from collections import deque
 
 
 class TrackState(Enum):
-    PENDING = 1
-    ACTIVE = 2
-    COMPLETED = 3
-    OUT_OF_BOUNDS = 4
+    PENDING = 1  # Still needs to be burned
+    ACTIVE = 2  # Actively in the process of being targeted and burned
+    COMPLETED = 3  # Has successfully been burned
+    OUT_OF_LASER_BOUNDS = 4  # In camera frame, but out of laser reach
+    OUT_OF_FRAME = 5  # Out of camera frame
 
 
 class Track:
@@ -109,6 +110,9 @@ class Tracker:
             return
 
         track = self.tracks[track_id]
+        if track.state == new_state:
+            return
+
         if track.state == TrackState.PENDING:
             self._pending_tracks.remove(track)
 
