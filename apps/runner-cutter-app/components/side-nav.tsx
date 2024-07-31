@@ -36,12 +36,12 @@ const SIDENAV_ITEMS: SideNavItem[] = [
     path: "/test/aim",
   },
   {
-    title: "Wi-Fi",
-    path: "/wifi",
-  },
-  {
     title: "Navigation",
     path: "/test/navigation",
+  },
+  {
+    title: "Wi-Fi",
+    path: "/wifi",
   },
 ];
 

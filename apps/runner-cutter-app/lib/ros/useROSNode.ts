@@ -7,43 +7,72 @@ import expandTopicOrServiceName from "./expandTopicName";
 type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
 
-export default function useROSNode<STATE_T>(nodeName: string, initalState: STATE_T) {
+type stateOptions<STATE_T> = {
+    initalState: STATE_T,
+    stateIdl: string,
+    stateTopic?: string,
+}
+
+export default function useROSNode<STATE_T>(nodeName: string) {
     const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
     const [nodeConnected, setNodeConnected] = useState<boolean>(false);
-    const [nodeState, setNodeState] = useState(initalState);
+
+    // Put ros and name on `this` to pass to subsequent `topic` and `service` calls.
+    // Ugly hack but what do you expect from react ¯\_(ツ)_/¯
+    const ctx = {
+        ros: ros,
+        nodeName: nodeName
+    };
+
 
     // Defines a service on this node.
-    function service<
+    function _service<
         IN_MAPPER_T extends (...a: any) => any,
         OUT_MAPPER_T extends (res: any) => any,
         T = ReturnType<OUT_MAPPER_T>,
     >(
+        this: typeof ctx,
         path: string,
         idl: string,
         in_mapper: IN_MAPPER_T,
         out_mapper: OUT_MAPPER_T
     ): (...a: Parameters<IN_MAPPER_T>) => T {
-
-        const topic = expandTopicOrServiceName(path, nodeName);
+        const topic = expandTopicOrServiceName(path, this.nodeName);
 
         async function _service(...arg: any) {
             const service_data = in_mapper(...arg);
-            const res = await node.ros.callService(topic, idl, service_data);
+            const res = await ros.callService(topic, idl, service_data);
             return out_mapper(res)
         }
 
-        return _service as any;
+        return useCallback(_service, [path, idl, in_mapper, out_mapper, this.nodeName, this.ros]) as any;
     }
 
-    const node = useMemo(() => {
-        return {
-            name: nodeName,
-            connected: rosbridgeNodeInfo.connected && nodeConnected,
-            state: nodeState,
-            ros,
-            service
-        };
-    }, [nodeName, rosbridgeNodeInfo, nodeConnected, nodeState]);
+    const useService = _service.bind(ctx);
+
+    // Defines a service on this node.
+    function _topic<T>(
+        this: typeof ctx,
+        path: string,
+        idl: string,
+        initial: T
+    ): T {
+        const topic = expandTopicOrServiceName(path, this.nodeName);
+        const [val, setVal] = useState(initial);
+
+        useEffect(() => {
+            const sub = this.ros.subscribe(topic, idl, (v) => {
+                setVal(v);
+            });
+
+            return () => sub.unsubscribe();
+
+        }, [this.ros, this.nodeName, path, idl]);
+
+        return val;
+    }
+
+    const useTopic = _topic.bind(ctx);
 
     useEffect(() => {
         const onNodeConnectedSub = ros.onNodeConnected(
@@ -54,19 +83,17 @@ export default function useROSNode<STATE_T>(nodeName: string, initalState: STATE
             }
         );
 
-        const stateSub = ros.subscribe(
-            `${nodeName}/state`,
-            "guidance_brain_interfaces/State",
-            (message) => {
-                setNodeState(message);
-            }
-        );
+        return () => onNodeConnectedSub.unsubscribe();
+    }, [ros, nodeName, setNodeConnected]);
 
-        return () => {
-            onNodeConnectedSub.unsubscribe();
-            stateSub.unsubscribe();
+
+    return useMemo(() => {
+        return {
+            name: nodeName,
+            connected: rosbridgeNodeInfo.connected && nodeConnected,
+            ros,
+            useService,
+            useTopic
         };
-    }, [ros, nodeName, setNodeConnected, setNodeState]);
-
-    return node;
+    }, [nodeName, rosbridgeNodeInfo, nodeConnected]);
 }
