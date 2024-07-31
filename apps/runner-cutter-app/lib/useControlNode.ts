@@ -2,15 +2,48 @@ import type { NodeInfo } from "@/lib/NodeInfo";
 import useROS from "@/lib/ros/useROS";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-const INITIAL_STATE = {
-  calibrated: false,
-  state: "idle",
+export type State = {
+  calibrated: boolean;
+  state: string;
+  tracks: Track[];
 };
+export type Track = {
+  id: number;
+  normalizedPixelCoords: { x: number; y: number };
+  state: TrackState;
+};
+export enum TrackState {
+  Pending,
+  Active,
+  Completed,
+  OutOfLaserBounds,
+  OutOfFrame,
+}
+
+function convertStateMessage(message: any): State {
+  return {
+    calibrated: message.calibrated,
+    state: message.state,
+    tracks: message.tracks.map(convertTrackMessage),
+  };
+}
+
+function convertTrackMessage(message: any): Track {
+  return {
+    id: message.id,
+    normalizedPixelCoords: message.normalized_pixel_coords,
+    state: message.state as TrackState,
+  };
+}
 
 export default function useControlNode(nodeName: string) {
   const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
   const [nodeConnected, setNodeConnected] = useState<boolean>(false);
-  const [nodeState, setNodeState] = useState(INITIAL_STATE);
+  const [nodeState, setNodeState] = useState<State>({
+    calibrated: false,
+    state: "idle",
+    tracks: [],
+  });
 
   const nodeInfo: NodeInfo = useMemo(() => {
     return {
@@ -34,7 +67,7 @@ export default function useControlNode(nodeName: string) {
       `${nodeName}/state`,
       "runner_cutter_control_interfaces/State",
       (message) => {
-        setNodeState(message);
+        setNodeState(convertStateMessage(message));
       }
     );
 
@@ -80,8 +113,7 @@ export default function useControlNode(nodeName: string) {
 
   return {
     nodeInfo,
-    calibrated: nodeState.calibrated,
-    controlState: nodeState.state,
+    nodeState,
     calibrate,
     addCalibrationPoint,
     manualTargetAimLaser,

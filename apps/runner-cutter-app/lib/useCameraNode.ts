@@ -3,7 +3,7 @@ import useROS from "@/lib/ros/useROS";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type State = {
-  deviceState: string;
+  deviceState: DeviceState;
   laserDetectionEnabled: boolean;
   runnerDetectionEnabled: boolean;
   recordingVideo: boolean;
@@ -14,24 +14,15 @@ export type State = {
   gainDbRange: [number, number];
   saveDirectory: string;
 };
-
-const DEVICE_STATES = ["disconnected", "connecting", "streaming"];
-const INITIAL_STATE: State = {
-  deviceState: DEVICE_STATES[0],
-  laserDetectionEnabled: false,
-  runnerDetectionEnabled: false,
-  recordingVideo: false,
-  intervalCaptureActive: false,
-  exposureUs: 0.0,
-  exposureUsRange: [0.0, 0.0],
-  gainDb: 0.0,
-  gainDbRange: [0.0, 0.0],
-  saveDirectory: "",
-};
+export enum DeviceState {
+  Disconnected,
+  Connecting,
+  Streaming,
+}
 
 function convertStateMessage(message: any): State {
   return {
-    deviceState: DEVICE_STATES[message.device_state.data],
+    deviceState: message.device_state.data as DeviceState,
     laserDetectionEnabled: message.laser_detection_enabled,
     runnerDetectionEnabled: message.runner_detection_enabled,
     recordingVideo: message.recording_video,
@@ -55,7 +46,18 @@ function convertToLocalReadableTime(secondsSinceEpoch: number) {
 export default function useCameraNode(nodeName: string) {
   const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
   const [nodeConnected, setNodeConnected] = useState<boolean>(false);
-  const [nodeState, setNodeState] = useState<State>(INITIAL_STATE);
+  const [nodeState, setNodeState] = useState<State>({
+    deviceState: DeviceState.Disconnected,
+    laserDetectionEnabled: false,
+    runnerDetectionEnabled: false,
+    recordingVideo: false,
+    intervalCaptureActive: false,
+    exposureUs: 0.0,
+    exposureUsRange: [0.0, 0.0],
+    gainDb: 0.0,
+    gainDbRange: [0.0, 0.0],
+    saveDirectory: "",
+  });
   const [logMessages, setLogMessages] = useState<string[]>([]);
 
   const nodeInfo: NodeInfo = useMemo(() => {
@@ -90,7 +92,6 @@ export default function useCameraNode(nodeName: string) {
       `${nodeName}/state`,
       "camera_control_interfaces/State",
       (message) => {
-        console.log(`state sub message: ${JSON.stringify(message)}`);
         setNodeState(convertStateMessage(message));
       }
     );
@@ -119,7 +120,7 @@ export default function useCameraNode(nodeName: string) {
     setNodeState((state) => {
       return {
         ...state,
-        deviceState: DEVICE_STATES[1],
+        deviceState: DeviceState.Connecting,
       };
     });
     ros.callService(`${nodeName}/start_device`, "std_srvs/Trigger", {});

@@ -139,7 +139,7 @@ class CameraControlNode:
         # ML models
         package_share_directory = get_package_share_directory("camera_control")
         runner_weights_path = os.path.join(
-            package_share_directory, "models", "RunnerSegYoloV8m.pt"
+            package_share_directory, "models", "RunnerSegYoloV8l.pt"
         )
         self.runner_seg_model = Yolo(runner_weights_path)
         self.runner_seg_size = (1024, 768)
@@ -744,20 +744,20 @@ class CameraControlNode:
                     pos,
                     center_color,
                     cv2.MARKER_TILTED_CROSS,
-                    thickness=1,
+                    thickness=3,
                     markerSize=20,
                 )
             if draw_conf:
                 pos = [int(runner_center[0]) + 15, int(runner_center[1]) - 5]
                 font = cv2.FONT_HERSHEY_SIMPLEX
                 debug_frame = cv2.putText(
-                    debug_frame, f"{conf:.2f}", pos, font, 0.5, mask_color
+                    debug_frame, f"{conf:.2f}", pos, font, 1, center_color, 2
                 )
             if draw_track_id and track_id > 0:
-                pos = [int(runner_center[0]) + 15, int(runner_center[1]) + 10]
+                pos = [int(runner_center[0]) + 15, int(runner_center[1]) + 20]
                 font = cv2.FONT_HERSHEY_SIMPLEX
                 debug_frame = cv2.putText(
-                    debug_frame, f"{track_id}", pos, font, 0.5, mask_color
+                    debug_frame, f"{track_id}", pos, font, 1, center_color, 2
                 )
         return debug_frame
 

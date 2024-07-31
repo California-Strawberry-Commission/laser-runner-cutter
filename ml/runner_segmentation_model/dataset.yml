@@ -1,5 +1,5 @@
 # Datasets
-path: data/prepared/runner1800
+path: data/prepared/runner2400
 train: images/train
 val: images/val
 test: images/test

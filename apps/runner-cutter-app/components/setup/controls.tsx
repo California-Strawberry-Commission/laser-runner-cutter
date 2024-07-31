@@ -4,7 +4,7 @@ import FramePreview from "@/components/camera/frame-preview";
 import NodeCards from "@/components/nodes/node-cards";
 import { Button } from "@/components/ui/button";
 import useROS from "@/lib/ros/useROS";
-import useCameraNode from "@/lib/useCameraNode";
+import useCameraNode, { DeviceState } from "@/lib/useCameraNode";
 import useControlNode from "@/lib/useControlNode";
 import useLaserNode from "@/lib/useLaserNode";
 import { Loader2 } from "lucide-react";
@@ -12,11 +12,7 @@ import { useMemo } from "react";
 
 export default function Controls() {
   const { nodeInfo: rosbridgeNodeInfo } = useROS();
-  const {
-    nodeInfo: controlNodeInfo,
-    controlState,
-    calibrate,
-  } = useControlNode("/control0");
+
   const {
     nodeInfo: cameraNodeInfo,
     nodeState: cameraNodeState,
@@ -29,20 +25,21 @@ export default function Controls() {
     startDevice: connectLaser,
     closeDevice: disconnectLaser,
   } = useLaserNode("/laser0");
+  const { nodeInfo: controlNodeInfo } = useControlNode("/control0");
 
   const nodeInfos = useMemo(() => {
-    return [rosbridgeNodeInfo, controlNodeInfo, cameraNodeInfo, laserNodeInfo];
-  }, [rosbridgeNodeInfo, controlNodeInfo, cameraNodeInfo, laserNodeInfo]);
+    return [rosbridgeNodeInfo, cameraNodeInfo, laserNodeInfo, controlNodeInfo];
+  }, [rosbridgeNodeInfo, cameraNodeInfo, laserNodeInfo, controlNodeInfo]);
 
   let cameraButton = null;
   const enableCameraButton = cameraNodeInfo.connected;
-  if (cameraNodeState.deviceState === "disconnected") {
+  if (cameraNodeState.deviceState === DeviceState.Disconnected) {
     cameraButton = (
       <Button disabled={!enableCameraButton} onClick={() => connectCamera()}>
         Connect Camera
       </Button>
     );
-  } else if (cameraNodeState.deviceState === "connecting") {
+  } else if (cameraNodeState.deviceState === DeviceState.Connecting) {
     cameraButton = (
       <Button disabled>
         <Loader2 className="h-4 w-4 animate-spin" />
@@ -86,26 +83,12 @@ export default function Controls() {
     );
   }
 
-  const enableCalibrationButton =
-    controlNodeInfo.connected &&
-    controlState === "idle" &&
-    cameraNodeState.deviceState === "streaming" &&
-    laserState === "stopped";
-
   return (
     <div className="flex flex-col gap-4 items-center">
       <NodeCards nodeInfos={nodeInfos} />
       <div className="flex flex-row items-center gap-4">
         {cameraButton}
         {laserButton}
-        <Button
-          disabled={!enableCalibrationButton}
-          onClick={() => {
-            calibrate();
-          }}
-        >
-          Start Calibration
-        </Button>
       </div>
       <FramePreview topicName={"/camera0/debug_frame"} />
     </div>
