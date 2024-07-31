@@ -16,6 +16,7 @@ from aioros2 import (
     subscribe_param,
     param,
     start,
+    QOS_LATCHED
 )
 from std_msgs.msg import String, Bool
 from common_interfaces.msg import Vector2
@@ -58,7 +59,7 @@ class AmigaControlNode:
     
     amiga_params = params(AmigaParams)
     
-    amiga_available = topic("~/available", Bool, latched=True)
+    amiga_available = topic("~/available", Bool, QOS_LATCHED)
 
     @start
     async def comm_amiga(self):

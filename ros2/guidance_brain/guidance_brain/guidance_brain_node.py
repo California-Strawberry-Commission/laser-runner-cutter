@@ -24,6 +24,7 @@ from aioros2 import (
     subscribe_param,
     param,
     start,
+    QOS_LATCHED
 )
 
 # Executable to call to launch this node (defined in `setup.py`)
@@ -46,7 +47,7 @@ class GuidanceBrainNode:
     )
 
     # Emits state.
-    state_topic = topic("~/state", State, latched=True)
+    state_topic = topic("~/state", State, QOS_LATCHED)
     
     async def emit_state(self):
         await self.state_topic(self.state)

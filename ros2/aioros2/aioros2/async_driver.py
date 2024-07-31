@@ -78,18 +78,16 @@ class AsyncDriver:
         # to that handler's name.
         att = OrderedDict()
         
-        # a = getmembers(self._n, lambda v: isinstance(v, RosDefinition))
-
         # Defines load order.
-        att[RosImport] = self._process_import
-        att[RosTopic] = self._attach_publisher
+        att[RosImport] = self._process_import # Process imports first 
+        att[RosTopic] = self._attach_publisher # Attach topics second b/c they are referenced by services/subscribers/etc.
         att[RosService] = self._attach_service
         att[RosSubscription] = self._attach_subscriber
         att[RosAction] = self._attach_action
         att[RosTimer] = self._attach_timer
         att[RosParams] = self._attach_params
         att[RosParamSubscription] = self._attach_param_subscription
-        att[RosStart] = self._process_start
+        att[RosStart] = self._process_start # Process starts last b/c they directly go into asyncio loop
         
         for ros_element, attacher in att.items():
             for attr ,definition in getmembers(self._n, lambda v: isinstance(v, ros_element)):

@@ -22,11 +22,6 @@ class RosTopic(RosDefinition):
         self.node = None
 
 
-def topic(namespace: str, idl: Any, qos: Union[QoSProfile, int] = 10, latched=False):
-
-    # Shortcut for latched topics
-    if latched:
-        qos=QOS_LATCHED
-
+def topic(namespace: str, idl: Any, qos: Union[QoSProfile, int] = 10):
     return RosTopic(namespace, idl, qos)
 
