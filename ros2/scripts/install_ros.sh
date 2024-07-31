@@ -23,4 +23,6 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-a
 sudo apt update
 sudo apt install -y ros-foxy-desktop ros-foxy-diagnostic-updater python3-rosdep2 python3-colcon-common-extensions python3-argcomplete ros-foxy-rosbridge-suite ros-foxy-async-web-server-cpp ros-foxy-cv-bridge ros-foxy-image-transport
 
+# https://github.com/matplotlib/matplotlib/issues/26827#issuecomment-1726026699
+# Solves a potential import conflict between system matplotlib and env matplotlib
 sudo apt remove -y python3-matplotlib
