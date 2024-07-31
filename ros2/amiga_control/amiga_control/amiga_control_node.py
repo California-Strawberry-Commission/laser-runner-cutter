@@ -18,6 +18,7 @@ from aioros2 import (
     start,
     QOS_LATCHED
 )
+
 from std_msgs.msg import String, Bool
 from common_interfaces.msg import Vector2
 from .amiga_controller import AmigaController
@@ -60,7 +61,7 @@ class AmigaControlNode:
     amiga_params = params(AmigaParams)
     
     amiga_available = topic("~/available", Bool, QOS_LATCHED)
-
+    
     @start
     async def comm_amiga(self):
         self.amiga = AmigaController(
@@ -68,10 +69,11 @@ class AmigaControlNode:
         )
         
         await self.amiga_available(data=False)
-        
+
         await self.amiga.wait_for_clients()
-        
         self.log("Got amiga connection!")
+        
+        self.connected.set()
         await self.amiga_available(data=True)
 
 
@@ -80,7 +82,7 @@ class AmigaControlNode:
     async def set_twist(self, twist) -> bool:
         # print("SET TWIST", twist)
         
-        if self.amiga_available.value:
+        if self.amiga_available.value.data:
             await self.amiga.set_twist(twist.y, twist.x)
             
         return {"success": True}
