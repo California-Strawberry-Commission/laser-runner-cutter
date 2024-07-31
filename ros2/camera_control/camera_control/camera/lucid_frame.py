@@ -269,7 +269,8 @@ class LucidFrame(RgbdFrame):
                 self._xyz_to_color_camera_extrinsic_matrix,
             )
             distance = np.linalg.norm(
-                np.array(curr_color_pixel) - np.array(color_pixel)
+                np.array(curr_color_pixel).astype(float)
+                - np.array(color_pixel).astype(float)
             )
             if distance < min_dist or min_dist < 0:
                 min_dist = distance

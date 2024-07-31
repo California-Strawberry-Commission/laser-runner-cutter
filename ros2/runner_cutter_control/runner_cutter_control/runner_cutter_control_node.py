@@ -523,8 +523,8 @@ class StateMachine:
                 return None
 
             # Calculate camera pixel distance
-            laser_pixel = np.array(laser_pixel)
-            target_pixel = np.array(target_pixel)
+            laser_pixel = np.array(laser_pixel).astype(float)
+            target_pixel = np.array(target_pixel).astype(float)
             dist = np.linalg.norm(laser_pixel - target_pixel)
             self._logger.info(
                 f"Aiming laser. Target camera pixel = {target_pixel}, laser detected at = {laser_pixel}, dist = {dist}"
