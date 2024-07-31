@@ -36,8 +36,8 @@ Web app for laser runner cutter control and automation, built with Next.js.
 1.  Set environment variables
 
         $ cd laser-runner-cutter/apps/runner-cutter-app
-        $ echo "NEXT_PUBLIC_ROSBRIDGE_URL=ws://localhost:9090" > .env.local
-        $ echo "NEXT_PUBLIC_VIDEO_SERVER_URL=http://localhost:8080" > .env.local
+        $ echo "NEXT_PUBLIC_ROSBRIDGE_URL=ws://localhost:9090" >> .env.local
+        $ echo "NEXT_PUBLIC_VIDEO_SERVER_URL=http://localhost:8080" >> .env.local
 
     Change `ws://localhost:9090` to wherever Rosbridge will be running, and `http://localhost:8080` to wherever Web Video Server will be running.
 
