@@ -13,8 +13,6 @@ export default function GuidanceBrainControls() {
 
     const disableButtons = !node.connected;
 
-    <input type="number">lsls</input>
-
     return (<div className="flex flex-col gap-2 mb-2 mt-2">
         <div className="flex gap-2">
             <InputWithLabel

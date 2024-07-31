@@ -35,7 +35,6 @@ class RosService(RosDefinition):
 
 def service(namespace, srv_idl):
     def _service(fn):
-        # 
         return RosService(namespace, srv_idl, fn)
 
     return _service

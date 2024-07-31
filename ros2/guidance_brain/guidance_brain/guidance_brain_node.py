@@ -63,7 +63,7 @@ class GuidanceBrainNode:
             self.state.command = 0.
             await self.amiga.set_twist(twist=Vector2(x=0., y=0.))
             return
-        
+
         # Run PID
         self.state.command = self.state.follower_pid.p * self.state.error / 5000.
         speed_ms = self.state.speed * 0.00508

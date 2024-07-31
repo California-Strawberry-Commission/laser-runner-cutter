@@ -20,8 +20,6 @@ export default function FurrowPercieverControls() {
 
   let playbackButton = null;
 
-  <input type="number">lsls</input>
-
   return (<div className="flex gap-2 mb-2">
     FPC
     <p>{nodeInfo.connected ? "CONN" : "DISCONN"}</p>
