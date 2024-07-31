@@ -19,7 +19,7 @@ export default function useGuidanceBrainNode(nodeName: string) {
   const node = useROSNode(nodeName);
 
   const state = node.useTopic("~/state", "guidance_brain_interfaces/State", INITIAL_STATE);
-
+  
   const setActive = node.useService(
     "~/set_active",
     "std_srvs/SetBool",

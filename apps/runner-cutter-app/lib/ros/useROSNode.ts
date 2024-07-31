@@ -31,7 +31,7 @@ export default function useROSNode<STATE_T>(nodeName: string) {
         OUT_MAPPER_T extends (res: any) => any,
         T = ReturnType<OUT_MAPPER_T>,
     >(
-        this: typeof ctx,
+        this: any,
         path: string,
         idl: string,
         in_mapper: IN_MAPPER_T,
@@ -52,7 +52,7 @@ export default function useROSNode<STATE_T>(nodeName: string) {
 
     // Defines a service on this node.
     function _topic<T>(
-        this: typeof ctx,
+        this: any,
         path: string,
         idl: string,
         initial: T
@@ -61,7 +61,7 @@ export default function useROSNode<STATE_T>(nodeName: string) {
         const [val, setVal] = useState(initial);
 
         useEffect(() => {
-            const sub = this.ros.subscribe(topic, idl, (v) => {
+            const sub = this.ros.subscribe(topic, idl, (v: T) => {
                 setVal(v);
             });
 
