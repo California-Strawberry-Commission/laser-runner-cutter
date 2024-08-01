@@ -43,10 +43,7 @@ function useService(nodeName: string, ros: any) {
     type mappable_fn_t<IN_T, OUT_T> = (...a: IN_T extends in_mapper_t ? Parameters<IN_T> : [IN_T]) => Promise<OUT_T extends out_mapper_t ? ReturnType<OUT_T> : OUT_T>
 
     // Main type signature - accepts "mapper" fns to make TS api cleaner
-    function _service<
-        IN_T,
-        OUT_T,
-    >(
+    function _service<IN_T, OUT_T>(
         path: string,
         idl: string,
         in_mapper?: IN_T,

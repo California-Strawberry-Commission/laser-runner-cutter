@@ -15,31 +15,6 @@ const INITIAL_STATE = {
   command: 0,
 };
 
-type in_mapper_t = (...a: any) => any;
-type out_mapper_t = (res: any) => any;
-function us(nodeName: string, ros: any) {
-
-  // Main type signature - accepts "mapper" fns to make TS api cleaner
-  function _service<
-    IN_T,
-    OUT_T,
-  >(
-    path: string,
-    idl: string,
-
-  ): (...a: IN_T extends in_mapper_t ? Parameters<IN_T> : [IN_T]) => Promise<OUT_T extends out_mapper_t ? ReturnType<OUT_T> : OUT_T> {
-
-    async function _service(...arg: any) {
-
-    }
-
-    return useCallback(_service, [path, idl, nodeName, ros]) as any;
-  }
-
-  return _service
-}
-
-
 export default function useGuidanceBrainNode(nodeName: string) {
   const node = useROSNode(nodeName);
 
