@@ -87,7 +87,7 @@ class AmigaControlNode:
     # ros2 service call /set_twist amiga_control_interfaces/srv/SetTwist "{twist: {x: 1.0, y: 1.0}}"
     @service("~/set_twist", SetTwist)
     async def set_twist(self, twist) -> bool:
-        # print("SET TWIST", twist)
+        print("SET TWIST", twist)
         if self.amiga_available.value.data:
             t = Twist2d(angular_velocity=twist.x, linear_velocity_x=twist.y)
             await self.cli_canbus.request_reply("/twist", t)

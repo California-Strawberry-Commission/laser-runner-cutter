@@ -1,5 +1,0 @@
-amiga0:
-  ros__parameters:
-    amiga_params:
-      amiga_host: "10.160.1.194"
-      canbus_service_port: 6001
