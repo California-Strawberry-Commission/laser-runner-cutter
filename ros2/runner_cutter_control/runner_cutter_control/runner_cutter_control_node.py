@@ -47,6 +47,7 @@ class RunnerCutterControlParams:
     tracking_laser_color: List[float] = field(default_factory=lambda: [0.15, 0.0, 0.0])
     burn_laser_color: List[float] = field(default_factory=lambda: [0.0, 0.0, 1.0])
     burn_time_secs: float = 5.0
+    enable_aiming: bool = True
 
 
 @node("runner_cutter_control_node")
@@ -88,6 +89,7 @@ class RunnerCutterControlNode:
             self.runner_cutter_control_params.tracking_laser_color,
             self.runner_cutter_control_params.burn_laser_color,
             self.runner_cutter_control_params.burn_time_secs,
+            self.runner_cutter_control_params.enable_aiming,
             self.get_logger(),
         )
 
@@ -208,6 +210,7 @@ class StateMachine:
         tracking_laser_color: Tuple[float, float, float],
         burn_laser_color: Tuple[float, float, float],
         burn_time_secs: float,
+        enable_aiming: bool,
         logger: Optional[logging.Logger] = None,
     ):
         self._node = node
@@ -219,6 +222,7 @@ class StateMachine:
         self._tracking_laser_color = tracking_laser_color
         self._burn_laser_color = burn_laser_color
         self._burn_time_secs = burn_time_secs
+        self._enable_aiming = enable_aiming
         if logger:
             self._logger = logger
         else:
@@ -232,8 +236,10 @@ class StateMachine:
             initial="idle",
             queued=True,  # we need queued transitions to avoid infinite recursion as we call transition callbacks from on_enter_*
         )
+        # Calibration states
         self.machine.add_transition("run_calibration", "idle", "calibration")
         self.machine.add_transition("calibration_complete", "calibration", "idle")
+        # Add Calibration Points states
         self.machine.add_transition(
             "run_add_calibration_points",
             "idle",
@@ -243,6 +249,7 @@ class StateMachine:
         self.machine.add_transition(
             "add_calibration_points_complete", "add_calibration_points", "idle"
         )
+        # Manual Target Aim Laser states
         self.machine.add_transition(
             "run_manual_target_aim_laser",
             "idle",
@@ -252,16 +259,25 @@ class StateMachine:
         self.machine.add_transition(
             "manual_target_aim_laser_complete", "manual_target_aim_laser", "idle"
         )
+        # Runner Cutter states
         self.machine.add_transition(
             "run_runner_cutter", "idle", "acquire_target", conditions=["is_calibrated"]
         )
-        self.machine.add_transition("target_acquired", "acquire_target", "aim_laser")
+        if self._enable_aiming:
+            self.machine.add_transition(
+                "target_acquired", "acquire_target", "aim_laser"
+            )
+            self.machine.add_transition("aim_successful", "aim_laser", "burn_target")
+            self.machine.add_transition("aim_failed", "aim_laser", "acquire_target")
+        else:
+            self.machine.add_transition(
+                "target_acquired", "acquire_target", "burn_target"
+            )
         self.machine.add_transition(
             "no_target_found", "acquire_target", "acquire_target"
         )
-        self.machine.add_transition("aim_successful", "aim_laser", "burn_target")
-        self.machine.add_transition("aim_failed", "aim_laser", "acquire_target")
         self.machine.add_transition("burn_complete", "burn_target", "acquire_target")
+        # E-stop
         self.machine.add_transition("stop", "*", "idle")
 
     @property
@@ -390,44 +406,55 @@ class StateMachine:
         # Detect runners and create/update tracks
         await self._detect_runners()
 
+        target_track = None
+
         # If there is already an active track, just use that track
         active_tracks = self._runner_tracker.get_tracks_with_state(TrackState.ACTIVE)
         if len(active_tracks) > 0:
-            track = active_tracks[0]
+            target_track = active_tracks[0]
             self._logger.info(
-                f"Active track with ID {track.id} already exists. Setting it as target."
+                f"Active track with ID {target_track.id} already exists. Setting it as target."
             )
-            await self.target_acquired(track)
-            return
+        else:
+            # Find a track to target
+            while True:
+                track = self._runner_tracker.get_next_pending_track()
+                if track is None:
+                    break
 
-        # Find a track to target
-        while True:
-            track = self._runner_tracker.get_next_pending_track()
-            if track is None:
-                break
+                self._logger.info(f"Processing pending track {track.id}...")
 
-            self._logger.info(f"Processing pending track {track.id}...")
-
-            # Check whether the laser coordinates are out of bounds
-            laser_coord = self._calibration.camera_point_to_laser_coord(track.position)
-            if (
-                laser_coord[0] < 0.0
-                or laser_coord[0] > 1.0
-                or laser_coord[1] < 0.0
-                or laser_coord[1] > 1.0
-            ):
-                self._logger.info(
-                    f"Track {track.id} is out of laser bounds. Marking as failed."
+                # Check whether the laser coordinates are out of bounds
+                laser_coord = self._calibration.camera_point_to_laser_coord(
+                    track.position
                 )
-                self._runner_tracker.process_track(track.id, TrackState.FAILED)
-                continue
-            else:
-                self._logger.info(f"Setting track {track.id} as target.")
-                await self.target_acquired(track)
-                return
+                if (
+                    laser_coord[0] < 0.0
+                    or laser_coord[0] > 1.0
+                    or laser_coord[1] < 0.0
+                    or laser_coord[1] > 1.0
+                ):
+                    self._logger.info(
+                        f"Track {track.id} is out of laser bounds. Marking as failed."
+                    )
+                    self._runner_tracker.process_track(track.id, TrackState.FAILED)
+                    continue
+                else:
+                    self._logger.info(f"Setting track {track.id} as target.")
+                    target_track = track
+                    break
 
-        self._logger.info("No target found.")
-        await self.no_target_found()
+        if target_track is None:
+            self._logger.info("No target found.")
+            await self.no_target_found()
+        else:
+            if self._enable_aiming:
+                await self.target_acquired(target_track)
+            else:
+                laser_coord = self._calibration.camera_point_to_laser_coord(
+                    target_track.position
+                )
+                await self.target_acquired(target_track, laser_coord)
 
     async def on_enter_aim_laser(self, target: Track):
         self._logger.info(f"Entered state <aim_laser>")
