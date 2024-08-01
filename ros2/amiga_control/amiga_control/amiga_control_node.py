@@ -16,12 +16,14 @@ from aioros2 import (
     subscribe_param,
     param,
     start,
-    QOS_LATCHED
+    QOS_LATCHED,
 )
+from farm_ng.canbus.canbus_pb2 import Twist2d
+from farm_ng.core.event_client import EventClient
+from farm_ng.core.event_service_pb2 import EventServiceConfig
 
-from std_msgs.msg import String, Bool
-from common_interfaces.msg import Vector2
-from .amiga_controller import AmigaController
+from std_msgs.msg import Bool
+
 
 # Some test commands
 # For a launch file example, look to ../launch/amiga_control_launch
@@ -48,7 +50,7 @@ from .amiga_controller import AmigaController
 
 @dataclass
 class AmigaParams:
-    amiga_host: str = "192.168.10.8"
+    amiga_host: str = "10.95.76.1"
 
     canbus_service_port: int = 6001
 
@@ -57,35 +59,41 @@ class AmigaParams:
 @node("amiga_control_node")
 class AmigaControlNode:
     amiga = None
-    
+
     amiga_params = params(AmigaParams)
-    
+
     amiga_available = topic("~/available", Bool, QOS_LATCHED)
-    
+
     @start
     async def comm_amiga(self):
-        self.amiga = AmigaController(
-            self.amiga_params.amiga_host, self.amiga_params.canbus_service_port
-        )
-        
         await self.amiga_available(data=False)
-
-        await self.amiga.wait_for_clients()
-        self.log("Got amiga connection!")
         
-        self.connected.set()
-        await self.amiga_available(data=True)
+        self.cli_canbus = EventClient(
+            config=EventServiceConfig(
+                name="canbus",
+                port=self.amiga_params.canbus_service_port,
+                host=self.amiga_params.amiga_host,
+            )
+        )
 
+        while not await self.cli_canbus._try_connect():
+            print("No amiga connection...")
+            asyncio.sleep(1)
+
+        self.log("Got amiga connection!")
+
+        await self.amiga_available(data=True)
 
     # ros2 service call /set_twist amiga_control_interfaces/srv/SetTwist "{twist: {x: 1.0, y: 1.0}}"
     @service("~/set_twist", SetTwist)
     async def set_twist(self, twist) -> bool:
         # print("SET TWIST", twist)
-        
         if self.amiga_available.value.data:
-            await self.amiga.set_twist(twist.y, twist.x)
-            
-        return {"success": True}
+            t = Twist2d(angular_velocity=twist.x, linear_velocity_x=twist.y)
+            await self.cli_canbus.request_reply("/twist", t)
+            return {"success": True}
+
+        return {"success": False}
 
 
 # Boilerplate below here.

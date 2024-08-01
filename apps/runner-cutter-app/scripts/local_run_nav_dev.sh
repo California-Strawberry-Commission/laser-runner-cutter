@@ -8,7 +8,8 @@ ros_dir=$repo_dir/ros2
 
 start_ros() {
   cd $ros_dir
-  bash ./scripts/run_ros_nav.sh
+  source ./scripts/setup.sh
+  ros2 launch guidance_brain launch.py
 }
 
 start_app() {
