@@ -11,13 +11,13 @@ start_ros() {
 start_rosbridge() {
   cd $script_dir
   source setup.sh
-  ros2 launch rosbridge_server rosbridge_websocket_launch.xml
+  ros2 launch runner_cutter_control rosbridge_websocket_launch.xml
 }
 
 start_web_video_server() {
   cd $script_dir
   source setup.sh
-  ros2 run web_video_server web_video_server
+  ros2 launch runner_cutter_control web_video_server_launch.py
 }
 
 start_ros & start_rosbridge & start_web_video_server
