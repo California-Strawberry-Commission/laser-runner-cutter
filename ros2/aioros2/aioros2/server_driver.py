@@ -37,6 +37,23 @@ from .util import catch
 # https://github.com/ros2/demos/blob/rolling/demo_nodes_py/demo_nodes_py/parameters/set_parameters_callback.py
 
 
+class CachedPublisher:
+    def __init__(self, topic: RosTopic, node: "ServerDriver"):
+        self.value = None 
+        self.topic = topic
+        self.node = node
+        
+        self.pub = node.create_publisher(topic.idl, topic.path, topic.qos)
+    
+    async def __call__(self, *args, **kwargs):
+        if len(args) == 1:
+            msg = args[0]
+        else:
+            msg = self.topic.idl(*args, **kwargs)
+            
+        self.value = msg
+        await self.node.run_executor(self.pub.publish, msg)
+        
 class ParamDriver:
     """Manages a single parameter"""
 
@@ -346,23 +363,8 @@ class ServerDriver(AsyncDriver, Node):
     def _attach_publisher(self, attr, ros_topic: RosTopic):
         self.log_debug(f"[SERVER] Attach publisher {attr} @ >{ros_topic.path}<")
         ros_topic.node = self
-
-        pub = self.create_publisher(ros_topic.idl, ros_topic.path, ros_topic.qos)
-
-        _dp = None # Captures dispatch function so it can reference itself
-        async def _dispatch_pub(*args, **kwargs):
-            # Single non-kwarg arguments are interpreted as IDL objects.
-            if len(args) == 1:
-                 msg = args[0]
-            else:
-                msg = ros_topic.idl(*args, **kwargs)
-            _dp.value = msg
-            await self.run_executor(pub.publish, msg)
         
-        setattr(_dispatch_pub, "value", None)
-        _dp = _dispatch_pub
-        
-        return _dispatch_pub
+        return CachedPublisher(ros_topic, self)
 
     # TODO: Better error handling.
     # ATM raised errors are completely hidden

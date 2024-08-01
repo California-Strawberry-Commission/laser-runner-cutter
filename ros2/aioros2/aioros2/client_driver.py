@@ -18,7 +18,8 @@ from .decorators.timer import RosTimer
 from .decorators.topic import RosTopic
 from .decorators.start import RosStart
 
-class CachedTopic(RosTopic):
+# Extend RosTopic for downstream references
+class CachedSubscription(RosTopic):
     def __init__(self, topic: RosTopic, client: "ClientDriver"):
         super().__init__(topic.path, topic.idl, topic.qos)
         self.node = client
@@ -148,7 +149,7 @@ class ClientDriver(AsyncDriver):
     def _attach_publisher(self, attr, topic: RosTopic):
         topic.node = self # Set topic node in definition so other attachers know about it.
         
-        return CachedTopic(topic, self)
+        return CachedSubscription(topic, self)
 
     def _attach_timer(self, attr, ros_timer: RosTimer):
         # Unused on clients
