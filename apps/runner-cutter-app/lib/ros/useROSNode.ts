@@ -7,7 +7,7 @@ type in_mapper_t = (...a: any) => any;
 type out_mapper_t = (res: any) => any;
 
 /**
- * Creates a topic client using a mapper and inferred types.
+ * Creates a topic subscriptions with optional mapper, using either inferred or explicit types.
  * @param nodeName 
  * @param ros 
  * @returns 
@@ -34,15 +34,14 @@ function useTopic(nodeName: string, ros: any) {
 
 
 /**
- * Creates a service API with mappers, using inferred types.
+ * Creates a service API with mappers, using either inferred or explicit types.
  * @param nodeName 
  * @param ros 
  * @returns 
  */
-
 function useService(nodeName: string, ros: any) {
     type mappable_fn_t<IN_T, OUT_T> = (...a: IN_T extends in_mapper_t ? Parameters<IN_T> : [IN_T]) => Promise<OUT_T extends out_mapper_t ? ReturnType<OUT_T> : OUT_T>
-    
+
     // Main type signature - accepts "mapper" fns to make TS api cleaner
     function _service<
         IN_T,
@@ -67,28 +66,6 @@ function useService(nodeName: string, ros: any) {
     return _service
 }
 
-/**
- * Creates a service API without mappers, using explicit types.
- * @param nodeName 
- * @param ros 
- * @returns 
- */
-function useRawService(nodeName: string, ros: any) {
-    function _service<D, R>(
-        path: string,
-        idl: string,
-    ): (val: D) => Promise<R> {
-        const topic = expandTopicOrServiceName(path, nodeName);
-
-        async function _service(arg: D) {
-            return ros.callService(topic, idl, arg);
-        }
-
-        return useCallback(_service, [path, idl, nodeName, ros]) as any;
-    }
-
-    return _service
-}
 
 export default function useROSNode<STATE_T>(nodeName: string) {
     const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
@@ -107,7 +84,6 @@ export default function useROSNode<STATE_T>(nodeName: string) {
     }, [ros, nodeName, setNodeConnected]);
 
     const api = {
-        useRawService: useRawService(nodeName, ros),
         useService: useService(nodeName, ros),
         useTopic: useTopic(nodeName, ros),
     }
