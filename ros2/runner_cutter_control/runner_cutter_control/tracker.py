@@ -8,8 +8,7 @@ class TrackState(Enum):
     PENDING = 1  # Still needs to be burned
     ACTIVE = 2  # Actively in the process of being targeted and burned
     COMPLETED = 3  # Has successfully been burned
-    OUT_OF_LASER_BOUNDS = 4  # In camera frame, but out of laser reach
-    OUT_OF_FRAME = 5  # Out of camera frame
+    FAILED = 4  # Failed to burn
 
 
 class Track:

@@ -19,13 +19,25 @@ def generate_launch_description():
     return LaunchDescription(
         [
             LaunchNode(
-                camera_control_node, name="camera0", parameters=[parameters_file]
+                camera_control_node,
+                name="camera0",
+                parameters=[parameters_file],
+                respawn=True,
+                respawn_delay=2.0,
             ),
-            LaunchNode(laser_control_node, name="laser0", parameters=[parameters_file]),
+            LaunchNode(
+                laser_control_node,
+                name="laser0",
+                parameters=[parameters_file],
+                respawn=True,
+                respawn_delay=2.0,
+            ),
             LaunchNode(
                 runner_cutter_control_node,
                 name="control0",
                 parameters=[parameters_file],
+                respawn=True,
+                respawn_delay=2.0,
             ),
             LaunchNode(
                 amiga_control_node, name="amiga0", parameters=[parameters_file]
