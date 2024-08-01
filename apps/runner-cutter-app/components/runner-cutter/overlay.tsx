@@ -30,44 +30,19 @@ export default function Overlay({
       }
 
       // Draw markers
-      ctx.font = "16px sans-serif";
-      const textXOffset = 18;
-      const textYOffset = 13;
       const markerSize = 14;
       tracks.forEach((track) => {
         const x = track.normalizedPixelCoords.x * width;
         const y = track.normalizedPixelCoords.y * height;
-        const text = track.id.toString();
-        const textX = x + textXOffset;
-        const textY = y + textYOffset;
-        switch (track.state) {
-          case TrackState.Pending:
-            ctx.fillStyle = "yellow";
-            ctx.fillRect(x, y, markerSize, markerSize);
-            ctx.fillText(text, textX, textY);
-            break;
-          case TrackState.Active:
-            ctx.beginPath();
-            ctx.arc(x, y, markerSize / 2, 0, 2 * Math.PI);
-            ctx.fillStyle = "white";
-            ctx.fill();
-            ctx.fillText(text, textX, textY);
-            break;
-          case TrackState.Completed:
-            ctx.beginPath();
-            ctx.arc(x, y, markerSize / 2, 0, 2 * Math.PI);
-            ctx.fillStyle = "green";
-            ctx.fill();
-            ctx.fillText(text, textX, textY);
-            break;
-          case TrackState.OutOfLaserBounds:
-            ctx.fillStyle = "red";
-            ctx.fillRect(x, y, markerSize, markerSize);
-            ctx.fillText(text, textX, textY);
-            break;
-          default:
-            break;
-        }
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x - markerSize / 2, y - markerSize / 2);
+        ctx.lineTo(x + markerSize / 2, y + markerSize / 2);
+        ctx.moveTo(x + markerSize / 2, y - markerSize / 2);
+        ctx.lineTo(x - markerSize / 2, y + markerSize / 2);
+        ctx.strokeStyle =
+          track.state === TrackState.Completed ? "green" : "red";
+        ctx.stroke();
       });
     }
   }, [width, height, tracks]);

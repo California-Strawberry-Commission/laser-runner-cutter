@@ -16,8 +16,7 @@ export enum TrackState {
   Pending,
   Active,
   Completed,
-  OutOfLaserBounds,
-  OutOfFrame,
+  Failed,
 }
 
 function convertStateMessage(message: any): State {
