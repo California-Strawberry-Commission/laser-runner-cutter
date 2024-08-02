@@ -13,7 +13,7 @@ class EventSubscriptionHandle {
 }
 
 export default class ROS {
-  private url: string;
+  private url: string | null;
   private ros: ROSLIB.Ros;
   private reconnectIntervalMs: number;
   private reconnectInterval: NodeJS.Timeout | null;
@@ -21,12 +21,12 @@ export default class ROS {
   private nodeMonitorInterval: NodeJS.Timeout | null;
   private nodeListeners: ((nodeName: string, connected: boolean) => void)[];
 
-  constructor(url: string, reconnectIntervalMs: number = 1000) {
+  constructor(url: string | null, reconnectIntervalMs: number = 1000) {
     this.url = url;
     this.reconnectIntervalMs = reconnectIntervalMs;
     this.reconnectInterval = null;
 
-    this.ros = new ROSLIB.Ros({ url });
+    this.ros = new ROSLIB.Ros(url ? { url } : {});
     this.ros.on("connection", () => {
       console.log("[ROS] Connected");
       // Stop reconnect, start node monitor
@@ -137,7 +137,9 @@ export default class ROS {
     if (this.reconnectInterval === null) {
       this.reconnectInterval = setInterval(() => {
         console.log("[ROS] Attempting to reconnect to rosbridge...");
-        this.ros.connect(this.url);
+        if (this.url) {
+          this.ros.connect(this.url);
+        }
       }, this.reconnectIntervalMs);
     }
   }
