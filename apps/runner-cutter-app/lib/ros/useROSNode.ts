@@ -13,23 +13,24 @@ type out_mapper_t = (res: any) => any;
  * @returns 
  */
 function useTopic(nodeName: string, ros: any) {
-    return function <T>(
-        path: string,
-        idl: string,
-        initial: T extends out_mapper_t ? ReturnType<T> : T,
-        mapper?: T
-    ): T extends out_mapper_t ? ReturnType<T> : T {
-        const topic = expandTopicOrServiceName(path, nodeName);
-        const [val, setVal] = useState(initial);
+  return function useForLint<T>(
+    path: string,
+    idl: string,
+    initial: T extends out_mapper_t ? ReturnType<T> : T,
+    mapper?: T
+  ): T extends out_mapper_t ? ReturnType<T> : T {
+    const [val, setVal] = useState(initial);
 
-        useEffect(() => {
-            const sub = ros.subscribe(topic, idl, (v: T) => setVal(typeof mapper == "function" ? mapper(v) : v));
-            return () => sub.unsubscribe();
+    useEffect(() => {
+      const topic = expandTopicOrServiceName(path, nodeName);
 
-        }, [nodeName, ros, path, idl]);
+      const sub = ros.subscribe(topic, idl, (v: T) => setVal(typeof mapper == "function" ? mapper(v) : v));
+      return () => sub.unsubscribe();
 
-        return val;
-    }
+    }, [nodeName, ros, path, idl]);
+
+    return val;
+  }
 }
 
 
@@ -40,57 +41,58 @@ function useTopic(nodeName: string, ros: any) {
  * @returns 
  */
 function useService(nodeName: string, ros: any) {
-    type mappable_fn_t<IN_T, OUT_T> = (...a: IN_T extends in_mapper_t ? Parameters<IN_T> : [IN_T]) => Promise<OUT_T extends out_mapper_t ? ReturnType<OUT_T> : OUT_T>
+  type mappable_fn_t<IN_T, OUT_T> = (...a: IN_T extends in_mapper_t ? Parameters<IN_T> : [IN_T]) => Promise<OUT_T extends out_mapper_t ? ReturnType<OUT_T> : OUT_T>
 
-    // Main type signature - accepts "mapper" fns to make TS api cleaner
-    function _service<IN_T, OUT_T>(
-        path: string,
-        idl: string,
-        in_mapper?: IN_T,
-        out_mapper?: OUT_T
-    ): mappable_fn_t<IN_T, OUT_T> {
-        const topic = expandTopicOrServiceName(path, nodeName);
+  // Main type signature - accepts "mapper" fns to make TS api cleaner
+  // Name function
+  return function useForLint<IN_T, OUT_T>(
+    path: string,
+    idl: string,
+    in_mapper?: IN_T,
+    out_mapper?: OUT_T
+  ): mappable_fn_t<IN_T, OUT_T> {
 
-        async function _service(...arg: any) {
-            const service_data = typeof in_mapper == 'function' ? in_mapper(...arg) : arg[0];
-            const res = await ros.callService(topic, idl, service_data);
-            return typeof out_mapper == 'function' ? out_mapper(res) : res;
-        }
+    async function _service(...arg: any) {
+      const topic = expandTopicOrServiceName(path, nodeName);
 
-        return useCallback(_service, [path, idl, nodeName, ros]) as any;
+      const service_data = typeof in_mapper == 'function' ? in_mapper(...arg) : arg[0];
+      const res = await ros.callService(topic, idl, service_data);
+      return typeof out_mapper == 'function' ? out_mapper(res) : res;
     }
 
-    return _service
+    return useCallback(_service, [path, idl, nodeName, ros]) as any;
+  }
+
 }
 
 
 export default function useROSNode<STATE_T>(nodeName: string) {
-    const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
-    const [nodeConnected, setNodeConnected] = useState<boolean>(false);
+  const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
+  const [nodeConnected, setNodeConnected] = useState<boolean>(false);
 
-    useEffect(() => {
-        const onNodeConnectedSub = ros.onNodeConnected(
-            (connectedNodeName, connected) => {
-                if (connectedNodeName === nodeName) {
-                    setNodeConnected(connected);
-                }
-            }
-        );
+  useEffect(() => {
+    const onNodeConnectedSub = ros.onNodeConnected(
+      (connectedNodeName, connected) => {
+        if (connectedNodeName === nodeName) {
+          setNodeConnected(connected);
+        }
+      }
+    );
 
-        return () => onNodeConnectedSub.unsubscribe();
-    }, [ros, nodeName, setNodeConnected]);
+    return () => onNodeConnectedSub.unsubscribe();
+  }, [ros, nodeName, setNodeConnected]);
 
-    const api = {
-        useService: useService(nodeName, ros),
-        useTopic: useTopic(nodeName, ros),
-    }
+  const us = useService(nodeName, ros);
+  const ut = useTopic(nodeName, ros);
 
-    return useMemo(() => {
-        return {
-            name: nodeName,
-            connected: rosbridgeNodeInfo.connected && nodeConnected,
-            ros,
-            ...api
-        };
-    }, [nodeName, rosbridgeNodeInfo, nodeConnected, api]);
+
+  return useMemo(() => {
+    return {
+      name: nodeName,
+      connected: rosbridgeNodeInfo.connected && nodeConnected,
+      ros,
+      useService: us,
+      useTopic: ut,
+    };
+  }, [ros, nodeName, rosbridgeNodeInfo, nodeConnected, us, ut]);
 }

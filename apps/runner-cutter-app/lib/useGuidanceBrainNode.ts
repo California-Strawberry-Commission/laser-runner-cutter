@@ -19,14 +19,13 @@ export default function useGuidanceBrainNode(nodeName: string) {
   const node = useROSNode(nodeName);
 
   const state = node.useTopic("~/state", "guidance_brain_interfaces/State", INITIAL_STATE);
-  
+
   /* Example of unmapped service
   const doService = node.useService<{data: boolean}, {success: boolean}>(
     "~/set_active",
     "std_srvs/SetBool"
   )
   */
-
   const setActive = node.useService(
     "~/set_active",
     "std_srvs/SetBool",
@@ -37,7 +36,7 @@ export default function useGuidanceBrainNode(nodeName: string) {
   const setP = node.useService(
     "~/set_p",
     "common_interfaces/SetFloat32",
-    (p: number) => ({ data: p }),
+    useCallback((p: number) => ({ data: p }), []),
     () => undefined,
   );
 
