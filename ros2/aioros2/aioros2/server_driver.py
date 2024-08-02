@@ -26,8 +26,8 @@ from .decorators.start import RosStart
 from .decorators.subscribe import RosSubscription
 from .decorators.timer import RosTimer
 from .decorators.topic import RosTopic
-from .feedback import Feedback
-from .result import Result
+from .returnable import marshal_returnable_to_idl, PreMarshalError
+from .util import catch
 
 # https://answers.ros.org/question/340600/how-to-get-ros2-parameter-hosted-by-another-node/
 # https://roboticsbackend.com/rclpy-params-tutorial-get-set-ros2-params-with-python/
@@ -37,6 +37,23 @@ from .result import Result
 # https://github.com/ros2/demos/blob/rolling/demo_nodes_py/demo_nodes_py/parameters/set_parameters_callback.py
 
 
+class CachedPublisher:
+    def __init__(self, topic: RosTopic, node: "ServerDriver"):
+        self.value = None 
+        self.topic = topic
+        self.node = node
+        
+        self.pub = node.create_publisher(topic.idl, topic.path, topic.qos)
+    
+    async def __call__(self, *args, **kwargs):
+        if len(args) == 1:
+            msg = args[0]
+        else:
+            msg = self.topic.idl(*args, **kwargs)
+            
+        self.value = msg
+        await self.node.run_executor(self.pub.publish, msg)
+        
 class ParamDriver:
     """Manages a single parameter"""
 
@@ -219,8 +236,8 @@ class ParamsDriver:
 
 class ServerDriver(AsyncDriver, Node):
     def __init__(self, async_node):
-        Node.__init__(self, self.__class__.__name__)
-        AsyncDriver.__init__(self, async_node, self.get_logger())
+        Node.__init__(self, async_node.__class__.__name__)
+        AsyncDriver.__init__(self, async_node, self.get_logger(), None, None)
 
         self._attach()
 
@@ -273,77 +290,70 @@ class ServerDriver(AsyncDriver, Node):
         self.log_debug(f"[SERVER] Attach service >{attr}< @ >{ros_service.path}<")
 
         # Will be called from MultiThreadedExecutor
-        def cb(req, res):
+        @catch(self.log_error, ros_service.idl.Response())
+        def cb(req, result):
             # Call handler function
             kwargs = idl_to_kwargs(req)
-            result = self.run_coroutine(ros_service.handler, self, **kwargs).result()
+            user_return = self.run_coroutine(ros_service.handler, self, **kwargs).result()
 
-            if isinstance(result, Result):
-                result = ros_service.idl.Response(*result.args, **result.kwargs)
-
-            else:  # Prevent ROS hang if return value is invalid by returning default
-                self._logger.warn(
-                    f"Service handler >{attr}< @ >{ros_service.path}< did not return `result(...)`. "
-                    f"Expected Result, got {result}"
-                )
-                result = res
-
-            return result
+            return marshal_returnable_to_idl(user_return, ros_service.idl.Response)
 
         self.create_service(ros_service.idl, ros_service.path, cb)
 
     def _attach_action(self, attr, ros_action: RosAction):
         self.log_debug(f"[SERVER] Attach action >{attr}<")
 
+        @catch(self.log_error, ros_action.idl.Result())
         def cb(goal):
             kwargs = idl_to_kwargs(goal.request)
             gen = ros_action.handler(self, **kwargs)
 
-            result: Feedback | Result = None
+            result = None
             while True:
                 try:
                     result = self.run_coroutine(gen.__anext__()).result()
 
-                    if isinstance(result, Feedback):
-                        fb = ros_action.idl.Feedback(*result.args, **result.kwargs)
-                        goal.publish_feedback(fb)
+                    try:
+                        result = marshal_returnable_to_idl(result, ros_action.idl.Feedback, enforce_tag="feedback")
+                        goal.publish_feedback(result)
+                        continue
 
-                    elif isinstance(result, Result):
+                    except PreMarshalError:
+                        pass
+                    
+                    try:
+                        result = marshal_returnable_to_idl(result, ros_action.idl.Result, enforce_tag="result")
                         goal.succeed()
-                        break
-
-                    else:
-                        self.log_error("YIELDED NON-FEEDBACK, NON-RESULT VALUE")
+                        return result
+                    
+                    except PreMarshalError:
+                        pass
 
                 except StopAsyncIteration:
                     self.log_warn(f"Action >{attr}< returned before yielding `result`")
                     break
 
-            if isinstance(result, Result):
-                result = ros_action.idl.Result(*result.args, **result.kwargs)
-            else:
-                self.log_warn(
-                    f"Action >{attr}< did not yield `result(...)`. "
-                    f"Expected >{ros_action.idl.Result}<, got >{result}<. Aborting action."
-                )
-                result = ros_action.idl.Result()
+            # NOTE: "good" return path happens within while loop. This is a
+            # "bad"/default return.
+            self.log_error("Final yield could not be marshalled to the result IDL! Will return a blank IDL.")
+            return ros_action.idl.Result()
 
-            print(f"ACTION HANDLER @ {ros_action.path} FINISH", result)
-            return result
-
+        # Store actionserver on object to prevent GC.
         setattr(
             self,
             f"__{ros_action.handler.__name__}",
             ActionServer(self, ros_action.idl, ros_action.path, cb),
         )
 
+        # Allow function to be called raw from within server driver.
         return ros_action.handler
 
     def _attach_subscriber(self, attr, ros_sub: RosSubscription):
-        fqt = ros_sub.get_fqt(self.get_name(), self.get_namespace())
+        fqt = ros_sub.get_fqt()
 
         self.log_debug(f"[SERVER] Attach subscriber >{attr}<")
 
+        @catch(self.log_error)
         def cb(msg):
             kwargs = idl_to_kwargs(msg)
             self.run_coroutine(ros_sub.handler, self, **kwargs)
@@ -352,14 +362,9 @@ class ServerDriver(AsyncDriver, Node):
 
     def _attach_publisher(self, attr, ros_topic: RosTopic):
         self.log_debug(f"[SERVER] Attach publisher {attr} @ >{ros_topic.path}<")
-
-        pub = self.create_publisher(ros_topic.idl, ros_topic.path, ros_topic.qos)
-
-        async def _dispatch_pub(*args, **kwargs):
-            msg = ros_topic.idl(*args, **kwargs)
-            await self.run_executor(pub.publish, msg)
-
-        return _dispatch_pub
+        ros_topic.node = self
+        
+        return CachedPublisher(ros_topic, self)
 
     # TODO: Better error handling.
     # ATM raised errors are completely hidden
@@ -368,17 +373,16 @@ class ServerDriver(AsyncDriver, Node):
 
         if ros_timer.allow_concurrent_execution:
 
+            @catch(self.log_error)
             def _timer_callback():
-                try:
-                    self.run_coroutine(ros_timer.server_handler, self)
-                except Exception:
-                    self.log_error(traceback.format_exc())
+                self.run_coroutine(ros_timer.server_handler, self)
 
             self.create_timer(ros_timer.interval, _timer_callback)
         else:
             task_queue = asyncio.Queue(1)
             loop = asyncio.get_running_loop()
 
+            @catch(self.log_error)
             def _timer_callback():
                 # asyncio.Queue is not thread safe. This function gets called from a separate
                 # thread (the ROS spin thread), so we need to use run_coroutine_threadsafe here.

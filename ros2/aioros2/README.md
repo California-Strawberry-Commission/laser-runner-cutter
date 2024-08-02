@@ -28,20 +28,15 @@ $ pip install -e . --config-settings editable_mode=strict
     - Want to provide helpers to make linking nodes in launch files easy.
     - ` link(node1.dep_node_1, node2.dep_node_2) ` -> list of remaps to use in launch.py
 - [x] Server param side effects
-- [ ] 2+ order import topic resolution
+- [x] 2+ order import topic resolution
 - [ ] Non-async handlers / better warnings?
-- [ ] Server background tasks
+- [x] Server background tasks
 - [ ] Comprehensive error handling
 
 ## Limitations
-- Param dataclasses currently must be flat.
-- 2+ order imported topics are currently not properly resolved. IE for (`node1` --import-> `node2` --import-> `node3`), the topic `node1.node2.node3.topic` will incorrectly be resolved within node2's namespace
-    - Need to probably add a third "leaf driver" class to create structure like ServerDriver -> ClientDriver -> LeafDriver where LeafDrivers are responsible for properly resolving namespaces
-    - Adds significant complexity w/ namespace parameter resolution but should be possible to do.
-- Non-async handlers are not supported
-- Errors are not bubbled in some or all types of handler.
-    - Manifests as a handler freeze.
-- Probably extremely fragile. Next steps are improving validation, error handling, and error messaging
+- Param dataclasses must be flat.
+- Non-async handlers are not currently supported
+- Probably fragile. Next steps are improving validation, error handling, and error messaging
 
 ## Why?
 Here's a comparison between the [example ROS2 action client/server](https://docs.ros.org/en/foxy/Tutorials/Intermediate/Writing-an-Action-Server-Client/Py.html) and a fully-featured equivalent using `aioros2`:

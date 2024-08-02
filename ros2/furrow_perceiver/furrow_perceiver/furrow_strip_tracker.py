@@ -11,7 +11,7 @@ BG_WIDTH = 140
 
 class FurrowStripTracker:
     DEPTH_HFOV = np.deg2rad(87)  # Realsense - 87 degrees
-    FURROW_MIN_WIDTH = 10 * 25.4  # 10 inches
+    FURROW_MIN_WIDTH = 2 * 25.4  # 10 inches
     FURROW_MAX_WIDTH = 20 * 25.4  # 20 inches
 
     convolution = []
@@ -119,105 +119,3 @@ class FurrowStripTracker:
 
         return True
 
-    def annotate(self, img, display_timings=False):
-        cv2.drawMarker(
-            img,
-            (self.x_center, self.y_center),
-            (0, 0, 0),
-            markerType=cv2.MARKER_STAR,
-            markerSize=MARKER_SIZE,
-            thickness=2,
-            line_type=cv2.LINE_AA,
-        )
-
-        cv2.drawMarker(
-            img,
-            (self.x_center, self.y_center),
-            (0, 255, 0) if self.is_valid else (0, 0, 255),
-            markerType=cv2.MARKER_STAR,
-            markerSize=MARKER_SIZE,
-            thickness=1,
-            line_type=cv2.LINE_AA,
-        )
-
-        # Draw furrow edge detections
-        cv2.drawMarker(
-            img,
-            (self.right_bound, self.y_center),
-            (0, 0, 255),
-            markerType=cv2.MARKER_DIAMOND,
-            markerSize=MARKER_SIZE,
-            thickness=1,
-            line_type=cv2.LINE_AA,
-        )
-
-        cv2.drawMarker(
-            img,
-            (self.left_bound, self.y_center),
-            (0, 255, 0),
-            markerType=cv2.MARKER_DIAMOND,
-            markerSize=MARKER_SIZE,
-            thickness=1,
-            line_type=cv2.LINE_AA,
-        )
-        
-        # Draw strip boundaries
-        cv2.line(
-            img,
-            (0, self.ymax),
-            (self.width if DISPLAY_LINES else BG_WIDTH, self.ymax),
-            color=(255, 255, 255),
-            thickness=1,
-        )
-        cv2.line(
-            img,
-            (0, self.ymin),
-            (self.width if DISPLAY_LINES else BG_WIDTH, self.ymin),
-            color=(255, 255, 255),
-            thickness=1,
-        )
-
-        fac, h, off = 0.4, 12, -2
-
-        # Display timings
-        if display_timings:
-            cv2.putText(
-                img,
-                f"c {self.furrow_width:.1f}mm",
-                (0, self.ymax - h + off),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                fac,
-                (0, 0, 0),
-                2,
-            )
-
-            cv2.putText(
-                img,
-                f"b {self.time_find_bounds * 1000:.2f}ms; c {self.time_convolve_strip * 1000:.2f}ms",
-                (0, self.ymax + off),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                fac,
-                (0, 0, 0),
-                2,
-            )
-
-            # Display timings
-            cv2.putText(
-                img,
-                f"c {self.furrow_width:.1f}mm",
-                (0, self.ymax - h + off),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                fac,
-                (255, 255, 255),
-                1,
-            )
-
-            cv2.putText(
-                img,
-                f"b {self.time_find_bounds * 1000:.2f}ms; c {self.time_convolve_strip * 1000:.2f}ms",
-                (0, self.ymax + off),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                fac,
-                (255, 255, 255),
-                1,
-            )

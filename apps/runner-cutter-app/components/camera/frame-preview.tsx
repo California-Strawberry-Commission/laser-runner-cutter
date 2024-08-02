@@ -1,4 +1,7 @@
+"use client";
+
 import React, { useEffect, useRef } from "react";
+
 
 export default function FramePreview({
   topicName,
@@ -33,7 +36,7 @@ export default function FramePreview({
   }, [onSizeChanged]);
 
   const videoServer =
-    process.env.NEXT_PUBLIC_VIDEO_SERVER_URL ?? "http://localhost:8080";
+    process.env.NEXT_PUBLIC_VIDEO_SERVER_URL ?? `http://${window.location.hostname}:8080`;
   const streamUrl = `${videoServer}/stream?topic=${topicName}`;
 
   return (

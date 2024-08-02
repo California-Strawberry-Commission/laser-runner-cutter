@@ -7,7 +7,7 @@ from aioros2 import LaunchNode
 from camera_control import camera_control_node
 from laser_control import laser_control_node
 from runner_cutter_control import runner_cutter_control_node
-
+from amiga_control import amiga_control_node
 
 def generate_launch_description():
     parameters_file = os.path.join(
@@ -39,5 +39,8 @@ def generate_launch_description():
                 respawn=True,
                 respawn_delay=2.0,
             ),
+            LaunchNode(
+                amiga_control_node, name="amiga0", parameters=[parameters_file]
+            )
         ]
     )  # type: ignore

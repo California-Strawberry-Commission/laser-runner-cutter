@@ -15,6 +15,8 @@ from .decorators.timer import RosTimer
 from .decorators.params import RosParams
 from .decorators.param_subscription import RosParamSubscription
 from .decorators.start import RosStart
+from collections import OrderedDict
+
 
 
 class AsyncDriver:
@@ -38,9 +40,11 @@ class AsyncDriver:
 
         return value
 
-    def __init__(self, async_node, logger):
+    def __init__(self, async_node, logger, node_name, node_namespace):
         self._logger = logger
         self._n = async_node
+        self._node_name = node_name
+        self._node_namespace = node_namespace if node_namespace is not None else "/"
 
         # self._n.params = self._attach_params_dataclass(self._n.params)
         self._loop = asyncio.get_running_loop()
@@ -52,34 +56,10 @@ class AsyncDriver:
     def run_coroutine(self, fn, *args, **kwargs):
         """Runs asyncio code from ANOTHER SYNC THREAD"""
 
-        async def _wrap_coro(coro):
-            try:
-                return await coro
-            except Exception:
-                self.log_error(traceback.format_exc())
-
         # https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.call_soon_threadsafe
         return asyncio.run_coroutine_threadsafe(
-            _wrap_coro(fn(*args, **kwargs)), self._loop
+            fn(*args, **kwargs), self._loop
         )
-
-    def _get_ros_definitions(self):
-        from .decorators.import_node import RosImport
-
-        node = self._n
-
-        a = getmembers(node, lambda v: isinstance(v, RosDefinition))
-
-        # Make sure RosImports are processed first
-        a.sort(key=lambda b: type(b[1]) != RosImport)
-
-        # Process topics last to prevent function version from shadowing definition
-        a.sort(key=lambda b: type(b[1]) == RosTopic)
-
-        # Process start last as it depends on everything else
-        a.sort(key=lambda b: type(b[1]) == RosStart)
-
-        return a
 
     def log_debug(self, msg: str):
         self._logger.info(msg)
@@ -96,21 +76,22 @@ class AsyncDriver:
     def _attach(self):
         # Attachers create an implementation for the passed handler which is assigned
         # to that handler's name.
-        attachers = {
-            # ros_type_e.ACTION: self._attach_action,
-            RosService: self._attach_service,
-            RosSubscription: self._attach_subscriber,
-            RosTopic: self._attach_publisher,
-            RosImport: self._process_import,
-            RosAction: self._attach_action,
-            RosTimer: self._attach_timer,
-            RosParams: self._attach_params,
-            RosParamSubscription: self._attach_param_subscription,
-            RosStart: self._process_start,
-        }
-
-        for attr, definition in self._get_ros_definitions():
-            setattr(self, attr, attachers[type(definition)](attr, definition))
+        att = OrderedDict()
+        
+        # Defines load order.
+        att[RosImport] = self._process_import # Process imports first 
+        att[RosTopic] = self._attach_publisher # Attach topics second b/c they are referenced by services/subscribers/etc.
+        att[RosService] = self._attach_service
+        att[RosSubscription] = self._attach_subscriber
+        att[RosAction] = self._attach_action
+        att[RosTimer] = self._attach_timer
+        att[RosParams] = self._attach_params
+        att[RosParamSubscription] = self._attach_param_subscription
+        att[RosStart] = self._process_start # Process starts last b/c they directly go into asyncio loop
+        
+        for ros_element, attacher in att.items():
+            for attr ,definition in getmembers(self._n, lambda v: isinstance(v, ros_element)):
+                setattr(self, attr, attacher(attr, definition))
 
     def _warn_unimplemented(self, readable_name, fn_name):
         self._logger.warn(

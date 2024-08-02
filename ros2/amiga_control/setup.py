@@ -12,12 +12,7 @@ setup(
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
         # Include all launch files.
-        (
-            os.path.join("share", package_name, "launch"),
-            glob(os.path.join("launch", "*launch.[pxy][yma]*")),
-        ),
         # Include all config files.
-        (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
@@ -29,7 +24,6 @@ setup(
     entry_points={
         "console_scripts": [
             "amiga_control_node = amiga_control.amiga_control_node:main",
-            "circular_node = amiga_control.circular_node:main",
         ],
     },
 )

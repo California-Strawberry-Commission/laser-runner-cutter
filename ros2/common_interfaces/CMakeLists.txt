@@ -26,7 +26,9 @@ find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Vector2.msg"
   "msg/Vector3.msg"
+  "msg/PID.msg"
   "srv/GetBool.srv"
+  "srv/SetFloat32.srv"
 )
 
 if(BUILD_TESTING)

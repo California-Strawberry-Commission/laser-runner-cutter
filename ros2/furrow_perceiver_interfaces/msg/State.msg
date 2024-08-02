@@ -1,0 +1,2 @@
+bool camera_connected
+uint32 fps
