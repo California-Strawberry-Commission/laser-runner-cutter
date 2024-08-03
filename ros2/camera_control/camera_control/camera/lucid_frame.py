@@ -122,8 +122,8 @@ class LucidFrame(RgbdFrame):
         print(f"distorted_depth_pixel = {distorted_depth_pixel}")
 
         return (
-            int(round(distorted_depth_pixel[0])),
-            int(round(distorted_depth_pixel[1])),
+            round(distorted_depth_pixel[0]),
+            round(distorted_depth_pixel[1]),
         )
 
     def get_corresponding_depth_pixel(
@@ -186,11 +186,11 @@ class LucidFrame(RgbdFrame):
                 distortion_coeffs,
             )
             pixel = pixels[0].flatten()
-            return (int(round(pixel[0])), int(round(pixel[1])))
+            return (round(pixel[0]), round(pixel[1]))
 
         def adjust_pixel_to_bounds(pixel, width, height):
-            x = max(0, min(int(round(pixel[0])), width - 1))
-            y = max(0, min(int(round(pixel[1])), height - 1))
+            x = max(0, min(round(pixel[0]), width - 1))
+            y = max(0, min(round(pixel[1]), height - 1))
             return (x, y)
 
         def next_pixel_in_line(curr, start, end):
@@ -200,7 +200,7 @@ class LucidFrame(RgbdFrame):
             direction = end - curr
             direction = direction / np.linalg.norm(direction)
             next = curr + direction
-            return (int(round(next[0])), int(round(next[1])))
+            return (round(next[0]), round(next[1]))
 
         def is_pixel_in_line(curr, start, end):
             min_x = min(start[0], end[0])
