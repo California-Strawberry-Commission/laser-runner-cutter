@@ -80,6 +80,6 @@ export default function useFurrowPerceiverNode(nodeName: string) {
   return {
     nodeInfo,
     connected: nodeConnected,
-    stop,
+    // stop,
   };
 }

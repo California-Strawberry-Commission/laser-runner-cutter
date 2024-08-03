@@ -34,7 +34,7 @@ export default function Controls() {
         setFramePreviewSize({ width, height });
       }
     },
-    [setFramePreviewSize]
+    [framePreviewSize, setFramePreviewSize]
   );
 
   // TODO: convert controlNodeState.tracks to markers and pass into Overlay
