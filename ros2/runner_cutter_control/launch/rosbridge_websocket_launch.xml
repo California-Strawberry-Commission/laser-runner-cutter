@@ -25,6 +25,9 @@ https://github.com/RobotWebTools/rosbridge_suite/blob/ros2/rosbridge_server/laun
   <arg name="params_glob" default="" />
   <arg name="bson_only_mode" default="false" />
 
+  <arg name="websocket_ping_interval" default="1" />
+  <arg name="websocket_ping_timeout" default="4" />
+
   <arg unless="$(var bson_only_mode)" name="binary_encoder" default="default" />
 
   <group if="$(var ssl)">
@@ -46,6 +49,9 @@ https://github.com/RobotWebTools/rosbridge_suite/blob/ros2/rosbridge_server/laun
       <param name="topics_glob" value="$(var topics_glob)" />
       <param name="services_glob" value="$(var services_glob)" />
       <param name="params_glob" value="$(var params_glob)" />
+
+      <param name="websocket_ping_interval" value="$(var websocket_ping_interval)" />
+      <param name="websocket_ping_timeout" value="$(var websocket_ping_timeout)" />
     </node>
   </group>
   <group unless="$(var ssl)">
@@ -65,6 +71,9 @@ https://github.com/RobotWebTools/rosbridge_suite/blob/ros2/rosbridge_server/laun
       <param name="topics_glob" value="$(var topics_glob)" />
       <param name="services_glob" value="$(var services_glob)" />
       <param name="params_glob" value="$(var params_glob)" />
+
+      <param name="websocket_ping_interval" value="$(var websocket_ping_interval)" />
+      <param name="websocket_ping_timeout" value="$(var websocket_ping_timeout)" />
 
       <param name="bson_only_mode" value="$(var bson_only_mode)" />
     </node>

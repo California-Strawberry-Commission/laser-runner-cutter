@@ -831,7 +831,7 @@ def _get_position(
         thickness=2,
     )
     h, w, c = triton_image.shape
-    triton_image = cv2.resize(triton_image, (int(w / 2), int(h / 2)))
+    triton_image = cv2.resize(triton_image, (round(w / 2), round(h / 2)))
     cv2.imshow("Color camera", triton_image)
 
     helios_intensity_image = cv2.cvtColor(helios_intensity_image, cv2.COLOR_GRAY2RGB)
@@ -931,7 +931,7 @@ def _test_project(triton_mono_image_path, helios_intensity_image_path, helios_xy
             projected_image[row][col][1] = thresh * 255
     print(f"populate image took {time.perf_counter()-start} s")
     projected_image = cv2.resize(
-        projected_image, (int(triton_width / 2), int(triton_height / 2))
+        projected_image, (round(triton_width / 2), round(triton_height / 2))
     )
     cv2.imshow("projected", projected_image)
     cv2.waitKey(0)
@@ -970,7 +970,7 @@ def _test_transform_depth_pixel_to_color_pixel(
             distortion_coeffs,
         )
         pixel = pixels[0].flatten()
-        return (int(round(pixel[0])), int(round(pixel[1])))
+        return (round(pixel[0]), round(pixel[1]))
 
     color_pixel = project_position(
         xyz_mm,
@@ -987,7 +987,7 @@ def _test_transform_depth_pixel_to_color_pixel(
         thickness=2,
     )
     h, w, c = triton_image.shape
-    triton_image = cv2.resize(triton_image, (int(w / 2), int(h / 2)))
+    triton_image = cv2.resize(triton_image, (round(w / 2), round(h / 2)))
     cv2.imshow("Color camera", triton_image)
 
     cv2.drawMarker(

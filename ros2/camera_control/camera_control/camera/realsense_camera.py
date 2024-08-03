@@ -262,14 +262,14 @@ class RealSenseCamera(RgbdCamera):
             self.depth_frame_size[0],
             self.depth_frame_size[1],
             rs.format.z16,
-            int(self.fps),
+            self.fps,
         )
         config.enable_stream(
             rs.stream.color,
             self.color_frame_size[0],
             self.color_frame_size[1],
             rs.format.rgb8,
-            int(self.fps),
+            self.fps,
         )
 
         # Start pipeline

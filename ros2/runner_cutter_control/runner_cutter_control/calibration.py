@@ -156,8 +156,11 @@ class Calibration:
         """
         homogeneous_camera_point = np.hstack((position, 1))
         transformed_point = homogeneous_camera_point @ self.camera_to_laser_transform
-        transformed_point = transformed_point / transformed_point[2]
-        return (transformed_point[0], transformed_point[1])
+        try:
+            transformed_point = transformed_point / transformed_point[2]
+            return (transformed_point[0], transformed_point[1])
+        except:
+            return (-1.0, -1.0)
 
     async def _find_point_correspondence(
         self, laser_coord: Tuple[float, float], num_attempts: int = 3
