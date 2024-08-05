@@ -33,7 +33,9 @@ Web app for laser runner cutter control and automation, built with Next.js.
 
 1.  Run Setup steps above.
 
-1.  Set environment variables
+1.  [Optional] Set environment variables
+
+    By default, the Rosbridge websocket server URL will be set to `ws://<window.location.hostname>:9090`, and the video server URL will be set to `http://<window.location.hostname>:8080`. If you want to override those to custom URLs, you can do the following:
 
         $ cd laser-runner-cutter/apps/runner-cutter-app
         $ echo "NEXT_PUBLIC_ROSBRIDGE_URL=ws://localhost:9090" >> .env.local
