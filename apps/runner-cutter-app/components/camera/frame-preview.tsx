@@ -2,7 +2,6 @@
 
 import React, { useEffect, useRef } from "react";
 
-
 export default function FramePreview({
   topicName,
   height = 360,
@@ -31,13 +30,23 @@ export default function FramePreview({
     updateSize();
 
     // Update size on window resize
-    window.addEventListener("resize", updateSize);
-    return () => window.removeEventListener("resize", updateSize);
+    if (typeof window !== "undefined") {
+      window.addEventListener("resize", updateSize);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("resize", updateSize);
+      }
+    };
   }, [onSizeChanged]);
 
-  const videoServer =
-    process.env.NEXT_PUBLIC_VIDEO_SERVER_URL ?? `http://${window.location.hostname}:8080`;
-  const streamUrl = `${videoServer}/stream?topic=${topicName}`;
+  let streamUrl;
+  if (typeof window !== "undefined") {
+    const videoServer =
+      process.env.NEXT_PUBLIC_VIDEO_SERVER_URL ??
+      `http://${window.location.hostname}:8080`;
+    streamUrl = `${videoServer}/stream?topic=${topicName}`;
+  }
 
   return (
     <img
