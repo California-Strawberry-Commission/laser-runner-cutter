@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 export default function FramePreview({
   topicName,
@@ -18,6 +18,17 @@ export default function FramePreview({
   onSizeChanged?: (width: number, height: number) => void;
 }) {
   const imgRef = useRef<HTMLImageElement>(null);
+  const [streamUrl, setStreamUrl] = useState<string>();
+
+  // Unfortunately, with SSR, this needed for code that should only run on client side
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const videoServer =
+        process.env.NEXT_PUBLIC_VIDEO_SERVER_URL ??
+        `http://${window.location.hostname}:8080`;
+      setStreamUrl(`${videoServer}/stream?topic=${topicName}`);
+    }
+  }, []);
 
   useEffect(() => {
     const updateSize = () => {
@@ -39,14 +50,6 @@ export default function FramePreview({
       }
     };
   }, [onSizeChanged]);
-
-  let streamUrl;
-  if (typeof window !== "undefined") {
-    const videoServer =
-      process.env.NEXT_PUBLIC_VIDEO_SERVER_URL ??
-      `http://${window.location.hostname}:8080`;
-    streamUrl = `${videoServer}/stream?topic=${topicName}`;
-  }
 
   return (
     <img
