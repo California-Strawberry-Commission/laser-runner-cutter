@@ -6,6 +6,12 @@ export type State = {
   calibrated: boolean;
   state: string;
   tracks: Track[];
+  normalizedLaserBounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
 };
 export type Track = {
   id: number;
@@ -24,6 +30,12 @@ function convertStateMessage(message: any): State {
     calibrated: message.calibrated,
     state: message.state,
     tracks: message.tracks.map(convertTrackMessage),
+    normalizedLaserBounds: {
+      x: message.normalized_laser_bounds.w,
+      y: message.normalized_laser_bounds.x,
+      width: message.normalized_laser_bounds.y,
+      height: message.normalized_laser_bounds.z,
+    },
   };
 }
 
@@ -42,6 +54,7 @@ export default function useControlNode(nodeName: string) {
     calibrated: false,
     state: "idle",
     tracks: [],
+    normalizedLaserBounds: { x: 0, y: 0, width: 0, height: 0 },
   });
 
   const nodeInfo: NodeInfo = useMemo(() => {

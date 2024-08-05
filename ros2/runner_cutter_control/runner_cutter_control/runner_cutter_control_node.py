@@ -28,7 +28,7 @@ from aioros2 import (
     start,
     topic,
 )
-from common_interfaces.msg import Vector2
+from common_interfaces.msg import Vector2, Vector4
 from runner_cutter_control.calibration import Calibration
 from runner_cutter_control.camera_context import CameraContext
 from runner_cutter_control.tracker import Track, Tracker, TrackState
@@ -153,13 +153,41 @@ class RunnerCutterControlNode:
         state = self._get_state()
         asyncio.create_task(
             self.state_topic(
-                calibrated=state.calibrated, state=state.state, tracks=state.tracks
+                calibrated=state.calibrated,
+                state=state.state,
+                tracks=state.tracks,
+                normalized_laser_bounds=state.normalized_laser_bounds,
             )
         )
 
     def _get_state(self) -> State:
+        frame_size = self.calibration.camera_frame_size
+
         state_msg = State(
-            calibrated=self.state_machine.is_calibrated, state=self.state_machine.state
+            calibrated=self.state_machine.is_calibrated,
+            state=self.state_machine.state,
+            normalized_laser_bounds=Vector4(
+                w=(
+                    self.calibration.laser_bounds[0] / frame_size[0]
+                    if frame_size[0] > 0
+                    else 0.0
+                ),
+                x=(
+                    self.calibration.laser_bounds[1] / frame_size[1]
+                    if frame_size[1] > 0
+                    else 0.0
+                ),
+                y=(
+                    self.calibration.laser_bounds[2] / frame_size[0]
+                    if frame_size[0] > 0
+                    else 0.0
+                ),
+                z=(
+                    self.calibration.laser_bounds[3] / frame_size[1]
+                    if frame_size[1] > 0
+                    else 0.0
+                ),
+            ),
         )
 
         for track_id in self.state_machine.detected_track_ids:
@@ -169,7 +197,6 @@ class RunnerCutterControlNode:
 
             track_msg = TrackMsg()
             track_msg.id = track.id
-            frame_size = self.calibration.camera_frame_size
             track_msg.normalized_pixel_coords = Vector2(
                 x=(track.pixel[0] / frame_size[0] if frame_size[0] > 0 else -1.0),
                 y=(track.pixel[1] / frame_size[1] if frame_size[1] > 0 else -1.0),

@@ -37,8 +37,6 @@ export default function Controls() {
     [framePreviewSize, setFramePreviewSize]
   );
 
-  // TODO: convert controlNodeState.tracks to markers and pass into Overlay
-
   return (
     <div className="flex flex-col gap-4 items-center">
       <div className="flex flex-row items-center gap-4">
@@ -70,6 +68,7 @@ export default function Controls() {
           width={framePreviewSize.width}
           height={framePreviewSize.height}
           tracks={controlNodeState.tracks}
+          normalizedRect={controlNodeState.normalizedLaserBounds}
         />
       </div>
     </div>

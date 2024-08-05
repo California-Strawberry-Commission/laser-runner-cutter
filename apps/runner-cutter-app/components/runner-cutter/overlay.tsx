@@ -5,10 +5,12 @@ export default function Overlay({
   width,
   height,
   tracks,
+  normalizedRect,
 }: {
   width: number;
   height: number;
   tracks?: Track[];
+  normalizedRect?: { x: number; y: number; width: number; height: number };
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -25,27 +27,44 @@ export default function Overlay({
       // Clear the canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      if (!tracks) {
-        return;
+      // Draw rect
+      if (
+        normalizedRect &&
+        normalizedRect.width > 0.0 &&
+        normalizedRect.height > 0.0
+      ) {
+        // Draw a semi-opaque red overlay on the entire canvas
+        ctx.fillStyle = "rgba(255, 0, 0, 0.1)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Clear the specified rectangle
+        ctx.clearRect(
+          normalizedRect.x * width,
+          normalizedRect.y * height,
+          normalizedRect.width * width,
+          normalizedRect.height * height
+        );
       }
 
       // Draw markers
-      const markerSize = 14;
-      tracks.forEach((track) => {
-        const x = track.normalizedPixelCoords.x * width;
-        const y = track.normalizedPixelCoords.y * height;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(x - markerSize / 2, y - markerSize / 2);
-        ctx.lineTo(x + markerSize / 2, y + markerSize / 2);
-        ctx.moveTo(x + markerSize / 2, y - markerSize / 2);
-        ctx.lineTo(x - markerSize / 2, y + markerSize / 2);
-        ctx.strokeStyle =
-          track.state === TrackState.Completed ? "green" : "red";
-        ctx.stroke();
-      });
+      if (tracks) {
+        const markerSize = 14;
+        tracks.forEach((track) => {
+          const x = track.normalizedPixelCoords.x * width;
+          const y = track.normalizedPixelCoords.y * height;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(x - markerSize / 2, y - markerSize / 2);
+          ctx.lineTo(x + markerSize / 2, y + markerSize / 2);
+          ctx.moveTo(x + markerSize / 2, y - markerSize / 2);
+          ctx.lineTo(x - markerSize / 2, y + markerSize / 2);
+          ctx.strokeStyle =
+            track.state === TrackState.Completed ? "green" : "red";
+          ctx.stroke();
+        });
+      }
     }
-  }, [width, height, tracks]);
+  }, [width, height, tracks, normalizedRect]);
 
   return (
     <canvas
