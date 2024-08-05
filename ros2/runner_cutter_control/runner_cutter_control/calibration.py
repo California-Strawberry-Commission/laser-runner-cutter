@@ -16,6 +16,8 @@ class Calibration:
     is_calibrated: bool
     camera_to_laser_transform: np.ndarray
     camera_frame_size: Tuple[int, int]
+    # The rect (min x, min y, width, height) representing the reach of the laser, in terms of camera pixels.
+    laser_bounds: Tuple[int, int, int, int]
 
     def __init__(
         self,
@@ -34,16 +36,19 @@ class Calibration:
             self._logger = logging.getLogger(__name__)
             self._logger.setLevel(logging.INFO)
 
-        self._calibration_laser_coords = []
-        self._calibration_camera_points = []
+        self._calibration_laser_coords: List[Tuple[float, float]] = []
+        self._calibration_camera_pixels: List[Tuple[int, int]] = []
+        self._calibration_camera_points: List[Tuple[float, float, float]] = []
         self.is_calibrated = False
         self.camera_to_laser_transform = np.zeros((4, 3))
         self.camera_frame_size = (0, 0)
+        self.laser_bounds = (0, 0, 0, 0)
 
     def reset(self):
         self.camera_to_laser_transform = np.zeros((4, 3))
-        self._calibration_laser_coords = []
-        self._calibration_camera_points = []
+        self._calibration_laser_coords.clear()
+        self._calibration_camera_pixels.clear()
+        self._calibration_camera_points.clear()
         self.is_calibrated = False
 
     async def calibrate(self, grid_size: Tuple[int, int] = (5, 5)) -> bool:
@@ -73,7 +78,7 @@ class Calibration:
         # Get calibration points
         x_step = 1.0 / (grid_size[0] - 1)
         y_step = 1.0 / (grid_size[1] - 1)
-        pending_calibration_laser_coords = []
+        pending_calibration_laser_coords: List[Tuple[float, float]] = []
         for i in range(grid_size[0]):
             for j in range(grid_size[1]):
                 x = i * x_step
@@ -132,9 +137,13 @@ class Calibration:
                     # Wait for galvo to settle and for camera frame capture
                     # TODO: optimize the frame callback time and reduce this
                     await asyncio.sleep(0.5)
-                    camera_point = await self._find_point_correspondence(laser_coord)
-                    if camera_point is not None:
-                        await self.add_point_correspondence(laser_coord, camera_point)
+                    camera_pixel, camera_point = await self._find_point_correspondence(
+                        laser_coord
+                    )
+                    if camera_pixel is not None and camera_point is not None:
+                        await self.add_point_correspondence(
+                            laser_coord, camera_pixel, camera_point
+                        )
                     # We use set_color() instead of stop() as it is faster to temporarily turn off the laser
                     await self._laser_node.set_color(r=0.0, g=0.0, b=0.0, i=0.0)
             finally:
@@ -164,7 +173,7 @@ class Calibration:
 
     async def _find_point_correspondence(
         self, laser_coord: Tuple[float, float], num_attempts: int = 3
-    ) -> Optional[Tuple[float, float, float]]:
+    ) -> Tuple[Optional[Tuple[int, int]], Optional[Tuple[float, float, float]]]:
         """
         For the given laser coord, find the corresponding 3D point in camera-space.
 
@@ -172,7 +181,7 @@ class Calibration:
             laser_coord (Tuple[float, float]): Laser coordinate (x, y) to find point correspondence for.
             num_attempts (int): Number of tries to detect the laser and find the point correspondence.
         Returns:
-            Optional[Tuple[float, float, float]]: 3D position in camera-space, or None if the laser could not be detected.
+            Tuple[Optional[Tuple[int, int]], Optional[Tuple[float, float, float]]]: (pixel coord in camera frame, 3D position in camera-space), or (None, None) if the laser could not be detected.
         """
         attempt = 0
         while attempt < num_attempts:
@@ -189,17 +198,21 @@ class Calibration:
                 self._logger.info(
                     f"Found point correspondence: laser_coord = {laser_coord}, pixel = {instance.point}, position = {instance.position}."
                 )
-                return (instance.position.x, instance.position.y, instance.position.z)
+                return (
+                    (round(instance.point.x), round(instance.point.y)),
+                    (instance.position.x, instance.position.y, instance.position.z),
+                )
             # TODO: optimize the frame callback time and reduce this
             await asyncio.sleep(0.5)
         self._logger.info(
             f"Failed to find point. {len(self._calibration_laser_coords)} total correspondences."
         )
-        return None
+        return (None, None)
 
     async def add_point_correspondence(
         self,
         laser_coord: Tuple[float, float],
+        camera_pixel: Tuple[int, int],
         camera_point: Tuple[float, float, float],
         update_transform: bool = False,
     ):
@@ -213,11 +226,15 @@ class Calibration:
             update_transform (bool): Whether to update the transform matrix or not.
         """
         self._calibration_laser_coords.append(laser_coord)
+        self._calibration_camera_pixels.append(camera_pixel)
         self._calibration_camera_points.append(camera_point)
         self._logger.info(
             f"Added point correspondence. {len(self._calibration_laser_coords)} total correspondences."
         )
 
+        self._update_laser_bounds()
+
+        # This is behind a flag as updating the transform is computationally non-trivial
         if update_transform:
             await self._update_transform_nonlinear_least_squares()
 
@@ -343,3 +360,12 @@ class Calibration:
         )
         self._logger.info(f"Mean reprojection error: {reprojection_error}")
         return reprojection_error
+
+    def _update_laser_bounds(self):
+        x_values = [x for x, _ in self._calibration_camera_pixels]
+        y_values = [y for _, y in self._calibration_camera_pixels]
+        min_x = min(x_values)
+        max_x = max(x_values)
+        min_y = min(y_values)
+        max_y = max(y_values)
+        self.laser_bounds = (min_x, min_y, max_x - min_x, max_y - min_y)

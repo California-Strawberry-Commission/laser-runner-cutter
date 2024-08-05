@@ -561,9 +561,10 @@ class StateMachine:
                 return None
 
             # Calculate camera pixel distance
-            laser_pixel = np.array(laser_pixel).astype(float)
-            target_pixel = np.array(target_pixel).astype(float)
-            dist = np.linalg.norm(laser_pixel - target_pixel)
+            dist = np.linalg.norm(
+                np.array(laser_pixel).astype(float)
+                - np.array(target_pixel).astype(float)
+            )
             self._logger.info(
                 f"Aiming laser. Target camera pixel = {target_pixel}, laser detected at = {laser_pixel}, dist = {dist}"
             )
@@ -573,13 +574,13 @@ class StateMachine:
                 # Use this opportunity to add to calibration points since we have the laser
                 # coord and associated position in camera space
                 await self._calibration.add_point_correspondence(
-                    current_laser_coord, laser_pos, update_transform=True
+                    current_laser_coord, laser_pixel, laser_pos, update_transform=True
                 )
 
                 # Scale correction by the camera frame size
-                correction = (target_pixel - laser_pixel) / np.array(
-                    self._calibration.camera_frame_size
-                )
+                correction = (
+                    np.array(target_pixel) - np.array(laser_pixel)
+                ) / np.array(self._calibration.camera_frame_size)
                 # Invert Y axis as laser coord Y is flipped from camera frame Y
                 correction[1] *= -1
                 new_laser_coord = current_laser_coord + correction
@@ -600,7 +601,7 @@ class StateMachine:
 
     async def _get_laser_pixel_and_pos(
         self, max_attempts: int = 3
-    ) -> Tuple[Optional[Tuple[float, float]], Optional[Tuple[float, float, float]]]:
+    ) -> Tuple[Optional[Tuple[int, int]], Optional[Tuple[float, float, float]]]:
         attempt = 0
         while attempt < max_attempts:
             result = await self._camera_node.get_laser_detection()
@@ -611,7 +612,7 @@ class StateMachine:
                     self._logger.info("Found more than 1 laser during correction")
                 # TODO: better handle case where more than 1 laser detected
                 instance = instances[0]
-                return (instance.point.x, instance.point.y), (
+                return (round(instance.point.x), round(instance.point.y)), (
                     instance.position.x,
                     instance.position.y,
                     instance.position.z,
