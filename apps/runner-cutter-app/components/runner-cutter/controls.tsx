@@ -62,6 +62,7 @@ export default function Controls() {
         <Overlay
           width={framePreviewSize.width}
           height={framePreviewSize.height}
+          state={controlNode.state.state}
           tracks={controlNode.state.tracks}
           normalizedRect={controlNode.state.normalizedLaserBounds}
         />

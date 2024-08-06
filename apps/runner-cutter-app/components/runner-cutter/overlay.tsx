@@ -4,11 +4,13 @@ import { Track, TrackState } from "@/lib/useControlNode";
 export default function Overlay({
   width,
   height,
+  state,
   tracks,
   normalizedRect,
 }: {
   width: number;
   height: number;
+  state?: string;
   tracks?: Track[];
   normalizedRect?: { x: number; y: number; width: number; height: number };
 }) {
@@ -28,7 +30,7 @@ export default function Overlay({
       // Clear the canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw rect
+      // Draw rect first, as it requires clearing part of the canvas
       if (
         normalizedRect &&
         normalizedRect.width > 0.0 &&
@@ -45,6 +47,13 @@ export default function Overlay({
           normalizedRect.width * canvas.width,
           normalizedRect.height * canvas.height
         );
+      }
+
+      // Draw state
+      if (state) {
+        ctx.font = "16px sans-serif";
+        ctx.fillStyle = "white";
+        ctx.fillText(`State: ${state}`, 10, 25);
       }
 
       // Draw markers
@@ -65,7 +74,7 @@ export default function Overlay({
         });
       }
     }
-  }, [width, height, tracks, normalizedRect]);
+  }, [width, height, state, tracks, normalizedRect]);
 
   return (
     <canvas
