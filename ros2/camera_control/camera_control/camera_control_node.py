@@ -50,6 +50,8 @@ class CameraControlParams:
     gain_db: float = -1.0
     save_dir: str = "~/Pictures/runner-cutter-app"
     debug_frame_width: int = 640
+    # Exposure below which the debug frame will not be updated
+    debug_frame_min_exposure_us: float = -1.0
 
 
 def milliseconds_to_ros_time(milliseconds):
@@ -399,6 +401,12 @@ class CameraControlNode:
 
     async def _detection_task(self):
         if not self._camera_started or self.camera.state != RgbdCameraState.STREAMING:
+            return
+
+        if (
+            self.camera.exposure_us
+            < self.camera_control_params.debug_frame_min_exposure_us
+        ):
             return
 
         try:
