@@ -2,13 +2,9 @@ import React, { useRef, useEffect } from "react";
 import { Track, TrackState } from "@/lib/useControlNode";
 
 export default function Overlay({
-  width,
-  height,
   tracks,
   normalizedRect,
 }: {
-  width: number;
-  height: number;
   tracks?: Track[];
   normalizedRect?: { x: number; y: number; width: number; height: number };
 }) {
@@ -17,8 +13,6 @@ export default function Overlay({
   useEffect(() => {
     if (canvasRef.current) {
       const canvas = canvasRef.current;
-      canvas.width = width;
-      canvas.height = height;
       const ctx = canvas.getContext("2d");
       if (!ctx) {
         return;
@@ -39,10 +33,10 @@ export default function Overlay({
 
         // Clear the specified rectangle
         ctx.clearRect(
-          normalizedRect.x * width,
-          normalizedRect.y * height,
-          normalizedRect.width * width,
-          normalizedRect.height * height
+          normalizedRect.x * canvas.width,
+          normalizedRect.y * canvas.height,
+          normalizedRect.width * canvas.width,
+          normalizedRect.height * canvas.height
         );
       }
 
@@ -50,8 +44,8 @@ export default function Overlay({
       if (tracks) {
         const markerSize = 14;
         tracks.forEach((track) => {
-          const x = track.normalizedPixelCoords.x * width;
-          const y = track.normalizedPixelCoords.y * height;
+          const x = track.normalizedPixelCoords.x * canvas.width;
+          const y = track.normalizedPixelCoords.y * canvas.height;
           ctx.lineWidth = 2;
           ctx.beginPath();
           ctx.moveTo(x - markerSize / 2, y - markerSize / 2);
@@ -64,13 +58,12 @@ export default function Overlay({
         });
       }
     }
-  }, [width, height, tracks, normalizedRect]);
+  }, [tracks, normalizedRect]);
 
   return (
     <canvas
       ref={canvasRef}
-      className="absolute inset-0"
-      style={{ pointerEvents: "none" }}
+      className="absolute inset-0 pointer-events-none w-full h-full"
     />
   );
 }

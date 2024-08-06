@@ -7,7 +7,6 @@ export default function FramePreview({
   height = 360,
   onImageLoad,
   onImageClick,
-  onSizeChanged,
 }: {
   topicName?: string;
   height?: number;
@@ -15,7 +14,6 @@ export default function FramePreview({
     React.SyntheticEvent<HTMLImageElement, Event>
   >;
   onImageClick?: React.MouseEventHandler<HTMLImageElement>;
-  onSizeChanged?: (width: number, height: number) => void;
 }) {
   const imgRef = useRef<HTMLImageElement>(null);
   const [streamUrl, setStreamUrl] = useState<string>();
@@ -29,27 +27,6 @@ export default function FramePreview({
       setStreamUrl(`${videoServer}/stream?topic=${topicName}`);
     }
   }, []);
-
-  useEffect(() => {
-    const updateSize = () => {
-      if (onSizeChanged && imgRef.current) {
-        onSizeChanged(imgRef.current.offsetWidth, imgRef.current.offsetHeight);
-      }
-    };
-
-    // Initial size update
-    updateSize();
-
-    // Update size on window resize
-    if (typeof window !== "undefined") {
-      window.addEventListener("resize", updateSize);
-    }
-    return () => {
-      if (typeof window !== "undefined") {
-        window.removeEventListener("resize", updateSize);
-      }
-    };
-  }, [onSizeChanged]);
 
   return (
     <img

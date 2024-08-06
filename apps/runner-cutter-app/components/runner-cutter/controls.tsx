@@ -5,7 +5,6 @@ import Overlay from "@/components/runner-cutter/overlay";
 import { Button } from "@/components/ui/button";
 import useROS from "@/lib/ros/useROS";
 import useControlNode from "@/lib/useControlNode";
-import React, { useCallback, useState } from "react";
 
 export default function Controls() {
   const { nodeInfo: rosbridgeNodeInfo } = useROS();
@@ -15,27 +14,11 @@ export default function Controls() {
     startRunnerCutter,
     stop,
   } = useControlNode("/control0");
-  const [framePreviewSize, setFramePreviewSize] = useState({
-    width: 0,
-    height: 0,
-  });
 
   const disableButtons =
     !rosbridgeNodeInfo.connected ||
     !controlNodeInfo.connected ||
     controlNodeState.state !== "idle";
-
-  const onFramePreviewSizeChanged = useCallback(
-    (width: number, height: number) => {
-      if (
-        width !== framePreviewSize.width ||
-        height !== framePreviewSize.height
-      ) {
-        setFramePreviewSize({ width, height });
-      }
-    },
-    [framePreviewSize, setFramePreviewSize]
-  );
 
   return (
     <div className="flex flex-col gap-4 items-center">
@@ -59,14 +42,8 @@ export default function Controls() {
         </Button>
       </div>
       <div className="relative flex items-center" style={{ height: 600 }}>
-        <FramePreview
-          height={600}
-          topicName={"/camera0/debug_frame"}
-          onSizeChanged={onFramePreviewSizeChanged}
-        />
+        <FramePreview height={600} topicName={"/camera0/debug_frame"} />
         <Overlay
-          width={framePreviewSize.width}
-          height={framePreviewSize.height}
           tracks={controlNodeState.tracks}
           normalizedRect={controlNodeState.normalizedLaserBounds}
         />
