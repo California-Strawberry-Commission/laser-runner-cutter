@@ -18,6 +18,10 @@ export default function Overlay({
         return;
       }
 
+      // TODO: Set size to match base image
+      canvas.width = 800;
+      canvas.height = 600;
+
       // Clear the canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 

@@ -1,6 +1,6 @@
-import type { NodeInfo } from "@/lib/NodeInfo";
-import useROS from "@/lib/ros/useROS";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import useROSNode from "@/lib/ros/useROSNode";
+import { useCallback, useEffect, useState } from "react";
+import expandTopicOrServiceName from "@/lib/ros/expandTopicName";
 
 export type State = {
   deviceState: DeviceState;
@@ -43,30 +43,34 @@ function convertToLocalReadableTime(secondsSinceEpoch: number) {
   return `${hours}:${minutes}:${seconds}`;
 }
 
-export default function useCameraNode(nodeName: string) {
-  const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
-  const [nodeConnected, setNodeConnected] = useState<boolean>(false);
-  const [nodeState, setNodeState] = useState<State>({
-    deviceState: DeviceState.Disconnected,
-    laserDetectionEnabled: false,
-    runnerDetectionEnabled: false,
-    recordingVideo: false,
-    intervalCaptureActive: false,
-    exposureUs: 0.0,
-    exposureUsRange: [0.0, 0.0],
-    gainDb: 0.0,
-    gainDbRange: [0.0, 0.0],
-    saveDirectory: "",
-  });
-  const [logMessages, setLogMessages] = useState<string[]>([]);
+function triggerInputMapper() {
+  return {};
+}
 
-  const nodeInfo: NodeInfo = useMemo(() => {
-    return {
-      name: nodeName,
-      connected: rosbridgeNodeInfo.connected && nodeConnected,
-      state: nodeState,
-    };
-  }, [nodeName, rosbridgeNodeInfo, nodeConnected, nodeState]);
+function successOutputMapper(res: any): boolean {
+  return res.success;
+}
+export default function useCameraNode(nodeName: string) {
+  const node = useROSNode(nodeName);
+  const state = node.useTopic(
+    "~/state",
+    "camera_control_interfaces/State",
+    {
+      deviceState: DeviceState.Disconnected,
+      laserDetectionEnabled: false,
+      runnerDetectionEnabled: false,
+      recordingVideo: false,
+      intervalCaptureActive: false,
+      exposureUs: 0.0,
+      exposureUsRange: [0.0, 0.0],
+      gainDb: 0.0,
+      gainDbRange: [0.0, 0.0],
+      saveDirectory: "",
+    },
+    convertStateMessage
+  );
+
+  const [logMessages, setLogMessages] = useState<string[]>([]);
 
   const addLogMessage = useCallback(
     (logMessage: string) => {
@@ -78,26 +82,10 @@ export default function useCameraNode(nodeName: string) {
     [setLogMessages]
   );
 
-  // Subscriptions
+  // Subscription for log messages
   useEffect(() => {
-    const onNodeConnectedSub = ros.onNodeConnected(
-      (connectedNodeName, connected) => {
-        if (connectedNodeName === nodeName) {
-          setNodeConnected(connected);
-        }
-      }
-    );
-
-    const stateSub = ros.subscribe(
-      `${nodeName}/state`,
-      "camera_control_interfaces/State",
-      (message) => {
-        setNodeState(convertStateMessage(message));
-      }
-    );
-
-    const logSub = ros.subscribe(
-      `${nodeName}/log`,
+    const logSub = node.ros.subscribe(
+      expandTopicOrServiceName("~/log", nodeName),
       "rcl_interfaces/Log",
       (message) => {
         const timestamp_sec = parseInt(message["stamp"]["sec"]);
@@ -109,134 +97,129 @@ export default function useCameraNode(nodeName: string) {
     );
 
     return () => {
-      onNodeConnectedSub.unsubscribe();
-      stateSub.unsubscribe();
       logSub.unsubscribe();
     };
-  }, [ros, nodeName, setNodeConnected, setNodeState, addLogMessage]);
+  }, [node, nodeName, addLogMessage]);
 
-  const startDevice = useCallback(() => {
-    // Optimistically set device state to "connecting"
-    setNodeState((state) => {
-      return {
-        ...state,
-        deviceState: DeviceState.Connecting,
-      };
-    });
-    ros.callService(`${nodeName}/start_device`, "std_srvs/Trigger", {});
-  }, [ros, nodeName, setNodeState]);
-
-  const closeDevice = useCallback(() => {
-    ros.callService(`${nodeName}/close_device`, "std_srvs/Trigger", {});
-  }, [ros, nodeName]);
-
-  const setExposure = useCallback(
-    (exposureUs: number) => {
-      ros.callService(
-        `${nodeName}/set_exposure`,
-        "camera_control_interfaces/SetExposure",
-        { exposure_us: exposureUs }
-      );
-    },
-    [ros, nodeName]
+  // TODO: Optimistically set device state to "connecting"
+  const startDevice = node.useService(
+    "~/start_device",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
   );
 
-  const autoExposure = useCallback(() => {
-    ros.callService(`${nodeName}/auto_exposure`, "std_srvs/Trigger", {});
-  }, [ros, nodeName]);
-
-  const setGain = useCallback(
-    (gainDb: number) => {
-      ros.callService(
-        `${nodeName}/set_gain`,
-        "camera_control_interfaces/SetGain",
-        { gain_db: gainDb }
-      );
-    },
-    [ros, nodeName]
+  const closeDevice = node.useService(
+    "~/close_device",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
   );
 
-  const autoGain = useCallback(() => {
-    ros.callService(`${nodeName}/auto_gain`, "std_srvs/Trigger", {});
-  }, [ros, nodeName]);
-
-  const setSaveDirectory = useCallback(
-    (saveDir: string) => {
-      ros.callService(
-        `${nodeName}/set_save_directory`,
-        "camera_control_interfaces/SetSaveDirectory",
-        { save_directory: saveDir }
-      );
-    },
-    [ros, nodeName]
+  const setExposure = node.useService(
+    "~/set_exposure",
+    "camera_control_interfaces/SetExposure",
+    useCallback((exposureUs: number) => ({ exposure_us: exposureUs }), []),
+    successOutputMapper
   );
 
-  const startLaserDetection = useCallback(() => {
-    ros.callService(
-      `${nodeName}/start_laser_detection`,
-      "std_srvs/Trigger",
-      {}
-    );
-  }, [ros, nodeName]);
-
-  const stopLaserDetection = useCallback(() => {
-    ros.callService(`${nodeName}/stop_laser_detection`, "std_srvs/Trigger", {});
-  }, [ros, nodeName]);
-
-  const startRunnerDetection = useCallback(() => {
-    ros.callService(
-      `${nodeName}/start_runner_detection`,
-      "std_srvs/Trigger",
-      {}
-    );
-  }, [ros, nodeName]);
-
-  const stopRunnerDetection = useCallback(() => {
-    ros.callService(
-      `${nodeName}/stop_runner_detection`,
-      "std_srvs/Trigger",
-      {}
-    );
-  }, [ros, nodeName]);
-
-  const startRecordingVideo = useCallback(() => {
-    ros.callService(
-      `${nodeName}/start_recording_video`,
-      "std_srvs/Trigger",
-      {}
-    );
-  }, [ros, nodeName]);
-
-  const stopRecordingVideo = useCallback(() => {
-    ros.callService(`${nodeName}/stop_recording_video`, "std_srvs/Trigger", {});
-  }, [ros, nodeName]);
-
-  const startIntervalCapture = useCallback(
-    (intervalSecs: number) => {
-      ros.callService(
-        `${nodeName}/start_interval_capture`,
-        "camera_control_interfaces/StartIntervalCapture",
-        { interval_secs: intervalSecs }
-      );
-    },
-    [ros, nodeName]
+  const autoExposure = node.useService(
+    "~/auto_exposure",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
   );
 
-  const stopIntervalCapture = useCallback(() => {
-    ros.callService(
-      `${nodeName}/stop_interval_capture`,
-      "std_srvs/Trigger",
-      {}
-    );
-  }, [ros, nodeName]);
+  const setGain = node.useService(
+    "~/set_gain",
+    "camera_control_interfaces/SetGain",
+    useCallback((gainDb: number) => ({ gain_db: gainDb }), []),
+    successOutputMapper
+  );
 
-  const saveImage = useCallback(() => {
-    ros.callService(`${nodeName}/save_image`, "std_srvs/Trigger", {});
-  }, [ros, nodeName]);
+  const autoGain = node.useService(
+    "~/auto_gain",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
+
+  const setSaveDirectory = node.useService(
+    "~/set_save_directory",
+    "camera_control_interfaces/SetSaveDirectory",
+    useCallback((saveDir: string) => ({ save_directory: saveDir }), []),
+    successOutputMapper
+  );
+
+  const startLaserDetection = node.useService(
+    "~/start_laser_detection",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
+
+  const stopLaserDetection = node.useService(
+    "~/stop_laser_detection",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
+
+  const startRunnerDetection = node.useService(
+    "~/start_runner_detection",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
+
+  const stopRunnerDetection = node.useService(
+    "~/stop_runner_detection",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
+
+  const startRecordingVideo = node.useService(
+    "~/start_recording_video",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
+
+  const stopRecordingVideo = node.useService(
+    "~/stop_recording_video",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
+
+  const startIntervalCapture = node.useService(
+    "~/start_interval_capture",
+    "camera_control_interfaces/StartIntervalCapture",
+    useCallback(
+      (intervalSecs: number) => ({ interval_secs: intervalSecs }),
+      []
+    ),
+    successOutputMapper
+  );
+
+  const stopIntervalCapture = node.useService(
+    "~/stop_interval_capture",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
+
+  const saveImage = node.useService(
+    "~/save_image",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
 
   return {
-    nodeInfo,
-    nodeState,
+    ...node,
+    state,
     logMessages,
     startDevice,
     closeDevice,

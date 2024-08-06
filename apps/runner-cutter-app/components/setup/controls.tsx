@@ -4,42 +4,43 @@ import FramePreview from "@/components/camera/frame-preview";
 import NodeCards from "@/components/nodes/node-cards";
 import { Button } from "@/components/ui/button";
 import useROS from "@/lib/ros/useROS";
-import useCameraNode, { DeviceState } from "@/lib/useCameraNode";
+import useCameraNode, {
+  DeviceState as CameraDeviceState,
+} from "@/lib/useCameraNode";
 import useControlNode from "@/lib/useControlNode";
-import useLaserNode from "@/lib/useLaserNode";
+import useLaserNode, {
+  DeviceState as LaserDeviceState,
+} from "@/lib/useLaserNode";
 import { Loader2 } from "lucide-react";
 import { useMemo } from "react";
 
 export default function Controls() {
-  const { nodeInfo: rosbridgeNodeInfo } = useROS();
+  const { connected: rosConnected } = useROS();
 
-  const {
-    nodeInfo: cameraNodeInfo,
-    nodeState: cameraNodeState,
-    startDevice: connectCamera,
-    closeDevice: disconnectCamera,
-  } = useCameraNode("/camera0");
-  const {
-    nodeInfo: laserNodeInfo,
-    laserState,
-    startDevice: connectLaser,
-    closeDevice: disconnectLaser,
-  } = useLaserNode("/laser0");
-  const { nodeInfo: controlNodeInfo } = useControlNode("/control0");
+  const cameraNode = useCameraNode("/camera0");
+  const laserNode = useLaserNode("/laser0");
+  const controlNode = useControlNode("/control0");
 
   const nodeInfos = useMemo(() => {
-    return [rosbridgeNodeInfo, cameraNodeInfo, laserNodeInfo, controlNodeInfo];
-  }, [rosbridgeNodeInfo, cameraNodeInfo, laserNodeInfo, controlNodeInfo]);
+    const rosbridgeNodeInfo = {
+      name: "Rosbridge",
+      connected: rosConnected,
+    };
+    return [rosbridgeNodeInfo, cameraNode, laserNode, controlNode];
+  }, [rosConnected, cameraNode, laserNode, controlNode]);
 
   let cameraButton = null;
-  const enableCameraButton = cameraNodeInfo.connected;
-  if (cameraNodeState.deviceState === DeviceState.Disconnected) {
+  const enableCameraButton = cameraNode.connected;
+  if (cameraNode.state.deviceState === CameraDeviceState.Disconnected) {
     cameraButton = (
-      <Button disabled={!enableCameraButton} onClick={() => connectCamera()}>
+      <Button
+        disabled={!enableCameraButton}
+        onClick={() => cameraNode.startDevice()}
+      >
         Connect Camera
       </Button>
     );
-  } else if (cameraNodeState.deviceState === DeviceState.Connecting) {
+  } else if (cameraNode.state.deviceState === CameraDeviceState.Connecting) {
     cameraButton = (
       <Button disabled>
         <Loader2 className="h-4 w-4 animate-spin" />
@@ -50,7 +51,7 @@ export default function Controls() {
       <Button
         disabled={!enableCameraButton}
         variant="destructive"
-        onClick={() => disconnectCamera()}
+        onClick={() => cameraNode.closeDevice()}
       >
         Disconnect Camera
       </Button>
@@ -58,14 +59,17 @@ export default function Controls() {
   }
 
   let laserButton = null;
-  const enableLaserButton = laserNodeInfo.connected;
-  if (laserState === "disconnected") {
+  const enableLaserButton = laserNode.connected;
+  if (laserNode.state === LaserDeviceState.Disconnected) {
     laserButton = (
-      <Button disabled={!enableLaserButton} onClick={() => connectLaser()}>
+      <Button
+        disabled={!enableLaserButton}
+        onClick={() => laserNode.startDevice()}
+      >
         Connect Laser
       </Button>
     );
-  } else if (laserState === "connecting") {
+  } else if (laserNode.state === LaserDeviceState.Connecting) {
     laserButton = (
       <Button disabled>
         <Loader2 className="h-4 w-4 animate-spin" />
@@ -76,7 +80,7 @@ export default function Controls() {
       <Button
         disabled={!enableLaserButton}
         variant="destructive"
-        onClick={() => disconnectLaser()}
+        onClick={() => laserNode.closeDevice()}
       >
         Disconnect Laser
       </Button>

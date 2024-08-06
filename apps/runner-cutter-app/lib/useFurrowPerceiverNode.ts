@@ -8,17 +8,17 @@ const INITIAL_STATE = {
 };
 
 export default function useFurrowPerceiverNode(nodeName: string) {
-  const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
+  const { connected: rosConnected, ros } = useROS();
   const [nodeConnected, setNodeConnected] = useState<boolean>(false);
   const [nodeState, setNodeState] = useState(INITIAL_STATE);
 
   const nodeInfo: NodeInfo = useMemo(() => {
     return {
       name: nodeName,
-      connected: rosbridgeNodeInfo.connected && nodeConnected,
+      connected: rosConnected && nodeConnected,
       state: nodeState,
     };
-  }, [nodeName, rosbridgeNodeInfo, nodeConnected, nodeState]);
+  }, [nodeName, rosConnected, nodeConnected, nodeState]);
 
   useEffect(() => {
     const onNodeConnectedSub = ros.onNodeConnected(

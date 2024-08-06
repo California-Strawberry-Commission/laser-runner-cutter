@@ -9,19 +9,21 @@ import { InputWithLabel } from "@/components/ui/input-with-label";
 import { Button } from "@/components/ui/button";
 
 export default function FurrowPercieverControls() {
-  const { nodeInfo: rosbridgeNodeInfo } = useROS();
+  const { connected: rosConnected } = useROS();
 
   // TODO: add ability to select node name
   const [nodeName, setNodeName] = useState<string>("/furrow0");
 
   const { nodeInfo } = useFurrowPerceiverNode(nodeName);
 
-  const disableButtons = !rosbridgeNodeInfo.connected || !nodeInfo.connected;
+  const disableButtons = !rosConnected || !nodeInfo.connected;
 
   let playbackButton = null;
 
-  return (<div className="flex gap-2 mb-2">
-    FPC
-    <p>{nodeInfo.connected ? "CONN" : "DISCONN"}</p>
-  </div>);
+  return (
+    <div className="flex gap-2 mb-2">
+      FPC
+      <p>{nodeInfo.connected ? "CONN" : "DISCONN"}</p>
+    </div>
+  );
 }

@@ -1,6 +1,5 @@
-import type { NodeInfo } from "@/lib/NodeInfo";
-import useROS from "@/lib/ros/useROS";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import useROSNode from "@/lib/ros/useROSNode";
+import { useCallback } from "react";
 
 export type State = {
   calibrated: boolean;
@@ -47,85 +46,76 @@ function convertTrackMessage(message: any): Track {
   };
 }
 
+function triggerInputMapper() {
+  return {};
+}
+
+function successOutputMapper(res: any): boolean {
+  return res.success;
+}
+
 export default function useControlNode(nodeName: string) {
-  const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
-  const [nodeConnected, setNodeConnected] = useState<boolean>(false);
-  const [nodeState, setNodeState] = useState<State>({
-    calibrated: false,
-    state: "idle",
-    tracks: [],
-    normalizedLaserBounds: { x: 0, y: 0, width: 0, height: 0 },
-  });
-
-  const nodeInfo: NodeInfo = useMemo(() => {
-    return {
-      name: nodeName,
-      connected: rosbridgeNodeInfo.connected && nodeConnected,
-      state: nodeState,
-    };
-  }, [nodeName, rosbridgeNodeInfo, nodeConnected, nodeState]);
-
-  // Subscriptions
-  useEffect(() => {
-    const onNodeConnectedSub = ros.onNodeConnected(
-      (connectedNodeName, connected) => {
-        if (connectedNodeName === nodeName) {
-          setNodeConnected(connected);
-        }
-      }
-    );
-
-    const stateSub = ros.subscribe(
-      `${nodeName}/state`,
-      "runner_cutter_control_interfaces/State",
-      (message) => {
-        setNodeState(convertStateMessage(message));
-      }
-    );
-
-    return () => {
-      onNodeConnectedSub.unsubscribe();
-      stateSub.unsubscribe();
-    };
-  }, [ros, nodeName, setNodeConnected, setNodeState]);
-
-  const calibrate = useCallback(() => {
-    ros.callService(`${nodeName}/calibrate`, "std_srvs/Trigger", {});
-  }, [ros, nodeName]);
-
-  const addCalibrationPoint = useCallback(
-    (normalizedX: number, normalizedY: number) => {
-      ros.callService(
-        `${nodeName}/add_calibration_points`,
-        "runner_cutter_control_interfaces/AddCalibrationPoints",
-        { normalized_pixel_coords: [{ x: normalizedX, y: normalizedY }] }
-      );
+  const node = useROSNode(nodeName);
+  const state = node.useTopic(
+    "~/state",
+    "runner_cutter_control_interfaces/State",
+    {
+      calibrated: false,
+      state: "idle",
+      tracks: [],
+      normalizedLaserBounds: { x: 0, y: 0, width: 0, height: 0 },
     },
-    [ros, nodeName]
+    convertStateMessage
   );
 
-  const manualTargetAimLaser = useCallback(
-    (normalizedX: number, normalizedY: number) => {
-      ros.callService(
-        `${nodeName}/manual_target_aim_laser`,
-        "runner_cutter_control_interfaces/ManualTargetAimLaser",
-        { normalized_pixel_coord: { x: normalizedX, y: normalizedY } }
-      );
-    },
-    [ros, nodeName]
+  const calibrate = node.useService(
+    "~/calibrate",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
   );
 
-  const startRunnerCutter = useCallback(() => {
-    ros.callService(`${nodeName}/start_runner_cutter`, "std_srvs/Trigger", {});
-  }, [ros, nodeName]);
+  const addCalibrationPoint = node.useService(
+    "~/add_calibration_points",
+    "runner_cutter_control_interfaces/AddCalibrationPoints",
+    useCallback(
+      (normalizedX: number, normalizedY: number) => ({
+        normalized_pixel_coords: [{ x: normalizedX, y: normalizedY }],
+      }),
+      []
+    ),
+    successOutputMapper
+  );
 
-  const stop = useCallback(() => {
-    ros.callService(`${nodeName}/stop`, "std_srvs/Trigger", {});
-  }, [ros, nodeName]);
+  const manualTargetAimLaser = node.useService(
+    "~/manual_target_aim_laser",
+    "runner_cutter_control_interfaces/ManualTargetAimLaser",
+    useCallback(
+      (normalizedX: number, normalizedY: number) => ({
+        normalized_pixel_coord: { x: normalizedX, y: normalizedY },
+      }),
+      []
+    ),
+    successOutputMapper
+  );
+
+  const startRunnerCutter = node.useService(
+    "~/start_runner_cutter",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
+
+  const stop = node.useService(
+    "~/stop",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
 
   return {
-    nodeInfo,
-    nodeState,
+    ...node,
+    state,
     calibrate,
     addCalibrationPoint,
     manualTargetAimLaser,

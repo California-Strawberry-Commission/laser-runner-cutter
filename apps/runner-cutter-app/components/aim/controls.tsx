@@ -4,11 +4,10 @@ import FramePreview from "@/components/camera/frame-preview";
 import useControlNode from "@/lib/useControlNode";
 
 export default function Controls() {
-  const { nodeState: controlNodeState, manualTargetAimLaser } =
-    useControlNode("/control0");
+  const controlNode = useControlNode("/control0");
 
   const onImageClick = (event: any) => {
-    if (controlNodeState.state !== "idle") {
+    if (controlNode.state.state !== "idle") {
       return;
     }
 
@@ -17,7 +16,7 @@ export default function Controls() {
     const y = Math.round(event.clientY - boundingRect.top);
     const normalizedX = x / boundingRect.width;
     const normalizedY = y / boundingRect.height;
-    manualTargetAimLaser(normalizedX, normalizedY);
+    controlNode.manualTargetAimLaser(normalizedX, normalizedY);
   };
 
   return (

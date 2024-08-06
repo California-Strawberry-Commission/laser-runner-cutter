@@ -1,104 +1,103 @@
-import type { NodeInfo } from "@/lib/NodeInfo";
-import useROS from "@/lib/ros/useROS";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import useROSNode from "@/lib/ros/useROSNode";
+import { useCallback } from "react";
 
-const LASER_STATES = ["disconnected", "connecting", "stopped", "playing"];
-const INITIAL_STATE = LASER_STATES[0];
+export enum DeviceState {
+  Disconnected,
+  Connecting,
+  Stopped,
+  Playing,
+}
+
+function convertStateMessage(message: any): DeviceState {
+  return message.data as DeviceState;
+}
+
+function triggerInputMapper() {
+  return {};
+}
+
+function successOutputMapper(res: any): boolean {
+  return res.success;
+}
 
 export default function useLaserNode(nodeName: string) {
-  const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
-  const [nodeConnected, setNodeConnected] = useState<boolean>(false);
-  const [laserState, setLaserState] = useState<string>(INITIAL_STATE);
-
-  const nodeInfo: NodeInfo = useMemo(() => {
-    return {
-      name: nodeName,
-      connected: rosbridgeNodeInfo.connected && nodeConnected,
-      state: { laserState },
-    };
-  }, [nodeName, rosbridgeNodeInfo, nodeConnected, laserState]);
-
-  // Subscriptions
-  useEffect(() => {
-    const onNodeConnectedSub = ros.onNodeConnected(
-      (connectedNodeName, connected) => {
-        if (connectedNodeName === nodeName) {
-          setNodeConnected(connected);
-        }
-      }
-    );
-
-    const stateSub = ros.subscribe(
-      `${nodeName}/state`,
-      "laser_control_interfaces/State",
-      (message) => {
-        setLaserState(LASER_STATES[message.data]);
-      }
-    );
-
-    return () => {
-      onNodeConnectedSub.unsubscribe();
-      stateSub.unsubscribe();
-    };
-  }, [ros, nodeName, setNodeConnected, setLaserState]);
-
-  const startDevice = useCallback(() => {
-    // Optimistically set device state to "connecting"
-    setLaserState(LASER_STATES[1]);
-    ros.callService(`${nodeName}/start_device`, "std_srvs/Trigger", {});
-  }, [ros, nodeName]);
-
-  const closeDevice = useCallback(() => {
-    ros.callService(`${nodeName}/close_device`, "std_srvs/Trigger", {});
-  }, [ros, nodeName]);
-
-  const addPoint = useCallback(
-    (x: number, y: number) => {
-      ros.callService(
-        `${nodeName}/add_point`,
-        "laser_control_interfaces/AddPoint",
-        {
-          point: {
-            x: x,
-            y: y,
-          },
-        }
-      );
-    },
-    [ros, nodeName]
+  const node = useROSNode(nodeName);
+  const state = node.useTopic(
+    "~/state",
+    "laser_control_interfaces/State",
+    DeviceState.Disconnected,
+    convertStateMessage
   );
 
-  const clearPoints = useCallback(() => {
-    ros.callService(`${nodeName}/clear_points`, "std_srvs/Trigger", {});
-  }, [ros, nodeName]);
+  // TODO: Optimistically set device state to "connecting"
+  const startDevice = node.useService(
+    "~/start_device",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
 
-  const play = useCallback(() => {
-    ros.callService(`${nodeName}/play`, "std_srvs/Trigger", {});
-  }, [ros, nodeName]);
+  const closeDevice = node.useService(
+    "~/close_device",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
 
-  const stop = useCallback(() => {
-    ros.callService(`${nodeName}/stop`, "std_srvs/Trigger", {});
-  }, [ros, nodeName]);
+  const addPoint = node.useService(
+    "~/add_point",
+    "laser_control_interfaces/AddPoint",
+    useCallback(
+      (x: number, y: number) => ({
+        point: {
+          x: x,
+          y: y,
+        },
+      }),
+      []
+    ),
+    successOutputMapper
+  );
 
-  const setColor = useCallback(
-    (r: number, g: number, b: number) => {
-      ros.callService(
-        `${nodeName}/set_color`,
-        "laser_control_interfaces/SetColor",
-        {
-          r: r,
-          g: g,
-          b: b,
-          i: 0.0,
-        }
-      );
-    },
-    [ros, nodeName]
+  const clearPoints = node.useService(
+    "~/clear_points",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
+
+  const play = node.useService(
+    "~/play",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
+
+  const stop = node.useService(
+    "~/stop",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
+
+  const setColor = node.useService(
+    "~/set_color",
+    "laser_control_interfaces/SetColor",
+    useCallback(
+      (r: number, g: number, b: number) => ({
+        r: r,
+        g: g,
+        b: b,
+        i: 0.0,
+      }),
+      []
+    ),
+    successOutputMapper
   );
 
   return {
-    nodeInfo,
-    laserState,
+    ...node,
+    state,
     startDevice,
     closeDevice,
     addPoint,

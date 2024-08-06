@@ -13,47 +13,29 @@ import useCameraNode from "@/lib/useCameraNode";
 import { useEffect, useState } from "react";
 
 export default function Controls() {
-  const { nodeInfo: rosbridgeNodeInfo } = useROS();
+  const { connected: rosConnected } = useROS();
   // TODO: add ability to select node name
   const [nodeName, setNodeName] = useState<string>("/camera0");
-  const {
-    nodeInfo,
-    nodeState,
-    logMessages,
-    setExposure,
-    autoExposure,
-    setGain,
-    autoGain,
-    setSaveDirectory,
-    startLaserDetection,
-    stopLaserDetection,
-    startRunnerDetection,
-    stopRunnerDetection,
-    startRecordingVideo,
-    stopRecordingVideo,
-    startIntervalCapture,
-    stopIntervalCapture,
-    saveImage,
-  } = useCameraNode(nodeName);
+  const cameraNode = useCameraNode(nodeName);
   const [exposureUs, setExposureUs] = useState<string>("0");
   const [gainDb, setGainDb] = useState<string>("0");
   const [saveDir, setSaveDir] = useState<string>("");
   const [intervalSecs, setIntervalSecs] = useState<string>("5");
 
-  const disableButtons = !rosbridgeNodeInfo.connected || !nodeInfo.connected;
+  const disableButtons = !rosConnected || !cameraNode.connected;
 
   // Sync text inputs to node state
   useEffect(() => {
-    setExposureUs(String(nodeState.exposureUs));
-    setGainDb(String(nodeState.gainDb));
-    setSaveDir(nodeState.saveDirectory);
+    setExposureUs(String(cameraNode.state.exposureUs));
+    setGainDb(String(cameraNode.state.gainDb));
+    setSaveDir(cameraNode.state.saveDirectory);
   }, [
     setExposureUs,
-    nodeState.exposureUs,
+    cameraNode.state.exposureUs,
     setGainDb,
-    nodeState.gainDb,
+    cameraNode.state.gainDb,
     setSaveDir,
-    nodeState.saveDirectory,
+    cameraNode.state.saveDirectory,
   ]);
 
   return (
@@ -66,7 +48,7 @@ export default function Controls() {
             id="exposure"
             name="exposure"
             label="Exposure (µs)"
-            helper_text={`Range: [${nodeState.exposureUsRange[0]}, ${nodeState.exposureUsRange[1]}]. Auto: -1`}
+            helper_text={`Range: [${cameraNode.state.exposureUsRange[0]}, ${cameraNode.state.exposureUsRange[1]}]. Auto: -1`}
             step={10}
             value={exposureUs}
             onChange={(str) => {
@@ -80,7 +62,7 @@ export default function Controls() {
             className="rounded-none"
             disabled={disableButtons}
             onClick={() => {
-              setExposure(Number(exposureUs));
+              cameraNode.setExposure(Number(exposureUs));
             }}
           >
             Set
@@ -89,7 +71,7 @@ export default function Controls() {
             className="rounded-l-none"
             disabled={disableButtons}
             onClick={() => {
-              autoExposure();
+              cameraNode.autoExposure();
             }}
           >
             Auto
@@ -102,7 +84,7 @@ export default function Controls() {
             id="gain"
             name="gain"
             label="Gain (dB)"
-            helper_text={`Range: [${nodeState.gainDbRange[0]}, ${nodeState.gainDbRange[1]}]. Auto: -1`}
+            helper_text={`Range: [${cameraNode.state.gainDbRange[0]}, ${cameraNode.state.gainDbRange[1]}]. Auto: -1`}
             step={1}
             value={gainDb}
             onChange={(str) => {
@@ -116,7 +98,7 @@ export default function Controls() {
             className="rounded-none"
             disabled={disableButtons}
             onClick={() => {
-              setGain(Number(gainDb));
+              cameraNode.setGain(Number(gainDb));
             }}
           >
             Set
@@ -125,7 +107,7 @@ export default function Controls() {
             className="rounded-l-none"
             disabled={disableButtons}
             onClick={() => {
-              autoGain();
+              cameraNode.autoGain();
             }}
           >
             Auto
@@ -147,7 +129,7 @@ export default function Controls() {
             className="rounded-l-none"
             disabled={disableButtons}
             onClick={() => {
-              setSaveDirectory(saveDir);
+              cameraNode.setSaveDirectory(saveDir);
             }}
           >
             Set
@@ -155,11 +137,11 @@ export default function Controls() {
         </div>
       </div>
       <div className="flex flex-row items-center gap-4">
-        {nodeState.recordingVideo ? (
+        {cameraNode.state.recordingVideo ? (
           <Button
             disabled={disableButtons}
             onClick={() => {
-              stopRecordingVideo();
+              cameraNode.stopRecordingVideo();
             }}
           >
             Stop Recording Video
@@ -168,7 +150,7 @@ export default function Controls() {
           <Button
             disabled={disableButtons}
             onClick={() => {
-              startRecordingVideo();
+              cameraNode.startRecordingVideo();
             }}
           >
             Start Recording Video
@@ -177,7 +159,7 @@ export default function Controls() {
         <Button
           disabled={disableButtons}
           onClick={() => {
-            saveImage();
+            cameraNode.saveImage();
           }}
         >
           Save Image
@@ -198,12 +180,12 @@ export default function Controls() {
               }
             }}
           />
-          {nodeState.intervalCaptureActive ? (
+          {cameraNode.state.intervalCaptureActive ? (
             <Button
               className="rounded-l-none"
               disabled={disableButtons}
               onClick={() => {
-                stopIntervalCapture();
+                cameraNode.stopIntervalCapture();
               }}
             >
               Stop Interval Capture
@@ -213,7 +195,7 @@ export default function Controls() {
               className="rounded-l-none"
               disabled={disableButtons}
               onClick={() => {
-                startIntervalCapture(Number(intervalSecs));
+                cameraNode.startIntervalCapture(Number(intervalSecs));
               }}
             >
               Start Interval Capture
@@ -222,11 +204,11 @@ export default function Controls() {
         </div>
       </div>
       <div className="flex flex-row items-center gap-4">
-        {nodeState.laserDetectionEnabled ? (
+        {cameraNode.state.laserDetectionEnabled ? (
           <Button
             disabled={disableButtons}
             onClick={() => {
-              stopLaserDetection();
+              cameraNode.stopLaserDetection();
             }}
           >
             Stop Laser Detection
@@ -235,17 +217,17 @@ export default function Controls() {
           <Button
             disabled={disableButtons}
             onClick={() => {
-              startLaserDetection();
+              cameraNode.startLaserDetection();
             }}
           >
             Start Laser Detection
           </Button>
         )}
-        {nodeState.runnerDetectionEnabled ? (
+        {cameraNode.state.runnerDetectionEnabled ? (
           <Button
             disabled={disableButtons}
             onClick={() => {
-              stopRunnerDetection();
+              cameraNode.stopRunnerDetection();
             }}
           >
             Stop Runner Detection
@@ -254,7 +236,7 @@ export default function Controls() {
           <Button
             disabled={disableButtons}
             onClick={() => {
-              startRunnerDetection();
+              cameraNode.startRunnerDetection();
             }}
           >
             Start Runner Detection
@@ -267,7 +249,7 @@ export default function Controls() {
           <Button className="fixed bottom-4 right-4">Show Logs</Button>
         </PopoverTrigger>
         <PopoverContent className="m-4 w-96 bg-black bg-opacity-70 border-0">
-          {logMessages.map((msg, index) => (
+          {cameraNode.logMessages.map((msg, index) => (
             <p className="text-xs text-white" key={index}>
               {msg}
             </p>

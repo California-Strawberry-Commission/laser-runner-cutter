@@ -7,18 +7,13 @@ import useROS from "@/lib/ros/useROS";
 import useControlNode from "@/lib/useControlNode";
 
 export default function Controls() {
-  const { nodeInfo: rosbridgeNodeInfo } = useROS();
-  const {
-    nodeInfo: controlNodeInfo,
-    nodeState: controlNodeState,
-    startRunnerCutter,
-    stop,
-  } = useControlNode("/control0");
+  const { connected: rosConnected } = useROS();
+  const controlNode = useControlNode("/control0");
 
   const disableButtons =
-    !rosbridgeNodeInfo.connected ||
-    !controlNodeInfo.connected ||
-    controlNodeState.state !== "idle";
+    !rosConnected ||
+    !controlNode.connected ||
+    controlNode.state.state !== "idle";
 
   return (
     <div className="flex flex-col gap-4 items-center">
@@ -26,16 +21,16 @@ export default function Controls() {
         <Button
           disabled={disableButtons}
           onClick={() => {
-            startRunnerCutter();
+            controlNode.startRunnerCutter();
           }}
         >
           Start
         </Button>
         <Button
-          disabled={!rosbridgeNodeInfo.connected || !controlNodeInfo.connected}
+          disabled={!rosConnected || !controlNode.connected}
           variant="destructive"
           onClick={() => {
-            stop();
+            controlNode.stop();
           }}
         >
           Stop
@@ -44,8 +39,8 @@ export default function Controls() {
       <div className="relative flex items-center" style={{ height: 600 }}>
         <FramePreview height={600} topicName={"/camera0/debug_frame"} />
         <Overlay
-          tracks={controlNodeState.tracks}
-          normalizedRect={controlNodeState.normalizedLaserBounds}
+          tracks={controlNode.state.tracks}
+          normalizedRect={controlNode.state.normalizedLaserBounds}
         />
       </div>
     </div>

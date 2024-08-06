@@ -6,16 +6,11 @@ import useROS from "@/lib/ros/useROS";
 import useControlNode from "@/lib/useControlNode";
 
 export default function Controls() {
-  const { nodeInfo: rosbridgeNodeInfo } = useROS();
-  const {
-    nodeInfo: controlNodeInfo,
-    nodeState: controlNodeState,
-    calibrate,
-    addCalibrationPoint,
-  } = useControlNode("/control0");
+  const { connected: rosConnected } = useROS();
+  const controlNode = useControlNode("/control0");
 
   const onImageClick = (event: any) => {
-    if (controlNodeState.state !== "idle") {
+    if (controlNode.state.state !== "idle") {
       return;
     }
 
@@ -24,13 +19,13 @@ export default function Controls() {
     const y = Math.round(event.clientY - boundingRect.top);
     const normalizedX = x / boundingRect.width;
     const normalizedY = y / boundingRect.height;
-    addCalibrationPoint(normalizedX, normalizedY);
+    controlNode.addCalibrationPoint(normalizedX, normalizedY);
   };
 
   const disableButtons =
-    !rosbridgeNodeInfo.connected ||
-    !controlNodeInfo.connected ||
-    controlNodeState.state !== "idle";
+    !rosConnected ||
+    !controlNode.connected ||
+    controlNode.state.state !== "idle";
 
   return (
     <div className="flex flex-col gap-4 items-center">
@@ -38,7 +33,7 @@ export default function Controls() {
         <Button
           disabled={disableButtons}
           onClick={() => {
-            calibrate();
+            controlNode.calibrate();
           }}
         >
           Start Calibration

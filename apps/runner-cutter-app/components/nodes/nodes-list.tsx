@@ -14,14 +14,18 @@ export type Node = {
 };
 
 export default function NodesList() {
-  const { nodeInfo: rosbridgeNodeInfo } = useROS();
-  const { nodeInfo: controlNodeInfo } = useControlNode("/control0");
-  const { nodeInfo: cameraNodeInfo } = useCameraNode("/camera0");
-  const { nodeInfo: laserNodeInfo } = useLaserNode("/laser0");
+  const { connected: rosConnected } = useROS();
+  const controlNode = useControlNode("/control0");
+  const cameraNode = useCameraNode("/camera0");
+  const laserNode = useLaserNode("/laser0");
 
   const nodeInfos = useMemo(() => {
-    return [rosbridgeNodeInfo, controlNodeInfo, cameraNodeInfo, laserNodeInfo];
-  }, [rosbridgeNodeInfo, controlNodeInfo, cameraNodeInfo, laserNodeInfo]);
+    const rosbridgeNodeInfo = {
+      name: "Rosbridge",
+      connected: rosConnected,
+    };
+    return [rosbridgeNodeInfo, controlNode, cameraNode, laserNode];
+  }, [rosConnected, controlNode, cameraNode, laserNode]);
 
   return <NodeCards nodeInfos={nodeInfos} />;
 }

@@ -1,7 +1,6 @@
-import type { NodeInfo } from "@/lib/NodeInfo";
 import useROS from "@/lib/ros/useROS";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import expandTopicOrServiceName from "./expandTopicName";
+import expandTopicOrServiceName from "@/lib/ros/expandTopicName";
 
 type in_mapper_t = (...a: any) => any;
 type out_mapper_t = (res: any) => any;
@@ -54,11 +53,11 @@ function useService(nodeName: string, ros: any) {
     out_mapper?: OUT_T
   ): mappable_fn_t<IN_T, OUT_T> {
     async function _service(...arg: any) {
-      const topic = expandTopicOrServiceName(path, nodeName);
+      const serviceName = expandTopicOrServiceName(path, nodeName);
 
       const service_data =
         typeof in_mapper === "function" ? in_mapper(...arg) : arg[0];
-      const res = await ros.callService(topic, idl, service_data);
+      const res = await ros.callService(serviceName, idl, service_data);
       return typeof out_mapper === "function" ? out_mapper(res) : res;
     }
 
@@ -66,8 +65,8 @@ function useService(nodeName: string, ros: any) {
   };
 }
 
-export default function useROSNode<STATE_T>(nodeName: string) {
-  const { nodeInfo: rosbridgeNodeInfo, ros } = useROS();
+export default function useROSNode(nodeName: string) {
+  const { connected: rosConnected, ros } = useROS();
   const [nodeConnected, setNodeConnected] = useState<boolean>(false);
 
   useEffect(() => {
@@ -88,10 +87,10 @@ export default function useROSNode<STATE_T>(nodeName: string) {
   return useMemo(() => {
     return {
       name: nodeName,
-      connected: rosbridgeNodeInfo.connected && nodeConnected,
+      connected: rosConnected && nodeConnected,
       ros,
       useService: us,
       useTopic: ut,
     };
-  }, [ros, nodeName, rosbridgeNodeInfo, nodeConnected, us, ut]);
+  }, [ros, nodeName, rosConnected, nodeConnected, us, ut]);
 }

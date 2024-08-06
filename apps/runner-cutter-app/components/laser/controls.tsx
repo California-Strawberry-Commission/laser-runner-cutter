@@ -4,7 +4,7 @@ import ColorPicker from "@/components/laser/color-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import useROS from "@/lib/ros/useROS";
-import useLaserNode from "@/lib/useLaserNode";
+import useLaserNode, { DeviceState } from "@/lib/useLaserNode";
 import { useState } from "react";
 
 function hexToRgb(hexColor: string) {
@@ -20,27 +20,26 @@ function hexToRgb(hexColor: string) {
 }
 
 export default function Controls() {
-  const { nodeInfo: rosbridgeNodeInfo } = useROS();
+  const { connected: rosConnected } = useROS();
   // TODO: add ability to select node name
   const [nodeName, setNodeName] = useState<string>("/laser0");
-  const { nodeInfo, laserState, addPoint, clearPoints, play, stop, setColor } =
-    useLaserNode(nodeName);
+  const laserNode = useLaserNode(nodeName);
   const [laserColor, setLaserColor] = useState<string>("#ff0000");
   const [x, setX] = useState<string>("0");
   const [y, setY] = useState<string>("0");
 
-  const disableButtons = !rosbridgeNodeInfo.connected || !nodeInfo.connected;
+  const disableButtons = !rosConnected || !laserNode.connected;
 
   let playbackButton = null;
-  if (laserState === "stopped") {
+  if (laserNode.state === DeviceState.Stopped) {
     playbackButton = (
-      <Button disabled={disableButtons} onClick={() => play()}>
+      <Button disabled={disableButtons} onClick={() => laserNode.play()}>
         Start Laser
       </Button>
     );
-  } else if (laserState === "playing") {
+  } else if (laserNode.state === DeviceState.Playing) {
     playbackButton = (
-      <Button disabled={disableButtons} onClick={() => stop()}>
+      <Button disabled={disableButtons} onClick={() => laserNode.stop()}>
         Stop Laser
       </Button>
     );
@@ -83,11 +82,14 @@ export default function Controls() {
         />
         <Button
           disabled={disableButtons}
-          onClick={() => addPoint(Number(x), Number(y))}
+          onClick={() => laserNode.addPoint(Number(x), Number(y))}
         >
           Add Point
         </Button>
-        <Button disabled={disableButtons} onClick={() => clearPoints()}>
+        <Button
+          disabled={disableButtons}
+          onClick={() => laserNode.clearPoints()}
+        >
           Clear Points
         </Button>
       </div>
@@ -98,7 +100,7 @@ export default function Controls() {
             setLaserColor(color);
             const rgb = hexToRgb(color);
             if (rgb) {
-              setColor(rgb.r, rgb.g, rgb.b);
+              laserNode.setColor(rgb.r, rgb.g, rgb.b);
             }
           }}
         />

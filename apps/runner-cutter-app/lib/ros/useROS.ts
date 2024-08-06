@@ -1,24 +1,16 @@
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import ROSContext from "@/lib/ros/ROSContext";
-import type { NodeInfo } from "@/lib/NodeInfo";
 
 export default function useROS() {
   const ros = useContext(ROSContext);
-  const [rosConnected, setRosConnected] = useState<boolean>(false);
-
-  const nodeInfo: NodeInfo = useMemo(() => {
-    return {
-      name: "Rosbridge",
-      connected: rosConnected,
-    };
-  }, [rosConnected]);
+  const [connected, setConnected] = useState<boolean>(false);
 
   useEffect(() => {
     ros.onStateChange(() => {
-      setRosConnected(ros.isConnected());
+      setConnected(ros.isConnected());
     });
-    setRosConnected(ros.isConnected());
-  }, [ros, setRosConnected]);
+    setConnected(ros.isConnected());
+  }, [ros, setConnected]);
 
-  return { nodeInfo, ros };
+  return { connected, ros };
 }
