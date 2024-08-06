@@ -2,9 +2,13 @@ import React, { useRef, useEffect } from "react";
 import { Track, TrackState } from "@/lib/useControlNode";
 
 export default function Overlay({
+  width,
+  height,
   tracks,
   normalizedRect,
 }: {
+  width: number;
+  height: number;
   tracks?: Track[];
   normalizedRect?: { x: number; y: number; width: number; height: number };
 }) {
@@ -18,9 +22,8 @@ export default function Overlay({
         return;
       }
 
-      // TODO: Set size to match base image
-      canvas.width = 800;
-      canvas.height = 600;
+      canvas.width = width;
+      canvas.height = height;
 
       // Clear the canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -62,7 +65,7 @@ export default function Overlay({
         });
       }
     }
-  }, [tracks, normalizedRect]);
+  }, [width, height, tracks, normalizedRect]);
 
   return (
     <canvas
