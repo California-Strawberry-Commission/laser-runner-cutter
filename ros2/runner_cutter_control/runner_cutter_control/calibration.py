@@ -138,7 +138,7 @@ class Calibration:
                     # TODO: optimize the frame callback time and reduce this
                     await asyncio.sleep(0.5)
                     camera_pixel, camera_point = await self._find_point_correspondence(
-                        laser_coord
+                        laser_coord, attempt_interval_s=0.25
                     )
                     if camera_pixel is not None and camera_point is not None:
                         await self.add_point_correspondence(
@@ -172,7 +172,10 @@ class Calibration:
             return (-1.0, -1.0)
 
     async def _find_point_correspondence(
-        self, laser_coord: Tuple[float, float], num_attempts: int = 3
+        self,
+        laser_coord: Tuple[float, float],
+        num_attempts: int = 3,
+        attempt_interval_s: float = 0.2,
     ) -> Tuple[Optional[Tuple[int, int]], Optional[Tuple[float, float, float]]]:
         """
         For the given laser coord, find the corresponding 3D point in camera-space.
@@ -202,8 +205,7 @@ class Calibration:
                     (round(instance.point.x), round(instance.point.y)),
                     (instance.position.x, instance.position.y, instance.position.z),
                 )
-            # TODO: optimize the frame callback time and reduce this
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(attempt_interval_s)
         self._logger.info(
             f"Failed to find point. {len(self._calibration_laser_coords)} total correspondences."
         )

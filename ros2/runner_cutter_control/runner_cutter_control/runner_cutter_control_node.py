@@ -582,7 +582,9 @@ class StateMachine:
             # Wait for galvo to settle and for camera frame capture
             # TODO: optimize the frame callback time and reduce this
             await asyncio.sleep(0.5)
-            laser_pixel, laser_pos = await self._get_laser_pixel_and_pos()
+            laser_pixel, laser_pos = await self._get_laser_pixel_and_pos(
+                attempt_interval_s=0.25
+            )
             if laser_pixel is None or laser_pos is None:
                 self._logger.info("Could not detect laser.")
                 return None
@@ -627,7 +629,7 @@ class StateMachine:
                 current_laser_coord = new_laser_coord
 
     async def _get_laser_pixel_and_pos(
-        self, max_attempts: int = 3
+        self, max_attempts: int = 3, attempt_interval_s: float = 0.2
     ) -> Tuple[Optional[Tuple[int, int]], Optional[Tuple[float, float, float]]]:
         attempt = 0
         while attempt < max_attempts:
@@ -645,8 +647,7 @@ class StateMachine:
                     instance.position.z,
                 )
             # No lasers detected. Try again.
-            # TODO: optimize the frame callback time and reduce this
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(attempt_interval_s)
             attempt += 1
         return None, None
 
