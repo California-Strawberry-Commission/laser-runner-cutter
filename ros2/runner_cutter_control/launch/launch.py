@@ -4,7 +4,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from camera_control import camera_control_node
 from laser_control import laser_control_node
-# from runner_cutter_control import runner_cutter_control_node
+from runner_cutter_control import runner_cutter_control_node
    
 from aioros2 import LaunchNode
 
@@ -141,22 +141,22 @@ def generate_launch_description():
             respawn_delay=2.0,
         )
 
-        # runner_cutter_node = LaunchNode(
-        #     runner_cutter_control_node,
-        #     name="control0",
-        #     parameters=[parameters_file],
-        #     respawn=True,
-        #     respawn_delay=2.0,
-        # )
+        runner_cutter_node = LaunchNode(
+            runner_cutter_control_node,
+            name="control0",
+            parameters=[parameters_file],
+            respawn=True,
+            respawn_delay=2.0,
+        )
         
         # Link nodes
-        #print(runner_cutter_node)
-       #  runner_cutter_node.camera_node.link(camera_node)
-       #  runner_cutter_node.laser_node.link(laser_node)
+        print(runner_cutter_node)
+        runner_cutter_node.camera_node.link(camera_node)
+        runner_cutter_node.laser_node.link(laser_node)
 
         launchables.append(camera_node)
         launchables.append(laser_node)
-        # launchables.append(runner_cutter_node)
+        launchables.append(runner_cutter_node)
         
 
 
