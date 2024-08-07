@@ -1,0 +1,15 @@
+[Unit]
+Description="Laser Runner Cutter app"
+After=network.target
+
+[Service]
+WorkingDirectory=/home/csc-jetson1/laser-runner-cutter/apps/runner-cutter-app
+ExecStart=/home/csc-jetson1/laser-runner-cutter/apps/runner-cutter-app/scripts/run_app.sh
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+RestartSec=5
+User=csc-jetson1
+
+[Install]
+WantedBy=multi-user.target

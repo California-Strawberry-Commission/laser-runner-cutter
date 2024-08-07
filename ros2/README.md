@@ -48,10 +48,25 @@ Download and install the Arena SDK and the Arena Python Package which can be fou
 
 ## Run
 
+### Local development
+
 1.  Launch ROS2 nodes using the launch file
 
         $ source laser-runner-cutter/ros2/scripts/setup.sh  # or setup.zsh in Z shell
         $ ros2 launch runner_cutter_control launch.py
+
+### Production device
+
+1.  Copy systemd service file
+
+        $ cp scripts/laser-runner-cutter-ros.service /etc/systemd/system/
+
+1.  Edit the newly created `/etc/systemd/system/laser-runner-cutter-ros.service` to contain the correct username
+
+1.  Enable the service to run on startup
+
+        $ sudo systemctl enable laser-runner-cutter-ros.service
+        $ sudo systemctl start laser-runner-cutter-ros.service
 
 ## Native libraries
 
