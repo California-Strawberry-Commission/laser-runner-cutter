@@ -26,10 +26,24 @@ export default function useGuidanceBrainNode(nodeName: string) {
     "std_srvs/SetBool"
   )
   */
-  const setActive = node.useService(
-    "~/set_active",
-    "std_srvs/SetBool",
-    (active: boolean) => ({ data: active }), // maps request message to a JS api & solidifies typing info
+  const goForward = node.useService(
+    "~/go_forward",
+    "std_srvs/Trigger",
+    () => ({}), // maps request message to a JS api & solidifies typing info
+    (_data: any) => undefined, // maps incoming response & solidifies typing info
+  );
+
+  const goBackward = node.useService(
+    "~/go_backward",
+    "std_srvs/Trigger",
+    () => ({}), // maps request message to a JS api & solidifies typing info
+    (_data: any) => undefined, // maps incoming response & solidifies typing info
+  );
+
+  const stop = node.useService(
+    "~/go_backward",
+    "std_srvs/Trigger",
+    () => ({}), // maps request message to a JS api & solidifies typing info
     (_data: any) => undefined, // maps incoming response & solidifies typing info
   );
 
@@ -64,7 +78,9 @@ export default function useGuidanceBrainNode(nodeName: string) {
   return {
     ...node,
     state,
-    setActive,
+    goForward,
+    goBackward,
+    stop,
     setP,
     setI,
     setD,

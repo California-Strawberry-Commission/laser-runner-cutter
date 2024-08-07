@@ -30,6 +30,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PID.msg"
   "srv/GetBool.srv"
   "srv/SetFloat32.srv"
+  "srv/SetInt32.srv"
+
 )
 
 if(BUILD_TESTING)
