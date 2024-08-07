@@ -50,6 +50,7 @@ function triggerInputMapper() {
 function successOutputMapper(res: any): boolean {
   return res.success;
 }
+
 export default function useCameraNode(nodeName: string) {
   const node = useROSNode(nodeName);
   const state = node.useTopic(

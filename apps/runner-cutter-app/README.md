@@ -6,32 +6,21 @@ Web app for laser runner cutter control and automation, built with Next.js.
 
 1.  Follow setup steps in [ros2/README.md](../../ros2/README.md)
 
-1.  Install nvm
+1.  Run the following:
 
-        $ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-
-1.  Install Node.js
-
-        $ nvm install --lts
-
-1.  Install npm packages
-
-        $ cd laser-runner-cutter/apps/runner-cutter-app
-        $ npm install
+        $ scripts/setup.sh
 
 ## Run locally
 
-1.  Run the following:
+1.  Run the following to run all ROS2 nodes and the app (in dev mode) concurrently:
 
         $ scripts/local_run_dev.sh
 
 1.  Open [http://localhost:3000](http://localhost:3000) with your browser to see the app.
 
-## Install and run on Amiga brain
+## Install and run on production device
 
-1.  SSH into the Amiga brain and clone the repo there.
-
-1.  Run Setup steps above.
+1.  SSH into the device and clone the repo there.
 
 1.  [Optional] Set environment variables
 
@@ -43,11 +32,26 @@ Web app for laser runner cutter control and automation, built with Next.js.
 
     Change `ws://localhost:9090` to wherever Rosbridge will be running, and `http://localhost:8080` to wherever Web Video Server will be running.
 
-1.  Build the prod app:
+1.  Run the setup script:
 
-        $ cd laser-runner-cutter/apps/runner-cutter-app
-        $ npm run build
+        $ scripts/setup.sh
 
-1.  Finally, run:
+### On Amiga Brain
+
+1.  To register the app in the Amiga Brain's app launcher, run:
 
         $ scripts/amiga_register.sh
+
+### On any device running Ubuntu, such as an NVIDIA Jetson
+
+1.  Copy systemd service file
+
+        $ cp scripts/laser-runner-cutter-app.service /etc/systemd/system/
+
+1.  Edit the newly created `/etc/systemd/system/laser-runner-cutter-app.service` to contain the correct username
+
+1.  Enable the service to run on startup
+
+        $ sudo systemctl daemon-reload
+        $ sudo systemctl enable laser-runner-cutter-app.service
+        $ sudo systemctl start laser-runner-cutter-app.service
