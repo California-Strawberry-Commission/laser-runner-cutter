@@ -2,7 +2,10 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-
+from camera_control import camera_control_node
+from laser_control import laser_control_node
+# from runner_cutter_control import runner_cutter_control_node
+   
 from aioros2 import LaunchNode
 
 from amiga_control import amiga_control_node
@@ -18,6 +21,9 @@ from launch.launch_description_sources import (
     PythonLaunchDescriptionSource,
     FrontendLaunchDescriptionSource,
 )
+
+# 819312072040 - forward
+# 017322073371 - backward
 
 def generate_launch_description():
     parameters_file = os.path.join(
@@ -37,6 +43,7 @@ def generate_launch_description():
         ),
         launch_arguments={
             "camera": "camera_1",
+            "serial_no": "'819312072040'",
             "camera_name": "cam0",
             "filters": "decimation,spatial,temporal,hole_filling",
         }.items(),
@@ -53,6 +60,7 @@ def generate_launch_description():
         ),
         launch_arguments={
             "camera": "camera_2",
+            "serial_no": "'017322073371'",
             "camera_name": "cam1",
             "filters": "decimation,spatial,temporal,hole_filling",
         }.items(),
@@ -99,8 +107,9 @@ def generate_launch_description():
         package="web_video_server", executable="web_video_server", name="wvs"
     )
     
-    brain.perceiver_forward.link(furrow_perc0)
-    brain.perceiver_backward.link(furrow_perc1)
+    # brain.perceiver_forward.link(furrow_perc0)
+    
+    # brain.perceiver_backward.link(furrow_perc1)
     brain.amiga.link(amiga)
     
     launchables = [
@@ -109,15 +118,13 @@ def generate_launch_description():
         rosbridge,
         video_server,
         rs_node0,
+        rs_node1,
         furrow_perc0,
         furrow_perc1,
     ]
     
     if importlib.util.find_spec("arena_api"):
-        from camera_control import camera_control_node
-        from laser_control import laser_control_node
-        from runner_cutter_control import runner_cutter_control_node
-        
+ 
         camera_node = LaunchNode(
             camera_control_node,
             name="camera0",
@@ -134,21 +141,22 @@ def generate_launch_description():
             respawn_delay=2.0,
         )
 
-        runner_cutter_node = LaunchNode(
-            runner_cutter_control_node,
-            name="control0",
-            parameters=[parameters_file],
-            respawn=True,
-            respawn_delay=2.0,
-        )
+        # runner_cutter_node = LaunchNode(
+        #     runner_cutter_control_node,
+        #     name="control0",
+        #     parameters=[parameters_file],
+        #     respawn=True,
+        #     respawn_delay=2.0,
+        # )
         
         # Link nodes
-        runner_cutter_node.camera_node.link(camera_node)
-        runner_cutter_node.laser_node.link(laser_node)
+        #print(runner_cutter_node)
+       #  runner_cutter_node.camera_node.link(camera_node)
+       #  runner_cutter_node.laser_node.link(laser_node)
 
         launchables.append(camera_node)
         launchables.append(laser_node)
-        launchables.append(runner_cutter_node)
+        # launchables.append(runner_cutter_node)
         
 
 

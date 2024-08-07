@@ -7,9 +7,12 @@ export default function Laser() {
     <main className="flex flex-col h-full gap-4">
       <h1 className="text-3xl font-bold">Navigation Test</h1>
       <div className="items-center justify-center">
-        <FurrowPercieverControls></FurrowPercieverControls>
+
         <FramePreview topicName="/furrow0/debug_img"></FramePreview>
+        <FramePreview topicName="/furrow1/debug_img"></FramePreview>
+        <FurrowPercieverControls></FurrowPercieverControls>
         <GuidanceBrainControls></GuidanceBrainControls>
+
       </div>
     </main>
   );

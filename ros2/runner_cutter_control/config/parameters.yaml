@@ -24,11 +24,13 @@ laser0:
       fps: 30
       pps: 30000
       transition_duration_ms: 0.5
-furrow0:
+furrow0: # Forward
   ros__parameters:
+    p:
+      guidance_offset: -12
     realsense:
       name: cam0
-furrow1:
+furrow1: # Backward
   ros__parameters:
     realsense:
       name: cam1

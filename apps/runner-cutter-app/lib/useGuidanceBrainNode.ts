@@ -41,7 +41,7 @@ export default function useGuidanceBrainNode(nodeName: string) {
   );
 
   const stop = node.useService(
-    "~/go_backward",
+    "~/stop",
     "std_srvs/Trigger",
     () => ({}), // maps request message to a JS api & solidifies typing info
     (_data: any) => undefined, // maps incoming response & solidifies typing info

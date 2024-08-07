@@ -103,6 +103,7 @@ class FurrowPerceiverNode:
             self.tracker = FurrowTracker()
             self.tracker.init(cv_image)
             self.annotator = FurrowTrackerAnnotator(self.tracker)
+            self.tracker.guidance_offset_x = self.p.guidance_offset
 
         # Process image for guidance
         self.tracker.process(cv_image)
