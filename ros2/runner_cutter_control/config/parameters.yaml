@@ -24,3 +24,11 @@ laser0:
       fps: 30
       pps: 30000
       transition_duration_ms: 0.5
+furrow0:
+  ros__parameters:
+    realsense:
+      name: cam0
+furrow1:
+  ros__parameters:
+    realsense:
+      name: cam1

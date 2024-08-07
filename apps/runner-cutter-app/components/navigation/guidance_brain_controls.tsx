@@ -60,10 +60,28 @@ export default function GuidanceBrainControls() {
       <Button
         disabled={disableButtons}
         onClick={() => {
-          node.setActive(!node.state.guidance_active)
+          node.stop()
         }}
       >
-        {node.state.guidance_active ? "Deactivate" : "Activate"}
+        STOP
+      </Button>
+
+      <Button
+        disabled={disableButtons || node.state.guidance_active}
+        onClick={() => {
+          node.goForward()
+        }}
+      >
+        Forward
+      </Button>
+
+      <Button
+        disabled={disableButtons || node.state.guidance_active}
+        onClick={() => {
+          node.goBackward()
+        }}
+      >
+        Backward
       </Button>
 
     </div>

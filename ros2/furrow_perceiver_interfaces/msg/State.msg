@@ -1,2 +1,1 @@
-bool camera_connected
-uint32 fps
+int32 guidance_offset
