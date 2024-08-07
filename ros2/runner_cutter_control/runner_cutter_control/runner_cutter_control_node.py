@@ -304,7 +304,7 @@ class StateMachine:
         )
         self.machine.add_transition("burn_complete", "burn_target", "acquire_target")
         # Emergency Stop
-        self.machine.add_transition("stop", "*", "idle")
+        self.machine.add_transition("stop", "*", "idle", before="stop_current_task")
 
         self._current_task: Optional[asyncio.Task] = None
 
@@ -312,25 +312,27 @@ class StateMachine:
     def is_calibrated(self):
         return self._calibration.is_calibrated
 
-    async def on_enter_idle(self):
-        self._logger.info(f"Entered state <idle>")
+    async def stop_current_task(self):
+        self._logger.info("Stopping current task")
 
-        # Cancel currently running task
         if self._current_task:
             self._current_task.cancel()
             try:
                 await self._current_task
             except asyncio.CancelledError:
                 pass
-            self._current_task = None
 
+    async def on_enter_idle(self):
+        self._logger.info("Entered state <idle>")
+
+        self._current_task = None
         await self._laser_node.stop()
         await self._laser_node.clear_points()
         self._runner_tracker.clear()
         self._node.publish_state()
 
     async def on_enter_calibration(self):
-        self._logger.info(f"Entered state <calibration>")
+        self._logger.info("Entered state <calibration>")
         self._node.publish_state()
 
         self._current_task = asyncio.create_task(self._calibration_task())
@@ -342,7 +344,7 @@ class StateMachine:
     async def on_enter_add_calibration_points(
         self, normalized_pixel_coords: List[Tuple[float, float]]
     ):
-        self._logger.info(f"Entered state <add_calibration_points>")
+        self._logger.info("Entered state <add_calibration_points>")
         self._node.publish_state()
 
         self._current_task = asyncio.create_task(
@@ -380,7 +382,7 @@ class StateMachine:
     async def on_enter_manual_target_aim_laser(
         self, normalized_pixel_coord: Tuple[float, float]
     ):
-        self._logger.info(f"Entered state <manual_target_aim_laser>")
+        self._logger.info("Entered state <manual_target_aim_laser>")
         self._node.publish_state()
 
         self._current_task = asyncio.create_task(
@@ -414,7 +416,7 @@ class StateMachine:
         await self.manual_target_aim_laser_complete()
 
     async def on_enter_acquire_target(self):
-        self._logger.info(f"Entered state <acquire_target>")
+        self._logger.info("Entered state <acquire_target>")
         self._node.publish_state()
 
         self._current_task = asyncio.create_task(self._acquire_target_task())
@@ -522,7 +524,7 @@ class StateMachine:
                 self._runner_tracker.process_track(track_id, TrackState.FAILED)
 
     async def on_enter_aim_laser(self, target: Track):
-        self._logger.info(f"Entered state <aim_laser>")
+        self._logger.info("Entered state <aim_laser>")
         self._node.publish_state()
 
         self._current_task = asyncio.create_task(self._aim_laser_task(target))
