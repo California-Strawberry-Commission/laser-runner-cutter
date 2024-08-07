@@ -65,6 +65,7 @@ Download and install the Arena SDK and the Arena Python Package which can be fou
 
 1.  Enable the service to run on startup
 
+        $ sudo systemctl daemon-reload
         $ sudo systemctl enable laser-runner-cutter-ros.service
         $ sudo systemctl start laser-runner-cutter-ros.service
 

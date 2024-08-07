@@ -52,5 +52,6 @@ Web app for laser runner cutter control and automation, built with Next.js.
 
 1.  Enable the service to run on startup
 
+        $ sudo systemctl daemon-reload
         $ sudo systemctl enable laser-runner-cutter-app.service
         $ sudo systemctl start laser-runner-cutter-app.service
