@@ -69,6 +69,10 @@ Download and install the Arena SDK and the Arena Python Package which can be fou
         $ sudo systemctl enable laser-runner-cutter-ros.service
         $ sudo systemctl start laser-runner-cutter-ros.service
 
+1.  To view the logs, run:
+
+        $ journalctl -f --unit laser-runner-cutter-ros.service
+
 ## Native libraries
 
 C/C++ libraries included were compiled for linux-x86_64 and linux-aarch64 from the following sources:

@@ -6,8 +6,9 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
-# Install Node.js
-nvm install --lts
+# Install Node.js - lock to v20.11.1 for now since we're running into an issue with the current LTS (v20.16.0)
+nvm install 20.11.1
+nvm use 20.11.1
 
 # Install npm packages
 script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
