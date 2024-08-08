@@ -32,7 +32,7 @@ export default function ExitButton({ className }: { className?: string }) {
         window.location.href = `${window.location.protocol}//${window.location.hostname}/apps/launcher`;
       })
       .catch((error) => {
-        console.error("Error:", error);
+        console.error("Error when clicking exit button:", error);
       });
   };
 
@@ -47,13 +47,13 @@ export default function ExitButton({ className }: { className?: string }) {
         }
       })
       .catch((error) => {
-        console.error("Error:", error);
+        console.warn("Could not fetch custom app info:", error);
       });
   }, []);
 
-  return (
+  return appData.name ? (
     <Button className={className} onClick={handleClick}>
       Quit
     </Button>
-  );
+  ) : null;
 }
