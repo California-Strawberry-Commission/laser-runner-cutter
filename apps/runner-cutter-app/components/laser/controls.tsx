@@ -3,7 +3,6 @@
 import ColorPicker from "@/components/laser/color-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import useROS from "@/lib/ros/useROS";
 import useLaserNode, { DeviceState } from "@/lib/useLaserNode";
 import { useState } from "react";
 
@@ -20,7 +19,6 @@ function hexToRgb(hexColor: string) {
 }
 
 export default function Controls() {
-  const { connected: rosConnected } = useROS();
   // TODO: add ability to select node name
   const [nodeName, setNodeName] = useState<string>("/laser0");
   const laserNode = useLaserNode(nodeName);
@@ -28,7 +26,7 @@ export default function Controls() {
   const [x, setX] = useState<string>("0");
   const [y, setY] = useState<string>("0");
 
-  const disableButtons = !rosConnected || !laserNode.connected;
+  const disableButtons = !laserNode.connected;
 
   let playbackButton = null;
   if (laserNode.state === DeviceState.Stopped) {

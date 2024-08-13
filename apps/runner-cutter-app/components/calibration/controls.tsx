@@ -2,11 +2,9 @@
 
 import FramePreview from "@/components/camera/frame-preview";
 import { Button } from "@/components/ui/button";
-import useROS from "@/lib/ros/useROS";
 import useControlNode from "@/lib/useControlNode";
 
 export default function Controls() {
-  const { connected: rosConnected } = useROS();
   const controlNode = useControlNode("/control0");
 
   const onImageClick = (event: any) => {
@@ -23,9 +21,7 @@ export default function Controls() {
   };
 
   const disableButtons =
-    !rosConnected ||
-    !controlNode.connected ||
-    controlNode.state.state !== "idle";
+    !controlNode.connected || controlNode.state.state !== "idle";
 
   return (
     <div className="flex flex-col gap-4 items-center">

@@ -100,7 +100,7 @@ export default function useCameraNode(nodeName: string) {
     return () => {
       logSub.unsubscribe();
     };
-  }, [node, nodeName, addLogMessage]);
+  }, [node.ros, nodeName, addLogMessage]);
 
   // TODO: Optimistically set device state to "connecting"
   const startDevice = node.useService(
