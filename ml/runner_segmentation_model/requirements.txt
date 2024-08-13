@@ -1,6 +1,6 @@
 numpy
 Pillow
-ultralytics
+ultralytics==8.2.74
 dvc
 dvc[s3]
 python-dotenv

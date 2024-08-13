@@ -11,7 +11,7 @@ setup(
         "setuptools",
         "numpy",
         "Pillow",
-        "ultralytics",
+        "ultralytics==8.2.74",
         "natsort",
         "opencv-python",
         "albumentations",

@@ -1,4 +1,3 @@
-ultralytics
 opencv-contrib-python
 pyrealsense2
 numpy
