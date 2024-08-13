@@ -8,12 +8,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { InputWithLabel } from "@/components/ui/input-with-label";
-import useROS from "@/lib/ros/useROS";
 import useCameraNode from "@/lib/useCameraNode";
 import { useEffect, useState } from "react";
 
 export default function Controls() {
-  const { connected: rosConnected } = useROS();
   // TODO: add ability to select node name
   const [nodeName, setNodeName] = useState<string>("/camera0");
   const cameraNode = useCameraNode(nodeName);
@@ -22,7 +20,7 @@ export default function Controls() {
   const [saveDir, setSaveDir] = useState<string>("");
   const [intervalSecs, setIntervalSecs] = useState<string>("5");
 
-  const disableButtons = !rosConnected || !cameraNode.connected;
+  const disableButtons = !cameraNode.connected;
 
   // Sync text inputs to node state
   useEffect(() => {

@@ -27,7 +27,7 @@ function useTopic(nodeName: string, ros: any) {
         setVal(typeof mapper === "function" ? mapper(v) : v)
       );
       return () => sub.unsubscribe();
-    }, [path, idl, mapper]);
+    }, [nodeName, ros, path, idl, mapper]);
 
     return val;
   };

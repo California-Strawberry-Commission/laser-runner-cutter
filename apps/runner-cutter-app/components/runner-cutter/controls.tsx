@@ -3,12 +3,10 @@
 import FramePreview from "@/components/camera/frame-preview";
 import Overlay from "@/components/runner-cutter/overlay";
 import { Button } from "@/components/ui/button";
-import useROS from "@/lib/ros/useROS";
 import useControlNode from "@/lib/useControlNode";
 import { useCallback, useState } from "react";
 
 export default function Controls() {
-  const { connected: rosConnected } = useROS();
   const controlNode = useControlNode("/control0");
   const [framePreviewSize, setFramePreviewSize] = useState({
     width: 0,
@@ -16,9 +14,7 @@ export default function Controls() {
   });
 
   const disableButtons =
-    !rosConnected ||
-    !controlNode.connected ||
-    controlNode.state.state !== "idle";
+    !controlNode.connected || controlNode.state.state !== "idle";
 
   const onFramePreviewSizeChanged = useCallback(
     (width: number, height: number) => {
@@ -44,7 +40,7 @@ export default function Controls() {
           Start
         </Button>
         <Button
-          disabled={!rosConnected || !controlNode.connected}
+          disabled={!controlNode.connected}
           variant="destructive"
           onClick={() => {
             controlNode.stop();

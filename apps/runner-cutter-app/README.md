@@ -42,6 +42,10 @@ Web app for laser runner cutter control and automation, built with Next.js.
 
         $ scripts/amiga_register.sh
 
+1.  To view the logs, run:
+
+        $ journalctl -f --user-unit laser-runner-cutter-app.service
+
 ### On any device running Ubuntu, such as an NVIDIA Jetson
 
 1.  Copy systemd service file
@@ -55,3 +59,7 @@ Web app for laser runner cutter control and automation, built with Next.js.
         $ sudo systemctl daemon-reload
         $ sudo systemctl enable laser-runner-cutter-app.service
         $ sudo systemctl start laser-runner-cutter-app.service
+
+1.  To view the logs, run:
+
+        $ journalctl -f --unit laser-runner-cutter-app.service

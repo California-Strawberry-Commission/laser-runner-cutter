@@ -3,7 +3,7 @@ Description="Laser Runner Cutter app"
 After=network.target
 
 [Service]
-Environment="PATH=/home/csc-jetson1/.nvm/versions/node/v20.16.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PATH=/home/csc-jetson1/.nvm/versions/node/v20.11.1/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 WorkingDirectory=/home/csc-jetson1/laser-runner-cutter/apps/runner-cutter-app
 ExecStart=/home/csc-jetson1/laser-runner-cutter/apps/runner-cutter-app/scripts/run_app.sh
 StandardOutput=inherit
