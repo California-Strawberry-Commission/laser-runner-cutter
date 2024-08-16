@@ -1,7 +1,7 @@
 [submodule "ros2/realsense-ros"]
 	path = ros2/realsense-ros
 	url = https://github.com/IntelRealSense/realsense-ros.git
-	branch = ros2-legacy
+	branch = ros2-master
 [submodule "ros2/web_video_server"]
 	path = ros2/web_video_server
 	url = https://github.com/RobotWebTools/web_video_server.git
