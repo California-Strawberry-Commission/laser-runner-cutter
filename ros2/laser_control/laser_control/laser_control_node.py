@@ -5,10 +5,18 @@ import platform
 from dataclasses import dataclass
 
 from ament_index_python.packages import get_package_share_directory
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile
 from std_srvs.srv import Trigger
 
-from aioros2 import node, params, result, serve_nodes, service, start, topic
+from aioros2 import (
+    node,
+    params,
+    result,
+    serve_nodes,
+    service,
+    start,
+    topic,
+    QOS_LATCHED,
+)
 from laser_control.laser_dac import EtherDreamDAC, HeliosDAC
 from laser_control_interfaces.msg import State
 from laser_control_interfaces.srv import (
@@ -32,15 +40,7 @@ class LaserControlParams:
 @node("laser_control_node")
 class LaserControlNode:
     laser_control_params = params(LaserControlParams)
-    state_topic = topic(
-        "~/state",
-        State,
-        qos=QoSProfile(
-            depth=1,
-            # Setting durability to Transient Local will persist samples for late joiners
-            durability=QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL,
-        ),
-    )
+    state_topic = topic("~/state", State, qos=QOS_LATCHED)
 
     @start
     async def start(self):

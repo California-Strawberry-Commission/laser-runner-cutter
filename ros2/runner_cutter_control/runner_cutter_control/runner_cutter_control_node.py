@@ -12,7 +12,6 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Set, Tuple
 
 import numpy as np
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile
 from std_srvs.srv import Trigger
 from transitions.extensions.asyncio import AsyncMachine
 
@@ -27,6 +26,7 @@ from aioros2 import (
     service,
     start,
     topic,
+    QOS_LATCHED,
 )
 from common_interfaces.msg import Vector2, Vector4
 from runner_cutter_control.calibration import Calibration
@@ -52,15 +52,7 @@ class RunnerCutterControlParams:
 @node("runner_cutter_control_node")
 class RunnerCutterControlNode:
     runner_cutter_control_params = params(RunnerCutterControlParams)
-    state_topic = topic(
-        "~/state",
-        State,
-        qos=QoSProfile(
-            depth=1,
-            # Setting durability to Transient Local will persist samples for late joiners
-            durability=QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL,
-        ),
-    )
+    state_topic = topic("~/state", State, qos=QOS_LATCHED)
 
     laser_node: laser_control_node.LaserControlNode = import_node(laser_control_node)
     camera_node: camera_control_node.CameraControlNode = import_node(

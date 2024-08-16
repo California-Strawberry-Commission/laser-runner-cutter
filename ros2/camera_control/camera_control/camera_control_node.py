@@ -12,12 +12,20 @@ from ament_index_python.packages import get_package_share_directory
 from cv_bridge import CvBridge
 from ml_utils.mask_center import contour_center
 from rcl_interfaces.msg import Log
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile
 from runner_segmentation.yolo import Yolo
 from sensor_msgs.msg import CompressedImage, Image
 from std_srvs.srv import Trigger
 
-from aioros2 import node, params, result, serve_nodes, service, start, topic
+from aioros2 import (
+    node,
+    params,
+    result,
+    serve_nodes,
+    service,
+    start,
+    topic,
+    QOS_LATCHED,
+)
 from camera_control.camera.lucid_camera import create_lucid_rgbd_camera
 from camera_control.camera.realsense_camera import RealSenseCamera
 from camera_control.camera.rgbd_camera import State as RgbdCameraState
@@ -64,15 +72,7 @@ def milliseconds_to_ros_time(milliseconds):
 @node("camera_control_node")
 class CameraControlNode:
     camera_control_params = params(CameraControlParams)
-    state_topic = topic(
-        "~/state",
-        State,
-        qos=QoSProfile(
-            depth=1,
-            # Setting durability to Transient Local will persist samples for late joiners
-            durability=QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL,
-        ),
-    )
+    state_topic = topic("~/state", State, qos=QOS_LATCHED)
     # Increasing queue size for Image topics seems to help prevent web_video_server's subscription
     # from stalling
     color_frame_topic = topic("~/color_frame", Image, qos=5)
