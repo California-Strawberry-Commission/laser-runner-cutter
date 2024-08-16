@@ -21,7 +21,7 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-a
 
 # Install APT deps
 sudo apt update
-sudo apt install -y ros-$ROS_DISTRO-desktop ros-dev-tools ros-$ROS_DISTRO-rosbridge-suite ros-$ROS_DISTRO-async-web-server-cpp
+sudo apt install -y ros-$ROS_DISTRO-desktop ros-dev-tools ros-$ROS_DISTRO-diagnostic-updater ros-$ROS_DISTRO-rosbridge-suite ros-$ROS_DISTRO-async-web-server-cpp
 
 # https://github.com/matplotlib/matplotlib/issues/26827#issuecomment-1726026699
 # Solves a potential import conflict between system matplotlib and env matplotlib
