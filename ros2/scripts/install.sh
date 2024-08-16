@@ -15,14 +15,7 @@ if [ ! -f "$installed_file" ]; then
     git submodule update --init --recursive
 
     bash ./install_python_venv.sh
-
-    arch=$(uname -i)
-    if [[ $arch == x86_64* ]]; then
-        bash ./install_cuda_amd64.sh
-    elif  [[ $arch == aarch64* ]]; then
-        bash ./install_cuda_arm64.sh
-    fi
-
+    bash ./install_cuda.sh
     bash ./install_arena_sdk.sh
     bash ./install_ros.sh
     bash ./install_realsense_ros.sh

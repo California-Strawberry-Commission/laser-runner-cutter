@@ -4,13 +4,13 @@ set -e
 script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source $script_dir/env.sh
 
-# IMPORTANT: Some ROS versions need an upgrade 
-# before install or they brick the system :)
+# IMPORTANT: Some ROS versions need an upgrade before install or they brick the system :)
+# See https://github.com/ros2/ros2/issues/1272
 sudo apt update
 sudo apt upgrade -y
 
-# ROS install
-# Follow: https://docs.ros.org/en/foxy/Installation/Ubuntu-Install-Debians.html
+# Install ROS2 Humble
+# The following is from https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debians.html
 sudo apt install software-properties-common
 sudo add-apt-repository universe
 
@@ -21,7 +21,7 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-a
 
 # Install APT deps
 sudo apt update
-sudo apt install -y ros-foxy-desktop ros-foxy-diagnostic-updater python3-rosdep2 python3-colcon-common-extensions python3-argcomplete ros-foxy-rosbridge-suite ros-foxy-async-web-server-cpp ros-foxy-cv-bridge ros-foxy-image-transport
+sudo apt install -y ros-$ROS_DISTRO-desktop ros-dev-tools ros-$ROS_DISTRO-rosbridge-suite ros-$ROS_DISTRO-async-web-server-cpp
 
 # https://github.com/matplotlib/matplotlib/issues/26827#issuecomment-1726026699
 # Solves a potential import conflict between system matplotlib and env matplotlib
