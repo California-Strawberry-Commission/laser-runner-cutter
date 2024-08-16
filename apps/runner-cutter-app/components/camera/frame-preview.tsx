@@ -33,7 +33,7 @@ export default function FramePreview({
         process.env.NEXT_PUBLIC_VIDEO_SERVER_URL ??
         `http://${window.location.hostname}:8080`;
       setStreamUrl(
-        `${videoServer}/stream?topic=${topicName}&quality=${quality}`
+        `${videoServer}/stream?topic=${topicName}&quality=${quality}&qos_profile=sensor_data`
       );
     }
   }, [topicName, quality]);
