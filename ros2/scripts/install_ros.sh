@@ -11,8 +11,8 @@ sudo apt upgrade -y
 
 # Install ROS2 Humble
 # The following is from https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debians.html
-sudo apt install software-properties-common
-sudo add-apt-repository universe
+sudo apt install -y software-properties-common
+sudo add-apt-repository universe -y
 
 sudo apt update && sudo apt install curl -y
 sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg

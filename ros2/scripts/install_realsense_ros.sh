@@ -4,8 +4,7 @@ set -e
 script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source $script_dir/env.sh
 
-# perform all commands in workspace dir
-cd $ROS_WS_DIR
+cd ~
 
 # Install RealSense SDK 2.0
 # The following is from https://github.com/IntelRealSense/librealsense/blob/master/doc/distribution_linux.md#installing-the-packages
