@@ -14,6 +14,11 @@ if [ ! -f "$installed_file" ]; then
     # Init submodules
     git submodule update --init --recursive
 
+    # Install Git LFS and pull LFS files
+    curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
+    sudo apt-get -y install git-lfs
+    git lfs pull
+
     bash ./install_python_venv.sh
     bash ./install_cuda.sh
     bash ./install_arena_sdk.sh
