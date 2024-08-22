@@ -12,12 +12,21 @@ from ament_index_python.packages import get_package_share_directory
 from cv_bridge import CvBridge
 from ml_utils.mask_center import contour_center
 from rcl_interfaces.msg import Log
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile
+from rclpy.qos import qos_profile_sensor_data
 from runner_segmentation.yolo import Yolo
 from sensor_msgs.msg import CompressedImage, Image
 from std_srvs.srv import Trigger
 
-from aioros2 import node, params, result, serve_nodes, service, start, topic
+from aioros2 import (
+    QOS_LATCHED,
+    node,
+    params,
+    result,
+    serve_nodes,
+    service,
+    start,
+    topic,
+)
 from camera_control.camera.lucid_camera import create_lucid_rgbd_camera
 from camera_control.camera.realsense_camera import RealSenseCamera
 from camera_control.camera.rgbd_camera import State as RgbdCameraState
@@ -64,19 +73,11 @@ def milliseconds_to_ros_time(milliseconds):
 @node("camera_control_node")
 class CameraControlNode:
     camera_control_params = params(CameraControlParams)
-    state_topic = topic(
-        "~/state",
-        State,
-        qos=QoSProfile(
-            depth=1,
-            # Setting durability to Transient Local will persist samples for late joiners
-            durability=QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL,
-        ),
-    )
-    # Increasing queue size for Image topics seems to help prevent web_video_server's subscription
+    state_topic = topic("~/state", State, qos=QOS_LATCHED)
+    # Note: setting queue size to > 1 for Image topics seems to help prevent web_video_server's subscription
     # from stalling
-    color_frame_topic = topic("~/color_frame", Image, qos=5)
-    debug_frame_topic = topic("~/debug_frame", Image, qos=5)
+    color_frame_topic = topic("~/color_frame", Image, qos=qos_profile_sensor_data)
+    debug_frame_topic = topic("~/debug_frame", Image, qos=qos_profile_sensor_data)
     laser_detections_topic = topic("~/laser_detections", DetectionResult, qos=5)
     runner_detections_topic = topic("~/runner_detections", DetectionResult, qos=5)
     # ROS publishes logs on /rosout, but as it contains logs from all nodes and also contains
