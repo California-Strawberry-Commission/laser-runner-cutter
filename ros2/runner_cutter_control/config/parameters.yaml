@@ -5,7 +5,6 @@ control0:
       burn_laser_color: [0.15, 0.0, 0.0]
       burn_time_secs: 1.0
       enable_aiming: True
-
 camera0:
   ros__parameters:
     camera_control_params:
@@ -15,7 +14,7 @@ camera0:
       gain_db: 1.0
       save_dir: "~/Pictures/runner-cutter-app"
       debug_frame_width: 640
-      debug_frame_min_exposure_us: 10.0
+      debug_video_fps: 15.0
 laser0:
   ros__parameters:
     laser_control_params:
