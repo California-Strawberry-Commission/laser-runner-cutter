@@ -5,7 +5,6 @@ import React, { useEffect, useRef, useState } from "react";
 export default function FramePreview({
   topicName,
   height = 360,
-  quality = 30,
   onImageLoad,
   onImageClick,
   onImageSizeChanged,
@@ -21,25 +20,84 @@ export default function FramePreview({
   onImageSizeChanged?: (width: number, height: number) => void;
   onComponentSizeChanged?: (width: number, height: number) => void;
 }) {
-  const imgRef = useRef<HTMLImageElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const peerConnection = useRef<RTCPeerConnection | null>(null);
+
   const [streamUrl, setStreamUrl] = useState<string>();
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [componentSize, setComponentSize] = useState({ width: 0, height: 0 });
 
   // Unfortunately, with SSR, this needed for code that should only run on client side
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const videoServer =
+    console.log(`FRAME PREVIEW EFFECT: ${topicName}`);
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const initWebRTC = async () => {
+      const pc = new RTCPeerConnection();
+      peerConnection.current = pc;
+      // From https://stackoverflow.com/questions/50002099/webrtc-one-way-video-call
+      pc.addTransceiver("video");
+      // This step seems to be optional:
+      pc.getTransceivers().forEach((t) => (t.direction = "recvonly"));
+
+      pc.ontrack = (event) => {
+        if (event.track.kind === "video") {
+          console.log(`Video track received`);
+          if (videoRef.current) {
+            videoRef.current.srcObject = event.streams[0];
+          }
+        }
+      };
+
+      pc.oniceconnectionstatechange = (event) => {
+        console.log(`oniceconnectionstatechange: ${pc.iceConnectionState}`);
+      };
+
+      pc.onsignalingstatechange = (event) => {
+        console.log(`onsignalingstatechange: ${pc.signalingState}`);
+      };
+
+      pc.onconnectionstatechange = (event) => {
+        console.log(`onconnectionstatechange: ${pc.connectionState}`);
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const signalingServerUrl =
         process.env.NEXT_PUBLIC_VIDEO_SERVER_URL ??
         `http://${window.location.hostname}:8080`;
-      setStreamUrl(
-        `${videoServer}/stream?topic=${topicName}&quality=${quality}&qos_profile=sensor_data`
+      const response = await fetch(
+        `${signalingServerUrl}/offer?topic=${topicName}`,
+        {
+          method: "POST",
+          body: JSON.stringify(pc.localDescription),
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
       );
-    }
-  }, [topicName, quality]);
+      const answer = await response.json();
+      await pc.setRemoteDescription(answer);
+    };
 
+    // Start the WebRTC connection
+    initWebRTC();
+
+    return () => {
+      if (peerConnection.current) {
+        peerConnection.current.close();
+        peerConnection.current = null;
+      }
+    };
+  }, [topicName]);
+
+  /*
   useEffect(() => {
-    const img = imgRef.current;
+    const img = imageRef.current;
     if (img) {
       const updateSize = () => {
         if (imgRef.current) {
@@ -89,16 +147,18 @@ export default function FramePreview({
     onImageSizeChanged,
     onComponentSizeChanged,
   ]);
+  */
 
   return (
-    <img
-      ref={imgRef}
-      src={streamUrl}
-      alt="Camera Color Frame"
+    <video
+      ref={videoRef}
       className="w-auto max-h-full max-w-full"
+      autoPlay={true}
+      playsInline={true}
+      muted={true}
       style={{ height }}
-      onLoad={onImageLoad}
-      onClick={onImageClick}
+      // onLoad={onImageLoad}
+      // onClick={onImageClick}
     />
   );
 }
