@@ -72,7 +72,7 @@ class RunnerCutterControlNode:
             self.runner_cutter_control_params.tracking_laser_color,
             self.get_logger(),
         )
-        self.runner_tracker = Tracker(self.get_logger())
+        self.runner_tracker = Tracker()
         self.state_machine = StateMachine(
             self,
             self.laser_node,
@@ -337,9 +337,13 @@ class StateMachine:
 
     def _save_summary(self):
         ts = time.time()
-        output = {"timestamp": ts, "tracks": {}}
+        output = {
+            "timestamp": ts,
+            "tracks": self._runner_tracker.to_dict(),
+            "summary": {},
+        }
         for track_state in TrackState:
-            output["tracks"][track_state.name] = len(
+            output["summary"][track_state.name] = len(
                 self._runner_tracker.get_tracks_with_state(track_state)
             )
 
@@ -352,7 +356,7 @@ class StateMachine:
         with open(filepath, "w") as f:
             f.write(json.dumps(output))
 
-        self._logger.info(f"Runner Cutter summary: {json.dumps(output)}")
+        self._logger.info(f"Runner Cutter summary: {json.dumps(output['summary'])}")
 
     async def on_enter_calibration(self):
         self._logger.info("Entered state <calibration>")
