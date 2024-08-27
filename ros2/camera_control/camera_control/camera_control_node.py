@@ -57,7 +57,7 @@ class CameraControlParams:
     camera_index: int = 0
     exposure_us: float = -1.0
     gain_db: float = -1.0
-    save_dir: str = "~/Pictures/runner-cutter-app"
+    save_dir: str = "~/runner-cutter-output"
     debug_frame_width: int = 640
     debug_video_fps: float = 30.0
 
@@ -468,6 +468,10 @@ class CameraControlNode:
                     )
                 )
 
+            debug_frame = self._debug_draw_timestamp(
+                debug_frame, frame.timestamp_millis
+            )
+
             # Downscale debug_frame using INTER_NEAREST for best performance
             h, w, _ = debug_frame.shape
             aspect_ratio = h / w
@@ -785,6 +789,19 @@ class CameraControlNode:
                 debug_frame = cv2.putText(
                     debug_frame, f"{track_id}", pos, font, 1, center_color, 2
                 )
+        return debug_frame
+
+    def _debug_draw_timestamp(self, debug_frame, timestamp, color=(255, 255, 255)):
+        h, w, _ = debug_frame.shape
+        debug_frame = cv2.putText(
+            debug_frame,
+            f"{int(timestamp)}",
+            (20, h - 20),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            color,
+            2,
+        )
         return debug_frame
 
 
