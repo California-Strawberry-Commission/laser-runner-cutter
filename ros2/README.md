@@ -1,10 +1,10 @@
 # Laser Runner Cutter ROS2 Nodes
 
-This project uses **Ubuntu 20.04 (Focal Fossa)**! Newer versions of ROS are not currently supported!
+This project uses **Ubuntu 22.04 (Jammy Jellyfish)** and **ROS Humble**.
 
 ## Auto-Install
 
-Auto-Installation assumes a fresh version of **Ubuntu 20.04 desktop/server** on a dedicated deployment or development PC.
+Auto-installation assumes a fresh version of **Ubuntu 22.04 desktop/server** on a dedicated deployment or development PC.
 
 1.  Install Git LFS
 
@@ -27,47 +27,25 @@ Auto-Installation assumes a fresh version of **Ubuntu 20.04 desktop/server** on 
 
 ### Using Helios DAC on Linux
 
-Linux systems require udev rules to allow access to USB devices without root privileges.
-
-1.  Create a file _heliosdac.rules_ in /etc/udev with the contents:
-
-        ACTION=="add", SUBSYSTEM=="usb", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="e500", MODE="0660", GROUP="plugdev"
-
-1.  Create a link in /etc/udev/rules.d to _heliosdac.rules_:
-
-        cd /etc/udev/rules.d
-        sudo ln -s /etc/udev/heliosdac.rules 011_heliosdac.rules
-
-1.  Make sure the user account communicating with the DAC is in the _plugdev_ group. On a Raspberry Pi, the "pi" user is in the _plugdev_ group by default.
-
-1.  Issue the command `sudo udevadm control --reload` (or restart the computer).
+Linux systems require udev rules to allow access to USB devices without root privileges. This is already set up as part of the auto-install process above. Make sure that the user account communicating with the DAC is in the _plugdev_ group.
 
 ### Using LUCID cameras (Triton and Helios2)
 
-Download and install the Arena SDK and the Arena Python Package which can be found at https://thinklucid.com/downloads-hub/
+LUCID cameras require the Arena SDK and Arena Python Package, which can be found at https://thinklucid.com/downloads-hub/. This is already set up as part of the auto-install process above.
 
 ## Run
 
 ### Local development
 
-1.  Launch ROS2 nodes using the launch file
-
-        $ source laser-runner-cutter/ros2/scripts/setup.sh  # or setup.zsh in Z shell
-        $ ros2 launch runner_cutter_control launch.py
+1.  Run `scripts/run_ros.sh`
 
 ### Production device
 
-1.  Copy systemd service file
+On a production device, we can set up the machine to start the ROS2 nodes on startup:
 
-        $ cp scripts/laser-runner-cutter-ros.service /etc/systemd/system/
+1.  Modify `scripts/create_systemd_service.sh` with the correct username.
 
-1.  Edit the newly created `/etc/systemd/system/laser-runner-cutter-ros.service` to contain the correct username
-
-1.  Enable the service to run on startup
-
-        $ sudo systemctl daemon-reload
-        $ sudo systemctl enable laser-runner-cutter-ros.service
-        $ sudo systemctl start laser-runner-cutter-ros.service
+1.  Run `scripts/create_systemd_service.sh`.
 
 1.  To view the logs, run:
 

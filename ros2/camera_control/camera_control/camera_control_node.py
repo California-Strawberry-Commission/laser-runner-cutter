@@ -12,12 +12,21 @@ from ament_index_python.packages import get_package_share_directory
 from cv_bridge import CvBridge
 from ml_utils.mask_center import contour_center
 from rcl_interfaces.msg import Log
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile
+from rclpy.qos import qos_profile_sensor_data
 from runner_segmentation.yolo import Yolo
 from sensor_msgs.msg import CompressedImage, Image
 from std_srvs.srv import Trigger
 
-from aioros2 import node, params, result, serve_nodes, service, start, topic
+from aioros2 import (
+    QOS_LATCHED,
+    node,
+    params,
+    result,
+    serve_nodes,
+    service,
+    start,
+    topic,
+)
 from camera_control.camera.lucid_camera import create_lucid_rgbd_camera
 from camera_control.camera.realsense_camera import RealSenseCamera
 from camera_control.camera.rgbd_camera import State as RgbdCameraState
@@ -48,10 +57,9 @@ class CameraControlParams:
     camera_index: int = 0
     exposure_us: float = -1.0
     gain_db: float = -1.0
-    save_dir: str = "~/Pictures/runner-cutter-app"
+    save_dir: str = "~/runner-cutter-output"
     debug_frame_width: int = 640
-    # Exposure below which the debug frame will not be updated
-    debug_frame_min_exposure_us: float = -1.0
+    debug_video_fps: float = 30.0
 
 
 def milliseconds_to_ros_time(milliseconds):
@@ -64,19 +72,11 @@ def milliseconds_to_ros_time(milliseconds):
 @node("camera_control_node")
 class CameraControlNode:
     camera_control_params = params(CameraControlParams)
-    state_topic = topic(
-        "~/state",
-        State,
-        qos=QoSProfile(
-            depth=1,
-            # Setting durability to Transient Local will persist samples for late joiners
-            durability=QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL,
-        ),
-    )
-    # Increasing queue size for Image topics seems to help prevent web_video_server's subscription
+    state_topic = topic("~/state", State, qos=QOS_LATCHED)
+    # Note: setting queue size to > 1 for Image topics seems to help prevent web_video_server's subscription
     # from stalling
-    color_frame_topic = topic("~/color_frame", Image, qos=5)
-    debug_frame_topic = topic("~/debug_frame", Image, qos=5)
+    color_frame_topic = topic("~/color_frame", Image, qos=qos_profile_sensor_data)
+    debug_frame_topic = topic("~/debug_frame", Image, qos=qos_profile_sensor_data)
     laser_detections_topic = topic("~/laser_detections", DetectionResult, qos=5)
     runner_detections_topic = topic("~/runner_detections", DetectionResult, qos=5)
     # ROS publishes logs on /rosout, but as it contains logs from all nodes and also contains
@@ -88,7 +88,9 @@ class CameraControlNode:
     async def start(self):
         self.laser_detection_enabled = False
         self.runner_detection_enabled = False
+        self.record_video_task = None
         self.video_writer = None
+        self.debug_frame = None
         self.interval_capture_task = None
         # For converting numpy array to image msg
         self.cv_bridge = CvBridge()
@@ -276,29 +278,52 @@ class CameraControlNode:
 
     @service("~/start_recording_video", Trigger)
     async def start_recording_video(self):
-        save_dir = os.path.expanduser(self.camera_control_params.save_dir)
-        os.makedirs(save_dir, exist_ok=True)
-        ts = time.time()
-        datetime_obj = datetime.fromtimestamp(ts)
-        datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
-        video_name = f"{datetime_string}.avi"
-        video_path = os.path.join(save_dir, video_name)
-        self.video_writer = cv2.VideoWriter(
-            video_path,
-            cv2.VideoWriter_fourcc(*"XVID"),
-            self.camera_control_params.fps,
-            (
-                self.camera_control_params.rgb_size[0],
-                self.camera_control_params.rgb_size[1],
-            ),
+        if self.record_video_task is not None:
+            self.record_video_task.cancel()
+            self.record_video_task = None
+
+        self.record_video_task = asyncio.create_task(
+            self._record_video_task(1 / self.camera_control_params.debug_video_fps)
         )
         self._publish_state()
-        self._publish_log_message(f"Started recording video: {video_path}")
         return result(success=True)
+
+    async def _record_video_task(self, interval_secs: float):
+        try:
+            while True:
+                self._write_video_frame()
+                await asyncio.sleep(interval_secs)
+        finally:
+            self.video_writer = None
+
+    def _write_video_frame(self):
+        if self.video_writer is None and self.debug_frame is not None:
+            save_dir = os.path.expanduser(self.camera_control_params.save_dir)
+            os.makedirs(save_dir, exist_ok=True)
+            ts = time.time()
+            datetime_obj = datetime.fromtimestamp(ts)
+            datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
+            video_name = f"{datetime_string}.avi"
+            video_path = os.path.join(save_dir, video_name)
+            h, w, _ = self.debug_frame.shape
+            self.video_writer = cv2.VideoWriter(
+                video_path,
+                cv2.VideoWriter_fourcc(*"XVID"),
+                self.camera_control_params.debug_video_fps,
+                (w, h),
+            )
+            self._publish_log_message(f"Started recording video: {video_path}")
+
+        if self.video_writer is not None:
+            self.video_writer.write(cv2.cvtColor(self.debug_frame, cv2.COLOR_RGB2BGR))
 
     @service("~/stop_recording_video", Trigger)
     async def stop_recording_video(self):
-        self.video_writer = None
+        if self.record_video_task is None:
+            return result(success=False)
+
+        self.record_video_task.cancel()
+        self.record_video_task = None
         self._publish_state()
         self._publish_log_message("Stopped recording video")
         return result(success=True)
@@ -336,18 +361,12 @@ class CameraControlNode:
         self._publish_log_message("Stopped interval capture")
         return result(success=True)
 
-    @service("~/set_save_directory", SetSaveDirectory)
-    async def set_save_directory(self, save_directory):
-        await self.camera_control_params.set(save_dir=save_directory)
-        self._publish_state()
-        return result(success=True)
-
     async def _interval_capture_task(self, interval_secs: float):
         while True:
-            await self._save_image()
+            self._save_image()
             await asyncio.sleep(interval_secs)
 
-    async def _save_image(self) -> Optional[str]:
+    def _save_image(self) -> Optional[str]:
         frame = self.current_frame
         if frame is None:
             return None
@@ -365,6 +384,12 @@ class CameraControlNode:
         )
         self._publish_log_message(f"Saved image: {image_path}")
         return image_path
+
+    @service("~/set_save_directory", SetSaveDirectory)
+    async def set_save_directory(self, save_directory):
+        await self.camera_control_params.set(save_dir=save_directory)
+        self._publish_state()
+        return result(success=True)
 
     @service("~/get_state", GetState)
     async def get_state(self):
@@ -401,12 +426,6 @@ class CameraControlNode:
 
     async def _detection_task(self):
         if not self._camera_started or self.camera.state != RgbdCameraState.STREAMING:
-            return
-
-        if (
-            self.camera.exposure_us
-            < self.camera_control_params.debug_frame_min_exposure_us
-        ):
             return
 
         try:
@@ -449,6 +468,10 @@ class CameraControlNode:
                     )
                 )
 
+            debug_frame = self._debug_draw_timestamp(
+                debug_frame, frame.timestamp_millis
+            )
+
             # Downscale debug_frame using INTER_NEAREST for best performance
             h, w, _ = debug_frame.shape
             aspect_ratio = h / w
@@ -457,6 +480,9 @@ class CameraControlNode:
             debug_frame = cv2.resize(
                 debug_frame, (new_width, new_height), interpolation=cv2.INTER_NEAREST
             )
+
+            self.debug_frame = debug_frame
+
             msg = self._get_color_frame_msg(debug_frame, frame.timestamp_millis)
             asyncio.create_task(
                 self.debug_frame_topic(
@@ -469,10 +495,6 @@ class CameraControlNode:
                     data=msg.data,
                 )
             )
-
-            if self.video_writer is not None:
-                self.video_writer.write(cv2.cvtColor(debug_frame, cv2.COLOR_RGB2BGR))
-
         finally:
             self._detection_completed_event.set()
 
@@ -494,7 +516,7 @@ class CameraControlNode:
         state.device_state = device_state
         state.laser_detection_enabled = self.laser_detection_enabled
         state.runner_detection_enabled = self.runner_detection_enabled
-        state.recording_video = self.video_writer is not None
+        state.recording_video = self.record_video_task is not None
         state.interval_capture_active = self.interval_capture_task is not None
         state.exposure_us = self.camera.exposure_us
         exposure_us_range = self.camera.get_exposure_us_range()
@@ -767,6 +789,19 @@ class CameraControlNode:
                 debug_frame = cv2.putText(
                     debug_frame, f"{track_id}", pos, font, 1, center_color, 2
                 )
+        return debug_frame
+
+    def _debug_draw_timestamp(self, debug_frame, timestamp, color=(255, 255, 255)):
+        h, w, _ = debug_frame.shape
+        debug_frame = cv2.putText(
+            debug_frame,
+            f"{int(timestamp)}",
+            (20, h - 20),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            color,
+            2,
+        )
         return debug_frame
 
 

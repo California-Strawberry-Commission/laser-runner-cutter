@@ -7,18 +7,22 @@ finding a specific runner to burn, and burning said runner.
 """
 
 import asyncio
+import json
 import logging
+import os
+import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import List, Optional, Set, Tuple
 
 import numpy as np
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile
 from std_srvs.srv import Trigger
 from transitions.extensions.asyncio import AsyncMachine
 
 import camera_control.camera_control_node as camera_control_node
 import laser_control.laser_control_node as laser_control_node
 from aioros2 import (
+    QOS_LATCHED,
     import_node,
     node,
     params,
@@ -47,20 +51,13 @@ class RunnerCutterControlParams:
     burn_laser_color: List[float] = field(default_factory=lambda: [0.0, 0.0, 1.0])
     burn_time_secs: float = 5.0
     enable_aiming: bool = True
+    save_dir: str = "~/runner-cutter-output/summary"
 
 
 @node("runner_cutter_control_node")
 class RunnerCutterControlNode:
     runner_cutter_control_params = params(RunnerCutterControlParams)
-    state_topic = topic(
-        "~/state",
-        State,
-        qos=QoSProfile(
-            depth=1,
-            # Setting durability to Transient Local will persist samples for late joiners
-            durability=QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL,
-        ),
-    )
+    state_topic = topic("~/state", State, qos=QOS_LATCHED)
 
     laser_node: laser_control_node.LaserControlNode = import_node(laser_control_node)
     camera_node: camera_control_node.CameraControlNode = import_node(
@@ -75,7 +72,7 @@ class RunnerCutterControlNode:
             self.runner_cutter_control_params.tracking_laser_color,
             self.get_logger(),
         )
-        self.runner_tracker = Tracker(self.get_logger())
+        self.runner_tracker = Tracker()
         self.state_machine = StateMachine(
             self,
             self.laser_node,
@@ -86,6 +83,7 @@ class RunnerCutterControlNode:
             self.runner_cutter_control_params.burn_laser_color,
             self.runner_cutter_control_params.burn_time_secs,
             self.runner_cutter_control_params.enable_aiming,
+            self.runner_cutter_control_params.save_dir,
             self.get_logger(),
         )
 
@@ -237,6 +235,7 @@ class StateMachine:
         burn_laser_color: Tuple[float, float, float],
         burn_time_secs: float,
         enable_aiming: bool,
+        summary_save_dir: str,
         logger: Optional[logging.Logger] = None,
     ):
         self._node = node
@@ -249,6 +248,7 @@ class StateMachine:
         self._burn_laser_color = burn_laser_color
         self._burn_time_secs = burn_time_secs
         self._enable_aiming = enable_aiming
+        self._summary_save_dir = summary_save_dir
         if logger:
             self._logger = logger
         else:
@@ -328,8 +328,35 @@ class StateMachine:
         self._current_task = None
         await self._laser_node.stop()
         await self._laser_node.clear_points()
+
+        if len(self._runner_tracker.tracks) > 0:
+            self._save_summary()
+
         self._runner_tracker.clear()
         self._node.publish_state()
+
+    def _save_summary(self):
+        ts = time.time()
+        output = {
+            "timestamp": ts,
+            "tracks": self._runner_tracker.to_dict(),
+            "summary": {},
+        }
+        for track_state in TrackState:
+            output["summary"][track_state.name] = len(
+                self._runner_tracker.get_tracks_with_state(track_state)
+            )
+
+        save_dir = os.path.expanduser(self._summary_save_dir)
+        os.makedirs(save_dir, exist_ok=True)
+        datetime_obj = datetime.fromtimestamp(ts)
+        datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
+        filename = f"tracker_{datetime_string}.json"
+        filepath = os.path.join(save_dir, filename)
+        with open(filepath, "w") as f:
+            f.write(json.dumps(output))
+
+        self._logger.info(f"Runner Cutter summary: {json.dumps(output['summary'])}")
 
     async def on_enter_calibration(self):
         self._logger.info("Entered state <calibration>")

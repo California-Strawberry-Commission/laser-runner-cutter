@@ -1,7 +1,7 @@
-import logging
+import json
+from collections import deque
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
-from collections import deque
 
 
 class TrackState(Enum):
@@ -33,20 +33,23 @@ class Track:
     def __repr__(self):
         return f"Track(id={self.id}, pixel={self.pixel}, position={self.position}, state={self.state.name})"
 
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "pixel": {"x": self.pixel[0], "y": self.pixel[1]},
+            "position": {
+                "x": self.position[0],
+                "y": self.position[1],
+                "z": self.position[2],
+            },
+            "state": self.state.name,
+        }
+
 
 class Tracker:
     tracks: Dict[int, Track]
 
-    def __init__(self, logger: Optional[logging.Logger] = None):
-        """
-        Args:
-            logger (Optional[logging.Logger]): Logger
-        """
-        if logger:
-            self._logger = logger
-        else:
-            self._logger = logging.getLogger(__name__)
-            self._logger.setLevel(logging.INFO)
+    def __init__(self):
         self.tracks = {}
         self._pending_tracks = deque()
 
@@ -125,3 +128,6 @@ class Tracker:
         """
         self.tracks.clear()
         self._pending_tracks.clear()
+
+    def to_dict(self):
+        return {track_id: track.to_dict() for track_id, track in self.tracks.items()}

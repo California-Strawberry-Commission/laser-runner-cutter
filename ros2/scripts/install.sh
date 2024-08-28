@@ -14,16 +14,15 @@ if [ ! -f "$installed_file" ]; then
     # Init submodules
     git submodule update --init --recursive
 
+    # Install Git LFS and pull LFS files
+    curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
+    sudo apt-get -y install git-lfs
+    git lfs pull
+
     bash ./install_python_venv.sh
-
-    arch=$(uname -i)
-    if [[ $arch == x86_64* ]]; then
-        bash ./install_cuda_amd64.sh
-    elif  [[ $arch == aarch64* ]]; then
-        bash ./install_cuda_arm64.sh
-    fi
-
+    bash ./install_cuda.sh
     bash ./install_arena_sdk.sh
+    bash ./create_heliosdac_udev.sh
     bash ./install_ros.sh
     bash ./install_realsense_ros.sh
     bash ./install_requirements.sh

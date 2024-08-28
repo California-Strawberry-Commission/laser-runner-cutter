@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState } from "react";
 export default function FramePreview({
   topicName,
   height = 360,
+  quality = 30,
   onImageLoad,
   onImageClick,
   onImageSizeChanged,
@@ -12,6 +13,7 @@ export default function FramePreview({
 }: {
   topicName?: string;
   height?: number;
+  quality?: number;
   onImageLoad?: React.EventHandler<
     React.SyntheticEvent<HTMLImageElement, Event>
   >;
@@ -30,9 +32,11 @@ export default function FramePreview({
       const videoServer =
         process.env.NEXT_PUBLIC_VIDEO_SERVER_URL ??
         `http://${window.location.hostname}:8080`;
-      setStreamUrl(`${videoServer}/stream?topic=${topicName}`);
+      setStreamUrl(
+        `${videoServer}/stream?topic=${topicName}&quality=${quality}&qos_profile=sensor_data`
+      );
     }
-  }, [topicName]);
+  }, [topicName, quality]);
 
   useEffect(() => {
     const img = imgRef.current;

@@ -8,9 +8,10 @@ from rclpy.qos import (
 
 QOS_LATCHED = QoSProfile(
     depth=1,
-    history=QoSHistoryPolicy.RMW_QOS_POLICY_HISTORY_KEEP_LAST,
-    durability=QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL,
+    history=QoSHistoryPolicy.KEEP_LAST,
+    durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
 )
+
 
 class RosTopic(RosDefinition):
     def __init__(
@@ -24,4 +25,3 @@ class RosTopic(RosDefinition):
 
 def topic(namespace: str, idl: Any, qos: Union[QoSProfile, int] = 10):
     return RosTopic(namespace, idl, qos)
-

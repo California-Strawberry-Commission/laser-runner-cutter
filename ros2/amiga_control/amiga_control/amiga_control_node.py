@@ -67,7 +67,7 @@ class AmigaControlNode:
     @start
     async def comm_amiga(self):
         await self.amiga_available(data=False)
-        
+
         self.cli_canbus = EventClient(
             config=EventServiceConfig(
                 name="canbus",

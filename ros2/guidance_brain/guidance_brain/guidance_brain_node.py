@@ -28,7 +28,7 @@ from aioros2 import (
     subscribe_param,
     param,
     start,
-    QOS_LATCHED
+    QOS_LATCHED,
 )
 
 class GoDirection(IntEnum):
@@ -102,7 +102,6 @@ class GuidanceBrainNode:
             y=speed_ms
         ))
 
-        
     @subscribe(amiga.amiga_available)
     async def on_amiga_available(self, data):
         self.state.amiga_connected = data
@@ -119,13 +118,11 @@ class GuidanceBrainNode:
             self.state.perceiver_valid = is_valid
             self.state.error = linear_deviation
         
-
-    
     @service("~/set_p", SetFloat32)
     async def set_p(self, data: float):
         self.state.follower_pid.p = data
         return {}
-    
+
     @service("~/set_i", SetFloat32)
     async def set_i(self, data: float):
         self.state.follower_pid.i = data
@@ -135,7 +132,7 @@ class GuidanceBrainNode:
     async def set_d(self, data: float):
         self.state.follower_pid.d = data
         return {}
-    
+
     @service("~/set_speed", SetFloat32)
     async def set_speed(self, data: float):
         self.state.speed = data
