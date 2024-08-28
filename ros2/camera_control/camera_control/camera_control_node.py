@@ -798,7 +798,7 @@ class CameraControlNode:
             f"{int(timestamp)}",
             (20, h - 20),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
+            1,
             color,
             2,
         )
