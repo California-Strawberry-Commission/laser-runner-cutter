@@ -1,5 +1,5 @@
 import FramePreview from "@/components/camera/frame-preview";
-import FurrowPercieverControls from "@/components/navigation/furrow_preciever_controls";
+import FurrowPercieverControls from "@/components/navigation/furrow_perceiver_controls";
 import GuidanceBrainControls from "@/components/navigation/guidance_brain_controls";
 
 export default function Laser() {
