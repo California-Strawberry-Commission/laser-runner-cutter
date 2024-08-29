@@ -5,6 +5,28 @@ import expandTopicOrServiceName from "@/lib/ros/expandTopicName";
 type in_mapper_t = (...a: any) => any;
 type out_mapper_t = (res: any) => any;
 
+const inMappers = {
+  noArg: () => ({}),
+  trigger: () => ({}),
+  number: (d: number) => ({ data: d }),
+}
+
+const outMappers = {
+  noArg: (_data: any) => undefined,
+  success: (_data: any) => _data.success as boolean,
+  successWithMessage: (_data: any) => _data as { success: boolean, message: string },
+  trigger: (_data: any) => _data as { success: boolean, message: string },
+}
+
+/**
+ * Pre-defined commonly used mapping functions.
+ */
+export const mappers = {
+  in: inMappers,
+  out: outMappers,
+}
+
+
 /**
  * Creates a topic subscriptions with optional mapper, using either inferred or explicit types.
  * @param nodeName

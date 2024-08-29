@@ -121,22 +121,22 @@ class GuidanceBrainNode:
     @service("~/set_p", SetFloat32)
     async def set_p(self, data: float):
         self.state.follower_pid.p = data
-        return {}
+        return {"success": True}
 
     @service("~/set_i", SetFloat32)
     async def set_i(self, data: float):
         self.state.follower_pid.i = data
-        return {}
+        return {"success": True}
 
     @service("~/set_d", SetFloat32)
     async def set_d(self, data: float):
         self.state.follower_pid.d = data
-        return {}
+        return {"success": True}
 
     @service("~/set_speed", SetFloat32)
     async def set_speed(self, data: float):
         self.state.speed = data
-        return {}
+        return {"success": True}
     
     @service("~/go_forward", Trigger)
     async def go_forward(self):
@@ -144,19 +144,19 @@ class GuidanceBrainNode:
         self.state.guidance_active = True
         self.state.go_direction = GoDirection.FORWARD  
      
-        return {}
+        return {"success": True}
     
     @service("~/go_backward", Trigger)
     async def go_backward(self):
         self.state.go_last_valid_time = time.time()
         self.state.guidance_active = True
         self.state.go_direction = GoDirection.BACKWARD  
-        return {}
+        return {"success": True}
     
     @service("~/stop", Trigger)
     async def stop(self):
         self.state.guidance_active = False
-        return {}
+        return {"success": True}
     
 # Boilerplate below here.
 def main():

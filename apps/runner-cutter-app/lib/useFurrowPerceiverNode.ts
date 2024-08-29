@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import useROSNode from "@/lib/ros/useROSNode";
+import useROSNode, {mappers} from "@/lib/ros/useROSNode";
 
 const INITIAL_STATE = {
   guidance_offset: 0
@@ -13,8 +12,8 @@ export default function useGuidanceBrainNode(nodeName: string) {
   const setGuidanceOffset = node.useService(
     "~/set_guidance_offset",
     "common_interfaces/SetInt32",
-    (offset: number) => ({ data: offset }), // maps request message to a JS api & solidifies typing info
-    (_data: any) => undefined, // maps incoming response & solidifies typing info
+    mappers.in.number, // maps request message to a JS api & solidifies typing info
+    mappers.out.success, // maps incoming response & solidifies typing info
   );
 
 
