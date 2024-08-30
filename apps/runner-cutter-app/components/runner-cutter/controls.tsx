@@ -18,6 +18,7 @@ export default function Controls() {
 
   const onFramePreviewSizeChanged = useCallback(
     (width: number, height: number) => {
+      console.log(`onFramePreviewSizeChanged: ${width}, ${height}`);
       if (
         width !== framePreviewSize.width ||
         height !== framePreviewSize.height

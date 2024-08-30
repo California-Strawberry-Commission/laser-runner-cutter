@@ -1,156 +1,235 @@
 import asyncio
 import fractions
-import os
-import threading
+import json
 import uuid
+from collections import defaultdict
+from typing import DefaultDict, Dict, Optional, Set
 
 import aiohttp_cors
-import numpy as np
-import pyrealsense2 as rs
-import rclpy
 from aiohttp import web
 from aiortc import MediaStreamTrack, RTCPeerConnection, RTCSessionDescription
-from aiortc.mediastreams import VIDEO_TIME_BASE
 from av import VideoFrame
-from rclpy.node import Node
+from cv_bridge import CvBridge
+from rclpy.qos import qos_profile_sensor_data
+from sensor_msgs.msg import Image
 
-ROOT = os.path.dirname(__file__)
-
-pcs = set()
+from aioros2 import node, serve_nodes, start
 
 
-class RealSenseVideoStreamTrack(MediaStreamTrack):
+class RosVideoStreamTrack(MediaStreamTrack):
     kind = "video"
 
-    def __init__(self, logger):
+    def __init__(self, topic, node, cv_bridge, logger):
         super().__init__()
-        self.pipeline = rs.pipeline()
-        config = rs.config()
-        config.enable_stream(
-            rs.stream.color,
-            1280,
-            720,
-            rs.format.rgb8,
-            30,
+        self._topic = topic
+        self._node = node
+        self._cv_bridge = cv_bridge
+        self._logger = logger
+        self._current_frame = None
+        self._current_timestamp_millis = 0
+
+        # TODO: support other message types
+        self._subscription = node.create_subscription(
+            Image, topic, self._sub_callback, qos_profile_sensor_data
         )
-        self.profile = self.pipeline.start(config)
-        self.logger = logger
+
+    def _sub_callback(self, msg):
+        self._node.run_coroutine(self._frame_callback, msg)
+
+    async def _frame_callback(self, msg):
+        self._current_frame = self._cv_bridge.imgmsg_to_cv2(
+            msg, desired_encoding="rgb8"
+        )
+        # ROS timestamps consist of two integers, one for seconds and one for nanoseconds
+        self._current_timestamp_millis = (
+            msg.header.stamp.sec * 1000 + msg.header.stamp.nanosec / 1e6
+        )
 
     async def recv(self):
-        # TODO: ROS node will be getting the latest frame via subscription
-        await asyncio.sleep(0)  # frame timing
-        frames = self.pipeline.wait_for_frames()
-        color_frame = frames.get_color_frame()
-
-        # Convert RealSense frame to OpenCV format
-        image = np.asanyarray(color_frame.get_data())
+        if self._current_frame is None:
+            return None
 
         # Create video frame
-        video_frame = VideoFrame.from_ndarray(image, format="rgb24")
-        video_frame.pts = int(color_frame.get_timestamp())
+        video_frame = VideoFrame.from_ndarray(self._current_frame, format="rgb24")
+        video_frame.pts = int(self._current_timestamp_millis)
         video_frame.time_base = fractions.Fraction(1, 1000)
 
         return video_frame
 
+    def destroy(self):
+        self._logger.info(f"Destroying track for topic {self._topic}")
+        self._subscription.destroy()
 
-def aiohttp_server(logger):
 
-    async def handle_offer(request):
-        params = await request.json()
-        offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
+@node("webrtc_node")
+class WebRTCNode:
 
-        pc = RTCPeerConnection()
-        pc_id = f"PeerConnection({uuid.uuid4()})"
-        pcs.add(pc)
-        logger.info(f"{pc_id} Created for {request.remote}")
+    @start
+    async def start(self):
+        self.cv_bridge = CvBridge()  # for converting image msg to numpy array
+        self.pcs: Dict[uuid.UUID, RTCPeerConnection] = dict()
+        self.tracks: Dict[str, RosVideoStreamTrack] = dict()  # topic -> track
+        self.topic_connection_map: DefaultDict[str, Set[uuid.UUID]] = defaultdict(
+            set
+        )  # topic -> [peer connection ID]
 
-        @pc.on("datachannel")
-        def on_datachannel(channel):
-            @channel.on("message")
-            def on_message(message):
-                if isinstance(message, str) and message.startswith("ping"):
-                    channel.send("pong" + message[4:])
+        # Start WebSocket server
+        asyncio.create_task(self.server_task())
 
-        @pc.on("connectionstatechange")
-        async def on_connectionstatechange():
-            logger.info(f"{pc_id} Connection state is <{pc.connectionState}>")
-            if pc.connectionState == "failed":
-                await pc.close()
-                pcs.discard(pc)
+    async def server_task(self, host: str = "0.0.0.0", port: int = 8080):
+        try:
+            runner = self.create_server_runner()
+            await runner.setup()
+            site = web.TCPSite(runner, host=host, port=port)
+            await site.start()
 
-        pc.addTrack(track)
+            self.log(f"Serving on {host}:{port}")
 
-        # Handle offer and generate answer
-        await pc.setRemoteDescription(offer)
-        answer = await pc.createAnswer()
-        await pc.setLocalDescription(answer)
+            # Keep the server running indefinitely
+            while True:
+                await asyncio.sleep(3600)
+        finally:
+            await runner.cleanup()
 
-        return web.json_response(
-            {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type}
+    def create_server_runner(self):
+
+        async def websocket_handler(request):
+            ws = web.WebSocketResponse()
+            await ws.prepare(request)
+            params = request.query
+            topic = params.get("topic", "")
+
+            pc = RTCPeerConnection()
+            pc_id = uuid.uuid4()
+            self.pcs[pc_id] = pc
+            self.log(f"PeerConnection({pc_id}) created for {request.remote}")
+
+            @pc.on("datachannel")
+            def on_datachannel(channel):
+                @channel.on("message")
+                def on_message(message):
+                    if isinstance(message, str) and message.startswith("ping"):
+                        channel.send("pong" + message[4:])
+
+            @pc.on("connectionstatechange")
+            async def on_connectionstatechange():
+                self.log(
+                    f"PeerConnection({pc_id}) connection state is <{pc.connectionState}>"
+                )
+                if pc.connectionState == "failed":
+                    await self.close_pc(pc_id)
+
+            pc.addTrack(self.get_track(topic, pc_id))
+
+            try:
+                async for msg in ws:
+                    if msg.type == web.WSMsgType.TEXT:
+                        data = json.loads(msg.data)
+
+                        if "offer" in data:
+                            offer = RTCSessionDescription(
+                                sdp=data["offer"]["sdp"], type=data["offer"]["type"]
+                            )
+
+                            # Handle offer and generate answer
+                            await pc.setRemoteDescription(offer)
+                            answer = await pc.createAnswer()
+                            await pc.setLocalDescription(answer)
+                            await ws.send_json(
+                                {
+                                    "answer": {
+                                        "sdp": pc.localDescription.sdp,
+                                        "type": pc.localDescription.type,
+                                    }
+                                }
+                            )
+                    elif msg.type == web.WSMsgType.ERROR:
+                        self.log_warn(
+                            f"WebSocket connection closed with exception {ws.exception()}"
+                        )
+            except asyncio.CancelledError:
+                self.log(f"PeerConnection({pc_id}): WebSocket connection was canceled")
+            finally:
+                self.log(f"PeerConnection({pc_id}): WebSocket connection closed")
+                await ws.close()
+                await self.close_pc(pc_id)
+
+            return ws
+
+        async def on_shutdown(app):
+            # Close all peer connections
+            coros = [pc.close() for pc in self.pcs.values()]
+            await asyncio.gather(*coros)
+            self.pcs.clear()
+            self.tracks.clear()
+            self.topic_connection_map.clear()
+
+        app = web.Application()
+        app.on_shutdown.append(on_shutdown)
+        app.add_routes([web.get("/", websocket_handler)])
+
+        # Set up CORS
+        cors = aiohttp_cors.setup(
+            app,
+            defaults={
+                "*": aiohttp_cors.ResourceOptions(
+                    allow_credentials=True,
+                    expose_headers="*",
+                    allow_headers="*",
+                )
+            },
         )
+        for route in list(app.router.routes()):
+            cors.add(route)
 
-    async def on_shutdown():
-        # Close peer connections
-        coros = [pc.close() for pc in pcs]
-        await asyncio.gather(*coros)
-        pcs.clear()
+        runner = web.AppRunner(app)
+        return runner
 
-    track = RealSenseVideoStreamTrack(logger)
+    def get_track(self, topic: str, pc_id: uuid.UUID):
+        self.topic_connection_map[topic].add(pc_id)
+        self.log(f"PeerConnection({pc_id}): Getting track for topic {topic}")
+        if topic in self.tracks:
+            self.log(f"PeerConnection({pc_id}): Using cached track for topic {topic}")
+            return self.tracks[topic]
+        else:
+            self.log(f"PeerConnection({pc_id}): Creating new track for topic {topic}")
+            track = RosVideoStreamTrack(topic, self, self.cv_bridge, self.get_logger())
+            self.tracks[topic] = track
+            return track
 
-    app = web.Application()
-    app.on_shutdown.append(on_shutdown)
-    app.add_routes(
-        [
-            web.post("/offer", handle_offer),
-        ]
-    )
+    async def close_pc(self, pc_id: uuid.UUID):
+        self.log(f"PeerConnection({pc_id}): Closing connection")
+        pc = self.pcs.pop(pc_id, None)
+        if pc is None:
+            return
 
-    # Set up CORS
-    cors = aiohttp_cors.setup(
-        app,
-        defaults={
-            "*": aiohttp_cors.ResourceOptions(
-                allow_credentials=True,
-                expose_headers="*",
-                allow_headers="*",
-            )
-        },
-    )
-    for route in list(app.router.routes()):
-        cors.add(route)
+        await pc.close()
 
-    runner = web.AppRunner(app)
-    return runner
+        # Find the topic for this connection
+        topic = self.find_topic_by_pc_id(pc_id)
+        if topic is None:
+            return
 
+        self.topic_connection_map[topic].discard(pc_id)
+        # If there are no more connections for this topic, destroy the track
+        # TODO: this currently results in an exception when destroying the subscription and resubscribing
+        # to the same topic in quick succession, likely related to threading
+        """
+        if len(self.topic_connection_map[topic]) == 0:
+            track = self.tracks.pop(topic, None)
+            if track is not None:
+                track.destroy()
+        """
 
-class WebRTCNode(Node):
-    def __init__(self):
-        super().__init__("webrtc_node")
-
-        # Start the aiohttp server in a separate thread
-        thread = threading.Thread(target=self.start_web_server, daemon=True)
-        thread.start()
-
-    def start_web_server(self):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        runner = aiohttp_server(self.get_logger())
-        loop.run_until_complete(runner.setup())
-        site = web.TCPSite(runner, host="0.0.0.0", port=8080)
-        loop.run_until_complete(site.start())
-        loop.run_forever()
+    def find_topic_by_pc_id(self, pc_id: uuid.UUID) -> Optional[str]:
+        for topic, pc_ids in self.topic_connection_map.items():
+            if pc_id in pc_ids:
+                return topic
+        return None
 
 
-def main(args=None):
-    # Start ROS2 node
-    rclpy.init(args=args)
-    node = WebRTCNode()
-
-    rclpy.spin(node)
-
-    # Shutdown ROS2 node
-    node.destroy_node()
-    rclpy.shutdown()
+def main():
+    serve_nodes(WebRTCNode())
 
 
 if __name__ == "__main__":
