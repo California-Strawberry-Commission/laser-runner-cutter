@@ -3,6 +3,7 @@ import fractions
 import json
 import uuid
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import DefaultDict, Dict, Optional, Set
 
 import aiohttp_cors
@@ -13,7 +14,7 @@ from cv_bridge import CvBridge
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
 
-from aioros2 import node, serve_nodes, start
+from aioros2 import node, params, serve_nodes, start
 
 
 class RosVideoStreamTrack(MediaStreamTrack):
@@ -61,8 +62,16 @@ class RosVideoStreamTrack(MediaStreamTrack):
         self._subscription.destroy()
 
 
+@dataclass
+class WebRTCParams:
+    host: str = "0.0.0.0"
+    port: int = 8080
+
+
 @node("webrtc_node")
 class WebRTCNode:
+
+    webrtc_params = params(WebRTCParams)
 
     @start
     async def start(self):
@@ -74,8 +83,9 @@ class WebRTCNode:
         )  # topic -> [peer connection ID]
 
         # Start WebSocket server
-        # TODO: use ROS node params for server configuration
-        asyncio.create_task(self.server_task())
+        asyncio.create_task(
+            self.server_task(host=self.webrtc_params.host, port=self.webrtc_params.port)
+        )
 
     async def server_task(self, host: str = "0.0.0.0", port: int = 8080):
         try:
