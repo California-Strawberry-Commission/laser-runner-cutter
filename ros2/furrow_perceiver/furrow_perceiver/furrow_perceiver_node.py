@@ -76,9 +76,9 @@ class FurrowPerceiverNode:
     annotator = None
 
     async def emit_state(self):
-        await self.state(
+        asyncio.create_task(self.state(
             guidance_offset=self.tracker.guidance_offset_x
-        )
+        ))
 
     @subscribe(realsense.depth_image_topic)
     async def on_depth_image(

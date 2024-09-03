@@ -57,13 +57,13 @@ class GuidanceBrainNode:
     # Emits state.
     state_topic = topic("~/state", State, QOS_LATCHED)
 
-    async def emit_state(self):
-        await self.state_topic(self.state)
+    def emit_state(self):
+        asyncio.create_task(self.state_topic(self.state))
 
     
     @timer(0.05, False)
     async def s(self):      
-        await self.emit_state()
+        self.emit_state()
 
         # Feed timeout
         if self.state.perceiver_valid:
