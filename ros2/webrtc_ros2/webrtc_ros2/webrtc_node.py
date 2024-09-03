@@ -118,7 +118,9 @@ class WebRTCNode:
             pc = RTCPeerConnection()
             pc_id = uuid.uuid4()
             self.pcs[pc_id] = pc
-            self.log(f"PeerConnection({pc_id}) created for {request.remote}")
+            self.log(
+                f"PeerConnection({pc_id}) created for {request.remote}. {len(self.pcs)} clients total."
+            )
 
             @pc.on("datachannel")
             def on_datachannel(channel):
@@ -219,20 +221,23 @@ class WebRTCNode:
         if topic is not None:
             self.topic_connection_map[topic].discard(pc_id)
             # If there are no more connections for this topic, destroy the track
+            # TODO: destroying the subscription and resubscribing to the same topic in quick succession,
+            # currently results in an exception, likely related to threading. For now, just call track.stop()
             if len(self.topic_connection_map[topic]) == 0:
-                track = self.tracks.pop(topic, None)
+                # track = self.tracks.pop(topic, None)
+                track = self.tracks.get(topic, None)
                 if track is not None:
                     track.stop()
-                    # TODO: this currently results in an exception when destroying the subscription and resubscribing
-                    # to the same topic in quick succession, likely related to threading
                     # track.destroy()
 
-        self.log(f"PeerConnection({pc_id}): Closing connection")
         pc = self.pcs.pop(pc_id, None)
         if pc is None:
             return
 
         await pc.close()
+        self.log(
+            f"PeerConnection({pc_id}): Closed connection. {len(self.pcs)} clients total."
+        )
 
     def find_topic_by_pc_id(self, pc_id: uuid.UUID) -> Optional[str]:
         for topic, pc_ids in self.topic_connection_map.items():

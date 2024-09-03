@@ -17,8 +17,8 @@ export default function FramePreview({
   onClick?: React.MouseEventHandler<HTMLVideoElement>;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-
   const [componentSize, setComponentSize] = useState({ width: 0, height: 0 });
+  const [isLoading, setIsLoading] = useState(true);
 
   // Unfortunately, with SSR, this needed for code that should only run on client side
   // TODO: move this to a separate custom hook
@@ -124,31 +124,56 @@ export default function FramePreview({
   }, [height, componentSize, setComponentSize, onComponentSizeChanged]);
 
   return (
-    <video
-      ref={videoRef}
-      className="w-auto max-h-full max-w-full"
-      autoPlay={true}
-      playsInline={true}
-      muted={true}
-      style={{ height }}
-      onLoadedMetadata={(event) => {
-        const { videoWidth, videoHeight, offsetWidth, offsetHeight } =
-          event.currentTarget;
-        onLoaded && onLoaded(videoWidth, videoHeight);
+    <div className="relative bg-gray-600">
+      {isLoading && (
+        <div
+          className="absolute"
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            zIndex: 10,
+          }}
+        >
+          <p className="text-white">Waiting for stream...</p>
+        </div>
+      )}
+      <video
+        ref={videoRef}
+        className="w-auto max-h-full max-w-full object-fill"
+        autoPlay={true}
+        playsInline={true}
+        muted={true}
+        style={{ height }}
+        onWaiting={() => {
+          setIsLoading(true);
+        }}
+        onCanPlay={() => {
+          setIsLoading(false);
+        }}
+        onPlaying={() => {
+          setIsLoading(false);
+        }}
+        onLoadedMetadata={(event) => {
+          const { videoWidth, videoHeight, offsetWidth, offsetHeight } =
+            event.currentTarget;
+          onLoaded && onLoaded(videoWidth, videoHeight);
 
-        if (
-          componentSize.width !== offsetWidth ||
-          componentSize.height !== offsetHeight
-        ) {
-          setComponentSize({
-            width: offsetWidth,
-            height: offsetHeight,
-          });
-          onComponentSizeChanged &&
-            onComponentSizeChanged(offsetWidth, offsetHeight);
-        }
-      }}
-      onClick={onClick}
-    />
+          if (
+            componentSize.width !== offsetWidth ||
+            componentSize.height !== offsetHeight
+          ) {
+            setComponentSize({
+              width: offsetWidth,
+              height: offsetHeight,
+            });
+            onComponentSizeChanged &&
+              onComponentSizeChanged(offsetWidth, offsetHeight);
+          }
+        }}
+        onClick={onClick}
+      />
+    </div>
   );
 }
