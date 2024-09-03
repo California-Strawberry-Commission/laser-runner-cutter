@@ -22,8 +22,6 @@ from launch.launch_description_sources import (
     FrontendLaunchDescriptionSource,
 )
 
-# 819312072040 - forward
-# 017322073371 - backward
 
 def generate_launch_description():
     parameters_file = os.path.join(
@@ -31,7 +29,7 @@ def generate_launch_description():
         "config",
         "parameters.yaml",
     )
-
+    # 819312072040 - forward S/N
     rs_node0 = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             [
@@ -48,7 +46,8 @@ def generate_launch_description():
             "filters": "decimation,spatial,temporal,hole_filling",
         }.items(),
     )
-
+    
+    # 017322073371 - backward S/N
     rs_node1 = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             [
@@ -91,16 +90,16 @@ def generate_launch_description():
         amiga_control_node,
         name="amiga0",
         parameters=[parameters_file],
-        output="screen",
-        emulate_tty=True,
+        # output="screen",
+        # emulate_tty=True,
     )
 
     brain = LaunchNode(
         guidance_brain_node,
         name="brain0",
         parameters=[parameters_file],
-        output="screen",
-        emulate_tty=True,
+        # output="screen",
+        # emulate_tty=True,
     )
 
     video_server = launch_ros.actions.Node(
