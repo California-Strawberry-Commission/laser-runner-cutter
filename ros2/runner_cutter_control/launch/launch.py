@@ -2,10 +2,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from camera_control import camera_control_node
-from laser_control import laser_control_node
-from runner_cutter_control import runner_cutter_control_node
-   
+
 from aioros2 import LaunchNode
 
 from amiga_control import amiga_control_node
@@ -43,10 +40,11 @@ def generate_launch_description():
             "camera": "camera_1",
             "serial_no": "'819312072040'",
             "camera_name": "cam0",
-            "decimation_filter.enable": True,
-            "temporal_filter.enable": True,
-            "spatial_filter.enable": True,
-            "hole_filling_filter.enable": True,
+            "camera_namespace": "/",
+            "decimation_filter.enable": "true",
+            "temporal_filter.enable": "true",
+            "spatial_filter.enable": "true",
+            "hole_filling_filter.enable": "true",
         }.items(),
     )
     
@@ -64,10 +62,11 @@ def generate_launch_description():
             "camera": "camera_2",
             "serial_no": "'017322073371'",
             "camera_name": "cam1",
-            "decimation_filter.enable": True,
-            "temporal_filter.enable": True,
-            "spatial_filter.enable": True,
-            "hole_filling_filter.enable": True,
+            "camera_namespace": "/",
+            "decimation_filter.enable": "true",
+            "temporal_filter.enable": "true",
+            "spatial_filter.enable": "true",
+            "hole_filling_filter.enable": "true",
         }.items(),
     )
 
@@ -128,40 +127,43 @@ def generate_launch_description():
         furrow_perc1,
     ]
     
-    if importlib.util.find_spec("arena_api"):
- 
-        camera_node = LaunchNode(
-            camera_control_node,
-            name="camera0",
-            parameters=[parameters_file],
-            respawn=True,
-            respawn_delay=2.0,
-        )
+    # if importlib.util.find_spec("arena_api"):
+        # from camera_control import camera_control_node
+        # from laser_control import laser_control_node
+        # from runner_cutter_control import runner_cutter_control_node
+   
+    #     camera_node = LaunchNode(
+    #         camera_control_node,
+    #         name="camera0",
+    #         parameters=[parameters_file],
+    #         respawn=True,
+    #         respawn_delay=2.0,
+    #     )
 
-        laser_node = LaunchNode(
-            laser_control_node,
-            name="laser0",
-            parameters=[parameters_file],
-            respawn=True,
-            respawn_delay=2.0,
-        )
+    #     laser_node = LaunchNode(
+    #         laser_control_node,
+    #         name="laser0",
+    #         parameters=[parameters_file],
+    #         respawn=True,
+    #         respawn_delay=2.0,
+    #     )
 
-        runner_cutter_node = LaunchNode(
-            runner_cutter_control_node,
-            name="control0",
-            parameters=[parameters_file],
-            respawn=True,
-            respawn_delay=2.0,
-        )
+    #     runner_cutter_node = LaunchNode(
+    #         runner_cutter_control_node,
+    #         name="control0",
+    #         parameters=[parameters_file],
+    #         respawn=True,
+    #         respawn_delay=2.0,
+    #     )
         
-        # Link nodes
-        print(runner_cutter_node)
-        runner_cutter_node.camera_node.link(camera_node)
-        runner_cutter_node.laser_node.link(laser_node)
+    #     # Link nodes
+    #     print(runner_cutter_node)
+    #     runner_cutter_node.camera_node.link(camera_node)
+    #     runner_cutter_node.laser_node.link(laser_node)
 
-        launchables.append(camera_node)
-        launchables.append(laser_node)
-        launchables.append(runner_cutter_node)
+    #     launchables.append(camera_node)
+    #     launchables.append(laser_node)
+    #     launchables.append(runner_cutter_node)
         
 
 
