@@ -28,7 +28,7 @@ class RosVideoStreamTrack(MediaStreamTrack):
         self._current_frame = None
         self._current_timestamp_millis = 0
 
-        # TODO: support other message types
+        # TODO: support message types other than sensor_msgs/Image
         self._subscription = node.create_subscription(
             Image, topic, self._sub_callback, qos_profile_sensor_data
         )
@@ -74,6 +74,7 @@ class WebRTCNode:
         )  # topic -> [peer connection ID]
 
         # Start WebSocket server
+        # TODO: use ROS node params for server configuration
         asyncio.create_task(self.server_task())
 
     async def server_task(self, host: str = "0.0.0.0", port: int = 8080):
@@ -198,28 +199,25 @@ class WebRTCNode:
             return track
 
     async def close_pc(self, pc_id: uuid.UUID):
+        # Update topic_connection_map and tracks dicts
+        topic = self.find_topic_by_pc_id(pc_id)
+        if topic is not None:
+            self.topic_connection_map[topic].discard(pc_id)
+            # If there are no more connections for this topic, destroy the track
+            if len(self.topic_connection_map[topic]) == 0:
+                track = self.tracks.pop(topic, None)
+                if track is not None:
+                    track.stop()
+                    # TODO: this currently results in an exception when destroying the subscription and resubscribing
+                    # to the same topic in quick succession, likely related to threading
+                    # track.destroy()
+
         self.log(f"PeerConnection({pc_id}): Closing connection")
         pc = self.pcs.pop(pc_id, None)
         if pc is None:
             return
 
         await pc.close()
-
-        # Find the topic for this connection
-        topic = self.find_topic_by_pc_id(pc_id)
-        if topic is None:
-            return
-
-        self.topic_connection_map[topic].discard(pc_id)
-        # If there are no more connections for this topic, destroy the track
-        # TODO: this currently results in an exception when destroying the subscription and resubscribing
-        # to the same topic in quick succession, likely related to threading
-        """
-        if len(self.topic_connection_map[topic]) == 0:
-            track = self.tracks.pop(topic, None)
-            if track is not None:
-                track.destroy()
-        """
 
     def find_topic_by_pc_id(self, pc_id: uuid.UUID) -> Optional[str]:
         for topic, pc_ids in self.topic_connection_map.items():
