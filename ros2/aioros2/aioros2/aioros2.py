@@ -1,4 +1,5 @@
 import asyncio
+import signal
 import threading
 from typing import Optional
 
@@ -34,6 +35,23 @@ async def _spin(nodes, num_threads: Optional[int] = None):
             event_loop.call_soon_threadsafe(future.set_result, None)
 
     event_loop = asyncio.get_event_loop()
+
+    async def shutdown(event_loop: asyncio.AbstractEventLoop):
+        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+
+        for task in tasks:
+            task.cancel()
+
+        await asyncio.gather(*tasks, return_exceptions=True)
+        event_loop.stop()
+
+    # Add signal handlers for SIGINT and SIGTERM
+    event_loop = asyncio.get_event_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        event_loop.add_signal_handler(
+            sig, lambda: asyncio.create_task(shutdown(event_loop))
+        )
+
     spin_task = event_loop.create_future()
     spin_thread = threading.Thread(
         target=spin_inner, args=(executor, spin_task, event_loop)
