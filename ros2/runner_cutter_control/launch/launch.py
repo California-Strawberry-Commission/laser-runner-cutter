@@ -43,7 +43,10 @@ def generate_launch_description():
             "camera": "camera_1",
             "serial_no": "'819312072040'",
             "camera_name": "cam0",
-            "filters": "decimation,spatial,temporal,hole_filling",
+            "decimation_filter.enable": True,
+            "temporal_filter.enable": True,
+            "spatial_filter.enable": True,
+            "hole_filling_filter.enable": True,
         }.items(),
     )
     
@@ -61,7 +64,10 @@ def generate_launch_description():
             "camera": "camera_2",
             "serial_no": "'017322073371'",
             "camera_name": "cam1",
-            "filters": "decimation,spatial,temporal,hole_filling",
+            "decimation_filter.enable": True,
+            "temporal_filter.enable": True,
+            "spatial_filter.enable": True,
+            "hole_filling_filter.enable": True,
         }.items(),
     )
 
