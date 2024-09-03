@@ -29,7 +29,7 @@ class RosVideoStreamTrack(MediaStreamTrack):
         self._current_frame = None
         self._current_timestamp_millis = 0
 
-        # TODO: support message types other than sensor_msgs/Image
+        # TODO: support other message types
         self._subscription = node.create_subscription(
             Image, topic, self._sub_callback, qos_profile_sensor_data
         )
@@ -47,15 +47,20 @@ class RosVideoStreamTrack(MediaStreamTrack):
         )
 
     async def recv(self):
-        if self._current_frame is None:
-            return None
+        frame = await self._wait_for_frame()
 
         # Create video frame
-        video_frame = VideoFrame.from_ndarray(self._current_frame, format="rgb24")
+        video_frame = VideoFrame.from_ndarray(frame, format="rgb24")
         video_frame.pts = int(self._current_timestamp_millis)
         video_frame.time_base = fractions.Fraction(1, 1000)
 
         return video_frame
+
+    async def _wait_for_frame(self):
+        while self._current_frame is None:
+            await asyncio.sleep(0.1)
+
+        return self._current_frame
 
     def destroy(self):
         self._logger.info(f"Destroying track for topic {self._topic}")
