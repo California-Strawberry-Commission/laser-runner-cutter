@@ -13,7 +13,7 @@ type SideNavItem = {
 const SIDENAV_ITEMS: SideNavItem[] = [
   {
     title: "Setup",
-    path: "/setup",
+    path: "/",
   },
   {
     title: "Calibration",

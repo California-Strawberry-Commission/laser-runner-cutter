@@ -92,6 +92,8 @@ export default function useROSNode(nodeName: string) {
   const [nodeConnected, setNodeConnected] = useState<boolean>(false);
 
   useEffect(() => {
+    setNodeConnected(ros.isNodeConnected(nodeName));
+
     const onNodeConnectedSub = ros.onNodeConnected(
       (connectedNodeName, connected) => {
         if (connectedNodeName === nodeName) {
