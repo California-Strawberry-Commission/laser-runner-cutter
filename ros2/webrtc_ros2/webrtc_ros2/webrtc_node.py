@@ -47,6 +47,7 @@ class RosVideoStreamTrack(MediaStreamTrack):
         )
 
     async def recv(self):
+        self._logger.info("recv")
         frame = await self._wait_for_frame()
 
         # Create video frame
@@ -64,7 +65,10 @@ class RosVideoStreamTrack(MediaStreamTrack):
 
     def destroy(self):
         self._logger.info(f"Destroying track for topic {self._topic}")
-        self._subscription.destroy()
+        self.stop()
+        if self._subscription is not None:
+            self._node.destroy_subscription(self._subscription)
+            self._subscription = None
 
 
 @dataclass
@@ -216,20 +220,6 @@ class WebRTCNode:
             return track
 
     async def close_pc(self, pc_id: uuid.UUID):
-        # Update topic_connection_map and tracks dicts
-        topic = self.find_topic_by_pc_id(pc_id)
-        if topic is not None:
-            self.topic_connection_map[topic].discard(pc_id)
-            # If there are no more connections for this topic, destroy the track
-            # TODO: destroying the subscription and resubscribing to the same topic in quick succession,
-            # currently results in an exception, likely related to threading. For now, just call track.stop()
-            if len(self.topic_connection_map[topic]) == 0:
-                # track = self.tracks.pop(topic, None)
-                track = self.tracks.get(topic, None)
-                if track is not None:
-                    track.stop()
-                    # track.destroy()
-
         pc = self.pcs.pop(pc_id, None)
         if pc is None:
             return
@@ -238,6 +228,20 @@ class WebRTCNode:
         self.log(
             f"PeerConnection({pc_id}): Closed connection. {len(self.pcs)} clients total."
         )
+
+        # Add a delay before cleaning up tracks, as destroying the subscription and resubscribing to the
+        # same topic in quick succession results in an exception, likely related to threading.
+        await asyncio.sleep(2.0)
+
+        # Update topic_connection_map and tracks dicts
+        topic = self.find_topic_by_pc_id(pc_id)
+        if topic is not None:
+            self.topic_connection_map[topic].discard(pc_id)
+            # If there are no more connections for this topic, destroy the track
+            if len(self.topic_connection_map[topic]) == 0:
+                track = self.tracks.pop(topic, None)
+                if track is not None:
+                    track.destroy()
 
     def find_topic_by_pc_id(self, pc_id: uuid.UUID) -> Optional[str]:
         for topic, pc_ids in self.topic_connection_map.items():
