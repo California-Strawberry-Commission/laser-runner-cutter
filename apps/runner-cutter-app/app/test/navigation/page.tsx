@@ -8,10 +8,10 @@ export default function Laser() {
       <h1 className="text-3xl font-bold">Navigation Test</h1>
       <div className="items-center justify-center">
 
-        <FramePreview topicName="/furrow0/debug_img"></FramePreview>
-        <FramePreview topicName="/furrow1/debug_img"></FramePreview>
-        <FurrowPercieverControls></FurrowPercieverControls>
-        <GuidanceBrainControls></GuidanceBrainControls>
+        <FramePreview topicName="/furrow0/debug_img" />
+        <FramePreview topicName="/furrow1/debug_img" />
+        <FurrowPercieverControls />
+        <GuidanceBrainControls />
 
       </div>
     </main>

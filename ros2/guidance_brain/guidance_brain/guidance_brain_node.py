@@ -16,18 +16,11 @@ import asyncio
 from aioros2 import (
     timer,
     service,
-    action,
     serve_nodes,
-    result,
-    feedback,
     subscribe,
     topic,
     import_node,
-    params,
     node,
-    subscribe_param,
-    param,
-    start,
     QOS_LATCHED,
 )
 
@@ -67,10 +60,6 @@ class GuidanceBrainNode:
     async def emit_state(self):
         await self.state_topic(self.state)
 
-    
-    @start
-    async def startup(self):
-        self.state.speed = self.p.speed
     
     @timer(0.05, False)
     async def s(self):      
