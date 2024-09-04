@@ -127,43 +127,43 @@ def generate_launch_description():
         furrow_perc1,
     ]
     
-    # if importlib.util.find_spec("arena_api"):
-        # from camera_control import camera_control_node
-        # from laser_control import laser_control_node
-        # from runner_cutter_control import runner_cutter_control_node
+    if importlib.util.find_spec("arena_api"):
+        from camera_control import camera_control_node
+        from laser_control import laser_control_node
+        from runner_cutter_control import runner_cutter_control_node
    
-    #     camera_node = LaunchNode(
-    #         camera_control_node,
-    #         name="camera0",
-    #         parameters=[parameters_file],
-    #         respawn=True,
-    #         respawn_delay=2.0,
-    #     )
+        camera_node = LaunchNode(
+            camera_control_node,
+            name="camera0",
+            parameters=[parameters_file],
+            respawn=True,
+            respawn_delay=2.0,
+        )
 
-    #     laser_node = LaunchNode(
-    #         laser_control_node,
-    #         name="laser0",
-    #         parameters=[parameters_file],
-    #         respawn=True,
-    #         respawn_delay=2.0,
-    #     )
+        laser_node = LaunchNode(
+            laser_control_node,
+            name="laser0",
+            parameters=[parameters_file],
+            respawn=True,
+            respawn_delay=2.0,
+        )
 
-    #     runner_cutter_node = LaunchNode(
-    #         runner_cutter_control_node,
-    #         name="control0",
-    #         parameters=[parameters_file],
-    #         respawn=True,
-    #         respawn_delay=2.0,
-    #     )
+        runner_cutter_node = LaunchNode(
+            runner_cutter_control_node,
+            name="control0",
+            parameters=[parameters_file],
+            respawn=True,
+            respawn_delay=2.0,
+        )
         
-    #     # Link nodes
-    #     print(runner_cutter_node)
-    #     runner_cutter_node.camera_node.link(camera_node)
-    #     runner_cutter_node.laser_node.link(laser_node)
+        # Link nodes
+        print(runner_cutter_node)
+        runner_cutter_node.camera_node.link(camera_node)
+        runner_cutter_node.laser_node.link(laser_node)
 
-    #     launchables.append(camera_node)
-    #     launchables.append(laser_node)
-    #     launchables.append(runner_cutter_node)
+        launchables.append(camera_node)
+        launchables.append(laser_node)
+        launchables.append(runner_cutter_node)
         
 
 
