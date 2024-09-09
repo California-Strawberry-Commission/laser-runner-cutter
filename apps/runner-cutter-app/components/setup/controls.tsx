@@ -3,7 +3,17 @@
 import FramePreview from "@/components/camera/frame-preview";
 import NodeCards from "@/components/nodes/node-cards";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import useROS from "@/lib/ros/useROS";
+import useLifecycleManagerNode from "@/lib/useLifecycleManagerNode";
 import useCameraNode, {
   DeviceState as CameraDeviceState,
 } from "@/lib/useCameraNode";
@@ -17,6 +27,7 @@ import { useMemo } from "react";
 export default function Controls() {
   const { connected: rosConnected } = useROS();
 
+  const lifecycleManagerNode = useLifecycleManagerNode("/lifecycle_manager");
   const cameraNode = useCameraNode("/camera0");
   const laserNode = useLaserNode("/laser0");
   const controlNode = useControlNode("/control0");
@@ -26,8 +37,14 @@ export default function Controls() {
       name: "Rosbridge",
       connected: rosConnected,
     };
-    return [rosbridgeNodeInfo, cameraNode, laserNode, controlNode];
-  }, [rosConnected, cameraNode, laserNode, controlNode]);
+    return [
+      rosbridgeNodeInfo,
+      lifecycleManagerNode,
+      cameraNode,
+      laserNode,
+      controlNode,
+    ];
+  }, [rosConnected, lifecycleManagerNode, cameraNode, laserNode, controlNode]);
 
   let cameraButton = null;
   const enableCameraButton = cameraNode.connected;
@@ -93,6 +110,30 @@ export default function Controls() {
       <div className="flex flex-row items-center gap-4">
         {cameraButton}
         {laserButton}
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="destructive">Reboot System</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Are you absolutely sure?</DialogTitle>
+              <DialogDescription>
+                This will reboot the ROS 2 host system, and may take a few
+                minutes for it to come back up.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                type="submit"
+                onClick={() => {
+                  lifecycleManagerNode.reboot();
+                }}
+              >
+                Confirm
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
       <FramePreview topicName={"/camera0/debug_frame"} />
     </div>
