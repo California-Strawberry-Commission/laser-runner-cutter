@@ -6,7 +6,7 @@ import useControlNode from "@/lib/useControlNode";
 export default function Controls() {
   const controlNode = useControlNode("/control0");
 
-  const onImageClick = (event: any) => {
+  const onFramePreviewClick = (event: any) => {
     if (controlNode.state.state !== "idle") {
       return;
     }
@@ -27,7 +27,7 @@ export default function Controls() {
       <FramePreview
         height={600}
         topicName={"/camera0/debug_frame"}
-        onImageClick={onImageClick}
+        onClick={onFramePreviewClick}
       />
     </div>
   );

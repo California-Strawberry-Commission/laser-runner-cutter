@@ -1,15 +1,17 @@
 from launch import LaunchDescription
-from launch_ros.actions import Node
+
+from aioros2 import LaunchNode
+from webrtc_ros2 import webrtc_node
 
 
 def generate_launch_description():
     return LaunchDescription(
         [
-            Node(
-                package="web_video_server",
-                executable="web_video_server",
+            LaunchNode(
+                webrtc_node,
+                name="webrtc",
                 respawn=True,
                 respawn_delay=2.0,
-            ),
+            )
         ]
-    )  # type: ignore
+    )

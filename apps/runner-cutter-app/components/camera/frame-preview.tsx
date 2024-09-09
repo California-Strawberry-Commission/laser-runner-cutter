@@ -5,100 +5,175 @@ import React, { useEffect, useRef, useState } from "react";
 export default function FramePreview({
   topicName,
   height = 360,
-  quality = 30,
-  onImageLoad,
-  onImageClick,
-  onImageSizeChanged,
+  onLoaded,
   onComponentSizeChanged,
+  onClick,
 }: {
   topicName?: string;
   height?: number;
   quality?: number;
-  onImageLoad?: React.EventHandler<
-    React.SyntheticEvent<HTMLImageElement, Event>
-  >;
-  onImageClick?: React.MouseEventHandler<HTMLImageElement>;
-  onImageSizeChanged?: (width: number, height: number) => void;
+  onLoaded?: (videoWidth: number, videoHeight: number) => void;
   onComponentSizeChanged?: (width: number, height: number) => void;
+  onClick?: React.MouseEventHandler<HTMLVideoElement>;
 }) {
-  const imgRef = useRef<HTMLImageElement>(null);
-  const [streamUrl, setStreamUrl] = useState<string>();
-  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [componentSize, setComponentSize] = useState({ width: 0, height: 0 });
+  const [isLoading, setIsLoading] = useState(true);
 
   // Unfortunately, with SSR, this needed for code that should only run on client side
+  // TODO: move this to a separate custom hook
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const videoServer =
-        process.env.NEXT_PUBLIC_VIDEO_SERVER_URL ??
-        `http://${window.location.hostname}:8080`;
-      setStreamUrl(
-        `${videoServer}/stream?topic=${topicName}&quality=${quality}&qos_profile=sensor_data`
-      );
+    if (typeof window === "undefined") {
+      return;
     }
-  }, [topicName, quality]);
+
+    const pc = new RTCPeerConnection({
+      iceServers: [], // No STUN/TURN servers needed
+    });
+    // From https://stackoverflow.com/questions/50002099/webrtc-one-way-video-call
+    pc.addTransceiver("video");
+    // This step seems to be optional:
+    pc.getTransceivers().forEach((t) => (t.direction = "recvonly"));
+
+    pc.ontrack = (event) => {
+      if (event.track.kind === "video") {
+        console.log(`Video track received`);
+        if (videoRef.current) {
+          videoRef.current.srcObject = event.streams[0];
+        }
+      }
+    };
+
+    pc.oniceconnectionstatechange = (event) => {
+      console.log(`oniceconnectionstatechange: ${pc.iceConnectionState}`);
+    };
+
+    pc.onsignalingstatechange = (event) => {
+      console.log(`onsignalingstatechange: ${pc.signalingState}`);
+    };
+
+    const startTime = Date.now();
+    pc.onconnectionstatechange = (event) => {
+      console.log(`onconnectionstatechange: ${pc.connectionState}`);
+      if (pc.iceConnectionState === "connected") {
+        console.log(`Connected in ${Date.now() - startTime} ms`);
+      }
+    };
+
+    const signalingServerUrl =
+      process.env.NEXT_PUBLIC_VIDEO_SERVER_URL ??
+      `ws://${window.location.hostname}:8080`;
+    const socket = new WebSocket(`${signalingServerUrl}?topic=${topicName}`);
+
+    socket.onmessage = async (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.answer) {
+        await pc.setRemoteDescription(data.answer);
+      } else if (data.candidate) {
+        await pc.addIceCandidate(data.candidate);
+      }
+    };
+
+    socket.onopen = async () => {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socket.send(JSON.stringify({ offer: pc.localDescription }));
+    };
+
+    return () => {
+      socket.close();
+      pc.close();
+    };
+  }, [topicName]);
 
   useEffect(() => {
-    const img = imgRef.current;
-    if (img) {
-      const updateSize = () => {
-        if (imgRef.current) {
-          const { naturalWidth, naturalHeight, offsetWidth, offsetHeight } =
-            imgRef.current;
-          if (
-            imageSize.width !== naturalWidth ||
-            imageSize.height !== naturalHeight
-          ) {
-            setImageSize({
-              width: naturalWidth,
-              height: naturalHeight,
-            });
-            onImageSizeChanged &&
-              onImageSizeChanged(naturalWidth, naturalHeight);
-          }
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const video = videoRef.current;
+    if (video === null) {
+      return;
+    }
+
+    const updateSize = () => {
+      const video = videoRef.current;
+      if (video === null) {
+        return;
+      }
+
+      if (
+        componentSize.width !== video.offsetWidth ||
+        componentSize.height !== video.offsetHeight
+      ) {
+        setComponentSize({
+          width: video.offsetWidth,
+          height: video.offsetHeight,
+        });
+        onComponentSizeChanged &&
+          onComponentSizeChanged(video.offsetWidth, video.offsetHeight);
+      }
+    };
+
+    window.addEventListener("resize", updateSize);
+
+    return () => {
+      window.removeEventListener("resize", updateSize);
+    };
+  }, [height, componentSize, setComponentSize, onComponentSizeChanged]);
+
+  return (
+    <div className="relative bg-gray-600">
+      {isLoading && (
+        <div
+          className="absolute"
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            zIndex: 10,
+          }}
+        >
+          <p className="text-white">Waiting for stream...</p>
+        </div>
+      )}
+      <video
+        ref={videoRef}
+        className="w-auto max-h-full max-w-full object-fill"
+        autoPlay={true}
+        playsInline={true}
+        muted={true}
+        style={{ height }}
+        onWaiting={() => {
+          setIsLoading(true);
+        }}
+        onCanPlay={() => {
+          setIsLoading(false);
+        }}
+        onPlaying={() => {
+          setIsLoading(false);
+        }}
+        onLoadedMetadata={(event) => {
+          const { videoWidth, videoHeight, offsetWidth, offsetHeight } =
+            event.currentTarget;
+          onLoaded && onLoaded(videoWidth, videoHeight);
+
           if (
             componentSize.width !== offsetWidth ||
             componentSize.height !== offsetHeight
           ) {
-            setComponentSize({ width: offsetWidth, height: offsetHeight });
+            setComponentSize({
+              width: offsetWidth,
+              height: offsetHeight,
+            });
             onComponentSizeChanged &&
               onComponentSizeChanged(offsetWidth, offsetHeight);
           }
-        }
-      };
-
-      if (img.complete) {
-        updateSize();
-      }
-
-      window.addEventListener("resize", updateSize);
-      img.addEventListener("load", updateSize);
-
-      return () => {
-        window.removeEventListener("resize", updateSize);
-        img.removeEventListener("load", updateSize);
-      };
-    }
-  }, [
-    height,
-    streamUrl,
-    imageSize,
-    setImageSize,
-    componentSize,
-    setComponentSize,
-    onImageSizeChanged,
-    onComponentSizeChanged,
-  ]);
-
-  return (
-    <img
-      ref={imgRef}
-      src={streamUrl}
-      alt="Camera Color Frame"
-      className="w-auto max-h-full max-w-full"
-      style={{ height }}
-      onLoad={onImageLoad}
-      onClick={onImageClick}
-    />
+        }}
+        onClick={onClick}
+      />
+    </div>
   );
 }
