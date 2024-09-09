@@ -5,6 +5,7 @@ import NodeCards from "@/components/nodes/node-cards";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -112,7 +113,12 @@ export default function Controls() {
         {laserButton}
         <Dialog>
           <DialogTrigger asChild>
-            <Button variant="destructive">Reboot System</Button>
+            <Button
+              disabled={!lifecycleManagerNode.connected}
+              variant="destructive"
+            >
+              Reboot System
+            </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
@@ -123,14 +129,16 @@ export default function Controls() {
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button
-                type="submit"
-                onClick={() => {
-                  lifecycleManagerNode.reboot();
-                }}
-              >
-                Confirm
-              </Button>
+              <DialogClose asChild>
+                <Button
+                  type="submit"
+                  onClick={() => {
+                    lifecycleManagerNode.reboot();
+                  }}
+                >
+                  Confirm
+                </Button>
+              </DialogClose>
             </DialogFooter>
           </DialogContent>
         </Dialog>
