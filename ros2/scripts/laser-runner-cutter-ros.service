@@ -9,6 +9,7 @@ StandardOutput=inherit
 StandardError=inherit
 Restart=always
 RestartSec=5
+TimeoutStopSec=10
 User=csc-jetson1
 
 [Install]
