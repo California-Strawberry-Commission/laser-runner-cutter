@@ -117,27 +117,41 @@ export default function Controls() {
               disabled={!lifecycleManagerNode.connected}
               variant="destructive"
             >
-              Reboot System
+              Restart Service
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Are you absolutely sure?</DialogTitle>
               <DialogDescription>
-                This will reboot the ROS 2 host system, and may take a few
-                minutes for it to come back up.
+                This will restart the ROS 2 nodes, and may take a few minutes
+                for it to come back up. You can also choose to reboot the host
+                machine, which will take longer.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <DialogClose asChild>
                 <Button
-                  type="submit"
+                  variant="destructive"
                   onClick={() => {
-                    lifecycleManagerNode.reboot();
+                    lifecycleManagerNode.restart_service();
                   }}
                 >
-                  Confirm
+                  Restart Nodes
                 </Button>
+              </DialogClose>
+              <DialogClose asChild>
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    lifecycleManagerNode.reboot_system();
+                  }}
+                >
+                  Reboot System
+                </Button>
+              </DialogClose>
+              <DialogClose asChild>
+                <Button>Cancel</Button>
               </DialogClose>
             </DialogFooter>
           </DialogContent>

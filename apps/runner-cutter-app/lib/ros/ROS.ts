@@ -183,14 +183,11 @@ export default class ROS {
       return;
     }
 
-    // Use service call to get list of nodes as a heartbeat, and reset the
-    // connection if there are any issues.
     let nodes: string[] = [];
     try {
       nodes = await this.getNodesInternal();
     } catch (error) {
       console.error("[ROS] Failed to get nodes:", error);
-      this.ros.close();
     }
     const prevSet = new Set(this.nodes);
     const currSet = new Set(nodes);
