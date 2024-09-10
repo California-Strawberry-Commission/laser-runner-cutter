@@ -31,7 +31,6 @@ export default class TaskRunner {
     this.isRunning = false;
   }
 
-  // Function to cancel the ongoing task execution
   public stop(): void {
     if (!this.isRunning) {
       return;

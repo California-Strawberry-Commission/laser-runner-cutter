@@ -183,32 +183,33 @@ export default class ROS {
       return;
     }
 
+    // Use service call to get list of nodes as a heartbeat, and reset the
+    // connection if there are any issues.
+    let nodes: string[] = [];
     try {
-      const nodes = await this.getNodesInternal();
-      const prevSet = new Set(this.nodes);
-      const currSet = new Set(nodes);
-      const disconnected = this.nodes.filter((node) => !currSet.has(node));
-      const connected = nodes.filter((node) => !prevSet.has(node));
-      this.nodes = nodes;
-
-      disconnected.forEach((node) => {
-        console.log(`[ROS] Node disconnected: ${node}`);
-        this.nodeListeners.forEach((listener) => {
-          listener(node, false);
-        });
-      });
-
-      connected.forEach((node) => {
-        console.log(`[ROS] Node connected: ${node}`);
-        this.nodeListeners.forEach((listener) => {
-          listener(node, true);
-        });
-      });
+      nodes = await this.getNodesInternal();
     } catch (error) {
-      // Use service call to get list of nodes as a heartbeat, and reset the
-      // connection if there are any issues.
       console.error("[ROS] Failed to get nodes:", error);
       this.ros.close();
     }
+    const prevSet = new Set(this.nodes);
+    const currSet = new Set(nodes);
+    const disconnected = this.nodes.filter((node) => !currSet.has(node));
+    const connected = nodes.filter((node) => !prevSet.has(node));
+    this.nodes = nodes;
+
+    disconnected.forEach((node) => {
+      console.log(`[ROS] Node disconnected: ${node}`);
+      this.nodeListeners.forEach((listener) => {
+        listener(node, false);
+      });
+    });
+
+    connected.forEach((node) => {
+      console.log(`[ROS] Node connected: ${node}`);
+      this.nodeListeners.forEach((listener) => {
+        listener(node, true);
+      });
+    });
   }
 }
