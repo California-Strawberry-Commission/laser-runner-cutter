@@ -53,7 +53,11 @@ class Yolo:
             iou (float): Intersection Over Union (IoU) threshold for Non-Maximum Suppression (NMS). Lower values result in fewer detections by eliminating overlapping boxes, useful for reducing duplicates.
         """
         # YOLO prediction takes an numpy array with BGR8 format
-        result = self.model(cv2.cvtColor(image, cv2.COLOR_RGB2BGR), iou=iou)[0]
+        result = self.model(
+            cv2.cvtColor(image, cv2.COLOR_RGB2BGR),
+            iou=iou,
+            half=True,
+        )[0]
         out = {}
         out["conf"] = result.boxes.conf.cpu().numpy()
         out["bboxes"] = result.boxes.xyxy.cpu().numpy()
@@ -73,7 +77,10 @@ class Yolo:
         """
         # YOLO prediction takes an numpy array with BGR8 format
         result = self.model.track(
-            cv2.cvtColor(image, cv2.COLOR_RGB2BGR), iou=iou, persist=True
+            cv2.cvtColor(image, cv2.COLOR_RGB2BGR),
+            iou=iou,
+            persist=True,
+            half=True,
         )[0]
         out = {}
         out["conf"] = result.boxes.conf.cpu().numpy()
