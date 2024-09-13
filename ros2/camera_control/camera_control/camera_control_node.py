@@ -143,7 +143,7 @@ class CameraControlNode:
         # ML models
         package_share_directory = get_package_share_directory("camera_control")
         runner_weights_path = os.path.join(
-            package_share_directory, "models", "RunnerSegYoloV8l.engine"
+            package_share_directory, "models", "RunnerSegYoloV8l.pt"
         )
         self.runner_seg_input_image_size = (1024, 768)
         self.runner_seg_model = Yolo(
@@ -151,7 +151,7 @@ class CameraControlNode:
             input_image_size=self.runner_seg_input_image_size,
         )
         laser_weights_path = os.path.join(
-            package_share_directory, "models", "LaserDetectionYoloV8n.engine"
+            package_share_directory, "models", "LaserDetectionYoloV8n.pt"
         )
         self.laser_detection_input_image_size = (640, 480)
         self.laser_detection_model = Yolo(
