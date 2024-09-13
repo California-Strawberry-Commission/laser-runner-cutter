@@ -9,25 +9,37 @@ from glob import glob
 from natsort import natsorted
 
 PROJECT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-DEFAULT_SIZE = (1024, 768)
+DEFAULT_INPUT_IMAGE_SIZE = (1024, 768)
 DEFAULT_EPOCHS = 150
 
 
 class Yolo:
-    def __init__(self, weights_file=None):
+    def __init__(self, weights_file=None, input_image_size=DEFAULT_INPUT_IMAGE_SIZE):
         if weights_file is not None and os.path.exists(weights_file):
-            self.model = YOLO(weights_file)
+            print(f"Using weights file {weights_file}")
+            self.model = YOLO(weights_file, task="segment")
         else:
-            self.model = YOLO("yolov8n-seg.yaml")
+            print(
+                f"Weights file not defined or could not be found. Using model yaml file"
+            )
+            self.model = YOLO("yolov8n-seg.yaml", task="segment")
+        # For 'train' and 'val' modes, imgsz must be an integer, while for 'predict',
+        # 'track', and 'export' modes, imgsz must be an (h, w) tuple or an integer.
+        # For 'train' and 'val' modes, the largest dimension will be used.
+        self.imgsz = (input_image_size[1], input_image_size[0])
 
     def load_weights(self, weights_file):
-        self.model = YOLO(weights_file)
+        self.model = YOLO(weights_file, task="segment")
 
-    def train(self, dataset_yml, size=DEFAULT_SIZE, epochs=DEFAULT_EPOCHS):
+    def train(
+        self,
+        dataset_yml,
+        epochs=DEFAULT_EPOCHS,
+    ):
         train_start = perf_counter()
         self.model.train(
             data=dataset_yml,
-            imgsz=size,
+            imgsz=self.imgsz,
             device=0,
             batch=-1,
             epochs=epochs,
@@ -39,6 +51,7 @@ class Yolo:
     def eval(self, dataset_yml):
         metrics = self.model.val(
             data=dataset_yml,
+            imgsz=self.imgsz,
             split="test",
             iou=0.6,
         )
@@ -55,6 +68,7 @@ class Yolo:
         # YOLO prediction takes an numpy array with BGR8 format
         result = self.model(
             cv2.cvtColor(image, cv2.COLOR_RGB2BGR),
+            imgsz=self.imgsz,
             iou=iou,
             half=True,
         )[0]
@@ -78,6 +92,7 @@ class Yolo:
         # YOLO prediction takes an numpy array with BGR8 format
         result = self.model.track(
             cv2.cvtColor(image, cv2.COLOR_RGB2BGR),
+            imgsz=self.imgsz,
             iou=iou,
             persist=True,
             half=True,
@@ -109,13 +124,13 @@ class Yolo:
             # Measure inference time
             # Warmup
             for i in range(5):
-                self.model(image_array, iou=iou)
+                self.model(image_array, imgsz=self.imgsz, iou=iou)
             inference_start = perf_counter()
-            self.model(image_array, iou=0.6)
+            self.model(image_array, imgsz=self.imgsz, iou=0.6)
             inference_stop = perf_counter()
             print(f"Inference took {inference_stop - inference_start} seconds.")
 
-            result = self.model(image_array, iou=iou)[0]
+            result = self.model(image_array, imgsz=self.imgsz, iou=iou)[0]
 
             conf = result.boxes.conf.cpu().numpy()
             boxes = result.boxes.xywh
@@ -145,10 +160,13 @@ if __name__ == "__main__":
     train_parser.add_argument(
         "--dataset_yml", default=os.path.join(PROJECT_PATH, "dataset.yml")
     )
-    train_parser.add_argument(
-        "--size", type=tuple_type, default=f"({DEFAULT_SIZE[0]}, {DEFAULT_SIZE[1]})"
-    )
     train_parser.add_argument("--weights_file")
+    train_parser.add_argument(
+        "--input_image_size",
+        type=tuple_type,
+        default=f"({DEFAULT_INPUT_IMAGE_SIZE[0]}, {DEFAULT_INPUT_IMAGE_SIZE[1]})",
+        help="(width, height) tuple",
+    )
     train_parser.add_argument("--epochs", type=int, default=DEFAULT_EPOCHS)
 
     eval_parser = subparsers.add_parser("eval", help="Evaluate model performance")
@@ -156,9 +174,21 @@ if __name__ == "__main__":
         "--dataset_yml", default=os.path.join(PROJECT_PATH, "dataset.yml")
     )
     eval_parser.add_argument("--weights_file")
+    eval_parser.add_argument(
+        "--input_image_size",
+        type=tuple_type,
+        default=f"({DEFAULT_INPUT_IMAGE_SIZE[0]}, {DEFAULT_INPUT_IMAGE_SIZE[1]})",
+        help="(width, height) tuple",
+    )
 
     debug_parser = subparsers.add_parser("debug", help="Debug model predictions")
     debug_parser.add_argument("--weights_file")
+    debug_parser.add_argument(
+        "--input_image_size",
+        type=tuple_type,
+        default=f"({DEFAULT_INPUT_IMAGE_SIZE[0]}, {DEFAULT_INPUT_IMAGE_SIZE[1]})",
+        help="(width, height) tuple",
+    )
     debug_parser.add_argument(
         "--image_path", required=True, help="Image file or dir path"
     )
@@ -175,10 +205,9 @@ if __name__ == "__main__":
         }
     )
 
-    weights_file = args.weights_file
-    model = Yolo(weights_file)
+    model = Yolo(args.weights_file, args.input_image_size)
     if args.command == "train":
-        model.train(args.dataset_yml, args.size, args.epochs)
+        model.train(args.dataset_yml, args.epochs)
     elif args.command == "eval":
         metrics = model.eval(args.dataset_yml)
         summary = {

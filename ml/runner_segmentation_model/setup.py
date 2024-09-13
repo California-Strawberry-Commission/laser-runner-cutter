@@ -12,6 +12,8 @@ setup(
         "numpy",
         "Pillow",
         "ultralytics==8.2.74",
+        "onnx",
+        "tensorrt",
         "natsort",
         "opencv-python",
         "albumentations",

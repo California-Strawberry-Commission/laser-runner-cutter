@@ -143,15 +143,21 @@ class CameraControlNode:
         # ML models
         package_share_directory = get_package_share_directory("camera_control")
         runner_weights_path = os.path.join(
-            package_share_directory, "models", "RunnerSegYoloV8l.pt"
+            package_share_directory, "models", "RunnerSegYoloV8l.engine"
         )
-        self.runner_seg_model = Yolo(runner_weights_path)
-        self.runner_seg_size = (1024, 768)
+        self.runner_seg_input_image_size = (1024, 768)
+        self.runner_seg_model = Yolo(
+            weights_file=runner_weights_path,
+            input_image_size=self.runner_seg_input_image_size,
+        )
         laser_weights_path = os.path.join(
-            package_share_directory, "models", "LaserDetectionYoloV8n.pt"
+            package_share_directory, "models", "LaserDetectionYoloV8n.engine"
         )
-        self.laser_detection_model = Yolo(laser_weights_path)
-        self.laser_detection_size = (640, 480)
+        self.laser_detection_input_image_size = (640, 480)
+        self.laser_detection_model = Yolo(
+            weights_file=laser_weights_path,
+            input_image_size=self.laser_detection_input_image_size,
+        )
 
         # Publish initial state
         self._publish_state()
@@ -561,13 +567,15 @@ class CameraControlNode:
     async def _get_laser_points(
         self, color_frame: np.ndarray, conf_threshold: float = 0.0
     ) -> Tuple[List[Tuple[int, int]], List[float]]:
-        # Scale image before prediction to improve accuracy
+        # Scale image before prediction to improve performance
         frame_width = color_frame.shape[1]
         frame_height = color_frame.shape[0]
-        result_width = self.laser_detection_size[0]
-        result_height = self.laser_detection_size[1]
+        result_width = self.laser_detection_input_image_size[0]
+        result_height = self.laser_detection_input_image_size[1]
         color_frame = cv2.resize(
-            color_frame, self.laser_detection_size, interpolation=cv2.INTER_LINEAR
+            color_frame,
+            self.laser_detection_input_image_size,
+            interpolation=cv2.INTER_LINEAR,
         )
 
         result = await asyncio.get_running_loop().run_in_executor(
@@ -604,13 +612,15 @@ class CameraControlNode:
     async def _get_runner_masks(
         self, color_frame: np.ndarray, conf_threshold: float = 0.0
     ) -> Tuple[List[np.ndarray], List[float], List[int]]:
-        # Scale image before prediction to improve accuracy
+        # Scale image before prediction to improve performance
         frame_width = color_frame.shape[1]
         frame_height = color_frame.shape[0]
-        result_width = self.runner_seg_size[0]
-        result_height = self.runner_seg_size[1]
+        result_width = self.runner_seg_input_image_size[0]
+        result_height = self.runner_seg_input_image_size[1]
         color_frame = cv2.resize(
-            color_frame, self.runner_seg_size, interpolation=cv2.INTER_LINEAR
+            color_frame,
+            self.runner_seg_input_image_size,
+            interpolation=cv2.INTER_LINEAR,
         )
         result = await asyncio.get_running_loop().run_in_executor(
             None,
