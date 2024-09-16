@@ -148,6 +148,7 @@ class LucidRgbdCamera(RgbdCamera):
         xyz_to_depth_camera_extrinsic_matrix: np.ndarray,
         color_camera_serial_number: Optional[str] = None,
         depth_camera_serial_number: Optional[str] = None,
+        color_frame_size: Tuple[int, int] = (2048, 1536),
         state_change_callback: Optional[Callable[[State], None]] = None,
         logger: Optional[logging.Logger] = None,
     ):
@@ -161,11 +162,13 @@ class LucidRgbdCamera(RgbdCamera):
             xyz_to_color_camera_extrinsic_matrix (np.ndarray): Extrinsic matrix from depth camera's XYZ positions to the depth camera.
             color_camera_serial_number (Optional[str]): Serial number of color camera to connect to. If None, the first available color camera will be used.
             depth_camera_serial_number (Optional[str]): Serial number of depth camera to connect to. If None, the first available depth camera will be used.
+            color_frame_size (Tuple[int, int]): Desired frame size of the color camera.
             state_change_callback (Optional[Callable[[State], None]]): Callback that gets called when the camera device state changes.
             logger (Optional[logging.Logger]): Logger
         """
         self.color_camera_serial_number = color_camera_serial_number
-        self.color_frame_size = (0, 0)
+        self.color_frame_size = color_frame_size
+        self._color_frame_offset = (0, 0)
         self._color_camera_intrinsic_matrix = color_camera_intrinsic_matrix
         self._color_camera_distortion_coeffs = color_camera_distortion_coeffs
         self.depth_camera_serial_number = depth_camera_serial_number
@@ -401,6 +404,7 @@ class LucidRgbdCamera(RgbdCamera):
                             self._depth_camera_distortion_coeffs,
                             self._xyz_to_color_camera_extrinsic_matrix,
                             self._xyz_to_depth_camera_extrinsic_matrix,
+                            color_frame_offset=self._color_frame_offset,
                         )
                     )
 
@@ -435,10 +439,31 @@ class LucidRgbdCamera(RgbdCamera):
         # in the correct order.
         stream_nodemap["StreamPacketResendEnable"].value = True
         # Set frame size and pixel format
-        nodemap["Width"].value = nodemap["Width"].max
-        nodemap["Height"].value = nodemap["Height"].max
-        self.color_frame_size = (nodemap["Width"].value, nodemap["Height"].value)
         nodemap["PixelFormat"].value = PixelFormat.RGB8
+        # Reset ROI (Region of Interest) offset, as it persists on the device.
+        nodemap["OffsetX"].value = 0
+        nodemap["OffsetY"].value = 0
+        max_width = nodemap["Width"].max
+        max_height = nodemap["Height"].max
+        # Check that the desired color frame size is valid before attempting to set
+        if (
+            self.color_frame_size[0] <= 0
+            or max_width < self.color_frame_size[0]
+            or self.color_frame_size[1] <= 0
+            or max_height < self.color_frame_size[1]
+        ):
+            raise Exception(
+                f"Invalid color frame size specified: {self.color_frame_size[0]}x{self.color_frame_size[1]}. Max size is {max_width}x{max_height}."
+            )
+        nodemap["Width"].value = self.color_frame_size[0]
+        nodemap["Height"].value = self.color_frame_size[1]
+        # Set the ROI offset to be the center of the full frame
+        self._color_frame_offset = (
+            (max_width - self.color_frame_size[0]) // 2,
+            (max_height - self.color_frame_size[1]) // 2,
+        )
+        nodemap["OffsetX"].value = self._color_frame_offset[0]
+        nodemap["OffsetY"].value = self._color_frame_offset[1]
         # Set the following when Persistent IP is set on the camera
         nodemap["GevPersistentARPConflictDetectionEnable"].value = False
 
@@ -686,6 +711,7 @@ class LucidRgbdCamera(RgbdCamera):
 def create_lucid_rgbd_camera(
     color_camera_serial_number: Optional[str] = None,
     depth_camera_serial_number: Optional[str] = None,
+    color_frame_size: Tuple[int, int] = (2048, 1536),
     state_change_callback: Optional[Callable[[State], None]] = None,
     logger: Optional[logging.Logger] = None,
 ) -> LucidRgbdCamera:
@@ -720,6 +746,7 @@ def create_lucid_rgbd_camera(
         xyz_to_helios_extrinsic_matrix,  # type: ignore
         color_camera_serial_number=color_camera_serial_number,
         depth_camera_serial_number=depth_camera_serial_number,
+        color_frame_size=color_frame_size,
         state_change_callback=state_change_callback,
         logger=logger,
     )
