@@ -1,8 +1,8 @@
 numpy
 Pillow
 ultralytics==8.2.74
-onnx
-tensorrt
+onnx==1.16.2
+tensorrt==10.4.0
 dvc
 dvc[s3]
 python-dotenv

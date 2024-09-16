@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import os
+import platform
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -141,18 +142,19 @@ class CameraControlNode:
             )
 
         # ML models
-        package_share_directory = get_package_share_directory("camera_control")
-        runner_weights_path = os.path.join(
-            package_share_directory, "models", "RunnerSegYoloV8l.pt"
+        models_dir = os.path.join(
+            get_package_share_directory("camera_control"),
+            "models",
+            "tensorrt",
+            platform.machine(),
         )
+        runner_weights_path = os.path.join(models_dir, "RunnerSegYoloV8l.engine")
         self.runner_seg_input_image_size = (1024, 768)
         self.runner_seg_model = Yolo(
             weights_file=runner_weights_path,
             input_image_size=self.runner_seg_input_image_size,
         )
-        laser_weights_path = os.path.join(
-            package_share_directory, "models", "LaserDetectionYoloV8n.pt"
-        )
+        laser_weights_path = os.path.join(models_dir, "LaserDetectionYoloV8n.engine")
         self.laser_detection_input_image_size = (640, 480)
         self.laser_detection_model = Yolo(
             weights_file=laser_weights_path,
