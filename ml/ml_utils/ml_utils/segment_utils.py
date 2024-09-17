@@ -176,13 +176,20 @@ def convert_mask_to_polygons(mask):
 def convert_contour_to_mask(contour, mask_size=None):
     contour = np.array(contour, dtype=np.int32)
     contour = contour.reshape(-1, 1, 2)
+
+    if contour.size <= 0:
+        return None
+
     if mask_size is None:
         max_x = np.max(contour[:, 0, 0])
         max_y = np.max(contour[:, 0, 1])
         mask_size = (math.ceil(max_x), math.ceil(max_y))
 
     mask = np.zeros((mask_size[1], mask_size[0]), dtype=np.uint8)
-    cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
+    try:
+        cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
+    except Exception as exc:
+        return None
 
     return mask
 
@@ -257,6 +264,9 @@ def convert_contour_to_line_segments(contour, epsilon=4.0):
         epsilon (float): tolerance parameter for Douglas-Peucker algorithm. A larger epsilon will result in less line segments
     """
     mask = convert_contour_to_mask(contour)
+    if mask is None:
+        return []
+
     try:
         cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
     except Exception as exc:

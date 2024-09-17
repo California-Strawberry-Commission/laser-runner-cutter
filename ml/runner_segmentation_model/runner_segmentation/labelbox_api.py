@@ -99,6 +99,8 @@ def upload_yolo_predictions(
             mask = convert_contour_to_mask(
                 mask_contour, mask_size=(img_width, img_height)
             )
+            if mask is None:
+                continue
 
             predictions.append(
                 lb_types.Label(

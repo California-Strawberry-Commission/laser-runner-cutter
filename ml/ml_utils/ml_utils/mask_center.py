@@ -38,6 +38,10 @@ def mask_center(mask):
 
 def contour_center(contour):
     mask = segment_utils.convert_contour_to_mask(contour)
+
+    if mask is None:
+        return None
+
     return mask_center(mask)
 
 

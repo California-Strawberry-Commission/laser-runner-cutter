@@ -657,19 +657,23 @@ class CameraControlNode:
 
     async def _get_runner_centers(
         self, runner_masks: List[np.ndarray]
-    ) -> List[Tuple[int, int]]:
-        runner_centers = []
-        for mask in runner_masks:
-            runner_center = await asyncio.get_running_loop().run_in_executor(
-                None,
-                functools.partial(
-                    contour_center,
-                    mask,
-                ),
-            )
-            runner_centers.append(
-                (runner_center[0], runner_center[1]) if runner_center else None
-            )
+    ) -> List[Tuple[int, int] | None]:
+        def get_contour_centers(contours: List[np.ndarray]):
+            centers = []
+            for contour in contours:
+                center = contour_center(contour)
+                centers.append(
+                    (round(center[0]), round(center[1])) if center is not None else None
+                )
+            return centers
+
+        runner_centers = await asyncio.get_running_loop().run_in_executor(
+            None,
+            functools.partial(
+                get_contour_centers,
+                runner_masks,
+            ),
+        )
         return runner_centers
 
     ## region Message builders
