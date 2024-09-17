@@ -18,7 +18,6 @@ from .decorators.start import RosStart
 from collections import OrderedDict
 
 
-
 class AsyncDriver:
     """Base class for all adapters"""
 
@@ -57,12 +56,10 @@ class AsyncDriver:
         """Runs asyncio code from ANOTHER SYNC THREAD"""
 
         # https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.call_soon_threadsafe
-        return asyncio.run_coroutine_threadsafe(
-            fn(*args, **kwargs), self._loop
-        )
+        return asyncio.run_coroutine_threadsafe(fn(*args, **kwargs), self._loop)
 
     def log_debug(self, msg: str):
-        self._logger.info(msg)
+        self._logger.debug(msg)
 
     def log_warn(self, msg: str):
         self._logger.warn(msg)
@@ -77,20 +74,26 @@ class AsyncDriver:
         # Attachers create an implementation for the passed handler which is assigned
         # to that handler's name.
         att = OrderedDict()
-        
+
         # Defines load order.
-        att[RosImport] = self._process_import # Process imports first 
-        att[RosTopic] = self._attach_publisher # Attach topics second b/c they are referenced by services/subscribers/etc.
+        att[RosImport] = self._process_import  # Process imports first
+        att[RosTopic] = (
+            self._attach_publisher
+        )  # Attach topics second b/c they are referenced by services/subscribers/etc.
         att[RosService] = self._attach_service
         att[RosSubscription] = self._attach_subscriber
         att[RosAction] = self._attach_action
         att[RosTimer] = self._attach_timer
         att[RosParams] = self._attach_params
         att[RosParamSubscription] = self._attach_param_subscription
-        att[RosStart] = self._process_start # Process starts last b/c they directly go into asyncio loop
-        
+        att[RosStart] = (
+            self._process_start
+        )  # Process starts last b/c they directly go into asyncio loop
+
         for ros_element, attacher in att.items():
-            for attr ,definition in getmembers(self._n, lambda v: isinstance(v, ros_element)):
+            for attr, definition in getmembers(
+                self._n, lambda v: isinstance(v, ros_element)
+            ):
                 setattr(self, attr, attacher(attr, definition))
 
     def _warn_unimplemented(self, readable_name, fn_name):

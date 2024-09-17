@@ -588,7 +588,7 @@ class CameraControlNode:
             ),
         )
         result_conf = result["conf"]
-        self.log(f"Laser point prediction found {result_conf.size} objects.")
+        self.log_debug(f"Laser point prediction found {result_conf.size} objects.")
 
         laser_points = []
         confs = []
@@ -632,7 +632,7 @@ class CameraControlNode:
             ),
         )
         result_conf = result["conf"]
-        self.log(f"Runner mask prediction found {result_conf.size} objects.")
+        self.log_debug(f"Runner mask prediction found {result_conf.size} objects.")
 
         runner_masks = []
         confs = []
@@ -703,7 +703,7 @@ class CameraControlNode:
                 msg.instances.append(object_instance)
             else:
                 msg.invalid_points.append(point_msg)
-        self.log(
+        self.log_debug(
             f"{len(msg.instances)} instances had valid positions, out of {len(points)} total detected"
         )
         return msg
