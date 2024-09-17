@@ -82,14 +82,14 @@ def generate_launch_description():
         parameters=[parameters_file],
     )
 
-    rosbridge = IncludeLaunchDescription(
-        FrontendLaunchDescriptionSource(
-            [
-                get_package_share_directory("rosbridge_server"),
-                "/launch/rosbridge_websocket_launch.xml",
-            ]
-        ),
-    )
+    # rosbridge = IncludeLaunchDescription(
+    #     FrontendLaunchDescriptionSource(
+    #         [
+    #             get_package_share_directory("rosbridge_server"),
+    #             "/launch/rosbridge_websocket_launch.xml",
+    #         ]
+    #     ),
+    # )
 
     amiga = LaunchNode(
         amiga_control_node,
@@ -107,9 +107,9 @@ def generate_launch_description():
         # emulate_tty=True,
     )
 
-    video_server = launch_ros.actions.Node(
-        package="web_video_server", executable="web_video_server", name="wvs"
-    )
+    # video_server = launch_ros.actions.Node(
+    #     package="web_video_server", executable="web_video_server", name="wvs"
+    # )
     
     # brain.perceiver_forward.link(furrow_perc0)
     
@@ -119,8 +119,8 @@ def generate_launch_description():
     launchables = [
         amiga,
         brain,
-        rosbridge,
-        video_server,
+        # rosbridge,
+        # video_server,
         rs_node0,
         rs_node1,
         furrow_perc0,

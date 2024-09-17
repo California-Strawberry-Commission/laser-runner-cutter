@@ -27,6 +27,7 @@ class LucidFrame(RgbdFrame):
         depth_camera_distortion_coeffs: np.ndarray,
         xyz_to_color_camera_extrinsic_matrix: np.ndarray,
         xyz_to_depth_camera_extrinsic_matrix: np.ndarray,
+        color_frame_offset: Tuple[int, int] = (0, 0),
     ):
         """
         Args:
@@ -39,6 +40,7 @@ class LucidFrame(RgbdFrame):
             depth_camera_distortion_coeffs (np.ndarray): Distortion coefficients of the depth camera.
             xyz_to_color_camera_extrinsic_matrix (np.ndarray): Extrinsic matrix from depth camera's XYZ positions to the color camera.
             xyz_to_color_camera_extrinsic_matrix (np.ndarray): Extrinsic matrix from depth camera's XYZ positions to the depth camera.
+            color_frame_offset (Tuple[int, int]): Offset of the ROI area of the color frame.
         """
         self.color_frame = color_frame
         self._depth_frame_xyz = depth_frame_xyz
@@ -61,6 +63,7 @@ class LucidFrame(RgbdFrame):
             xyz_to_depth_camera_extrinsic_matrix
             @ invert_extrinsic_matrix(xyz_to_color_camera_extrinsic_matrix)
         )
+        self._color_frame_offset = color_frame_offset
 
     def get_corresponding_depth_pixel_deprecated(
         self, color_pixel: Tuple[int, int]
@@ -75,8 +78,16 @@ class LucidFrame(RgbdFrame):
             Tuple[int, int]: (x, y) coordinate in the depth frame.
         """
 
+        # Apply frame ROI offset. The calibration matrices and coefficients were calculated based on the max camera
+        # frame size, and if there was a reduced ROI set when capturing the frame, the pixel coordinate for the
+        # frame must be converted to that of the full size frame.
+        full_frame_color_pixel = (
+            color_pixel[0] + self._color_frame_offset[0],
+            color_pixel[1] + self._color_frame_offset[1],
+        )
+
         # Undistort the pixel coordinate in color camera
-        distorted_color_pixel = np.array([[color_pixel]], dtype=np.float32)
+        distorted_color_pixel = np.array([[full_frame_color_pixel]], dtype=np.float32)
         undistorted_color_pixel = cv2.undistortPoints(
             distorted_color_pixel,
             self._color_camera_intrinsic_matrix,
@@ -210,15 +221,23 @@ class LucidFrame(RgbdFrame):
 
             return min_x <= curr[0] <= max_x and min_y <= curr[1] <= max_y
 
+        # Apply frame ROI offset. The calibration matrices and coefficients were calculated based on the max camera
+        # frame size, and if there was a reduced ROI set when capturing the frame, the pixel coordinate for the
+        # frame must be converted to that of the full size frame.
+        full_frame_color_pixel = (
+            color_pixel[0] + self._color_frame_offset[0],
+            color_pixel[1] + self._color_frame_offset[1],
+        )
+
         # Min-depth and max-depth positions in color camera-space
         min_depth_position_color_space = deproject_pixel(
-            color_pixel,
+            full_frame_color_pixel,
             DEPTH_MIN_MM,
             self._color_camera_intrinsic_matrix,
             self._color_camera_distortion_coeffs,
         )
         max_depth_position_color_space = deproject_pixel(
-            color_pixel,
+            full_frame_color_pixel,
             DEPTH_MAX_MM,
             self._color_camera_intrinsic_matrix,
             self._color_camera_distortion_coeffs,
@@ -270,7 +289,7 @@ class LucidFrame(RgbdFrame):
             )
             distance = np.linalg.norm(
                 np.array(curr_color_pixel).astype(float)
-                - np.array(color_pixel).astype(float)
+                - np.array(full_frame_color_pixel).astype(float)
             )
             if distance < min_dist or min_dist < 0:
                 min_dist = distance
