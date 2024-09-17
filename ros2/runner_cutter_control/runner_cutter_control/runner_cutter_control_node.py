@@ -492,6 +492,9 @@ class StateMachine:
 
         if target_track is None:
             self._logger.info("No target found.")
+            # Add a delay here for now to avoid a tight loop when no viable targets are in view.
+            # TODO: enable constant runner detection, and move over to a push model for new tracks
+            await asyncio.sleep(0.2)
             await self.no_target_found()
         else:
             if self._enable_aiming:

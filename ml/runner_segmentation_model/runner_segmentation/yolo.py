@@ -71,6 +71,7 @@ class Yolo:
             imgsz=self.imgsz,
             iou=iou,
             half=True,
+            verbose=False,
         )[0]
         out = {}
         out["conf"] = result.boxes.conf.cpu().numpy()
@@ -96,6 +97,7 @@ class Yolo:
             iou=iou,
             persist=True,
             half=True,
+            verbose=False,
         )[0]
         out = {}
         out["conf"] = result.boxes.conf.cpu().numpy()
