@@ -4,9 +4,20 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 
 from aioros2 import LaunchNode
-from camera_control import camera_control_node
-from laser_control import laser_control_node
-from runner_cutter_control import runner_cutter_control_node
+
+from amiga_control import amiga_control_node
+from furrow_perceiver import realsense_stub
+from furrow_perceiver import furrow_perceiver_node
+from guidance_brain import guidance_brain_node
+
+import importlib.util
+
+import launch_ros.actions
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import (
+    PythonLaunchDescriptionSource,
+    FrontendLaunchDescriptionSource,
+)
 
 
 def generate_launch_description():
@@ -15,33 +26,145 @@ def generate_launch_description():
         "config",
         "parameters.yaml",
     )
-
-    camera_node = LaunchNode(
-        camera_control_node,
-        name="camera0",
-        parameters=[parameters_file],
-        respawn=True,
-        respawn_delay=2.0,
+    # 819312072040 - forward S/N
+    rs_node0 = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [
+                os.path.join(
+                    get_package_share_directory("realsense2_camera"), "launch"
+                ),
+                "/rs_launch.py",
+            ]
+        ),
+        launch_arguments={
+            "camera": "camera_1",
+            "serial_no": "'819312072040'",
+            "camera_name": "cam0",
+            "camera_namespace": "/",
+            "decimation_filter.enable": "true",
+            "temporal_filter.enable": "true",
+            "spatial_filter.enable": "true",
+            "hole_filling_filter.enable": "true",
+        }.items(),
+    )
+    
+    # 017322073371 - backward S/N
+    rs_node1 = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [
+                os.path.join(
+                    get_package_share_directory("realsense2_camera"), "launch"
+                ),
+                "/rs_launch.py",
+            ]
+        ),
+        launch_arguments={
+            "camera": "camera_2",
+            "serial_no": "'017322073371'",
+            "camera_name": "cam1",
+            "camera_namespace": "/",
+            "decimation_filter.enable": "true",
+            "temporal_filter.enable": "true",
+            "spatial_filter.enable": "true",
+            "hole_filling_filter.enable": "true",
+        }.items(),
     )
 
-    laser_node = LaunchNode(
-        laser_control_node,
-        name="laser0",
+    furrow_perc0 = LaunchNode(
+        furrow_perceiver_node,
+        name="furrow0",
         parameters=[parameters_file],
-        respawn=True,
-        respawn_delay=2.0,
     )
 
-    runner_cutter_node = LaunchNode(
-        runner_cutter_control_node,
-        name="control0",
+    furrow_perc1 = LaunchNode(
+        furrow_perceiver_node,
+        name="furrow1",
         parameters=[parameters_file],
-        respawn=True,
-        respawn_delay=2.0,
     )
 
-    # Link nodes
-    runner_cutter_node.camera_node.link(camera_node)
-    runner_cutter_node.laser_node.link(laser_node)
+    # rosbridge = IncludeLaunchDescription(
+    #     FrontendLaunchDescriptionSource(
+    #         [
+    #             get_package_share_directory("rosbridge_server"),
+    #             "/launch/rosbridge_websocket_launch.xml",
+    #         ]
+    #     ),
+    # )
 
-    return LaunchDescription([camera_node, laser_node, runner_cutter_node])  # type: ignore
+    amiga = LaunchNode(
+        amiga_control_node,
+        name="amiga0",
+        parameters=[parameters_file],
+        # output="screen",
+        # emulate_tty=True,
+    )
+
+    brain = LaunchNode(
+        guidance_brain_node,
+        name="brain0",
+        parameters=[parameters_file],
+        # output="screen",
+        # emulate_tty=True,
+    )
+
+    # video_server = launch_ros.actions.Node(
+    #     package="web_video_server", executable="web_video_server", name="wvs"
+    # )
+    
+    # brain.perceiver_forward.link(furrow_perc0)
+    
+    # brain.perceiver_backward.link(furrow_perc1)
+    brain.amiga.link(amiga)
+    
+    launchables = [
+        amiga,
+        brain,
+        # rosbridge,
+        # video_server,
+        rs_node0,
+        rs_node1,
+        furrow_perc0,
+        furrow_perc1,
+    ]
+    
+    if importlib.util.find_spec("arena_api"):
+        from camera_control import camera_control_node
+        from laser_control import laser_control_node
+        from runner_cutter_control import runner_cutter_control_node
+   
+        camera_node = LaunchNode(
+            camera_control_node,
+            name="camera0",
+            parameters=[parameters_file],
+            respawn=True,
+            respawn_delay=2.0,
+        )
+
+        laser_node = LaunchNode(
+            laser_control_node,
+            name="laser0",
+            parameters=[parameters_file],
+            respawn=True,
+            respawn_delay=2.0,
+        )
+
+        runner_cutter_node = LaunchNode(
+            runner_cutter_control_node,
+            name="control0",
+            parameters=[parameters_file],
+            respawn=True,
+            respawn_delay=2.0,
+        )
+        
+        # Link nodes
+        print(runner_cutter_node)
+        runner_cutter_node.camera_node.link(camera_node)
+        runner_cutter_node.laser_node.link(laser_node)
+
+        launchables.append(camera_node)
+        launchables.append(laser_node)
+        launchables.append(runner_cutter_node)
+        
+
+
+    return LaunchDescription(launchables)  # type: ignore
