@@ -2,8 +2,31 @@ import useROS from "@/lib/ros/useROS";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import expandTopicOrServiceName from "@/lib/ros/expandTopicName";
 
+
 type in_mapper_t = (...a: any) => any;
 type out_mapper_t = (res: any) => any;
+
+const inMappers = {
+  noArg: () => ({}),
+  trigger: () => ({}),
+  number: (d: number) => (d == null || isNaN(d) ? null : ({ data: d })), // Nulls will NOT result in a set
+}
+
+const outMappers = {
+  noArg: (_data: any) => undefined,
+  success: (_data: any) => _data.success as boolean,
+  successWithMessage: (_data: any) => _data as { success: boolean, message: string },
+  trigger: (_data: any) => _data as { success: boolean, message: string },
+}
+
+/**
+ * Pre-defined commonly used mapping functions.
+ */
+export const mappers = {
+  in: inMappers,
+  out: outMappers,
+}
+
 
 /**
  * Creates a topic subscriptions with optional mapper, using either inferred or explicit types.
@@ -57,6 +80,11 @@ function useService(nodeName: string, ros: any) {
 
       const service_data =
         typeof in_mapper === "function" ? in_mapper(...arg) : arg[0];
+
+      // If the in mapper returns null/undefined, cancel the service call.
+      if (service_data == null) 
+        return
+      
       const res = await ros.callService(serviceName, idl, service_data);
       return typeof out_mapper === "function" ? out_mapper(res) : res;
     }

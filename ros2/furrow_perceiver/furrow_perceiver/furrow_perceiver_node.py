@@ -1,6 +1,7 @@
 import asyncio
 from typing import AsyncGenerator
 from .furrow_tracker import FurrowTracker
+from common_interfaces.srv import SetInt32
 from furrow_perceiver_interfaces.msg import State, PositionResult
 from furrow_perceiver_interfaces.srv import GetState
 from dataclasses import dataclass
@@ -21,6 +22,7 @@ from aioros2 import (
     subscribe_param,
     param,
     start,
+    QOS_LATCHED
 )
 from cv_bridge import CvBridge, CvBridgeError
 from std_msgs.msg import String
@@ -55,14 +57,14 @@ from .furrow_tracker_annotator import FurrowTrackerAnnotator
 
 @dataclass
 class PerceiverNodeParams:
-    pass
+    guidance_offset: int = 0
 
 
 # Executable to call to launch this node (defined in `setup.py`)
 @node("furrow_perceiver")
 class FurrowPerceiverNode:
     p = params(PerceiverNodeParams)
-    state = topic("~/state", State)
+    state = topic("~/state", State, QOS_LATCHED)
     cvb = CvBridge()
 
     realsense: realsense_stub.RealsenseStub = import_node(realsense_stub)
@@ -73,9 +75,10 @@ class FurrowPerceiverNode:
     tracker = None
     annotator = None
 
-    @start
-    async def s(self):
-        self.log("STARTING FURROW TRACKER")
+    async def emit_state(self):
+        asyncio.create_task(self.state(
+            guidance_offset=self.tracker.guidance_offset_x
+        ))
 
     @subscribe(realsense.depth_image_topic)
     async def on_depth_image(
@@ -100,6 +103,7 @@ class FurrowPerceiverNode:
             self.tracker = FurrowTracker()
             self.tracker.init(cv_image)
             self.annotator = FurrowTrackerAnnotator(self.tracker)
+            self.tracker.guidance_offset_x = self.p.guidance_offset
 
         # Process image for guidance
         self.tracker.process(cv_image)
@@ -123,11 +127,12 @@ class FurrowPerceiverNode:
         m = self.cvb.cv2_to_imgmsg(depth_colormap, "bgr8")
         await self.debug_img_topic(m)
 
-    @service("~/get_state", GetState)
-    async def get_state(self):
-        return result(state=State(fps=0, camera_connected=False))
-
-
+    @service("~/set_guidance_offset", SetInt32)
+    async def set_guidance_offset(self, data):
+        self.tracker.guidance_offset_x = data
+        await self.emit_state()
+        return{}
+        
 # Boilerplate below here.
 def main():
     serve_nodes(FurrowPerceiverNode())

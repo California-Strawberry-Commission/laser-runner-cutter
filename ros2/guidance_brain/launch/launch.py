@@ -96,7 +96,7 @@ def generate_launch_description():
     )
 
     # Link nodes
-    brain.perceiver.link(furrow_perc0)
+    brain.perceiver_forward.link(furrow_perc0)
     brain.amiga.link(amiga)
 
     return LaunchDescription(

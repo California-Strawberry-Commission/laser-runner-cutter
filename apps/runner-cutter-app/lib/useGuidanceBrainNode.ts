@@ -1,7 +1,4 @@
-import type { NodeInfo } from "@/lib/NodeInfo";
-import useROS from "@/lib/ros/useROS";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import useROSNode from "@/lib/ros/useROSNode";
+import useROSNode, {mappers} from "@/lib/ros/useROSNode";
 
 const INITIAL_STATE = {
   guidance_active: false,
@@ -15,6 +12,8 @@ const INITIAL_STATE = {
   command: 0,
 };
 
+
+
 export default function useGuidanceBrainNode(nodeName: string) {
   const node = useROSNode(nodeName);
 
@@ -26,45 +25,61 @@ export default function useGuidanceBrainNode(nodeName: string) {
     "std_srvs/SetBool"
   )
   */
-  const setActive = node.useService(
-    "~/set_active",
-    "std_srvs/SetBool",
-    (active: boolean) => ({ data: active }), // maps request message to a JS api & solidifies typing info
-    (_data: any) => undefined, // maps incoming response & solidifies typing info
+  const goForward = node.useService(
+    "~/go_forward",
+    "std_srvs/Trigger",
+    mappers.in.trigger, // maps request message to a JS api & solidifies typing info
+    mappers.out.trigger, // maps incoming response & solidifies typing info
+  );
+
+  const goBackward = node.useService(
+    "~/go_backward",
+    "std_srvs/Trigger",
+    mappers.in.trigger, // maps request message to a JS api & solidifies typing info
+    mappers.out.trigger, // maps incoming response & solidifies typing info
+  );
+
+  const stop = node.useService(
+    "~/stop",
+    "std_srvs/Trigger",
+    mappers.in.trigger, // maps request message to a JS api & solidifies typing info
+    mappers.out.trigger, // maps incoming response & solidifies typing info
   );
 
   const setP = node.useService(
     "~/set_p",
     "common_interfaces/SetFloat32",
-    useCallback((p: number) => ({ data: p }), []),
-    () => undefined,
+    mappers.in.number,
+    mappers.out.success,
   );
 
   const setI = node.useService(
     "~/set_i",
     "common_interfaces/SetFloat32",
-    (i: number) => ({ data: i }),
-    () => undefined,
+    mappers.in.number,
+    mappers.out.success,
   );
 
   const setD = node.useService(
     "~/set_d",
     "common_interfaces/SetFloat32",
-    (d: number) => ({ data: d }),
-    () => undefined,
+    mappers.in.number,
+    mappers.out.success,
   );
 
   const setSpeed = node.useService(
     "~/set_speed",
     "common_interfaces/SetFloat32",
-    (speed: number) => ({ data: speed }),
-    () => undefined,
+    mappers.in.number,
+    mappers.out.success,
   );
 
   return {
     ...node,
     state,
-    setActive,
+    goForward,
+    goBackward,
+    stop,
     setP,
     setI,
     setD,

@@ -351,7 +351,7 @@ class ServerDriver(AsyncDriver, Node):
     def _attach_subscriber(self, attr, ros_sub: RosSubscription):
         fqt = ros_sub.get_fqt()
 
-        self.log_debug(f"[SERVER] Attach subscriber >{attr}<")
+        self.log_debug(f"[SERVER] Attach subscriber >{attr}<, {fqt.path}")
 
         @catch(self.log_error)
         def cb(msg):
