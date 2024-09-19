@@ -51,6 +51,13 @@ On a production device, we can set up the machine to start the ROS2 nodes on sta
 
         $ journalctl -f --unit laser-runner-cutter-ros.service
 
+In addition, we can set up the machine to enable restarting the ROS2 nodes and rebooting the machine without a password, which allows the LifecycleManager node to trigger the relevant commands. This is useful for allowing other programs (such as a web-based app) to restart the nodes or reboot the machine in case of an irrecoverable issue.
+
+1.  Run `sudo visudo`, then add the following lines:
+
+        <username> ALL=(ALL) NOPASSWD: /bin/systemctl restart laser-runner-cutter-ros.service
+        <username> ALL=(ALL) NOPASSWD: /sbin/reboot
+
 ## Native libraries
 
 C/C++ libraries included were compiled for linux-x86_64 and linux-aarch64 from the following sources:
