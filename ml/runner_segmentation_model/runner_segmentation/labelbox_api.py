@@ -19,8 +19,8 @@ from .yolo import Yolo
 
 load_dotenv()
 CLIENT = lb.Client(os.getenv("LABELBOX_API_KEY"))
-DATASET_NAME = "Runner20240703"
-PROJECT_NAME = "Runner20240703 Segmentation"
+DATASET_NAME = "Runner2024"
+PROJECT_NAME = "Runner2024 Segmentation"
 CLASS_MAP = {"Runner": 0}
 
 DATA_DIR = os.path.join(
