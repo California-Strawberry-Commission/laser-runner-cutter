@@ -160,12 +160,15 @@ def create_masks_from_labelbox_export(
             # Download mask
             headers = {"Authorization": api_key}
             with requests.get(url, headers=headers, stream=True) as r:
-                r.raw.decode_content = True
-                mask = np.asarray(bytearray(r.raw.read()), dtype="uint8")
-                mask = cv2.imdecode(mask, cv2.IMREAD_GRAYSCALE)
-                _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
-                output_file = os.path.join(mask_subdir, f"{idx}.png")
-                cv2.imwrite(output_file, mask)
+                try:
+                    r.raw.decode_content = True
+                    mask = np.asarray(bytearray(r.raw.read()), dtype="uint8")
+                    mask = cv2.imdecode(mask, cv2.IMREAD_GRAYSCALE)
+                    _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
+                    output_file = os.path.join(mask_subdir, f"{idx}.png")
+                    cv2.imwrite(output_file, mask)
+                except Exception as exc:
+                    print(f"Failed to save mask for {image_filename}: {exc}")
 
 
 def tuple_type(arg_string):
