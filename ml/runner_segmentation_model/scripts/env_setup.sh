@@ -112,6 +112,9 @@ sudo apt -y install zip
 # Install necessary requirements
 pip install -r requirements.txt
 
+# Needed for DVC. See https://stackoverflow.com/questions/73830524/attributeerror-module-lib-has-no-attribute-x509-v-flag-cb-issuer-check
+pip install pyopenssl --upgrade
+
 # DVC setup
 dvc remote modify --local runner_segmentation access_key_id $aws_dvc_access_key
 dvc remote modify --local runner_segmentation secret_access_key $aws_dvc_secret_key
