@@ -27,6 +27,7 @@ export default function Controls() {
     setExposureUs(String(cameraNode.state.exposureUs));
     setGainDb(String(cameraNode.state.gainDb));
     setSaveDir(cameraNode.state.saveDirectory);
+    setIntervalSecs(String(cameraNode.state.imageCaptureIntervalSecs));
   }, [
     setExposureUs,
     cameraNode.state.exposureUs,

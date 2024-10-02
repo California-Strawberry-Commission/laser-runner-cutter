@@ -61,6 +61,7 @@ class CameraControlParams:
     save_dir: str = "~/runner-cutter-output"
     debug_frame_width: int = 640
     debug_video_fps: float = 30.0
+    image_capture_interval_secs: float = 5.0
 
 
 def milliseconds_to_ros_time(milliseconds):
@@ -349,6 +350,7 @@ class CameraControlNode:
             self.interval_capture_task.cancel()
             self.interval_capture_task = None
 
+        await self.camera_control_params.set(image_capture_interval_secs=interval_secs)
         self.interval_capture_task = asyncio.create_task(
             self._interval_capture_task(interval_secs)
         )
@@ -535,6 +537,9 @@ class CameraControlNode:
         gain_db_range = self.camera.get_gain_db_range()
         state.gain_db_range = Vector2(x=gain_db_range[0], y=gain_db_range[1])
         state.save_directory = self.camera_control_params.save_dir
+        state.image_capture_interval_secs = (
+            self.camera_control_params.image_capture_interval_secs
+        )
         return state
 
     def _publish_state(self):
@@ -551,6 +556,7 @@ class CameraControlNode:
                 gain_db=state.gain_db,
                 gain_db_range=state.gain_db_range,
                 save_directory=state.save_directory,
+                image_capture_interval_secs=state.image_capture_interval_secs,
             )
         )
 
@@ -562,6 +568,7 @@ class CameraControlNode:
         log_message.stamp.sec = sec
         log_message.stamp.nanosec = nanosec
         log_message.msg = msg
+        self.log(msg)
         asyncio.create_task(
             self.log_topic(stamp=log_message.stamp, msg=log_message.msg)
         )

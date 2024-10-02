@@ -8,3 +8,4 @@ common_interfaces/Vector2 exposure_us_range
 float32 gain_db
 common_interfaces/Vector2 gain_db_range
 string save_directory
+float32 image_capture_interval_secs

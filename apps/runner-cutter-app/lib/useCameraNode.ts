@@ -13,6 +13,7 @@ export type State = {
   gainDb: number;
   gainDbRange: [number, number];
   saveDirectory: string;
+  imageCaptureIntervalSecs: number;
 };
 export enum DeviceState {
   Disconnected,
@@ -32,6 +33,7 @@ function convertStateMessage(message: any): State {
     gainDb: message.gain_db,
     gainDbRange: [message.gain_db_range.x, message.gain_db_range.y],
     saveDirectory: message.save_directory,
+    imageCaptureIntervalSecs: message.image_capture_interval_secs,
   };
 }
 
@@ -67,6 +69,7 @@ export default function useCameraNode(nodeName: string) {
       gainDb: 0.0,
       gainDbRange: [0.0, 0.0],
       saveDirectory: "",
+      imageCaptureIntervalSecs: 0.0,
     },
     convertStateMessage
   );
