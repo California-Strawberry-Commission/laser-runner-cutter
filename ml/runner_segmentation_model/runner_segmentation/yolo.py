@@ -110,7 +110,7 @@ class Yolo:
 
         return out
 
-    def debug(self, image_path, iou=0.6):
+    def debug(self, image_path, iou=0.6, show_result=False):
         if os.path.isfile(image_path):
             image_paths = [image_path]
         else:
@@ -127,19 +127,30 @@ class Yolo:
             # Warmup
             for i in range(5):
                 self.model(image_array, imgsz=self.imgsz, iou=iou)
-            inference_start = perf_counter()
-            self.model(image_array, imgsz=self.imgsz, iou=0.6)
-            inference_stop = perf_counter()
-            print(f"Inference took {inference_stop - inference_start} seconds.")
+            num_inferences = 10
+            total_time_secs = 0
+            for i in range(num_inferences):
+                inference_start = perf_counter()
+                self.model(
+                    image_array,
+                    imgsz=self.imgsz,
+                    iou=0.6,
+                    half=True,
+                )
+                total_time_secs = total_time_secs + (perf_counter() - inference_start)
+            print(f"Average inference time: {total_time_secs / num_inferences} seconds")
 
-            result = self.model(image_array, imgsz=self.imgsz, iou=iou)[0]
+            if show_result:
+                result = self.model(image_array, imgsz=self.imgsz, iou=iou, half=True)[
+                    0
+                ]
 
-            conf = result.boxes.conf.cpu().numpy()
-            boxes = result.boxes.xywh
-            if result.masks:
-                masks = result.masks.xy
+                conf = result.boxes.conf.cpu().numpy()
+                boxes = result.boxes.xywh
+                if result.masks:
+                    masks = result.masks.xy
 
-            result.show()  # display to screen
+                result.show()  # display to screen
 
 
 def tuple_type(arg_string):
@@ -194,6 +205,9 @@ if __name__ == "__main__":
     debug_parser.add_argument(
         "--image_path", required=True, help="Image file or dir path"
     )
+    debug_parser.add_argument(
+        "--show_result", action="store_true", help="Show inference results"
+    )
 
     args = parser.parse_args()
 
@@ -220,6 +234,6 @@ if __name__ == "__main__":
         }
         print(json.dumps(summary))
     elif args.command == "debug":
-        model.debug(args.image_path)
+        model.debug(args.image_path, show_result=args.show_result)
     else:
         print("Invalid command.")
