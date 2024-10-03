@@ -119,7 +119,7 @@ class EtherDreamDAC(LaserDAC):
                     self._logger.warning(
                         f"DAC connection error. Attempting to reconnect."
                     )
-                time.sleep(2)
+                time.sleep(5)
 
         if self._check_connection_thread is None:
             self._check_connection = True

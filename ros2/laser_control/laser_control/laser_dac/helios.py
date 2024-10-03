@@ -2,7 +2,7 @@ import ctypes
 import logging
 import threading
 import time
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple
 
 from .laser_dac import LaserDAC
 
@@ -100,7 +100,7 @@ class HeliosDAC(LaserDAC):
                     self.stop()
                     self._lib.CloseDevices()
                     self.initialize()
-                time.sleep(1)
+                time.sleep(5)
 
         if self._check_connection_thread is None:
             self._check_connection = True
@@ -239,7 +239,7 @@ class HeliosDAC(LaserDAC):
                 frame = self._get_frame(fps, pps, transition_duration_ms)
                 statusAttempts = 0
                 # Make 512 attempts for DAC status to be ready. After that, just give up and try to write the frame anyway
-                while statusAttempts < 512 and self._lib.GetStatus(self.dac_idx) != 1:
+                while statusAttempts < 512 and self._get_status() != 1:
                     statusAttempts += 1
 
                 self._lib.WriteFrame(
@@ -286,3 +286,63 @@ class HeliosDAC(LaserDAC):
         # 0 means not ready to receive frame
         # Any negative status means error
         return self._lib.GetStatus(self.dac_idx)
+
+
+if __name__ == "__main__":
+    from pynput.keyboard import Key, Listener
+    import os
+    import platform
+    import sys
+
+    logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+
+    include_dir = os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__),
+            os.pardir,
+            os.pardir,
+            "include",
+            platform.machine(),
+        )
+    )
+    dac = HeliosDAC(
+        os.path.join(include_dir, "libHeliosDacAPI.so"),
+    )
+    dac.initialize()
+    dac.connect(0)
+    dac.set_color(0.15, 0.0, 0.0, 1.0)
+
+    def on_press(key):
+        try:
+            if key.char == "1":
+                dac.clear_points()
+                dac.add_point(0.0, 0.0)
+                print("Set point: (0, 0)")
+            elif key.char == "2":
+                dac.clear_points()
+                dac.add_point(1.0, 0.0)
+                print("Set point: (1, 0)")
+            elif key.char == "3":
+                dac.clear_points()
+                dac.add_point(1.0, 1.0)
+                print("Set point: (1, 1)")
+            elif key.char == "4":
+                dac.clear_points()
+                dac.add_point(0.0, 1.0)
+                print("Set point: (0, 1)")
+        except AttributeError:
+            # For special keys
+            if key == Key.space:
+                if dac.playing:
+                    print("Stop")
+                    dac.stop()
+                else:
+                    print("Play")
+                    dac.play(fps=1000, pps=1000)
+
+    with Listener(on_press=on_press) as listener:
+        try:
+            listener.join()
+        except KeyboardInterrupt:
+            dac.close()
+            listener.stop()
