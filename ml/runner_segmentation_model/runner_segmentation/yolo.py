@@ -23,9 +23,9 @@ class Yolo:
                 f"Weights file not defined or could not be found. Using model yaml file"
             )
             self.model = YOLO("yolov8n-seg.yaml", task="segment")
-        # For 'train' and 'val' modes, imgsz must be an integer, while for 'predict',
-        # 'track', and 'export' modes, imgsz must be an (h, w) tuple or an integer.
-        # For 'train' and 'val' modes, the largest dimension will be used.
+        # Note: for 'train' and 'val' modes, imgsz must be an integer, while for 'predict',
+        # 'track', and 'export' modes, imgsz must be an (h, w) tuple or an integer. For 'train'
+        # and 'val' modes, the largest dimension will be used.
         self.imgsz = (input_image_size[1], input_image_size[0])
 
     def load_weights(self, weights_file):
@@ -52,6 +52,8 @@ class Yolo:
         metrics = self.model.val(
             data=dataset_yml,
             imgsz=self.imgsz,
+            device=0,
+            batch=1,
             split="test",
             iou=0.6,
         )
@@ -126,7 +128,12 @@ class Yolo:
             # Measure inference time
             # Warmup
             for i in range(5):
-                self.model(image_array, imgsz=self.imgsz, iou=iou)
+                self.model(
+                    image_array,
+                    imgsz=self.imgsz,
+                    iou=iou,
+                    half=True,
+                )
             num_inferences = 10
             total_time_secs = 0
             for i in range(num_inferences):
@@ -134,7 +141,7 @@ class Yolo:
                 self.model(
                     image_array,
                     imgsz=self.imgsz,
-                    iou=0.6,
+                    iou=iou,
                     half=True,
                 )
                 total_time_secs = total_time_secs + (perf_counter() - inference_start)
