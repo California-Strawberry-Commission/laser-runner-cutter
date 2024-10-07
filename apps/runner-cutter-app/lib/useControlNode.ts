@@ -75,6 +75,20 @@ export default function useControlNode(nodeName: string) {
     successOutputMapper
   );
 
+  const save_calibration = node.useService(
+    "~/save_calibration",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
+
+  const load_calibration = node.useService(
+    "~/load_calibration",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
+
   const addCalibrationPoint = node.useService(
     "~/add_calibration_points",
     "runner_cutter_control_interfaces/AddCalibrationPoints",
@@ -117,6 +131,8 @@ export default function useControlNode(nodeName: string) {
     ...node,
     state,
     calibrate,
+    save_calibration,
+    load_calibration,
     addCalibrationPoint,
     manualTargetAimLaser,
     startRunnerCutter,

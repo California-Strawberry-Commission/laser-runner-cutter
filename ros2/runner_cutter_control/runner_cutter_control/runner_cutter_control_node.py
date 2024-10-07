@@ -51,7 +51,7 @@ class RunnerCutterControlParams:
     burn_laser_color: List[float] = field(default_factory=lambda: [0.0, 0.0, 1.0])
     burn_time_secs: float = 5.0
     enable_aiming: bool = True
-    save_dir: str = "~/runner-cutter-output/summary"
+    save_dir: str = "~/runner-cutter-output"
 
 
 @node("runner_cutter_control_node")
@@ -99,6 +99,17 @@ class RunnerCutterControlNode:
 
         asyncio.create_task(self.state_machine.run_calibration())
         return result(success=True)
+
+    @service("~/save_calibration", Trigger)
+    async def save_calibration(self):
+        success = self.calibration.save(self.runner_cutter_control_params.save_dir)
+        return result(success=success)
+
+    @service("~/load_calibration", Trigger)
+    async def load_calibration(self):
+        success = self.calibration.load(self.runner_cutter_control_params.save_dir)
+        self.publish_state()
+        return result(success=success)
 
     @service("~/add_calibration_points", AddCalibrationPoints)
     async def add_calibration_points(self, normalized_pixel_coords):
@@ -159,35 +170,19 @@ class RunnerCutterControlNode:
         )
 
     def _get_state(self) -> State:
-        frame_size = self.calibration.camera_frame_size
-
+        normalized_laser_bounds = self.calibration.normalized_laser_bounds
         state_msg = State(
             calibrated=self.state_machine.is_calibrated,
             state=self.state_machine.state,
             normalized_laser_bounds=Vector4(
-                w=(
-                    self.calibration.laser_bounds[0] / frame_size[0]
-                    if frame_size[0] > 0
-                    else 0.0
-                ),
-                x=(
-                    self.calibration.laser_bounds[1] / frame_size[1]
-                    if frame_size[1] > 0
-                    else 0.0
-                ),
-                y=(
-                    self.calibration.laser_bounds[2] / frame_size[0]
-                    if frame_size[0] > 0
-                    else 0.0
-                ),
-                z=(
-                    self.calibration.laser_bounds[3] / frame_size[1]
-                    if frame_size[1] > 0
-                    else 0.0
-                ),
+                w=normalized_laser_bounds[0],
+                x=normalized_laser_bounds[1],
+                y=normalized_laser_bounds[2],
+                z=normalized_laser_bounds[3],
             ),
         )
 
+        frame_size = self.calibration.camera_frame_size
         for track_id in self.state_machine.detected_track_ids:
             track = self.runner_tracker.get_track(track_id)
             if track is None:

@@ -5,7 +5,7 @@ control0:
       burn_laser_color: [0.15, 0.0, 0.0]
       burn_time_secs: 1.0
       enable_aiming: True
-      save_dir: "~/runner-cutter-output/summary"
+      save_dir: "~/runner-cutter-output"
 camera0:
   ros__parameters:
     camera_control_params:

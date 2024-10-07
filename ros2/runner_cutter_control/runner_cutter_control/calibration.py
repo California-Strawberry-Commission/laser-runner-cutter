@@ -1,6 +1,8 @@
 import asyncio
 import functools
 import logging
+import pickle
+import os
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -11,13 +13,122 @@ from common_interfaces.msg import Vector2
 from laser_control.laser_control_node import LaserControlNode
 from runner_cutter_control.camera_context import CameraContext
 
+CALIBRATION_FILENAME = "calibration.pkl"
 
-class Calibration:
-    is_calibrated: bool
+
+class PointCorrespondences:
     camera_to_laser_transform: np.ndarray
     camera_frame_size: Tuple[int, int]
     # The rect (min x, min y, width, height) representing the reach of the laser, in terms of camera pixels.
     laser_bounds: Tuple[int, int, int, int]
+
+    def __init__(self):
+        self._laser_coords = []
+        self._camera_pixels = []
+        self._camera_points = []
+        self.camera_to_laser_transform = np.zeros((4, 3))
+        self.camera_frame_size = (0, 0)
+        self.laser_bounds = (0, 0, 0, 0)
+
+    def __len__(self):
+        return len(self._laser_coords)
+
+    def add(
+        self,
+        laser_coord: Tuple[float, float],
+        camera_pixel: Tuple[int, int],
+        camera_point: Tuple[float, float, float],
+    ):
+        self._laser_coords.append(laser_coord)
+        self._camera_pixels.append(camera_pixel)
+        self._camera_points.append(camera_point)
+        self._update_laser_bounds()
+
+    def clear(self):
+        self._laser_coords.clear()
+        self._camera_pixels.clear()
+        self._camera_points.clear()
+        self.camera_to_laser_transform = np.zeros((4, 3))
+        self.camera_frame_size = (0, 0)
+        self.laser_bounds = (0, 0, 0, 0)
+
+    async def update_transform_nonlinear_least_squares(self):
+        def residuals(parameters, camera_points, laser_coords):
+            homogeneous_camera_points = np.hstack(
+                (camera_points, np.ones((camera_points.shape[0], 1)))
+            )
+            transform = parameters.reshape((4, 3))
+            transformed_points = np.dot(homogeneous_camera_points, transform)
+            homogeneous_transformed_points = (
+                transformed_points[:, :2] / transformed_points[:, 2][:, np.newaxis]
+            )
+            return (homogeneous_transformed_points[:, :2] - laser_coords).flatten()
+
+        camera_points = np.array(self._camera_points)
+        laser_coords = np.array(self._laser_coords)
+
+        result = await asyncio.get_running_loop().run_in_executor(
+            None,
+            functools.partial(
+                least_squares,
+                residuals,
+                self.camera_to_laser_transform.flatten(),
+                args=(camera_points, laser_coords),
+                method="trf",
+            ),
+        )
+
+        self.camera_to_laser_transform = result.x.reshape((4, 3))
+
+    def update_transform_linear_least_squares(self):
+        camera_points = np.array(self._camera_points)
+        laser_coords = np.array(self._laser_coords)
+        homogeneous_laser_coords = np.hstack(
+            (laser_coords, np.ones((laser_coords.shape[0], 1)))
+        )
+        homogeneous_camera_points = np.hstack(
+            (camera_points, np.ones((camera_points.shape[0], 1)))
+        )
+        self.camera_to_laser_transform = np.linalg.lstsq(
+            homogeneous_camera_points,
+            homogeneous_laser_coords,
+            rcond=None,
+        )[0]
+
+    def get_reprojection_error(self) -> float:
+        camera_points = np.array(self._camera_points)
+        laser_coords = np.array(self._laser_coords)
+        homogeneous_camera_points = np.hstack(
+            (camera_points, np.ones((camera_points.shape[0], 1)))
+        )
+        transformed_points = np.dot(
+            homogeneous_camera_points, self.camera_to_laser_transform
+        )
+        homogeneous_transformed_points = (
+            transformed_points[:, :2] / transformed_points[:, 2][:, np.newaxis]
+        )
+        reprojection_error = np.mean(
+            np.sqrt(
+                np.sum(
+                    (homogeneous_transformed_points[:, :2] - laser_coords) ** 2,
+                    axis=1,
+                )
+            )
+        )
+        return reprojection_error
+
+    def _update_laser_bounds(self):
+        x_values = [x for x, _ in self._camera_pixels]
+        y_values = [y for _, y in self._camera_pixels]
+        min_x = min(x_values)
+        max_x = max(x_values)
+        min_y = min(y_values)
+        max_y = max(y_values)
+        self.laser_bounds = (min_x, min_y, max_x - min_x, max_y - min_y)
+
+
+class Calibration:
+    is_calibrated: bool
 
     def __init__(
         self,
@@ -30,26 +141,80 @@ class Calibration:
         self._camera_node = camera_node
         self._camera_context = CameraContext(camera_node)
         self._laser_color = laser_color
+        self._point_correspondences = PointCorrespondences()
+        self.is_calibrated = False
         if logger:
             self._logger = logger
         else:
             self._logger = logging.getLogger(__name__)
             self._logger.setLevel(logging.INFO)
 
-        self._calibration_laser_coords: List[Tuple[float, float]] = []
-        self._calibration_camera_pixels: List[Tuple[int, int]] = []
-        self._calibration_camera_points: List[Tuple[float, float, float]] = []
-        self.is_calibrated = False
-        self.camera_to_laser_transform = np.zeros((4, 3))
-        self.camera_frame_size = (0, 0)
-        self.laser_bounds = (0, 0, 0, 0)
+    @property
+    def camera_frame_size(self) -> Tuple[int, int]:
+        return self._point_correspondences.camera_frame_size
+
+    @property
+    def laser_bounds(self) -> Tuple[int, int, int, int]:
+        return self._point_correspondences.laser_bounds
+
+    @property
+    def normalized_laser_bounds(self) -> Tuple[float, float, float, float]:
+        return (
+            (
+                self.laser_bounds[0] / self.camera_frame_size[0]
+                if self.camera_frame_size[0] > 0
+                else 0.0
+            ),
+            (
+                self.laser_bounds[1] / self.camera_frame_size[1]
+                if self.camera_frame_size[1] > 0
+                else 0.0
+            ),
+            (
+                self.laser_bounds[2] / self.camera_frame_size[0]
+                if self.camera_frame_size[0] > 0
+                else 0.0
+            ),
+            (
+                self.laser_bounds[3] / self.camera_frame_size[1]
+                if self.camera_frame_size[1] > 0
+                else 0.0
+            ),
+        )
 
     def reset(self):
-        self.camera_to_laser_transform = np.zeros((4, 3))
-        self._calibration_laser_coords.clear()
-        self._calibration_camera_pixels.clear()
-        self._calibration_camera_points.clear()
+        self._point_correspondences.clear()
         self.is_calibrated = False
+
+    def save(self, dir: str) -> bool:
+        if not self.is_calibrated:
+            return False
+
+        save_dir = os.path.expanduser(dir)
+        os.makedirs(save_dir, exist_ok=True)
+        filepath = os.path.join(save_dir, CALIBRATION_FILENAME)
+        with open(filepath, "wb") as f:
+            pickle.dump(self._point_correspondences, f)
+
+        self._logger.info(f"Calibration saved to {filepath}")
+        return True
+
+    def load(self, dir: str) -> bool:
+        save_dir = os.path.expanduser(dir)
+        filepath = os.path.join(save_dir, CALIBRATION_FILENAME)
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, "rb") as file:
+                    self._point_correspondences = pickle.load(file)
+                    self.is_calibrated = True
+                self._logger.info(f"Successfully loaded calibration file {filepath}")
+                return True
+            except Exception as e:
+                self._logger.warning(f"Could not load calibration file {filepath}: {e}")
+                return False
+        else:
+            self._logger.info(f"Could not find calibration file {filepath}")
+            return False
 
     async def calibrate(self, grid_size: Tuple[int, int] = (5, 5)) -> bool:
         """
@@ -73,7 +238,10 @@ class Calibration:
 
         # Get camera color frame size
         frame = await self._camera_node.get_frame()
-        self.camera_frame_size = (frame.color_frame.width, frame.color_frame.height)
+        self._point_correspondences.camera_frame_size = (
+            frame.color_frame.width,
+            frame.color_frame.height,
+        )
 
         # Get calibration points
         x_step = 1.0 / (grid_size[0] - 1)
@@ -90,18 +258,18 @@ class Calibration:
         await self.add_calibration_points(pending_calibration_laser_coords)
 
         self._logger.info(
-            f"{len(self._calibration_laser_coords)} out of {len(pending_calibration_laser_coords)} point correspondences found."
+            f"{len(self._point_correspondences)} out of {len(pending_calibration_laser_coords)} point correspondences found."
         )
 
-        if len(self._calibration_laser_coords) < 3:
+        if len(self._point_correspondences) < 3:
             self._logger.warning(
                 "Calibration failed: insufficient point correspondences found."
             )
             return False
 
         # Use linear least squares for an initial estimate, then refine using nonlinear least squares
-        self._update_transform_linear_least_squares()
-        await self._update_transform_nonlinear_least_squares()
+        self._point_correspondences.update_transform_linear_least_squares()
+        await self._point_correspondences.update_transform_nonlinear_least_squares()
 
         self.is_calibrated = True
         return True
@@ -150,7 +318,7 @@ class Calibration:
                 await self._laser_node.stop()
 
         if update_transform:
-            await self._update_transform_nonlinear_least_squares()
+            await self._point_correspondences.update_transform_nonlinear_least_squares()
 
     def camera_point_to_laser_coord(
         self, position: Tuple[float, float, float]
@@ -164,7 +332,10 @@ class Calibration:
             Tuple[float, float]: (x, y) laser coordinates.
         """
         homogeneous_camera_point = np.hstack((position, 1))
-        transformed_point = homogeneous_camera_point @ self.camera_to_laser_transform
+        transformed_point = (
+            homogeneous_camera_point
+            @ self._point_correspondences.camera_to_laser_transform
+        )
         try:
             transformed_point = transformed_point / transformed_point[2]
             return (transformed_point[0], transformed_point[1])
@@ -207,7 +378,7 @@ class Calibration:
                 )
             await asyncio.sleep(attempt_interval_s)
         self._logger.info(
-            f"Failed to find point. {len(self._calibration_laser_coords)} total correspondences."
+            f"Failed to find point. {len(self._point_correspondences)} total correspondences."
         )
         return (None, None)
 
@@ -227,147 +398,11 @@ class Calibration:
             camera_point (Tuple[float, float, float]): Camera-space position (x, y, z) of the point correspondence.
             update_transform (bool): Whether to update the transform matrix or not.
         """
-        self._calibration_laser_coords.append(laser_coord)
-        self._calibration_camera_pixels.append(camera_pixel)
-        self._calibration_camera_points.append(camera_point)
+        self._point_correspondences.add(laser_coord, camera_pixel, camera_point)
         self._logger.info(
-            f"Added point correspondence. {len(self._calibration_laser_coords)} total correspondences."
+            f"Added point correspondence. {len(self._point_correspondences)} total correspondences."
         )
-
-        self._update_laser_bounds()
 
         # This is behind a flag as updating the transform is computationally non-trivial
         if update_transform:
-            await self._update_transform_nonlinear_least_squares()
-
-    async def _update_transform_nonlinear_least_squares(self):
-        def residuals(parameters, camera_points, laser_coords):
-            homogeneous_camera_points = np.hstack(
-                (camera_points, np.ones((camera_points.shape[0], 1)))
-            )
-            transform = parameters.reshape((4, 3))
-            transformed_points = np.dot(homogeneous_camera_points, transform)
-            homogeneous_transformed_points = (
-                transformed_points[:, :2] / transformed_points[:, 2][:, np.newaxis]
-            )
-            return (homogeneous_transformed_points[:, :2] - laser_coords).flatten()
-
-        camera_points = np.array(self._calibration_camera_points)
-        laser_coords = np.array(self._calibration_laser_coords)
-
-        result = await asyncio.get_running_loop().run_in_executor(
-            None,
-            functools.partial(
-                least_squares,
-                residuals,
-                self.camera_to_laser_transform.flatten(),
-                args=(camera_points, laser_coords),
-                method="trf",
-            ),
-        )
-
-        self.camera_to_laser_transform = result.x.reshape((4, 3))
-
-        self._logger.info(
-            "Updated camera to laser transform using nonlinear least squares"
-        )
-        self._get_reprojection_error(
-            camera_points, laser_coords, self.camera_to_laser_transform
-        )
-
-    async def _update_transform_bundle_adjustment(self):
-        def cost_function(parameters, camera_points, laser_coords):
-            homogeneous_camera_points = np.hstack(
-                (camera_points, np.ones((camera_points.shape[0], 1)))
-            )
-            transform = parameters.reshape((4, 3))
-            transformed_points = np.dot(homogeneous_camera_points, transform)
-            homogeneous_transformed_points = (
-                transformed_points[:, :2] / transformed_points[:, 2][:, np.newaxis]
-            )
-            errors = np.sum(
-                (homogeneous_transformed_points[:, :2] - laser_coords) ** 2, axis=1
-            )
-            return np.mean(errors)
-
-        camera_points = np.array(self._calibration_camera_points)
-        laser_coords = np.array(self._calibration_laser_coords)
-
-        result = await asyncio.get_running_loop().run_in_executor(
-            None,
-            functools.partial(
-                minimize,
-                cost_function,
-                self.camera_to_laser_transform.flatten(),
-                args=(camera_points, laser_coords),
-                method="L-BFGS-B",
-            ),
-        )
-
-        self.camera_to_laser_transform = result.x.reshape((4, 3))
-
-        self._logger.info("Updated camera to laser transform using bundle adjustment")
-        self._get_reprojection_error(
-            camera_points, laser_coords, self.camera_to_laser_transform
-        )
-
-    def _update_transform_linear_least_squares(self):
-        camera_points = np.array(self._calibration_camera_points)
-        laser_coords = np.array(self._calibration_laser_coords)
-        homogeneous_laser_coords = np.hstack(
-            (laser_coords, np.ones((laser_coords.shape[0], 1)))
-        )
-        homogeneous_camera_points = np.hstack(
-            (camera_points, np.ones((camera_points.shape[0], 1)))
-        )
-        self.camera_to_laser_transform = np.linalg.lstsq(
-            homogeneous_camera_points,
-            homogeneous_laser_coords,
-            rcond=None,
-        )[0]
-
-        self._logger.info(
-            "Updated camera to laser transform using linear least squares"
-        )
-        self._get_reprojection_error(
-            camera_points, laser_coords, self.camera_to_laser_transform
-        )
-
-    def _get_reprojection_error(
-        self,
-        camera_points: np.ndarray,
-        laser_coords: np.ndarray,
-        camera_to_laser_transform: np.ndarray,
-    ) -> float:
-        self._logger.info(f"Laser coords:\n{laser_coords}")
-        homogeneous_camera_points = np.hstack(
-            (camera_points, np.ones((camera_points.shape[0], 1)))
-        )
-        transformed_points = np.dot(
-            homogeneous_camera_points, camera_to_laser_transform
-        )
-        homogeneous_transformed_points = (
-            transformed_points[:, :2] / transformed_points[:, 2][:, np.newaxis]
-        )
-        self._logger.info(
-            f"Laser coords calculated using transform:\n{homogeneous_transformed_points[:, :2]}"
-        )
-        reprojection_error = np.mean(
-            np.sqrt(
-                np.sum(
-                    (homogeneous_transformed_points[:, :2] - laser_coords) ** 2,
-                    axis=1,
-                )
-            )
-        )
-        self._logger.info(f"Mean reprojection error: {reprojection_error}")
-        return reprojection_error
-
-    def _update_laser_bounds(self):
-        x_values = [x for x, _ in self._calibration_camera_pixels]
-        y_values = [y for _, y in self._calibration_camera_pixels]
-        min_x = min(x_values)
-        max_x = max(x_values)
-        min_y = min(y_values)
-        max_y = max(y_values)
-        self.laser_bounds = (min_x, min_y, max_x - min_x, max_y - min_y)
+            await self._point_correspondences.update_transform_nonlinear_least_squares()
