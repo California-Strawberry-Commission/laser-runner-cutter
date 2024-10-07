@@ -146,16 +146,19 @@ class CameraControlNode:
         models_dir = os.path.join(
             get_package_share_directory("camera_control"),
             "models",
+        )
+        tensorrt_dir = os.path.join(
+            models_dir,
             "tensorrt",
             platform.machine(),
         )
-        runner_weights_path = os.path.join(models_dir, "RunnerSegYoloV8l.engine")
+        runner_weights_path = os.path.join(tensorrt_dir, "RunnerSegYoloV8l.engine")
         self.runner_seg_input_image_size = (1024, 768)
         self.runner_seg_model = Yolo(
             weights_file=runner_weights_path,
             input_image_size=self.runner_seg_input_image_size,
         )
-        laser_weights_path = os.path.join(models_dir, "LaserDetectionYoloV8n.engine")
+        laser_weights_path = os.path.join(models_dir, "LaserDetectionYoloV8n.pt")
         self.laser_detection_input_image_size = (640, 480)
         self.laser_detection_model = Yolo(
             weights_file=laser_weights_path,
