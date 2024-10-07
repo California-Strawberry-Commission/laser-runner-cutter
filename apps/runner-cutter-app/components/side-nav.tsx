@@ -16,10 +16,6 @@ const SIDENAV_ITEMS: SideNavItem[] = [
     path: "/",
   },
   {
-    title: "Calibration",
-    path: "/calibration",
-  },
-  {
     title: "Runner Cutter",
     path: "/runner-cutter",
   },

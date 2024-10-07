@@ -1,7 +1,11 @@
 "use client";
 
 import FramePreview from "@/components/camera/frame-preview";
-import NodeCards from "@/components/nodes/node-cards";
+import DeviceCard, { DeviceState } from "@/components/setup/device-card";
+import CalibrationCard, {
+  CalibrationState,
+} from "@/components/setup/calibration-card";
+import NodesSection from "@/components/setup/nodes-section";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,7 +18,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import useROS from "@/lib/ros/useROS";
-import useLifecycleManagerNode from "@/lib/useLifecycleManagerNode";
 import useCameraNode, {
   DeviceState as CameraDeviceState,
 } from "@/lib/useCameraNode";
@@ -22,8 +25,9 @@ import useControlNode from "@/lib/useControlNode";
 import useLaserNode, {
   DeviceState as LaserDeviceState,
 } from "@/lib/useLaserNode";
-import { Loader2 } from "lucide-react";
-import { useMemo } from "react";
+import useLifecycleManagerNode from "@/lib/useLifecycleManagerNode";
+import { useCallback, useMemo, useState } from "react";
+import Overlay from "@/components/runner-cutter/overlay";
 
 export default function Controls() {
   const { connected: rosConnected } = useROS();
@@ -32,6 +36,23 @@ export default function Controls() {
   const cameraNode = useCameraNode("/camera0");
   const laserNode = useLaserNode("/laser0");
   const controlNode = useControlNode("/control0");
+
+  const [framePreviewSize, setFramePreviewSize] = useState({
+    width: 0,
+    height: 0,
+  });
+
+  const onFramePreviewSizeChanged = useCallback(
+    (width: number, height: number) => {
+      if (
+        width !== framePreviewSize.width ||
+        height !== framePreviewSize.height
+      ) {
+        setFramePreviewSize({ width, height });
+      }
+    },
+    [framePreviewSize, setFramePreviewSize]
+  );
 
   const nodeInfos = useMemo(() => {
     const rosbridgeNodeInfo = {
@@ -47,70 +68,57 @@ export default function Controls() {
     ];
   }, [rosConnected, lifecycleManagerNode, cameraNode, laserNode, controlNode]);
 
-  let cameraButton = null;
-  const enableCameraButton = cameraNode.connected;
-  if (cameraNode.state.deviceState === CameraDeviceState.Disconnected) {
-    cameraButton = (
-      <Button
-        disabled={!enableCameraButton}
-        onClick={() => cameraNode.startDevice()}
-      >
-        Connect Camera
-      </Button>
-    );
-  } else if (cameraNode.state.deviceState === CameraDeviceState.Connecting) {
-    cameraButton = (
-      <Button disabled>
-        <Loader2 className="h-4 w-4 animate-spin" />
-      </Button>
-    );
-  } else {
-    cameraButton = (
-      <Button
-        disabled={!enableCameraButton}
-        variant="destructive"
-        onClick={() => cameraNode.closeDevice()}
-      >
-        Disconnect Camera
-      </Button>
-    );
+  let cameraDeviceState = DeviceState.Unavailable;
+  if (cameraNode.connected) {
+    switch (cameraNode.state.deviceState) {
+      case CameraDeviceState.Disconnected:
+        cameraDeviceState = DeviceState.Disconnected;
+        break;
+      case CameraDeviceState.Connecting:
+        cameraDeviceState = DeviceState.Connecting;
+        break;
+      case CameraDeviceState.Streaming:
+        cameraDeviceState = DeviceState.Connected;
+        break;
+      default:
+        break;
+    }
   }
 
-  let laserButton = null;
-  const enableLaserButton = laserNode.connected;
-  if (laserNode.state === LaserDeviceState.Disconnected) {
-    laserButton = (
-      <Button
-        disabled={!enableLaserButton}
-        onClick={() => laserNode.startDevice()}
-      >
-        Connect Laser
-      </Button>
-    );
-  } else if (laserNode.state === LaserDeviceState.Connecting) {
-    laserButton = (
-      <Button disabled>
-        <Loader2 className="h-4 w-4 animate-spin" />
-      </Button>
-    );
-  } else {
-    laserButton = (
-      <Button
-        disabled={!enableLaserButton}
-        variant="destructive"
-        onClick={() => laserNode.closeDevice()}
-      >
-        Disconnect Laser
-      </Button>
-    );
+  let laserDeviceState = DeviceState.Unavailable;
+  if (laserNode.connected) {
+    switch (laserNode.state) {
+      case LaserDeviceState.Disconnected:
+        laserDeviceState = DeviceState.Disconnected;
+        break;
+      case LaserDeviceState.Connecting:
+        laserDeviceState = DeviceState.Connecting;
+        break;
+      default:
+        laserDeviceState = DeviceState.Connected;
+        break;
+    }
+  }
+
+  let calibrationState = CalibrationState.Unavailable;
+  if (
+    controlNode.connected &&
+    cameraDeviceState === DeviceState.Connected &&
+    laserDeviceState === DeviceState.Connected
+  ) {
+    if (controlNode.state.state === "idle") {
+      calibrationState = controlNode.state.calibrated
+        ? CalibrationState.Calibrated
+        : CalibrationState.Uncalibrated;
+    } else {
+      calibrationState = CalibrationState.Busy;
+    }
   }
 
   return (
     <div className="flex flex-col gap-4 items-center">
-      <NodeCards nodeInfos={nodeInfos} />
-      <div className="flex flex-row items-center gap-4">
-        {cameraButton}
-        {laserButton}
+      <div className="w-full flex flex-row gap-4 items-center">
+        <NodesSection nodeInfos={nodeInfos} />
         <Dialog>
           <DialogTrigger asChild>
             <Button
@@ -157,7 +165,59 @@ export default function Controls() {
           </DialogContent>
         </Dialog>
       </div>
-      <FramePreview topicName={"/camera0/debug_frame"} />
+      <div className="flex flex-row items-center gap-4">
+        <DeviceCard
+          className="w-36"
+          deviceName="Camera"
+          deviceState={cameraDeviceState}
+          onConnectClick={() => cameraNode.startDevice()}
+          onDisconnectClick={() => cameraNode.closeDevice()}
+        />
+        <DeviceCard
+          className="w-36"
+          deviceName="Laser"
+          deviceState={laserDeviceState}
+          onConnectClick={() => laserNode.startDevice()}
+          onDisconnectClick={() => laserNode.closeDevice()}
+        />
+        <CalibrationCard
+          calibrationState={calibrationState}
+          onCalibrateClick={() => controlNode.calibrate()}
+          onStopClick={() => controlNode.stop()}
+          onSaveClick={() => controlNode.save_calibration()}
+          onLoadClick={() => controlNode.load_calibration()}
+        />
+      </div>
+      <p className="text-center">
+        After calibration, click on the image below to fire the laser at that
+        point and add a calibration point.
+      </p>
+      <div className="relative flex items-center" style={{ height: 360 }}>
+        <FramePreview
+          height={360}
+          topicName={"/camera0/debug_frame"}
+          onComponentSizeChanged={onFramePreviewSizeChanged}
+          onImageClick={(event: any) => {
+            if (controlNode.state.state !== "idle") {
+              return;
+            }
+
+            const boundingRect = event.target.getBoundingClientRect();
+            const x = Math.round(event.clientX - boundingRect.left);
+            const y = Math.round(event.clientY - boundingRect.top);
+            const normalizedX = x / boundingRect.width;
+            const normalizedY = y / boundingRect.height;
+            controlNode.addCalibrationPoint(normalizedX, normalizedY);
+          }}
+        />
+        <Overlay
+          width={framePreviewSize.width}
+          height={framePreviewSize.height}
+          state={controlNode.state.state}
+          tracks={controlNode.state.tracks}
+          normalizedRect={controlNode.state.normalizedLaserBounds}
+        />
+      </div>
     </div>
   );
 }

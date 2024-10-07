@@ -50,12 +50,14 @@ function NodeCard({ nodeInfo }: { nodeInfo: NodeInfo }) {
   );
 }
 
-export default function NodeCards({ nodeInfos }: { nodeInfos: NodeInfo[] }) {
+export default function NodesSection({ nodeInfos }: { nodeInfos: NodeInfo[] }) {
   return (
-    <div className="flex flex-row flex-wrap gap-4 justify-center">
-      {nodeInfos.map((nodeInfo) => (
-        <NodeCard key={nodeInfo.name} nodeInfo={nodeInfo} />
-      ))}
-    </div>
+    <Card className="w-full overflow-x-auto">
+      <div className="flex flex-row gap-4 px-4 py-4">
+        {nodeInfos.map((nodeInfo) => (
+          <NodeCard key={nodeInfo.name} nodeInfo={nodeInfo} />
+        ))}
+      </div>
+    </Card>
   );
 }
