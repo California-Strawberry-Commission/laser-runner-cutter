@@ -12,10 +12,10 @@ import numpy as np
 from ament_index_python.packages import get_package_share_directory
 from cv_bridge import CvBridge
 from ml_utils.mask_center import contour_center
-from rcl_interfaces.msg import Log
 from rclpy.qos import qos_profile_sensor_data
 from runner_segmentation.yolo import Yolo
 from sensor_msgs.msg import CompressedImage, Image
+from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
 from aioros2 import (
@@ -81,10 +81,7 @@ class CameraControlNode:
     debug_frame_topic = topic("~/debug_frame", Image, qos=qos_profile_sensor_data)
     laser_detections_topic = topic("~/laser_detections", DetectionResult, qos=5)
     runner_detections_topic = topic("~/runner_detections", DetectionResult, qos=5)
-    # ROS publishes logs on /rosout, but as it contains logs from all nodes and also contains
-    # every single log message, we create a node-specific topic here for logs that would
-    # potentially be displayed on UI
-    log_topic = topic("~/log", Log, qos=5)
+    notifications_topic = topic("/notifications", String, qos=1)
 
     @start
     async def start(self):
@@ -324,7 +321,7 @@ class CameraControlNode:
                 self.camera_control_params.debug_video_fps,
                 (w, h),
             )
-            self._publish_log_message(f"Started recording video: {video_path}")
+            self._publish_notification(f"Started recording video: {video_path}")
 
         if self.video_writer is not None:
             self.video_writer.write(cv2.cvtColor(self.debug_frame, cv2.COLOR_RGB2BGR))
@@ -337,12 +334,12 @@ class CameraControlNode:
         self.record_video_task.cancel()
         self.record_video_task = None
         self._publish_state()
-        self._publish_log_message("Stopped recording video")
+        self._publish_notification("Stopped recording video")
         return result(success=True)
 
     @service("~/save_image", Trigger)
     async def save_image(self):
-        if (await self._save_image()) is None:
+        if self._save_image() is None:
             return result(success=False)
 
         return result(success=True)
@@ -358,8 +355,8 @@ class CameraControlNode:
             self._interval_capture_task(interval_secs)
         )
         self._publish_state()
-        self._publish_log_message(
-            f"Started interval capture. Interval: {interval_secs}s"
+        self._publish_notification(
+            f"Started interval capture with {interval_secs}s interval"
         )
         return result(success=True)
 
@@ -371,7 +368,7 @@ class CameraControlNode:
         self.interval_capture_task.cancel()
         self.interval_capture_task = None
         self._publish_state()
-        self._publish_log_message("Stopped interval capture")
+        self._publish_notification("Stopped interval capture")
         return result(success=True)
 
     async def _interval_capture_task(self, interval_secs: float):
@@ -395,7 +392,7 @@ class CameraControlNode:
             image_path,
             cv2.cvtColor(frame.color_frame, cv2.COLOR_RGB2BGR),
         )
-        self._publish_log_message(f"Saved image: {image_path}")
+        self._publish_notification(f"Saved image: {image_path}")
         return image_path
 
     @service("~/set_save_directory", SetSaveDirectory)
@@ -563,18 +560,9 @@ class CameraControlNode:
             )
         )
 
-    def _publish_log_message(self, msg: str):
-        # TODO: Support log levels
-        timestamp_millis = int(time.time() * 1000)
-        sec, nanosec = milliseconds_to_ros_time(timestamp_millis)
-        log_message = Log()
-        log_message.stamp.sec = sec
-        log_message.stamp.nanosec = nanosec
-        log_message.msg = msg
+    def _publish_notification(self, msg: str):
         self.log(msg)
-        asyncio.create_task(
-            self.log_topic(stamp=log_message.stamp, msg=log_message.msg)
-        )
+        asyncio.create_task(self.notifications_topic(data=msg))
 
     async def _get_laser_points(
         self, color_frame: np.ndarray, conf_threshold: float = 0.0

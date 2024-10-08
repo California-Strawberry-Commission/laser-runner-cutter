@@ -1,8 +1,9 @@
+import SideNav from "@/components/side-nav";
+import { Toaster } from "@/components/ui/sonner";
+import KeyboardProvider from "@/lib/keyboard/KeyboardProvider";
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import SideNav from "@/components/side-nav";
-import KeyboardProvider from "@/lib/keyboard/KeyboardProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -34,6 +35,7 @@ export default function RootLayout({
           <KeyboardProvider>
             <div className="flex-1 overflow-y-auto p-8">{children}</div>
           </KeyboardProvider>
+          <Toaster />
         </div>
       </body>
     </html>

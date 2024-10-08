@@ -76,12 +76,14 @@ export default function NodesCarousel({
     >
       <CarouselContent>
         {nodeInfos.map((nodeInfo) => (
-          <CarouselItem className="basis-1/4">
-            <NodeCard key={nodeInfo.name} nodeInfo={nodeInfo} />
+          <CarouselItem className="basis-1/4" key={nodeInfo.name}>
+            <NodeCard nodeInfo={nodeInfo} />
           </CarouselItem>
         ))}
         {children && (
-          <CarouselItem className="basis-1/4">{children}</CarouselItem>
+          <CarouselItem className="basis-1/4" key="children">
+            {children}
+          </CarouselItem>
         )}
       </CarouselContent>
       <CarouselPrevious />

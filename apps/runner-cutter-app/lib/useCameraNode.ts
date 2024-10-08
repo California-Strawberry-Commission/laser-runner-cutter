@@ -1,6 +1,5 @@
 import useROSNode from "@/lib/ros/useROSNode";
-import { useCallback, useEffect, useState } from "react";
-import expandTopicOrServiceName from "@/lib/ros/expandTopicName";
+import { useCallback } from "react";
 
 export type State = {
   deviceState: DeviceState;
@@ -37,14 +36,6 @@ function convertStateMessage(message: any): State {
   };
 }
 
-function convertToLocalReadableTime(secondsSinceEpoch: number) {
-  const date = new Date(secondsSinceEpoch * 1000);
-  const hours = date.getHours().toString().padStart(2, "0");
-  const minutes = date.getMinutes().toString().padStart(2, "0");
-  const seconds = date.getSeconds().toString().padStart(2, "0");
-  return `${hours}:${minutes}:${seconds}`;
-}
-
 function triggerInputMapper() {
   return {};
 }
@@ -73,37 +64,6 @@ export default function useCameraNode(nodeName: string) {
     },
     convertStateMessage
   );
-
-  const [logMessages, setLogMessages] = useState<string[]>([]);
-
-  const addLogMessage = useCallback(
-    (logMessage: string) => {
-      setLogMessages((prevLogMessages) => {
-        const newLogMessages = [...prevLogMessages, logMessage];
-        return newLogMessages.slice(-10);
-      });
-    },
-    [setLogMessages]
-  );
-
-  // Subscription for log messages
-  useEffect(() => {
-    const logSub = node.ros.subscribe(
-      expandTopicOrServiceName("~/log", nodeName),
-      "rcl_interfaces/Log",
-      (message) => {
-        const timestamp_sec = parseInt(message["stamp"]["sec"]);
-        const msg = `[${convertToLocalReadableTime(timestamp_sec)}] ${
-          message["msg"]
-        }`;
-        addLogMessage(msg);
-      }
-    );
-
-    return () => {
-      logSub.unsubscribe();
-    };
-  }, [node.ros, nodeName, addLogMessage]);
 
   // TODO: Optimistically set device state to "connecting"
   const startDevice = node.useService(
@@ -224,7 +184,6 @@ export default function useCameraNode(nodeName: string) {
   return {
     ...node,
     state,
-    logMessages,
     startDevice,
     closeDevice,
     setExposure,

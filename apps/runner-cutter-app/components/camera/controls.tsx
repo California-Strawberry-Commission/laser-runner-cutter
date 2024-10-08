@@ -2,11 +2,6 @@
 
 import FramePreview from "@/components/camera/frame-preview";
 import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { InputWithLabel } from "@/components/ui/input-with-label";
 import useCameraNode from "@/lib/useCameraNode";
 import { useEffect, useState } from "react";
@@ -243,18 +238,6 @@ export default function Controls() {
         )}
       </div>
       <FramePreview height={520} topicName={"/camera0/debug_frame"} />
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button className="fixed bottom-4 right-4">Show Logs</Button>
-        </PopoverTrigger>
-        <PopoverContent className="m-4 w-96 bg-black bg-opacity-70 border-0">
-          {cameraNode.logMessages.map((msg, index) => (
-            <p className="text-xs text-white" key={index}>
-              {msg}
-            </p>
-          ))}
-        </PopoverContent>
-      </Popover>
     </div>
   );
 }

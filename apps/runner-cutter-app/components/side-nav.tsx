@@ -1,8 +1,9 @@
 "use client";
 
-import { usePathname } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import ExitButton from "@/components/exit-button";
+import { Button } from "@/components/ui/button";
+import useNotifications from "@/lib/useNotifications";
+import { usePathname } from "next/navigation";
 
 type SideNavItem = {
   title: string;
@@ -43,6 +44,7 @@ const SIDENAV_ITEMS: SideNavItem[] = [
 
 export default function SideNav() {
   const pathname = usePathname();
+  useNotifications("/notifications");
 
   return (
     <div className="flex flex-col gap-4 w-full h-full">
