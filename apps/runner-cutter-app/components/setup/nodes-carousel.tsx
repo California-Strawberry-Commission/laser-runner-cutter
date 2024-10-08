@@ -6,6 +6,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -50,14 +57,35 @@ function NodeCard({ nodeInfo }: { nodeInfo: NodeInfo }) {
   );
 }
 
-export default function NodesSection({ nodeInfos }: { nodeInfos: NodeInfo[] }) {
+export default function NodesCarousel({
+  nodeInfos,
+  className,
+  children,
+}: {
+  nodeInfos: NodeInfo[];
+  className?: string;
+  children?: React.ReactNode;
+}) {
   return (
-    <Card className="w-full overflow-x-auto">
-      <div className="flex flex-row gap-4 px-4 py-4">
+    <Carousel
+      className={className}
+      opts={{
+        align: "start",
+        dragFree: true,
+      }}
+    >
+      <CarouselContent>
         {nodeInfos.map((nodeInfo) => (
-          <NodeCard key={nodeInfo.name} nodeInfo={nodeInfo} />
+          <CarouselItem className="basis-1/4">
+            <NodeCard key={nodeInfo.name} nodeInfo={nodeInfo} />
+          </CarouselItem>
         ))}
-      </div>
-    </Card>
+        {children && (
+          <CarouselItem className="basis-1/4">{children}</CarouselItem>
+        )}
+      </CarouselContent>
+      <CarouselPrevious />
+      <CarouselNext />
+    </Carousel>
   );
 }

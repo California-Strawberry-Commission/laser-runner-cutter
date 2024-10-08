@@ -5,8 +5,14 @@ import DeviceCard, { DeviceState } from "@/components/setup/device-card";
 import CalibrationCard, {
   CalibrationState,
 } from "@/components/setup/calibration-card";
-import NodesSection from "@/components/setup/nodes-section";
+import NodesCarousel from "@/components/setup/nodes-carousel";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Dialog,
   DialogClose,
@@ -68,6 +74,57 @@ export default function Controls() {
     ];
   }, [rosConnected, lifecycleManagerNode, cameraNode, laserNode, controlNode]);
 
+  const restartServiceDialog = (
+    <Dialog>
+      <DialogTrigger asChild>
+        <div className="w-full h-full flex flex-col justify-center">
+          <Button
+            className="w-full"
+            disabled={!lifecycleManagerNode.connected}
+            variant="destructive"
+          >
+            Restart Service
+          </Button>
+        </div>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Are you absolutely sure?</DialogTitle>
+          <DialogDescription>
+            This will restart the ROS 2 nodes, and may take a few minutes for it
+            to come back up. You can also choose to reboot the host machine,
+            which will take longer.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                lifecycleManagerNode.restart_service();
+              }}
+            >
+              Restart Nodes
+            </Button>
+          </DialogClose>
+          <DialogClose asChild>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                lifecycleManagerNode.reboot_system();
+              }}
+            >
+              Reboot System
+            </Button>
+          </DialogClose>
+          <DialogClose asChild>
+            <Button>Cancel</Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   let cameraDeviceState = DeviceState.Unavailable;
   if (cameraNode.connected) {
     switch (cameraNode.state.deviceState) {
@@ -117,53 +174,10 @@ export default function Controls() {
 
   return (
     <div className="flex flex-col gap-4 items-center">
-      <div className="w-full flex flex-row gap-4 items-center">
-        <NodesSection nodeInfos={nodeInfos} />
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button
-              disabled={!lifecycleManagerNode.connected}
-              variant="destructive"
-            >
-              Restart Service
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Are you absolutely sure?</DialogTitle>
-              <DialogDescription>
-                This will restart the ROS 2 nodes, and may take a few minutes
-                for it to come back up. You can also choose to reboot the host
-                machine, which will take longer.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button
-                  variant="destructive"
-                  onClick={() => {
-                    lifecycleManagerNode.restart_service();
-                  }}
-                >
-                  Restart Nodes
-                </Button>
-              </DialogClose>
-              <DialogClose asChild>
-                <Button
-                  variant="destructive"
-                  onClick={() => {
-                    lifecycleManagerNode.reboot_system();
-                  }}
-                >
-                  Reboot System
-                </Button>
-              </DialogClose>
-              <DialogClose asChild>
-                <Button>Cancel</Button>
-              </DialogClose>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+      <div className="flex flex-row gap-4 items-center">
+        <NodesCarousel className="w-[600px]" nodeInfos={nodeInfos}>
+          {restartServiceDialog}
+        </NodesCarousel>
       </div>
       <div className="flex flex-row items-center gap-4">
         <DeviceCard
