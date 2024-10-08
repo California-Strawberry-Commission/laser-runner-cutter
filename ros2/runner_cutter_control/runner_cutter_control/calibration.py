@@ -186,9 +186,9 @@ class Calibration:
         self._point_correspondences.clear()
         self.is_calibrated = False
 
-    def save(self, dir: str) -> bool:
+    def save(self, dir: str) -> Optional[str]:
         if not self.is_calibrated:
-            return False
+            return None
 
         save_dir = os.path.expanduser(dir)
         os.makedirs(save_dir, exist_ok=True)
@@ -197,9 +197,9 @@ class Calibration:
             pickle.dump(self._point_correspondences, f)
 
         self._logger.info(f"Calibration saved to {filepath}")
-        return True
+        return filepath
 
-    def load(self, dir: str) -> bool:
+    def load(self, dir: str) -> Optional[str]:
         save_dir = os.path.expanduser(dir)
         filepath = os.path.join(save_dir, CALIBRATION_FILENAME)
         if os.path.exists(filepath):
@@ -208,13 +208,13 @@ class Calibration:
                     self._point_correspondences = pickle.load(file)
                     self.is_calibrated = True
                 self._logger.info(f"Successfully loaded calibration file {filepath}")
-                return True
+                return filepath
             except Exception as e:
                 self._logger.warning(f"Could not load calibration file {filepath}: {e}")
-                return False
+                return None
         else:
             self._logger.info(f"Could not find calibration file {filepath}")
-            return False
+            return None
 
     async def calibrate(self, grid_size: Tuple[int, int] = (5, 5)) -> bool:
         """

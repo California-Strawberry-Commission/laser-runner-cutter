@@ -35,7 +35,7 @@ export default function RootLayout({
           <KeyboardProvider>
             <div className="flex-1 overflow-y-auto p-8">{children}</div>
           </KeyboardProvider>
-          <Toaster />
+          <Toaster richColors expand />
         </div>
       </body>
     </html>

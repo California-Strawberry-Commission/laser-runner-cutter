@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import List, Optional, Set, Tuple
 
 import numpy as np
+from rcl_interfaces.msg import Log
 from std_srvs.srv import Trigger
 from transitions.extensions.asyncio import AsyncMachine
 
@@ -45,6 +46,13 @@ from runner_cutter_control_interfaces.srv import (
 )
 
 
+def milliseconds_to_ros_time(milliseconds):
+    # ROS timestamps consist of two integers, one for seconds and one for nanoseconds
+    seconds, remainder_ms = divmod(milliseconds, 1000)
+    nanoseconds = remainder_ms * 1e6
+    return int(seconds), int(nanoseconds)
+
+
 @dataclass
 class RunnerCutterControlParams:
     tracking_laser_color: List[float] = field(default_factory=lambda: [0.15, 0.0, 0.0])
@@ -58,6 +66,7 @@ class RunnerCutterControlParams:
 class RunnerCutterControlNode:
     runner_cutter_control_params = params(RunnerCutterControlParams)
     state_topic = topic("~/state", State, qos=QOS_LATCHED)
+    notifications_topic = topic("/notifications", Log, qos=1)
 
     laser_node: laser_control_node.LaserControlNode = import_node(laser_control_node)
     camera_node: camera_control_node.CameraControlNode = import_node(
@@ -102,14 +111,28 @@ class RunnerCutterControlNode:
 
     @service("~/save_calibration", Trigger)
     async def save_calibration(self):
-        success = self.calibration.save(self.runner_cutter_control_params.save_dir)
-        return result(success=success)
+        filepath = self.calibration.save(self.runner_cutter_control_params.save_dir)
+        if filepath is not None:
+            self.publish_notification(f"Calibration saved: {filepath}")
+            return result(success=True)
+        else:
+            self.publish_notification(
+                "Calibration could not be saved", level=logging.WARNING
+            )
+            return result(success=False)
 
     @service("~/load_calibration", Trigger)
     async def load_calibration(self):
-        success = self.calibration.load(self.runner_cutter_control_params.save_dir)
-        self.publish_state()
-        return result(success=success)
+        filepath = self.calibration.load(self.runner_cutter_control_params.save_dir)
+        if filepath is not None:
+            self.publish_notification(f"Calibration loaded: {filepath}")
+            self.publish_state()
+            return result(success=True)
+        else:
+            self.publish_notification(
+                "Calibration could not be loaded", level=logging.WARNING
+            )
+            return result(success=False)
 
     @service("~/add_calibration_points", AddCalibrationPoints)
     async def add_calibration_points(self, normalized_pixel_coords):
@@ -166,6 +189,21 @@ class RunnerCutterControlNode:
                 state=state.state,
                 tracks=state.tracks,
                 normalized_laser_bounds=state.normalized_laser_bounds,
+            )
+        )
+
+    def publish_notification(self, msg: str, level: int = logging.INFO):
+        timestamp_millis = int(time.time() * 1000)
+        sec, nanosec = milliseconds_to_ros_time(timestamp_millis)
+        log_message = Log()
+        log_message.stamp.sec = sec
+        log_message.stamp.nanosec = nanosec
+        log_message.level = level
+        log_message.msg = msg
+        self.get_logger().log(msg, level)
+        asyncio.create_task(
+            self.notifications_topic(
+                stamp=log_message.stamp, level=log_message.level, msg=log_message.msg
             )
         )
 

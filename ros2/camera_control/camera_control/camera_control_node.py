@@ -1,5 +1,6 @@
 import asyncio
 import functools
+import logging
 import os
 import platform
 import time
@@ -12,10 +13,10 @@ import numpy as np
 from ament_index_python.packages import get_package_share_directory
 from cv_bridge import CvBridge
 from ml_utils.mask_center import contour_center
+from rcl_interfaces.msg import Log
 from rclpy.qos import qos_profile_sensor_data
 from runner_segmentation.yolo import Yolo
 from sensor_msgs.msg import CompressedImage, Image
-from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
 from aioros2 import (
@@ -52,6 +53,13 @@ from common_interfaces.msg import Vector2, Vector3
 from common_interfaces.srv import GetBool
 
 
+def milliseconds_to_ros_time(milliseconds):
+    # ROS timestamps consist of two integers, one for seconds and one for nanoseconds
+    seconds, remainder_ms = divmod(milliseconds, 1000)
+    nanoseconds = remainder_ms * 1e6
+    return int(seconds), int(nanoseconds)
+
+
 @dataclass
 class CameraControlParams:
     camera_type: str = "lucid"  # "realsense" or "lucid"
@@ -64,13 +72,6 @@ class CameraControlParams:
     image_capture_interval_secs: float = 5.0
 
 
-def milliseconds_to_ros_time(milliseconds):
-    # ROS timestamps consist of two integers, one for seconds and one for nanoseconds
-    seconds, remainder_ms = divmod(milliseconds, 1000)
-    nanoseconds = remainder_ms * 1e6
-    return int(seconds), int(nanoseconds)
-
-
 @node("camera_control_node")
 class CameraControlNode:
     camera_control_params = params(CameraControlParams)
@@ -81,7 +82,7 @@ class CameraControlNode:
     debug_frame_topic = topic("~/debug_frame", Image, qos=qos_profile_sensor_data)
     laser_detections_topic = topic("~/laser_detections", DetectionResult, qos=5)
     runner_detections_topic = topic("~/runner_detections", DetectionResult, qos=5)
-    notifications_topic = topic("/notifications", String, qos=1)
+    notifications_topic = topic("/notifications", Log, qos=1)
 
     @start
     async def start(self):
@@ -560,9 +561,20 @@ class CameraControlNode:
             )
         )
 
-    def _publish_notification(self, msg: str):
-        self.log(msg)
-        asyncio.create_task(self.notifications_topic(data=msg))
+    def _publish_notification(self, msg: str, level: int = logging.INFO):
+        timestamp_millis = int(time.time() * 1000)
+        sec, nanosec = milliseconds_to_ros_time(timestamp_millis)
+        log_message = Log()
+        log_message.stamp.sec = sec
+        log_message.stamp.nanosec = nanosec
+        log_message.level = level
+        log_message.msg = msg
+        self.get_logger().log(msg, level)
+        asyncio.create_task(
+            self.notifications_topic(
+                stamp=log_message.stamp, level=log_message.level, msg=log_message.msg
+            )
+        )
 
     async def _get_laser_points(
         self, color_frame: np.ndarray, conf_threshold: float = 0.0
