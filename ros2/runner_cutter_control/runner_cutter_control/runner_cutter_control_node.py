@@ -434,6 +434,10 @@ class StateMachine:
             self._calibration.camera_point_to_laser_coord(position)
             for position in positions
         ]
+        # Filter out laser coords that are out of bounds
+        laser_coords = [
+            (x, y) for (x, y) in laser_coords if 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0
+        ]
         await self._calibration.add_calibration_points(
             laser_coords, update_transform=True
         )
@@ -507,21 +511,16 @@ class StateMachine:
                 laser_coord = self._calibration.camera_point_to_laser_coord(
                     track.position
                 )
-                if (
-                    laser_coord[0] < 0.0
-                    or laser_coord[0] > 1.0
-                    or laser_coord[1] < 0.0
-                    or laser_coord[1] > 1.0
-                ):
+                if 0.0 <= laser_coord[0] <= 1.0 and 0.0 <= laser_coord[1] <= 1.0:
+                    self._logger.info(f"Setting track {track.id} as target.")
+                    target_track = track
+                    break
+                else:
                     self._logger.info(
                         f"Track {track.id} is out of laser bounds. Marking as failed."
                     )
                     self._runner_tracker.process_track(track.id, TrackState.FAILED)
                     continue
-                else:
-                    self._logger.info(f"Setting track {track.id} as target.")
-                    target_track = track
-                    break
 
         if target_track is None:
             self._logger.info("No target found.")

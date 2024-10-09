@@ -160,7 +160,7 @@ class EtherDreamDAC(LaserDAC):
             x (float): x coordinate normalized to [0, 1]
             y (float): y coordinate normalized to [0, 1]
         """
-        if 0.0 <= x and x <= 1.0 and 0.0 <= y and y <= 1.0:
+        if 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0:
             with self._points_lock:
                 self.points.append((x, y))
 

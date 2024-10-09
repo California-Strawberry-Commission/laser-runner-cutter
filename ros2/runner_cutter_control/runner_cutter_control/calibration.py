@@ -285,6 +285,8 @@ class Calibration:
             laser_coords (List[Tuple[float, float]]): Laser coordinates to find point correspondences with
             update_transform (bool): Whether to recalculate the camera-space position to laser coord transform
         """
+        if len(laser_coords) == 0:
+            return
 
         # TODO: set exposure/gain on camera node automatically when detecting laser
         async with self._camera_context.laser_detection_settings():
