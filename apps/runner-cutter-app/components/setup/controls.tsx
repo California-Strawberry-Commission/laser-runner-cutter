@@ -1,10 +1,10 @@
 "use client";
 
-import FramePreview from "@/components/camera/frame-preview";
-import DeviceCard, { DeviceState } from "@/components/setup/device-card";
+import FramePreviewWithOverlay from "@/components/camera/frame-preview-with-overlay";
 import CalibrationCard, {
   CalibrationState,
 } from "@/components/setup/calibration-card";
+import DeviceCard, { DeviceState } from "@/components/setup/device-card";
 import NodesCarousel from "@/components/setup/nodes-carousel";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,8 +26,7 @@ import useLaserNode, {
   DeviceState as LaserDeviceState,
 } from "@/lib/useLaserNode";
 import useLifecycleManagerNode from "@/lib/useLifecycleManagerNode";
-import { useCallback, useMemo, useState } from "react";
-import Overlay from "@/components/runner-cutter/overlay";
+import { useCallback, useMemo } from "react";
 
 export default function Controls() {
   const { connected: rosConnected } = useROS();
@@ -37,21 +36,15 @@ export default function Controls() {
   const laserNode = useLaserNode("/laser0");
   const controlNode = useControlNode("/control0");
 
-  const [framePreviewSize, setFramePreviewSize] = useState({
-    width: 0,
-    height: 0,
-  });
-
-  const onFramePreviewSizeChanged = useCallback(
-    (width: number, height: number) => {
-      if (
-        width !== framePreviewSize.width ||
-        height !== framePreviewSize.height
-      ) {
-        setFramePreviewSize({ width, height });
+  const onImageClick = useCallback(
+    (normalizedX: number, normalizedY: number) => {
+      if (controlNode.state.state !== "idle") {
+        return;
       }
+
+      controlNode.addCalibrationPoint(normalizedX, normalizedY);
     },
-    [framePreviewSize, setFramePreviewSize]
+    [controlNode]
   );
 
   const nodeInfos = useMemo(() => {
@@ -200,32 +193,17 @@ export default function Controls() {
         After calibration, click on the image below to fire the laser at that
         point and add a calibration point.
       </p>
-      <div className="relative flex items-center" style={{ height: 360 }}>
-        <FramePreview
-          height={360}
-          topicName={"/camera0/debug_frame"}
-          onComponentSizeChanged={onFramePreviewSizeChanged}
-          onImageClick={(event: any) => {
-            if (controlNode.state.state !== "idle") {
-              return;
-            }
-
-            const boundingRect = event.target.getBoundingClientRect();
-            const x = Math.round(event.clientX - boundingRect.left);
-            const y = Math.round(event.clientY - boundingRect.top);
-            const normalizedX = x / boundingRect.width;
-            const normalizedY = y / boundingRect.height;
-            controlNode.addCalibrationPoint(normalizedX, normalizedY);
-          }}
-        />
-        <Overlay
-          width={framePreviewSize.width}
-          height={framePreviewSize.height}
-          state={controlNode.state.state}
-          tracks={controlNode.state.tracks}
-          normalizedRect={controlNode.state.normalizedLaserBounds}
-        />
-      </div>
+      <FramePreviewWithOverlay
+        className="w-full h-[360px]"
+        topicName="/camera0/debug_frame"
+        enableStream={
+          cameraNode.state.deviceState === CameraDeviceState.Streaming
+        }
+        onImageClick={onImageClick}
+        enableOverlay
+        overlayText={`State: ${controlNode.state.state}`}
+        overlayNormalizedRect={controlNode.state.normalizedLaserBounds}
+      />
     </div>
   );
 }

@@ -41,7 +41,9 @@ export default function KeyboardProvider({
     }
 
     window.addEventListener("click", clickHandler);
-    return window.removeEventListener("click", clickHandler, true);
+    return () => {
+      window.removeEventListener("click", clickHandler, true);
+    };
   }, []);
 
   const handleShift = () => {

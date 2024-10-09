@@ -1,9 +1,13 @@
 "use client";
 
-import FramePreview from "@/components/camera/frame-preview";
+import FramePreviewWithOverlay from "@/components/camera/frame-preview-with-overlay";
+import useCameraNode, {
+  DeviceState as CameraDeviceState,
+} from "@/lib/useCameraNode";
 import useControlNode from "@/lib/useControlNode";
 
 export default function Controls() {
+  const cameraNode = useCameraNode("/camera0");
   const controlNode = useControlNode("/control0");
 
   const onImageClick = (event: any) => {
@@ -24,9 +28,12 @@ export default function Controls() {
       <p className="text-center">
         Click on the image below to attempt to aim the laser to that point.
       </p>
-      <FramePreview
-        height={600}
-        topicName={"/camera0/debug_frame"}
+      <FramePreviewWithOverlay
+        className="w-full h-[600px]"
+        topicName="/camera0/debug_frame"
+        enableStream={
+          cameraNode.state.deviceState === CameraDeviceState.Streaming
+        }
         onImageClick={onImageClick}
       />
     </div>

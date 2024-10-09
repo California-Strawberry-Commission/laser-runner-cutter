@@ -1,9 +1,11 @@
 "use client";
 
-import FramePreview from "@/components/camera/frame-preview";
+import FramePreviewWithOverlay from "@/components/camera/frame-preview-with-overlay";
 import { Button } from "@/components/ui/button";
 import { InputWithLabel } from "@/components/ui/input-with-label";
-import useCameraNode from "@/lib/useCameraNode";
+import useCameraNode, {
+  DeviceState as CameraDeviceState,
+} from "@/lib/useCameraNode";
 import { useEffect, useState } from "react";
 
 export default function Controls() {
@@ -30,6 +32,8 @@ export default function Controls() {
     cameraNode.state.gainDb,
     setSaveDir,
     cameraNode.state.saveDirectory,
+    setIntervalSecs,
+    cameraNode.state.imageCaptureIntervalSecs,
   ]);
 
   return (
@@ -237,7 +241,13 @@ export default function Controls() {
           </Button>
         )}
       </div>
-      <FramePreview height={520} topicName={"/camera0/debug_frame"} />
+      <FramePreviewWithOverlay
+        className="w-full h-[520px]"
+        topicName="/camera0/debug_frame"
+        enableStream={
+          cameraNode.state.deviceState === CameraDeviceState.Streaming
+        }
+      />
     </div>
   );
 }
