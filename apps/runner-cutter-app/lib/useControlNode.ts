@@ -4,7 +4,6 @@ import { useCallback } from "react";
 export type State = {
   calibrated: boolean;
   state: string;
-  tracks: Track[];
   normalizedLaserBounds: {
     x: number;
     y: number;
@@ -12,37 +11,17 @@ export type State = {
     height: number;
   };
 };
-export type Track = {
-  id: number;
-  normalizedPixelCoords: { x: number; y: number };
-  state: TrackState;
-};
-export enum TrackState {
-  Pending,
-  Active,
-  Completed,
-  Failed,
-}
 
 function convertStateMessage(message: any): State {
   return {
     calibrated: message.calibrated,
     state: message.state,
-    tracks: message.tracks.map(convertTrackMessage),
     normalizedLaserBounds: {
       x: message.normalized_laser_bounds.w,
       y: message.normalized_laser_bounds.x,
       width: message.normalized_laser_bounds.y,
       height: message.normalized_laser_bounds.z,
     },
-  };
-}
-
-function convertTrackMessage(message: any): Track {
-  return {
-    id: message.id,
-    normalizedPixelCoords: message.normalized_pixel_coords,
-    state: message.state as TrackState,
   };
 }
 
@@ -62,7 +41,6 @@ export default function useControlNode(nodeName: string) {
     {
       calibrated: false,
       state: "idle",
-      tracks: [],
       normalizedLaserBounds: { x: 0, y: 0, width: 0, height: 0 },
     },
     convertStateMessage

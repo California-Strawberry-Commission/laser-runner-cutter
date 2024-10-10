@@ -7,9 +7,39 @@ import useCameraNode, {
 } from "@/lib/useCameraNode";
 import useControlNode from "@/lib/useControlNode";
 
+export type Track = {
+  id: number;
+  normalizedPixelCoords: { x: number; y: number };
+  state: TrackState;
+};
+
+export enum TrackState {
+  Pending,
+  Active,
+  Completed,
+  Failed,
+}
+
+function convertTracksMessage(message: any): Track[] {
+  return message.tracks.map((track: any) => {
+    return {
+      id: track.id,
+      normalizedPixelCoords: track.normalized_pixel_coords,
+      state: track.state as TrackState,
+    };
+  });
+}
+
 export default function Controls() {
   const cameraNode = useCameraNode("/camera0");
   const controlNode = useControlNode("/control0");
+
+  const tracks = controlNode.useTopic(
+    "~/tracks",
+    "runner_cutter_control_interfaces/Tracks",
+    [],
+    convertTracksMessage
+  );
 
   const disableButtons =
     !controlNode.connected || controlNode.state.state !== "idle";
@@ -44,7 +74,7 @@ export default function Controls() {
         enableOverlay
         overlayText={`State: ${controlNode.state.state}`}
         overlayNormalizedRect={controlNode.state.normalizedLaserBounds}
-        overlayTracks={controlNode.state.tracks}
+        overlayTracks={tracks}
       />
     </div>
   );

@@ -40,6 +40,7 @@ from runner_cutter_control.tracker import Track, Tracker, TrackState
 from runner_cutter_control_interfaces.msg import (
     State,
     Track as TrackMsg,
+    Tracks as TracksMsg,
     TrackState as TrackStateMsg,
 )
 from runner_cutter_control_interfaces.srv import (
@@ -70,6 +71,7 @@ class RunnerCutterControlNode:
     runner_cutter_control_params = params(RunnerCutterControlParams)
     state_topic = topic("~/state", State, qos=QOS_LATCHED)
     notifications_topic = topic("/notifications", Log, qos=1)
+    tracks_topic = topic("~/tracks", TracksMsg, qos=5)
 
     laser_node: laser_control_node.LaserControlNode = import_node(laser_control_node)
     camera_node: camera_control_node.CameraControlNode = import_node(
@@ -190,7 +192,6 @@ class RunnerCutterControlNode:
             self.state_topic(
                 calibrated=state.calibrated,
                 state=state.state,
-                tracks=state.tracks,
                 normalized_laser_bounds=state.normalized_laser_bounds,
             )
         )
@@ -210,9 +211,13 @@ class RunnerCutterControlNode:
             )
         )
 
+    def publish_tracks(self):
+        tracks_msg = self._get_tracks_msg()
+        asyncio.create_task(self.tracks_topic(tracks=tracks_msg.tracks))
+
     def _get_state(self) -> State:
         normalized_laser_bounds = self.calibration.normalized_laser_bounds
-        state_msg = State(
+        return State(
             calibrated=self.state_machine.is_calibrated,
             state=self.state_machine.state,
             normalized_laser_bounds=Vector4(
@@ -223,6 +228,8 @@ class RunnerCutterControlNode:
             ),
         )
 
+    def _get_tracks_msg(self) -> TracksMsg:
+        tracks_msg = TracksMsg()
         frame_size = self.calibration.camera_frame_size
         for track_id in self.state_machine.detected_track_ids:
             track = self.runner_tracker.get_track(track_id)
@@ -243,9 +250,9 @@ class RunnerCutterControlNode:
                 track_msg.state = TrackStateMsg.COMPLETED
             elif track.state == TrackState.FAILED:
                 track_msg.state = TrackStateMsg.FAILED
-            state_msg.tracks.append(track_msg)
+            tracks_msg.tracks.append(track_msg)
 
-        return state_msg
+        return tracks_msg
 
 
 class StateMachine:
@@ -360,6 +367,7 @@ class StateMachine:
 
     async def on_enter_idle(self):
         self._logger.info("Entered state <idle>")
+        self._node.publish_state()
 
         self._current_task = None
         await self._laser_node.stop()
@@ -369,7 +377,7 @@ class StateMachine:
             self._save_summary()
 
         self._runner_tracker.clear()
-        self._node.publish_state()
+        self._node.publish_tracks()
 
     def _save_summary(self):
         ts = time.time()
@@ -524,6 +532,8 @@ class StateMachine:
                     )
                     self._runner_tracker.process_track(track.id, TrackState.FAILED)
                     continue
+
+        self._node.publish_tracks()
 
         if target_track is None:
             self._logger.info("No target found.")
@@ -749,6 +759,7 @@ class StateMachine:
             f"Burn complete on track {target.id}. Marking track as completed."
         )
         self._runner_tracker.process_track(target.id, TrackState.COMPLETED)
+        self._node.publish_tracks()
         await self.burn_complete()
 
 
