@@ -37,8 +37,11 @@ from common_interfaces.msg import Vector2, Vector4
 from runner_cutter_control.calibration import Calibration
 from runner_cutter_control.camera_context import CameraContext
 from runner_cutter_control.tracker import Track, Tracker, TrackState
-from runner_cutter_control_interfaces.msg import State
-from runner_cutter_control_interfaces.msg import Track as TrackMsg
+from runner_cutter_control_interfaces.msg import (
+    State,
+    Track as TrackMsg,
+    TrackState as TrackStateMsg,
+)
 from runner_cutter_control_interfaces.srv import (
     AddCalibrationPoints,
     GetState,
@@ -233,13 +236,13 @@ class RunnerCutterControlNode:
                 y=(track.pixel[1] / frame_size[1] if frame_size[1] > 0 else -1.0),
             )
             if track.state == TrackState.PENDING:
-                track_msg.state = TrackMsg.PENDING
+                track_msg.state = TrackStateMsg.PENDING
             elif track.state == TrackState.ACTIVE:
-                track_msg.state = TrackMsg.ACTIVE
+                track_msg.state = TrackStateMsg.ACTIVE
             elif track.state == TrackState.COMPLETED:
-                track_msg.state = TrackMsg.COMPLETED
+                track_msg.state = TrackStateMsg.COMPLETED
             elif track.state == TrackState.FAILED:
-                track_msg.state = TrackMsg.FAILED
+                track_msg.state = TrackStateMsg.FAILED
             state_msg.tracks.append(track_msg)
 
         return state_msg

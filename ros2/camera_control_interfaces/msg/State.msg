@@ -1,4 +1,4 @@
-DeviceState device_state
+uint8 device_state  # DeviceState.msg
 bool laser_detection_enabled
 bool runner_detection_enabled
 bool recording_video

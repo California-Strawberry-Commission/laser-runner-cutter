@@ -14,6 +14,7 @@ export type State = {
   saveDirectory: string;
   imageCaptureIntervalSecs: number;
 };
+
 export enum DeviceState {
   Disconnected,
   Connecting,
@@ -22,7 +23,7 @@ export enum DeviceState {
 
 function convertStateMessage(message: any): State {
   return {
-    deviceState: message.device_state.data as DeviceState,
+    deviceState: message.device_state as DeviceState,
     laserDetectionEnabled: message.laser_detection_enabled,
     runnerDetectionEnabled: message.runner_detection_enabled,
     recordingVideo: message.recording_video,

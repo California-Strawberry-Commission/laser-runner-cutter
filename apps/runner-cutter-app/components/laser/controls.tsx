@@ -29,20 +29,24 @@ export default function Controls() {
   const disableButtons = !laserNode.connected;
 
   let playbackButton = null;
-  if (laserNode.state === DeviceState.Stopped) {
-    playbackButton = (
-      <Button disabled={disableButtons} onClick={() => laserNode.play()}>
-        Start Laser
-      </Button>
-    );
-  } else if (laserNode.state === DeviceState.Playing) {
-    playbackButton = (
-      <Button disabled={disableButtons} onClick={() => laserNode.stop()}>
-        Stop Laser
-      </Button>
-    );
-  } else {
-    playbackButton = <Button disabled={true}>Laser Disconnected</Button>;
+  switch (laserNode.state.deviceState) {
+    case DeviceState.Stopped:
+      playbackButton = (
+        <Button disabled={disableButtons} onClick={() => laserNode.play()}>
+          Start Laser
+        </Button>
+      );
+      break;
+    case DeviceState.Playing:
+      playbackButton = (
+        <Button disabled={disableButtons} onClick={() => laserNode.stop()}>
+          Stop Laser
+        </Button>
+      );
+      break;
+    default:
+      playbackButton = <Button disabled>Laser Disconnected</Button>;
+      break;
   }
 
   return (

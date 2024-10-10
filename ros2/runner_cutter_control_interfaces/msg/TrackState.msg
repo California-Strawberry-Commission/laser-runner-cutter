@@ -1,0 +1,4 @@
+uint8 PENDING=0
+uint8 ACTIVE=1
+uint8 COMPLETED=2
+uint8 FAILED=3

@@ -131,15 +131,18 @@ export default function Controls() {
 
   let laserDeviceState = DeviceState.Unavailable;
   if (laserNode.connected) {
-    switch (laserNode.state) {
+    switch (laserNode.state.deviceState) {
       case LaserDeviceState.Disconnected:
         laserDeviceState = DeviceState.Disconnected;
         break;
       case LaserDeviceState.Connecting:
         laserDeviceState = DeviceState.Connecting;
         break;
-      default:
+      case LaserDeviceState.Playing:
+      case LaserDeviceState.Stopped:
         laserDeviceState = DeviceState.Connected;
+        break;
+      default:
         break;
     }
   }

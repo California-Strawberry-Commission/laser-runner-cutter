@@ -1,6 +1,1 @@
-uint8 DISCONNECTED=0
-uint8 CONNECTING=1
-uint8 STOPPED=2
-uint8 PLAYING=3
-
-uint8 data
+uint8 device_state  # DeviceState.msg

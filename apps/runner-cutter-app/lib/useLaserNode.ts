@@ -1,6 +1,10 @@
 import useROSNode from "@/lib/ros/useROSNode";
 import { useCallback } from "react";
 
+export type State = {
+  deviceState: DeviceState;
+};
+
 export enum DeviceState {
   Disconnected,
   Connecting,
@@ -8,8 +12,10 @@ export enum DeviceState {
   Playing,
 }
 
-function convertStateMessage(message: any): DeviceState {
-  return message.data as DeviceState;
+function convertStateMessage(message: any): State {
+  return {
+    deviceState: message.device_state as DeviceState,
+  };
 }
 
 function triggerInputMapper() {
@@ -25,7 +31,9 @@ export default function useLaserNode(nodeName: string) {
   const state = node.useTopic(
     "~/state",
     "laser_control_interfaces/State",
-    DeviceState.Disconnected,
+    {
+      deviceState: DeviceState.Disconnected,
+    },
     convertStateMessage
   );
 

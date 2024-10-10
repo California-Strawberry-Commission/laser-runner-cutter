@@ -522,9 +522,7 @@ class CameraControlNode:
 
     def _get_state(self) -> State:
         state = State()
-        device_state = DeviceState()
-        device_state.data = self._get_device_state()
-        state.device_state = device_state
+        state.device_state = self._get_device_state()
         state.laser_detection_enabled = self.laser_detection_enabled
         state.runner_detection_enabled = self.runner_detection_enabled
         state.recording_video = self.record_video_task is not None

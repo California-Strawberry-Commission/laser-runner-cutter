@@ -18,7 +18,7 @@ from aioros2 import (
     QOS_LATCHED,
 )
 from laser_control.laser_dac import EtherDreamDAC, HeliosDAC
-from laser_control_interfaces.msg import State
+from laser_control_interfaces.msg import DeviceState, State
 from laser_control_interfaces.srv import (
     AddPoint,
     GetState,
@@ -169,24 +169,24 @@ class LaserControlNode:
 
     @service("~/get_state", GetState)
     async def get_state(self):
-        return result(
-            dac_type=self.laser_control_params.dac_type,
-            dac_index=self.laser_control_params.dac_index,
-            state=State(data=self._get_state()),
-        )
+        return result(state=self._get_state())
+
+    def _get_device_state(self) -> DeviceState:
+        if self.connecting:
+            return DeviceState.CONNECTING
+        elif self.dac is None or not self.dac.is_connected:
+            return DeviceState.DISCONNECTED
+        elif self.dac.playing:
+            return DeviceState.PLAYING
+        else:
+            return DeviceState.STOPPED
 
     def _get_state(self) -> State:
-        if self.connecting:
-            return State.CONNECTING
-        elif self.dac is None or not self.dac.is_connected:
-            return State.DISCONNECTED
-        elif self.dac.playing:
-            return State.PLAYING
-        else:
-            return State.STOPPED
+        return State(device_state=self._get_device_state())
 
     def _publish_state(self):
-        asyncio.create_task(self.state_topic(data=self._get_state()))
+        state = self._get_state()
+        asyncio.create_task(self.state_topic(device_state=state.device_state))
 
 
 def main():
