@@ -1,0 +1,4 @@
+-e ../aioros2 --config-settings editable_mode=strict
+aiohttp
+aiohttp_cors
+aiortc
