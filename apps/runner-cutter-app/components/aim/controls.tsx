@@ -5,23 +5,22 @@ import useCameraNode, {
   DeviceState as CameraDeviceState,
 } from "@/lib/useCameraNode";
 import useControlNode from "@/lib/useControlNode";
+import { useCallback } from "react";
 
 export default function Controls() {
   const cameraNode = useCameraNode("/camera0");
   const controlNode = useControlNode("/control0");
 
-  const onImageClick = (event: any) => {
-    if (controlNode.state.state !== "idle") {
-      return;
-    }
+  const onImageClick = useCallback(
+    (normalizedX: number, normalizedY: number) => {
+      if (controlNode.state.state !== "idle") {
+        return;
+      }
 
-    const boundingRect = event.target.getBoundingClientRect();
-    const x = Math.round(event.clientX - boundingRect.left);
-    const y = Math.round(event.clientY - boundingRect.top);
-    const normalizedX = x / boundingRect.width;
-    const normalizedY = y / boundingRect.height;
-    controlNode.manualTargetAimLaser(normalizedX, normalizedY);
-  };
+      controlNode.manualTargetAimLaser(normalizedX, normalizedY);
+    },
+    [controlNode]
+  );
 
   return (
     <div className="flex flex-col gap-4 items-center">
