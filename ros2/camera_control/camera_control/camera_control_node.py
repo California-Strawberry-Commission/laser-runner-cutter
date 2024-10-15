@@ -462,7 +462,9 @@ class CameraControlNode:
             if self.laser_detection_enabled:
                 laser_points, confs = await self._get_laser_points(frame.color_frame)
                 debug_frame = self._debug_draw_lasers(debug_frame, laser_points, confs)
-                msg = self._create_detection_result_msg(laser_points, frame)
+                msg = self._create_detection_result_msg(
+                    DetectionType.LASER, laser_points, frame
+                )
                 asyncio.create_task(
                     self.detections_topic(
                         detection_type=DetectionType.LASER,
@@ -481,7 +483,7 @@ class CameraControlNode:
                     debug_frame, runner_masks, runner_centers, confs, track_ids
                 )
                 msg = self._create_detection_result_msg(
-                    runner_centers, frame, track_ids
+                    DetectionType.RUNNER, runner_centers, frame, track_ids
                 )
                 asyncio.create_task(
                     self.detections_topic(
