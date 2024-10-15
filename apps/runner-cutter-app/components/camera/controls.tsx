@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { InputWithLabel } from "@/components/ui/input-with-label";
 import useCameraNode, {
   DeviceState as CameraDeviceState,
+  DetectionType,
 } from "@/lib/useCameraNode";
 import { useEffect, useState } from "react";
 
@@ -206,7 +207,7 @@ export default function Controls() {
           <Button
             disabled={disableButtons}
             onClick={() => {
-              cameraNode.stopLaserDetection();
+              cameraNode.stopDetection(DetectionType.LASER);
             }}
           >
             Stop Laser Detection
@@ -215,7 +216,7 @@ export default function Controls() {
           <Button
             disabled={disableButtons}
             onClick={() => {
-              cameraNode.startLaserDetection();
+              cameraNode.startDetection(DetectionType.LASER);
             }}
           >
             Start Laser Detection
@@ -225,7 +226,7 @@ export default function Controls() {
           <Button
             disabled={disableButtons}
             onClick={() => {
-              cameraNode.stopRunnerDetection();
+              cameraNode.stopDetection(DetectionType.RUNNER);
             }}
           >
             Stop Runner Detection
@@ -234,7 +235,7 @@ export default function Controls() {
           <Button
             disabled={disableButtons}
             onClick={() => {
-              cameraNode.startRunnerDetection();
+              cameraNode.startDetection(DetectionType.RUNNER);
             }}
           >
             Start Runner Detection
@@ -245,7 +246,7 @@ export default function Controls() {
         className="w-full h-[520px]"
         topicName="/camera0/debug_frame"
         enableStream={
-          cameraNode.state.deviceState === CameraDeviceState.Streaming
+          cameraNode.state.deviceState === CameraDeviceState.STREAMING
         }
       />
     </div>

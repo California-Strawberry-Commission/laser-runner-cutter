@@ -32,7 +32,7 @@ export default function Controls() {
         className="w-full h-[600px]"
         topicName="/camera0/debug_frame"
         enableStream={
-          cameraNode.state.deviceState === CameraDeviceState.Streaming
+          cameraNode.state.deviceState === CameraDeviceState.STREAMING
         }
         onImageClick={onImageClick}
       />

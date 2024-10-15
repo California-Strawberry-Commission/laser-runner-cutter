@@ -6,10 +6,10 @@ export type State = {
 };
 
 export enum DeviceState {
-  Disconnected,
-  Connecting,
-  Stopped,
-  Playing,
+  DISCONNECTED,
+  CONNECTING,
+  STOPPED,
+  PLAYING,
 }
 
 function convertStateMessage(message: any): State {
@@ -32,12 +32,11 @@ export default function useLaserNode(nodeName: string) {
     "~/state",
     "laser_control_interfaces/State",
     {
-      deviceState: DeviceState.Disconnected,
+      deviceState: DeviceState.DISCONNECTED,
     },
     convertStateMessage
   );
 
-  // TODO: Optimistically set device state to "connecting"
   const startDevice = node.useService(
     "~/start_device",
     "std_srvs/Trigger",

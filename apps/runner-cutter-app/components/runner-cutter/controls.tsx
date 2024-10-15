@@ -5,20 +5,7 @@ import { Button } from "@/components/ui/button";
 import useCameraNode, {
   DeviceState as CameraDeviceState,
 } from "@/lib/useCameraNode";
-import useControlNode from "@/lib/useControlNode";
-
-export type Track = {
-  id: number;
-  normalizedPixelCoords: { x: number; y: number };
-  state: TrackState;
-};
-
-export enum TrackState {
-  Pending,
-  Active,
-  Completed,
-  Failed,
-}
+import useControlNode, { Track, TrackState } from "@/lib/useControlNode";
 
 function convertTracksMessage(message: any): Track[] {
   return message.tracks.map((track: any) => {
@@ -34,6 +21,8 @@ export default function Controls() {
   const cameraNode = useCameraNode("/camera0");
   const controlNode = useControlNode("/control0");
 
+  // TODO: move this into useControlNode, but enable lazy subscription so that we do not
+  // subscribe to this high-frequency topic when we don't need to
   const tracks = controlNode.useTopic(
     "~/tracks",
     "runner_cutter_control_interfaces/Tracks",
@@ -69,7 +58,7 @@ export default function Controls() {
         className="w-full h-[600px]"
         topicName="/camera0/debug_frame"
         enableStream={
-          cameraNode.state.deviceState === CameraDeviceState.Streaming
+          cameraNode.state.deviceState === CameraDeviceState.STREAMING
         }
         enableOverlay
         overlayText={`State: ${controlNode.state.state}`}

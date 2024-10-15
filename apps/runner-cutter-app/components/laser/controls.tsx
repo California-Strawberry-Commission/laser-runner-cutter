@@ -30,14 +30,14 @@ export default function Controls() {
 
   let playbackButton = null;
   switch (laserNode.state.deviceState) {
-    case DeviceState.Stopped:
+    case DeviceState.STOPPED:
       playbackButton = (
         <Button disabled={disableButtons} onClick={() => laserNode.play()}>
           Start Laser
         </Button>
       );
       break;
-    case DeviceState.Playing:
+    case DeviceState.PLAYING:
       playbackButton = (
         <Button disabled={disableButtons} onClick={() => laserNode.stop()}>
           Stop Laser

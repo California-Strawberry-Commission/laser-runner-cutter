@@ -35,6 +35,7 @@ from camera_control.camera.rgbd_camera import State as RgbdCameraState
 from camera_control.camera.rgbd_frame import RgbdFrame
 from camera_control_interfaces.msg import (
     DetectionResult,
+    DetectionType,
     DeviceState,
     ObjectInstance,
     State,
@@ -48,6 +49,8 @@ from camera_control_interfaces.srv import (
     SetGain,
     SetSaveDirectory,
     StartIntervalCapture,
+    StartDetection,
+    StopDetection,
 )
 from common_interfaces.msg import Vector2, Vector3
 from common_interfaces.srv import GetBool
@@ -80,8 +83,7 @@ class CameraControlNode:
     # from stalling
     color_frame_topic = topic("~/color_frame", Image, qos=qos_profile_sensor_data)
     debug_frame_topic = topic("~/debug_frame", Image, qos=qos_profile_sensor_data)
-    laser_detections_topic = topic("~/laser_detections", DetectionResult, qos=5)
-    runner_detections_topic = topic("~/runner_detections", DetectionResult, qos=5)
+    detections_topic = topic("~/detections", DetectionResult, qos=5)
     notifications_topic = topic("/notifications", Log, qos=1)
 
     @start
@@ -240,51 +242,60 @@ class CameraControlNode:
         self._publish_state()
         return result(success=True)
 
-    @service("~/get_laser_detection", GetDetectionResult)
-    async def get_laser_detection(self):
+    @service("~/get_detection", GetDetectionResult)
+    async def get_detection(self, detection_type):
         frame = self.current_frame
         if frame is None:
             return result()
 
-        laser_points, conf = await self._get_laser_points(frame.color_frame)
-        return result(result=self._create_detection_result_msg(laser_points, frame))
-
-    @service("~/get_runner_detection", GetDetectionResult)
-    async def get_runner_detection(self):
-        frame = self.current_frame
-        if frame is None:
+        if detection_type == DetectionType.LASER:
+            laser_points, conf = await self._get_laser_points(frame.color_frame)
+            return result(
+                result=self._create_detection_result_msg(
+                    detection_type, laser_points, frame
+                )
+            )
+        elif detection_type == DetectionType.RUNNER:
+            runner_masks, confs, track_ids = await self._get_runner_masks(
+                frame.color_frame
+            )
+            runner_centers = await self._get_runner_centers(runner_masks)
+            runner_centers = [center for center in runner_centers if center is not None]
+            return result(
+                result=self._create_detection_result_msg(
+                    detection_type, runner_centers, frame, track_ids
+                )
+            )
+        else:
             return result()
 
-        runner_masks, confs, track_ids = await self._get_runner_masks(frame.color_frame)
-        runner_centers = await self._get_runner_centers(runner_masks)
-        runner_centers = [center for center in runner_centers if center is not None]
-        return result(
-            result=self._create_detection_result_msg(runner_centers, frame, track_ids)
-        )
+    @service("~/start_detection", StartDetection)
+    async def start_detection(self, detection_type):
+        if detection_type == DetectionType.LASER:
+            if not self.laser_detection_enabled:
+                self.laser_detection_enabled = True
+                self._publish_state()
+                return result(success=True)
+        elif detection_type == DetectionType.RUNNER:
+            if not self.runner_detection_enabled:
+                self.runner_detection_enabled = True
+                self._publish_state()
+                return result(success=True)
+        return result(success=False)
 
-    @service("~/start_laser_detection", Trigger)
-    async def start_laser_detection(self):
-        self.laser_detection_enabled = True
-        self._publish_state()
-        return result(success=True)
-
-    @service("~/stop_laser_detection", Trigger)
-    async def stop_laser_detection(self):
-        self.laser_detection_enabled = False
-        self._publish_state()
-        return result(success=True)
-
-    @service("~/start_runner_detection", Trigger)
-    async def start_runner_detection(self):
-        self.runner_detection_enabled = True
-        self._publish_state()
-        return result(success=True)
-
-    @service("~/stop_runner_detection", Trigger)
-    async def stop_runner_detection(self):
-        self.runner_detection_enabled = False
-        self._publish_state()
-        return result(success=True)
+    @service("~/stop_detection", StopDetection)
+    async def stop_detection(self, detection_type):
+        if detection_type == DetectionType.LASER:
+            if self.laser_detection_enabled:
+                self.laser_detection_enabled = False
+                self._publish_state()
+                return result(success=True)
+        elif detection_type == DetectionType.RUNNER:
+            if self.runner_detection_enabled:
+                self.runner_detection_enabled = False
+                self._publish_state()
+                return result(success=True)
+        return result(success=False)
 
     @service("~/start_recording_video", Trigger)
     async def start_recording_video(self):
@@ -453,7 +464,8 @@ class CameraControlNode:
                 debug_frame = self._debug_draw_lasers(debug_frame, laser_points, confs)
                 msg = self._create_detection_result_msg(laser_points, frame)
                 asyncio.create_task(
-                    self.laser_detections_topic(
+                    self.detections_topic(
+                        detection_type=DetectionType.LASER,
                         timestamp=msg.timestamp,
                         instances=msg.instances,
                         invalid_points=msg.invalid_points,
@@ -472,7 +484,8 @@ class CameraControlNode:
                     runner_centers, frame, track_ids
                 )
                 asyncio.create_task(
-                    self.runner_detections_topic(
+                    self.detections_topic(
+                        detection_type=DetectionType.RUNNER,
                         timestamp=msg.timestamp,
                         instances=msg.instances,
                         invalid_points=msg.invalid_points,
@@ -688,12 +701,14 @@ class CameraControlNode:
 
     def _create_detection_result_msg(
         self,
+        detection_type: int,
         points: List[Tuple[int, int]],
         frame: RgbdFrame,
         track_ids: Optional[List[int]] = None,
     ) -> DetectionResult:
-        msg = DetectionResult()
-        msg.timestamp = frame.timestamp_millis / 1000
+        msg = DetectionResult(
+            detection_type=detection_type, timestamp=(frame.timestamp_millis / 1000)
+        )
         for idx, point in enumerate(points):
             point_msg = Vector2(x=float(point[0]), y=float(point[1]))
             position = frame.get_position(point)

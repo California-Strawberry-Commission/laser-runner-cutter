@@ -180,7 +180,7 @@ export default function FramePreviewWithOverlay({
         ctx.moveTo(x + markerSize / 2, y - markerSize / 2);
         ctx.lineTo(x - markerSize / 2, y + markerSize / 2);
         ctx.strokeStyle =
-          track.state === TrackState.Completed ? "green" : "red";
+          track.state === TrackState.COMPLETED ? "green" : "red";
         ctx.stroke();
       });
     }

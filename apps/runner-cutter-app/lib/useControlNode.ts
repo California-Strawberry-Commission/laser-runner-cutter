@@ -12,6 +12,19 @@ export type State = {
   };
 };
 
+export type Track = {
+  id: number;
+  normalizedPixelCoords: { x: number; y: number };
+  state: TrackState;
+};
+
+export enum TrackState {
+  PENDING,
+  ACTIVE,
+  COMPLETED,
+  FAILED,
+}
+
 function convertStateMessage(message: any): State {
   return {
     calibrated: message.calibrated,

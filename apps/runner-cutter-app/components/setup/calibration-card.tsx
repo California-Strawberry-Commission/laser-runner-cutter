@@ -8,10 +8,10 @@ import {
 import { cn } from "@/lib/utils";
 
 export enum CalibrationState {
-  Uncalibrated,
-  Busy,
-  Calibrated,
-  Unavailable,
+  UNCALIBRATED,
+  BUSY,
+  CALIBRATED,
+  UNAVAILABLE,
 }
 
 export default function DeviceCard({
@@ -32,11 +32,11 @@ export default function DeviceCard({
   let cardColor;
   let calibrateButton = null;
   switch (calibrationState) {
-    case CalibrationState.Uncalibrated:
+    case CalibrationState.UNCALIBRATED:
       cardColor = "bg-red-500";
       calibrateButton = <Button onClick={onCalibrateClick}>Calibrate</Button>;
       break;
-    case CalibrationState.Busy:
+    case CalibrationState.BUSY:
       cardColor = "bg-gray-300";
       calibrateButton = (
         <Button variant="destructive" onClick={onStopClick}>
@@ -44,7 +44,7 @@ export default function DeviceCard({
         </Button>
       );
       break;
-    case CalibrationState.Calibrated:
+    case CalibrationState.CALIBRATED:
       cardColor = "bg-green-500";
       calibrateButton = <Button onClick={onCalibrateClick}>Calibrate</Button>;
       break;
@@ -54,26 +54,29 @@ export default function DeviceCard({
       break;
   }
 
+  let stateStr = CalibrationState[calibrationState];
+  stateStr = stateStr.charAt(0).toUpperCase() + stateStr.slice(1).toLowerCase();
+
   return (
     <Card className={cn(cardColor, className)}>
       <CardHeader className="p-4">
         <CardTitle className="text-lg">Calibration</CardTitle>
         <CardDescription className="text-foreground">
-          {CalibrationState[calibrationState]}
+          {stateStr}
         </CardDescription>
       </CardHeader>
       <div className="p-4 pt-0 w-full flex flex-row gap-4">
         {calibrateButton}
         <Button
-          disabled={calibrationState !== CalibrationState.Calibrated}
+          disabled={calibrationState !== CalibrationState.CALIBRATED}
           onClick={onSaveClick}
         >
           Save
         </Button>
         <Button
           disabled={
-            calibrationState === CalibrationState.Unavailable ||
-            calibrationState === CalibrationState.Busy
+            calibrationState === CalibrationState.UNAVAILABLE ||
+            calibrationState === CalibrationState.BUSY
           }
           onClick={onLoadClick}
         >

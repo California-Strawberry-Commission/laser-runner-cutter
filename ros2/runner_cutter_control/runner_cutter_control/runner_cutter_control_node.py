@@ -33,16 +33,15 @@ from aioros2 import (
     start,
     topic,
 )
+from camera_control_interfaces.msg import DetectionType
 from common_interfaces.msg import Vector2, Vector4
 from runner_cutter_control.calibration import Calibration
 from runner_cutter_control.camera_context import CameraContext
 from runner_cutter_control.tracker import Track, Tracker, TrackState
-from runner_cutter_control_interfaces.msg import (
-    State,
-    Track as TrackMsg,
-    Tracks as TracksMsg,
-    TrackState as TrackStateMsg,
-)
+from runner_cutter_control_interfaces.msg import State
+from runner_cutter_control_interfaces.msg import Track as TrackMsg
+from runner_cutter_control_interfaces.msg import Tracks as TracksMsg
+from runner_cutter_control_interfaces.msg import TrackState as TrackStateMsg
 from runner_cutter_control_interfaces.srv import (
     AddCalibrationPoints,
     GetState,
@@ -552,7 +551,9 @@ class StateMachine:
 
     async def _detect_runners(self):
         self._logger.info("Detecting runners...")
-        result = await self._camera_node.get_runner_detection()
+        result = await self._camera_node.get_detection(
+            detection_type=DetectionType.RUNNER
+        )
         detection_result = result.result
 
         prev_detected_track_ids = set(self.detected_track_ids)
@@ -710,7 +711,9 @@ class StateMachine:
     ) -> Tuple[Optional[Tuple[int, int]], Optional[Tuple[float, float, float]]]:
         attempt = 0
         while attempt < max_attempts:
-            result = await self._camera_node.get_laser_detection()
+            result = await self._camera_node.get_detection(
+                detection_type=DetectionType.LASER
+            )
             detection_result = result.result
             instances = detection_result.instances
             if instances:

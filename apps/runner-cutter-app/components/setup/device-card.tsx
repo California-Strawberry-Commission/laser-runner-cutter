@@ -9,10 +9,10 @@ import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 
 export enum DeviceState {
-  Disconnected,
-  Connecting,
-  Connected,
-  Unavailable,
+  DISCONNECTED,
+  CONNECTING,
+  CONNECTED,
+  UNAVAILABLE,
 }
 
 export default function DeviceCard({
@@ -31,7 +31,7 @@ export default function DeviceCard({
   let cardColor;
   let button = null;
   switch (deviceState) {
-    case DeviceState.Disconnected:
+    case DeviceState.DISCONNECTED:
       cardColor = "bg-red-500";
       button = (
         <Button className="w-full" onClick={onConnectClick}>
@@ -39,7 +39,7 @@ export default function DeviceCard({
         </Button>
       );
       break;
-    case DeviceState.Connecting:
+    case DeviceState.CONNECTING:
       cardColor = "bg-gray-300";
       button = (
         <Button className="w-full" disabled>
@@ -47,7 +47,7 @@ export default function DeviceCard({
         </Button>
       );
       break;
-    case DeviceState.Connected:
+    case DeviceState.CONNECTED:
       cardColor = "bg-green-500";
       button = (
         <Button className="w-full" onClick={onDisconnectClick}>
@@ -65,12 +65,15 @@ export default function DeviceCard({
       break;
   }
 
+  let stateStr = DeviceState[deviceState];
+  stateStr = stateStr.charAt(0).toUpperCase() + stateStr.slice(1).toLowerCase();
+
   return (
     <Card className={cn(cardColor, className)}>
       <CardHeader className="p-4">
         <CardTitle className="text-lg">{deviceName}</CardTitle>
         <CardDescription className="text-foreground">
-          {DeviceState[deviceState]}
+          {stateStr}
         </CardDescription>
       </CardHeader>
       <div className="p-4 pt-0 w-full">{button}</div>

@@ -16,9 +16,14 @@ export type State = {
 };
 
 export enum DeviceState {
-  Disconnected,
-  Connecting,
-  Streaming,
+  DISCONNECTED,
+  CONNECTING,
+  STREAMING,
+}
+
+export enum DetectionType {
+  LASER,
+  RUNNER,
 }
 
 function convertStateMessage(message: any): State {
@@ -51,7 +56,7 @@ export default function useCameraNode(nodeName: string) {
     "~/state",
     "camera_control_interfaces/State",
     {
-      deviceState: DeviceState.Disconnected,
+      deviceState: DeviceState.DISCONNECTED,
       laserDetectionEnabled: false,
       runnerDetectionEnabled: false,
       recordingVideo: false,
@@ -66,7 +71,6 @@ export default function useCameraNode(nodeName: string) {
     convertStateMessage
   );
 
-  // TODO: Optimistically set device state to "connecting"
   const startDevice = node.useService(
     "~/start_device",
     "std_srvs/Trigger",
@@ -116,31 +120,23 @@ export default function useCameraNode(nodeName: string) {
     successOutputMapper
   );
 
-  const startLaserDetection = node.useService(
-    "~/start_laser_detection",
-    "std_srvs/Trigger",
-    triggerInputMapper,
+  const startDetection = node.useService(
+    "~/start_detection",
+    "camera_control_interfaces/StartDetection",
+    useCallback(
+      (detectionType: DetectionType) => ({ detection_type: detectionType }),
+      []
+    ),
     successOutputMapper
   );
 
-  const stopLaserDetection = node.useService(
-    "~/stop_laser_detection",
-    "std_srvs/Trigger",
-    triggerInputMapper,
-    successOutputMapper
-  );
-
-  const startRunnerDetection = node.useService(
-    "~/start_runner_detection",
-    "std_srvs/Trigger",
-    triggerInputMapper,
-    successOutputMapper
-  );
-
-  const stopRunnerDetection = node.useService(
-    "~/stop_runner_detection",
-    "std_srvs/Trigger",
-    triggerInputMapper,
+  const stopDetection = node.useService(
+    "~/stop_detection",
+    "camera_control_interfaces/StopDetection",
+    useCallback(
+      (detectionType: DetectionType) => ({ detection_type: detectionType }),
+      []
+    ),
     successOutputMapper
   );
 
@@ -192,10 +188,8 @@ export default function useCameraNode(nodeName: string) {
     setGain,
     autoGain,
     setSaveDirectory,
-    startLaserDetection,
-    stopLaserDetection,
-    startRunnerDetection,
-    stopRunnerDetection,
+    startDetection,
+    stopDetection,
     startRecordingVideo,
     stopRecordingVideo,
     startIntervalCapture,

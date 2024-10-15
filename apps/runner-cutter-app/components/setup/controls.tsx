@@ -112,53 +112,53 @@ export default function Controls() {
     </Dialog>
   );
 
-  let cameraDeviceState = DeviceState.Unavailable;
+  let cameraDeviceState = DeviceState.UNAVAILABLE;
   if (cameraNode.connected) {
     switch (cameraNode.state.deviceState) {
-      case CameraDeviceState.Disconnected:
-        cameraDeviceState = DeviceState.Disconnected;
+      case CameraDeviceState.DISCONNECTED:
+        cameraDeviceState = DeviceState.DISCONNECTED;
         break;
-      case CameraDeviceState.Connecting:
-        cameraDeviceState = DeviceState.Connecting;
+      case CameraDeviceState.CONNECTING:
+        cameraDeviceState = DeviceState.CONNECTING;
         break;
-      case CameraDeviceState.Streaming:
-        cameraDeviceState = DeviceState.Connected;
+      case CameraDeviceState.STREAMING:
+        cameraDeviceState = DeviceState.CONNECTED;
         break;
       default:
         break;
     }
   }
 
-  let laserDeviceState = DeviceState.Unavailable;
+  let laserDeviceState = DeviceState.UNAVAILABLE;
   if (laserNode.connected) {
     switch (laserNode.state.deviceState) {
-      case LaserDeviceState.Disconnected:
-        laserDeviceState = DeviceState.Disconnected;
+      case LaserDeviceState.DISCONNECTED:
+        laserDeviceState = DeviceState.DISCONNECTED;
         break;
-      case LaserDeviceState.Connecting:
-        laserDeviceState = DeviceState.Connecting;
+      case LaserDeviceState.CONNECTING:
+        laserDeviceState = DeviceState.CONNECTING;
         break;
-      case LaserDeviceState.Playing:
-      case LaserDeviceState.Stopped:
-        laserDeviceState = DeviceState.Connected;
+      case LaserDeviceState.PLAYING:
+      case LaserDeviceState.STOPPED:
+        laserDeviceState = DeviceState.CONNECTED;
         break;
       default:
         break;
     }
   }
 
-  let calibrationState = CalibrationState.Unavailable;
+  let calibrationState = CalibrationState.UNAVAILABLE;
   if (
     controlNode.connected &&
-    cameraDeviceState === DeviceState.Connected &&
-    laserDeviceState === DeviceState.Connected
+    cameraDeviceState === DeviceState.CONNECTED &&
+    laserDeviceState === DeviceState.CONNECTED
   ) {
     if (controlNode.state.state === "idle") {
       calibrationState = controlNode.state.calibrated
-        ? CalibrationState.Calibrated
-        : CalibrationState.Uncalibrated;
+        ? CalibrationState.CALIBRATED
+        : CalibrationState.UNCALIBRATED;
     } else {
-      calibrationState = CalibrationState.Busy;
+      calibrationState = CalibrationState.BUSY;
     }
   }
 
@@ -200,7 +200,7 @@ export default function Controls() {
         className="w-full h-[360px]"
         topicName="/camera0/debug_frame"
         enableStream={
-          cameraNode.state.deviceState === CameraDeviceState.Streaming
+          cameraNode.state.deviceState === CameraDeviceState.STREAMING
         }
         onImageClick={onImageClick}
         enableOverlay

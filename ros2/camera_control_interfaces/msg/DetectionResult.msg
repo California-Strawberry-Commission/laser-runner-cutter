@@ -1,3 +1,5 @@
+# Type of detected object
+uint8 detection_type  # DetectionType.msg
 # Seconds since epoch
 float64 timestamp
 # Detected object instances

@@ -27,6 +27,7 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DetectionResult.msg"
+  "msg/DetectionType.msg"
   "msg/DeviceState.msg"
   "msg/ObjectInstance.msg"
   "msg/State.msg"
@@ -37,7 +38,9 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SetExposure.srv"
   "srv/SetGain.srv"
   "srv/SetSaveDirectory.srv"
+  "srv/StartDetection.srv"
   "srv/StartIntervalCapture.srv"
+  "srv/StopDetection.srv"
   DEPENDENCIES sensor_msgs common_interfaces
 )
 if(BUILD_TESTING)

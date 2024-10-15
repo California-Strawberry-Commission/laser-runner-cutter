@@ -1,14 +1,15 @@
 import asyncio
 import functools
 import logging
-import pickle
 import os
+import pickle
 from typing import List, Optional, Tuple
 
 import numpy as np
 from scipy.optimize import least_squares, minimize
 
 from camera_control.camera_control_node import CameraControlNode
+from camera_control_interfaces.msg import DetectionType
 from common_interfaces.msg import Vector2
 from laser_control.laser_control_node import LaserControlNode
 from runner_cutter_control.camera_context import CameraContext
@@ -365,7 +366,9 @@ class Calibration:
                 f"Attempt {attempt} to detect laser and find point correspondence."
             )
             attempt += 1
-            result = await self._camera_node.get_laser_detection()
+            result = await self._camera_node.get_detection(
+                detection_type=DetectionType.LASER
+            )
             detection_result = result.result
             instances = detection_result.instances
             if instances:
