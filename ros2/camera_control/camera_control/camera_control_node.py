@@ -33,6 +33,8 @@ from camera_control.camera.lucid_camera import create_lucid_rgbd_camera
 from camera_control.camera.realsense_camera import RealSenseCamera
 from camera_control.camera.rgbd_camera import State as RgbdCameraState
 from camera_control.camera.rgbd_frame import RgbdFrame
+from camera_control.detector.laser_detector import LaserDetector
+from camera_control.detector.runner_detector import RunnerDetector
 from camera_control_interfaces.msg import (
     DetectionResult,
     DetectionType,
@@ -48,8 +50,8 @@ from camera_control_interfaces.srv import (
     SetExposure,
     SetGain,
     SetSaveDirectory,
-    StartIntervalCapture,
     StartDetection,
+    StartIntervalCapture,
     StopDetection,
 )
 from common_interfaces.msg import Vector2, Vector3
@@ -142,28 +144,9 @@ class CameraControlNode:
                 f"Unknown camera_type: {self.camera_control_params.camera_type}"
             )
 
-        # ML models
-        models_dir = os.path.join(
-            get_package_share_directory("camera_control"),
-            "models",
-        )
-        tensorrt_dir = os.path.join(
-            models_dir,
-            "tensorrt",
-            platform.machine(),
-        )
-        runner_weights_path = os.path.join(tensorrt_dir, "RunnerSegYoloV8l.engine")
-        self.runner_seg_input_image_size = (1024, 768)
-        self.runner_seg_model = Yolo(
-            weights_file=runner_weights_path,
-            input_image_size=self.runner_seg_input_image_size,
-        )
-        laser_weights_path = os.path.join(models_dir, "LaserDetectionYoloV8n.pt")
-        self.laser_detection_input_image_size = (640, 480)
-        self.laser_detection_model = Yolo(
-            weights_file=laser_weights_path,
-            input_image_size=self.laser_detection_input_image_size,
-        )
+        # Detectors
+        self.runner_detector = RunnerDetector(logger=self.get_logger())
+        self.laser_detector = LaserDetector(logger=self.get_logger())
 
         # Publish initial state
         self._publish_state()
@@ -249,18 +232,30 @@ class CameraControlNode:
             return result()
 
         if detection_type == DetectionType.LASER:
-            laser_points, conf = await self._get_laser_points(frame.color_frame)
+            laser_points, conf = await self.laser_detector.detect(frame.color_frame)
             return result(
                 result=self._create_detection_result_msg(
                     detection_type, laser_points, frame
                 )
             )
         elif detection_type == DetectionType.RUNNER:
-            runner_masks, confs, track_ids = await self._get_runner_masks(
-                frame.color_frame
+            runner_masks, runner_centers, confs, track_ids = (
+                await self.runner_detector.detect(frame.color_frame)
             )
-            runner_centers = await self._get_runner_centers(runner_masks)
-            runner_centers = [center for center in runner_centers if center is not None]
+            # runner_centers may contain None elements, so filter them out and also remove
+            # the corresponding elements from track_ids
+            filtered = [
+                (center, track_id)
+                for center, track_id in zip(runner_centers, track_ids)
+                if center is not None
+            ]
+            if filtered:
+                runner_centers, track_ids = zip(*filtered)
+                runner_centers = list(runner_centers)
+                track_ids = list(track_ids)
+            else:
+                runner_centers = []
+                track_ids = []
             return result(
                 result=self._create_detection_result_msg(
                     detection_type, runner_centers, frame, track_ids
@@ -460,7 +455,9 @@ class CameraControlNode:
             debug_frame = np.copy(frame.color_frame)
 
             if self.laser_detection_enabled:
-                laser_points, confs = await self._get_laser_points(frame.color_frame)
+                laser_points, confs = await self.laser_detector.detect(
+                    frame.color_frame
+                )
                 debug_frame = self._debug_draw_lasers(debug_frame, laser_points, confs)
                 msg = self._create_detection_result_msg(
                     DetectionType.LASER, laser_points, frame
@@ -475,13 +472,26 @@ class CameraControlNode:
                 )
 
             if self.runner_detection_enabled:
-                runner_masks, confs, track_ids = await self._get_runner_masks(
-                    frame.color_frame
+                runner_masks, runner_centers, confs, track_ids = (
+                    await self.runner_detector.detect(frame.color_frame)
                 )
-                runner_centers = await self._get_runner_centers(runner_masks)
                 debug_frame = self._debug_draw_runners(
                     debug_frame, runner_masks, runner_centers, confs, track_ids
                 )
+                # runner_centers may contain None elements, so filter them out and also remove
+                # the corresponding elements from track_ids
+                filtered = [
+                    (center, track_id)
+                    for center, track_id in zip(runner_centers, track_ids)
+                    if center is not None
+                ]
+                if filtered:
+                    runner_centers, track_ids = zip(*filtered)
+                    runner_centers = list(runner_centers)
+                    track_ids = list(track_ids)
+                else:
+                    runner_centers = []
+                    track_ids = []
                 msg = self._create_detection_result_msg(
                     DetectionType.RUNNER, runner_centers, frame, track_ids
                 )
@@ -588,116 +598,6 @@ class CameraControlNode:
                 stamp=log_message.stamp, level=log_message.level, msg=log_message.msg
             )
         )
-
-    async def _get_laser_points(
-        self, color_frame: np.ndarray, conf_threshold: float = 0.0
-    ) -> Tuple[List[Tuple[int, int]], List[float]]:
-        # Scale image before prediction to improve performance
-        frame_width = color_frame.shape[1]
-        frame_height = color_frame.shape[0]
-        result_width = self.laser_detection_input_image_size[0]
-        result_height = self.laser_detection_input_image_size[1]
-        color_frame = cv2.resize(
-            color_frame,
-            self.laser_detection_input_image_size,
-            interpolation=cv2.INTER_LINEAR,
-        )
-
-        result = await asyncio.get_running_loop().run_in_executor(
-            None,
-            functools.partial(
-                self.laser_detection_model.predict,
-                color_frame,
-            ),
-        )
-        result_conf = result["conf"]
-        self.log_debug(f"Laser point prediction found {result_conf.size} objects.")
-
-        laser_points = []
-        confs = []
-        for idx in range(result["conf"].size):
-            conf = result["conf"][idx]
-            if conf >= conf_threshold:
-                # bbox is in xyxy format
-                bbox = result["bboxes"][idx]
-                # Scale the result coords to frame coords
-                laser_points.append(
-                    (
-                        round((bbox[0] + bbox[2]) * 0.5 * frame_width / result_width),
-                        round((bbox[1] + bbox[3]) * 0.5 * frame_height / result_height),
-                    )
-                )
-                confs.append(conf)
-            else:
-                self.log(
-                    f"Laser point prediction ignored due to low confidence: {conf} < {conf_threshold}"
-                )
-        return laser_points, confs
-
-    async def _get_runner_masks(
-        self, color_frame: np.ndarray, conf_threshold: float = 0.0
-    ) -> Tuple[List[np.ndarray], List[float], List[int]]:
-        # Scale image before prediction to improve performance
-        frame_width = color_frame.shape[1]
-        frame_height = color_frame.shape[0]
-        result_width = self.runner_seg_input_image_size[0]
-        result_height = self.runner_seg_input_image_size[1]
-        color_frame = cv2.resize(
-            color_frame,
-            self.runner_seg_input_image_size,
-            interpolation=cv2.INTER_LINEAR,
-        )
-        result = await asyncio.get_running_loop().run_in_executor(
-            None,
-            functools.partial(
-                self.runner_seg_model.track,
-                color_frame,
-            ),
-        )
-        result_conf = result["conf"]
-        self.log_debug(f"Runner mask prediction found {result_conf.size} objects.")
-
-        runner_masks = []
-        confs = []
-        track_ids = []
-        for idx in range(result_conf.size):
-            conf = result_conf[idx]
-            if conf >= conf_threshold:
-                mask = result["masks"][idx]
-                # Scale the result coords to frame coords
-                mask[:, 0] *= frame_width / result_width
-                mask[:, 1] *= frame_height / result_height
-                runner_masks.append(mask)
-                confs.append(conf)
-                track_ids.append(
-                    result["track_ids"][idx] if idx < len(result["track_ids"]) else -1
-                )
-            else:
-                self.log(
-                    f"Runner mask prediction ignored due to low confidence: {conf} < {conf_threshold}"
-                )
-        return runner_masks, confs, track_ids
-
-    async def _get_runner_centers(
-        self, runner_masks: List[np.ndarray]
-    ) -> List[Tuple[int, int] | None]:
-        def get_contour_centers(contours: List[np.ndarray]):
-            centers = []
-            for contour in contours:
-                center = contour_center(contour)
-                centers.append(
-                    (round(center[0]), round(center[1])) if center is not None else None
-                )
-            return centers
-
-        runner_centers = await asyncio.get_running_loop().run_in_executor(
-            None,
-            functools.partial(
-                get_contour_centers,
-                runner_masks,
-            ),
-        )
-        return runner_centers
 
     ## region Message builders
 
