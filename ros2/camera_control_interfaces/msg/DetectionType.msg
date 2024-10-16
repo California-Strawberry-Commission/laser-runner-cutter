@@ -1,2 +1,3 @@
 uint8 LASER=0
 uint8 RUNNER=1
+uint8 CIRCLE=2

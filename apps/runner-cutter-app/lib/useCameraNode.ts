@@ -1,10 +1,21 @@
 import useROSNode from "@/lib/ros/useROSNode";
 import { useCallback } from "react";
 
+export enum DeviceState {
+  DISCONNECTED,
+  CONNECTING,
+  STREAMING,
+}
+
+export enum DetectionType {
+  LASER,
+  RUNNER,
+  CIRCLE,
+}
+
 export type State = {
   deviceState: DeviceState;
-  laserDetectionEnabled: boolean;
-  runnerDetectionEnabled: boolean;
+  enabledDetectionTypes: DetectionType[];
   recordingVideo: boolean;
   intervalCaptureActive: boolean;
   exposureUs: number;
@@ -15,22 +26,15 @@ export type State = {
   imageCaptureIntervalSecs: number;
 };
 
-export enum DeviceState {
-  DISCONNECTED,
-  CONNECTING,
-  STREAMING,
-}
-
-export enum DetectionType {
-  LASER,
-  RUNNER,
-}
-
 function convertStateMessage(message: any): State {
   return {
     deviceState: message.device_state as DeviceState,
-    laserDetectionEnabled: message.laser_detection_enabled,
-    runnerDetectionEnabled: message.runner_detection_enabled,
+    // uint8[] from rosbridge server is encoded as a Base64 string, so we need to decode
+    // it and convert each character into a number
+    enabledDetectionTypes: atob(message.enabled_detection_types)
+      .split("")
+      .map((char: string) => char.charCodeAt(0))
+      .filter((t: number) => t in DetectionType),
     recordingVideo: message.recording_video,
     intervalCaptureActive: message.interval_capture_active,
     exposureUs: message.exposure_us,
@@ -57,8 +61,7 @@ export default function useCameraNode(nodeName: string) {
     "camera_control_interfaces/State",
     {
       deviceState: DeviceState.DISCONNECTED,
-      laserDetectionEnabled: false,
-      runnerDetectionEnabled: false,
+      enabledDetectionTypes: [],
       recordingVideo: false,
       intervalCaptureActive: false,
       exposureUs: 0.0,

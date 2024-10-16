@@ -203,7 +203,9 @@ export default function Controls() {
         </div>
       </div>
       <div className="flex flex-row items-center gap-4">
-        {cameraNode.state.laserDetectionEnabled ? (
+        {cameraNode.state.enabledDetectionTypes.includes(
+          DetectionType.LASER
+        ) ? (
           <Button
             disabled={disableButtons}
             onClick={() => {
@@ -222,7 +224,9 @@ export default function Controls() {
             Start Laser Detection
           </Button>
         )}
-        {cameraNode.state.runnerDetectionEnabled ? (
+        {cameraNode.state.enabledDetectionTypes.includes(
+          DetectionType.RUNNER
+        ) ? (
           <Button
             disabled={disableButtons}
             onClick={() => {
@@ -239,6 +243,27 @@ export default function Controls() {
             }}
           >
             Start Runner Detection
+          </Button>
+        )}
+        {cameraNode.state.enabledDetectionTypes.includes(
+          DetectionType.CIRCLE
+        ) ? (
+          <Button
+            disabled={disableButtons}
+            onClick={() => {
+              cameraNode.stopDetection(DetectionType.CIRCLE);
+            }}
+          >
+            Stop Circle Detection
+          </Button>
+        ) : (
+          <Button
+            disabled={disableButtons}
+            onClick={() => {
+              cameraNode.startDetection(DetectionType.CIRCLE);
+            }}
+          >
+            Start Circle Detection
           </Button>
         )}
       </div>

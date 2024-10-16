@@ -1,6 +1,5 @@
 uint8 device_state  # DeviceState.msg
-bool laser_detection_enabled
-bool runner_detection_enabled
+uint8[] enabled_detection_types  # DetectionType.msg
 bool recording_video
 bool interval_capture_active
 float32 exposure_us

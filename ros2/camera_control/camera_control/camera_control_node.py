@@ -1,8 +1,6 @@
 import asyncio
-import functools
 import logging
 import os
-import platform
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -10,12 +8,9 @@ from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
-from ament_index_python.packages import get_package_share_directory
 from cv_bridge import CvBridge
-from ml_utils.mask_center import contour_center
 from rcl_interfaces.msg import Log
 from rclpy.qos import qos_profile_sensor_data
-from runner_segmentation.yolo import Yolo
 from sensor_msgs.msg import CompressedImage, Image
 from std_srvs.srv import Trigger
 
@@ -33,6 +28,7 @@ from camera_control.camera.lucid_camera import create_lucid_rgbd_camera
 from camera_control.camera.realsense_camera import RealSenseCamera
 from camera_control.camera.rgbd_camera import State as RgbdCameraState
 from camera_control.camera.rgbd_frame import RgbdFrame
+from camera_control.detector.circle_detector import CircleDetector
 from camera_control.detector.laser_detector import LaserDetector
 from camera_control.detector.runner_detector import RunnerDetector
 from camera_control_interfaces.msg import (
@@ -90,8 +86,7 @@ class CameraControlNode:
 
     @start
     async def start(self):
-        self.laser_detection_enabled = False
-        self.runner_detection_enabled = False
+        self.enabled_detection_types = set()
         self.record_video_task = None
         self.video_writer = None
         self.debug_frame = None
@@ -147,6 +142,7 @@ class CameraControlNode:
         # Detectors
         self.runner_detector = RunnerDetector(logger=self.get_logger())
         self.laser_detector = LaserDetector(logger=self.get_logger())
+        self.circle_detector = CircleDetector(logger=self.get_logger())
 
         # Publish initial state
         self._publish_state()
@@ -261,35 +257,32 @@ class CameraControlNode:
                     detection_type, runner_centers, frame, track_ids
                 )
             )
+        elif detection_type == DetectionType.CIRCLE:
+            circle_centers = await self.circle_detector.detect(frame.color_frame)
+            return result(
+                result=self._create_detection_result_msg(
+                    detection_type, circle_centers, frame
+                )
+            )
         else:
             return result()
 
     @service("~/start_detection", StartDetection)
     async def start_detection(self, detection_type):
-        if detection_type == DetectionType.LASER:
-            if not self.laser_detection_enabled:
-                self.laser_detection_enabled = True
-                self._publish_state()
-                return result(success=True)
-        elif detection_type == DetectionType.RUNNER:
-            if not self.runner_detection_enabled:
-                self.runner_detection_enabled = True
-                self._publish_state()
-                return result(success=True)
+        if detection_type not in self.enabled_detection_types:
+            self.enabled_detection_types.add(detection_type)
+            self._publish_state()
+            return result(success=True)
+
         return result(success=False)
 
     @service("~/stop_detection", StopDetection)
     async def stop_detection(self, detection_type):
-        if detection_type == DetectionType.LASER:
-            if self.laser_detection_enabled:
-                self.laser_detection_enabled = False
-                self._publish_state()
-                return result(success=True)
-        elif detection_type == DetectionType.RUNNER:
-            if self.runner_detection_enabled:
-                self.runner_detection_enabled = False
-                self._publish_state()
-                return result(success=True)
+        if detection_type in self.enabled_detection_types:
+            self.enabled_detection_types.discard(detection_type)
+            self._publish_state()
+            return result(success=True)
+
         return result(success=False)
 
     @service("~/start_recording_video", Trigger)
@@ -454,7 +447,7 @@ class CameraControlNode:
 
             debug_frame = np.copy(frame.color_frame)
 
-            if self.laser_detection_enabled:
+            if DetectionType.LASER in self.enabled_detection_types:
                 laser_points, confs = await self.laser_detector.detect(
                     frame.color_frame
                 )
@@ -471,7 +464,7 @@ class CameraControlNode:
                     )
                 )
 
-            if self.runner_detection_enabled:
+            if DetectionType.RUNNER in self.enabled_detection_types:
                 runner_masks, runner_centers, confs, track_ids = (
                     await self.runner_detector.detect(frame.color_frame)
                 )
@@ -498,6 +491,21 @@ class CameraControlNode:
                 asyncio.create_task(
                     self.detections_topic(
                         detection_type=DetectionType.RUNNER,
+                        timestamp=msg.timestamp,
+                        instances=msg.instances,
+                        invalid_points=msg.invalid_points,
+                    )
+                )
+
+            if DetectionType.CIRCLE in self.enabled_detection_types:
+                circle_centers = await self.circle_detector.detect(frame.color_frame)
+                debug_frame = self._debug_draw_circles(debug_frame, circle_centers)
+                msg = self._create_detection_result_msg(
+                    DetectionType.CIRCLE, circle_centers, frame
+                )
+                asyncio.create_task(
+                    self.detections_topic(
+                        detection_type=DetectionType.CIRCLE,
                         timestamp=msg.timestamp,
                         instances=msg.instances,
                         invalid_points=msg.invalid_points,
@@ -548,8 +556,7 @@ class CameraControlNode:
     def _get_state(self) -> State:
         state = State()
         state.device_state = self._get_device_state()
-        state.laser_detection_enabled = self.laser_detection_enabled
-        state.runner_detection_enabled = self.runner_detection_enabled
+        state.enabled_detection_types = list(self.enabled_detection_types)
         state.recording_video = self.record_video_task is not None
         state.interval_capture_active = self.interval_capture_task is not None
         state.exposure_us = self.camera.exposure_us
@@ -571,8 +578,7 @@ class CameraControlNode:
         asyncio.create_task(
             self.state_topic(
                 device_state=state.device_state,
-                laser_detection_enabled=state.laser_detection_enabled,
-                runner_detection_enabled=state.runner_detection_enabled,
+                enabled_detection_types=state.enabled_detection_types,
                 recording_video=state.recording_video,
                 interval_capture_active=state.interval_capture_active,
                 exposure_us=state.exposure_us,
@@ -730,6 +736,19 @@ class CameraControlNode:
                 debug_frame = cv2.putText(
                     debug_frame, f"{track_id}", pos, font, 1, center_color, 2
                 )
+        return debug_frame
+
+    def _debug_draw_circles(self, debug_frame, circle_centers, color=(255, 0, 255)):
+        for circle_center in circle_centers:
+            pos = [int(circle_center[0]), int(circle_center[1])]
+            debug_frame = cv2.drawMarker(
+                debug_frame,
+                pos,
+                color,
+                cv2.MARKER_STAR,
+                thickness=1,
+                markerSize=20,
+            )
         return debug_frame
 
     def _debug_draw_timestamp(self, debug_frame, timestamp, color=(255, 255, 255)):
