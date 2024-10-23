@@ -123,6 +123,10 @@ class Yolo:
 
         for path in image_paths:
             image = cv2.imread(path)
+            # Resize image prior to inference for faster inference
+            image = cv2.resize(
+                image, (self.imgsz[1], self.imgsz[0]), interpolation=cv2.INTER_LINEAR
+            )
             image_array = np.array(image)
 
             # Measure inference time
