@@ -1,6 +1,7 @@
 import SideNav from "@/components/side-nav";
 import { Toaster } from "@/components/ui/sonner";
 import KeyboardProvider from "@/lib/keyboard/KeyboardProvider";
+import { cn } from "@/lib/utils";
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
@@ -27,7 +28,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className={cn("select-none", inter.className)}>
         <div className="flex h-screen overflow-hidden">
           <div className="flex-shrink-0 w-52 bg-gray-200 overflow-y-auto p-8">
             <SideNav />

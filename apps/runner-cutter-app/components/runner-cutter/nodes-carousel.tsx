@@ -1,16 +1,7 @@
-import type { NodeInfo } from "@/lib/NodeInfo";
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Carousel,
   CarouselContent,
   CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
 } from "@/components/ui/carousel";
 import {
   Dialog,
@@ -20,27 +11,26 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import type { NodeInfo } from "@/lib/NodeInfo";
 import { cn } from "@/lib/utils";
 
 function NodeCard({ nodeInfo }: { nodeInfo: NodeInfo }) {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Card
+        <div
           className={cn(
-            "max-w-48",
+            "w-full rounded-lg px-4 py-2 cursor-pointer",
             nodeInfo.connected ? "bg-green-500" : "bg-red-500"
           )}
         >
-          <CardHeader className="p-4">
-            <CardTitle className="text-lg overflow-hidden text-ellipsis">
-              {nodeInfo.name}
-            </CardTitle>
-            <CardDescription className="text-foreground">
-              {nodeInfo.connected ? "Connected" : "Disconnected"}
-            </CardDescription>
-          </CardHeader>
-        </Card>
+          <p className="font-semibold text-xs overflow-hidden text-ellipsis">
+            {nodeInfo.name}
+          </p>
+          <p className="text-xs overflow-hidden text-ellipsis">
+            {nodeInfo.connected ? "Connected" : "Disconnected"}
+          </p>
+        </div>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -76,18 +66,16 @@ export default function NodesCarousel({
     >
       <CarouselContent>
         {nodeInfos.map((nodeInfo) => (
-          <CarouselItem className="basis-1/4" key={nodeInfo.name}>
+          <CarouselItem className="basis-40" key={nodeInfo.name}>
             <NodeCard nodeInfo={nodeInfo} />
           </CarouselItem>
         ))}
         {children && (
-          <CarouselItem className="basis-1/4" key="children">
+          <CarouselItem className="basis-40" key="children">
             {children}
           </CarouselItem>
         )}
       </CarouselContent>
-      <CarouselPrevious />
-      <CarouselNext />
     </Carousel>
   );
 }

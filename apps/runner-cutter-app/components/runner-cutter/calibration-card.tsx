@@ -14,7 +14,7 @@ export enum CalibrationState {
   UNAVAILABLE,
 }
 
-export default function DeviceCard({
+export default function CalibrationCard({
   calibrationState,
   onCalibrateClick,
   onStopClick,
