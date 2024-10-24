@@ -14,6 +14,23 @@ Y_BOUNDS = (-32768, 32767)
 MAX_COLOR = 65535
 
 
+def denormalize_point(x: float, y: float) -> Tuple[int, int]:
+    x_denorm = round((X_BOUNDS[1] - X_BOUNDS[0]) * x + X_BOUNDS[0])
+    y_denorm = round((Y_BOUNDS[1] - Y_BOUNDS[0]) * y + Y_BOUNDS[0])
+    return (x_denorm, y_denorm)
+
+
+def denormalize_color(
+    r: float, g: float, b: float, i: float
+) -> Tuple[int, int, int, int]:
+    return (
+        round(r * MAX_COLOR),
+        round(g * MAX_COLOR),
+        round(b * MAX_COLOR),
+        round(i * MAX_COLOR),
+    )
+
+
 # Define point structure for Ether Dream
 class EtherDreamPoint(ctypes.Structure):
     _fields_ = [
@@ -70,7 +87,7 @@ class EtherDreamDAC(LaserDAC):
         """
         self.points = []
         self._points_lock = threading.Lock()
-        self.color = (1, 1, 1, 1)  # (r, g, b, i)
+        self.color = (1.0, 1.0, 1.0, 1.0)  # (r, g, b, i)
         self.connected_dac_id = -1
         self._lib = ctypes.cdll.LoadLibrary(lib_file)
         self.playing = False
@@ -179,11 +196,6 @@ class EtherDreamDAC(LaserDAC):
         with self._points_lock:
             self.points.clear()
 
-    def _denormalize_point(self, x: float, y: float) -> Tuple[int, int]:
-        x_denorm = round((X_BOUNDS[1] - X_BOUNDS[0]) * x + X_BOUNDS[0])
-        y_denorm = round((Y_BOUNDS[1] - Y_BOUNDS[0]) * y + Y_BOUNDS[0])
-        return (x_denorm, y_denorm)
-
     def _get_frame(self, fps: int, pps: int, transition_duration_ms: float):
         """
         Return an array of EtherDreamPoints representing the next frame that should be rendered.
@@ -227,14 +239,17 @@ class EtherDreamDAC(LaserDAC):
                             num_points > 1 and laxelIdx < laxels_per_transition
                         )
                         frameLaxelIdx = pointIdx * laxels_per_point + laxelIdx
-                        x, y = self._denormalize_point(point[0], point[1])
+                        x, y = denormalize_point(point[0], point[1])
+                        r, g, b, a = denormalize_color(
+                            self.color[0], self.color[1], self.color[2], self.color[3]
+                        )
                         frame[frameLaxelIdx] = EtherDreamPoint(
                             x,
                             y,
-                            0 if isTransition else int(self.color[0] * MAX_COLOR),
-                            0 if isTransition else int(self.color[1] * MAX_COLOR),
-                            0 if isTransition else int(self.color[2] * MAX_COLOR),
-                            0 if isTransition else int(self.color[3] * MAX_COLOR),
+                            0 if isTransition else r,
+                            0 if isTransition else g,
+                            0 if isTransition else b,
+                            0 if isTransition else a,
                             0,
                             0,
                         )
@@ -254,6 +269,9 @@ class EtherDreamDAC(LaserDAC):
                 frame. If we are rendering more than one point, we need to provide enough time between subsequent points,
                 or else there may be visible streaks between the points as the galvos take time to move to the new position.
         """
+        if self.playing:
+            return
+
         fps = max(0, fps)
         pps = min(max(0, pps), 100000)
 
@@ -272,22 +290,21 @@ class EtherDreamDAC(LaserDAC):
                 )
             self._lib.etherdream_stop(self.connected_dac_id)
 
-        if not self.playing:
-            self.playing = True
-            self._playback_thread = threading.Thread(
-                target=playback_thread, daemon=True
-            )
-            self._playback_thread.start()
+        self.playing = True
+        self._playback_thread = threading.Thread(target=playback_thread, daemon=True)
+        self._playback_thread.start()
 
     def stop(self):
         """
         Stop playback of points.
         """
-        if self.playing:
-            self.playing = False
-            if self._playback_thread:
-                self._playback_thread.join()
-                self._playback_thread = None
+        if not self.playing:
+            return
+
+        self.playing = False
+        if self._playback_thread:
+            self._playback_thread.join()
+            self._playback_thread = None
 
     def close(self):
         """

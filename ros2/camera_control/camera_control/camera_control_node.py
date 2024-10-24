@@ -108,9 +108,10 @@ class CameraControlNode:
         self._detection_task_queue = asyncio.Queue(1)
         self._detection_completed_event = (
             asyncio.Event()
-        )  # used to notify when a detection task has completed
+        )  # to notify when a detection task has completed, used to avoid destroying frame buffer(s) while detection is happening
         self._detection_completed_event.set()
         self._camera_started = False
+        self._frame_event = asyncio.Event()  # to notify when a new frame is available
 
         async def process_detection_task_queue():
             while True:
@@ -222,8 +223,17 @@ class CameraControlNode:
         return result(success=True)
 
     @service("~/get_detection", GetDetectionResult)
-    async def get_detection(self, detection_type):
+    async def get_detection(self, detection_type, wait_for_next_frame):
+        if wait_for_next_frame:
+            # Wait for two frames, as the next frame to arrive may have already been in progress
+            frame_count = 0
+            while frame_count < 2:
+                self._frame_event.clear()
+                await self._frame_event.wait()
+                frame_count += 1
+
         frame = self.current_frame
+
         if frame is None:
             return result()
 
@@ -430,6 +440,7 @@ class CameraControlNode:
             return
 
         self.current_frame = frame
+        self._frame_event.set()
 
         if self._detection_task_queue.empty():
             await self._detection_task_queue.put(self._detection_task)

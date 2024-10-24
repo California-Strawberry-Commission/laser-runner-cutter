@@ -305,9 +305,6 @@ class Calibration:
                         b=self._laser_color[2],
                         i=0.0,
                     )
-                    # Wait for galvo to settle and for camera frame capture
-                    # TODO: optimize the frame callback time and reduce this
-                    await asyncio.sleep(0.5)
                     camera_pixel, camera_point = await self._find_point_correspondence(
                         laser_coord, attempt_interval_s=0.25
                     )
@@ -365,9 +362,8 @@ class Calibration:
             self._logger.info(
                 f"Attempt {attempt} to detect laser and find point correspondence."
             )
-            attempt += 1
             result = await self._camera_node.get_detection(
-                detection_type=DetectionType.LASER
+                detection_type=DetectionType.LASER, wait_for_next_frame=True
             )
             detection_result = result.result
             instances = detection_result.instances
@@ -382,6 +378,7 @@ class Calibration:
                     (instance.position.x, instance.position.y, instance.position.z),
                 )
             await asyncio.sleep(attempt_interval_s)
+            attempt += 1
         self._logger.info(
             f"Failed to find point. {len(self._point_correspondences)} total correspondences."
         )

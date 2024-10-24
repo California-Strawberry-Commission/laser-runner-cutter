@@ -552,7 +552,7 @@ class StateMachine:
     async def _detect_runners(self):
         self._logger.info("Detecting runners...")
         result = await self._camera_node.get_detection(
-            detection_type=DetectionType.RUNNER
+            detection_type=DetectionType.RUNNER, wait_for_next_frame=False
         )
         detection_result = result.result
 
@@ -657,9 +657,6 @@ class StateMachine:
             await self._laser_node.set_points(
                 points=[Vector2(x=current_laser_coord[0], y=current_laser_coord[1])]
             )
-            # Wait for galvo to settle and for camera frame capture
-            # TODO: optimize the frame callback time and reduce this
-            await asyncio.sleep(0.5)
             laser_pixel, laser_pos = await self._get_laser_pixel_and_pos(
                 attempt_interval_s=0.25
             )
@@ -712,7 +709,7 @@ class StateMachine:
         attempt = 0
         while attempt < max_attempts:
             result = await self._camera_node.get_detection(
-                detection_type=DetectionType.LASER
+                detection_type=DetectionType.LASER, wait_for_next_frame=True
             )
             detection_result = result.result
             instances = detection_result.instances

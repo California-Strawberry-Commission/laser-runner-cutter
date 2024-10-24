@@ -14,6 +14,23 @@ Y_BOUNDS = (0, 4095)
 MAX_COLOR = 255
 
 
+def denormalize_point(x: float, y: float) -> Tuple[int, int]:
+    x_denorm = round((X_BOUNDS[1] - X_BOUNDS[0]) * x + X_BOUNDS[0])
+    y_denorm = round((Y_BOUNDS[1] - Y_BOUNDS[0]) * y + Y_BOUNDS[0])
+    return (x_denorm, y_denorm)
+
+
+def denormalize_color(
+    r: float, g: float, b: float, i: float
+) -> Tuple[int, int, int, int]:
+    return (
+        round(r * MAX_COLOR),
+        round(g * MAX_COLOR),
+        round(b * MAX_COLOR),
+        round(i * MAX_COLOR),
+    )
+
+
 # Define point structure for Helios
 class HeliosPoint(ctypes.Structure):
     _fields_ = [
@@ -60,7 +77,7 @@ class HeliosDAC(LaserDAC):
         """
         self.points = []
         self._points_lock = threading.Lock()
-        self.color = (1, 1, 1, 1)  # (r, g, b, i)
+        self.color = (1.0, 1.0, 1.0, 1.0)  # (r, g, b, i)
         self.dac_idx = -1
         self._lib = ctypes.cdll.LoadLibrary(lib_file)
         self.playing = False
@@ -93,9 +110,9 @@ class HeliosDAC(LaserDAC):
 
         def check_connection_thread():
             while self._check_connection:
-                if self._get_status() < 0:
+                if self._get_native_status() < 0:
                     self._logger.warning(
-                        f"DAC error {self._get_status()}. Attempting to reconnect."
+                        f"DAC error {self._get_native_status()}. Attempting to reconnect."
                     )
                     self.stop()
                     self._lib.CloseDevices()
@@ -115,7 +132,7 @@ class HeliosDAC(LaserDAC):
         Returns:
             bool: Whether the DAC is connected.
         """
-        return self.dac_idx >= 0 and self._get_status() >= 0
+        return self.dac_idx >= 0 and self._get_native_status() >= 0
 
     def set_color(self, r: float, g: float, b: float, i: float):
         """
@@ -156,11 +173,6 @@ class HeliosDAC(LaserDAC):
         """
         with self._points_lock:
             self.points.clear()
-
-    def _denormalize_point(self, x: float, y: float) -> Tuple[int, int]:
-        x_denorm = round((X_BOUNDS[1] - X_BOUNDS[0]) * x + X_BOUNDS[0])
-        y_denorm = round((Y_BOUNDS[1] - Y_BOUNDS[0]) * y + Y_BOUNDS[0])
-        return (x_denorm, y_denorm)
 
     def _get_frame(self, fps: int, pps: int, transition_duration_ms: float):
         """
@@ -205,14 +217,17 @@ class HeliosDAC(LaserDAC):
                             num_points > 1 and laxelIdx < laxels_per_transition
                         )
                         frameLaxelIdx = pointIdx * laxels_per_point + laxelIdx
-                        x, y = self._denormalize_point(point[0], point[1])
+                        x, y = denormalize_point(point[0], point[1])
+                        r, g, b, a = denormalize_color(
+                            self.color[0], self.color[1], self.color[2], self.color[3]
+                        )
                         frame[frameLaxelIdx] = HeliosPoint(
                             x,
                             y,
-                            0 if isTransition else int(self.color[0] * MAX_COLOR),
-                            0 if isTransition else int(self.color[1] * MAX_COLOR),
-                            0 if isTransition else int(self.color[2] * MAX_COLOR),
-                            0 if isTransition else int(self.color[3] * MAX_COLOR),
+                            0 if isTransition else r,
+                            0 if isTransition else g,
+                            0 if isTransition else b,
+                            0 if isTransition else a,
                         )
             return frame
 
@@ -231,6 +246,9 @@ class HeliosDAC(LaserDAC):
                 frame. If we are rendering more than one point, we need to provide enough time between subsequent points,
                 or else there may be visible streaks between the points as the galvos take time to move to the new position.
         """
+        if self.playing:
+            return
+
         fps = max(0, fps)
         pps = min(max(0, pps), 65535)
 
@@ -239,7 +257,7 @@ class HeliosDAC(LaserDAC):
                 frame = self._get_frame(fps, pps, transition_duration_ms)
                 statusAttempts = 0
                 # Make 512 attempts for DAC status to be ready. After that, just give up and try to write the frame anyway
-                while statusAttempts < 512 and self._get_status() != 1:
+                while statusAttempts < 512 and self._get_native_status() != 1:
                     statusAttempts += 1
 
                 self._lib.WriteFrame(
@@ -251,22 +269,21 @@ class HeliosDAC(LaserDAC):
                 )
             self._lib.Stop(self.dac_idx)
 
-        if not self.playing:
-            self.playing = True
-            self._playback_thread = threading.Thread(
-                target=playback_thread, daemon=True
-            )
-            self._playback_thread.start()
+        self.playing = True
+        self._playback_thread = threading.Thread(target=playback_thread, daemon=True)
+        self._playback_thread.start()
 
     def stop(self):
         """
         Stop playback of points.
         """
-        if self.playing:
-            self.playing = False
-            if self._playback_thread:
-                self._playback_thread.join()
-                self._playback_thread = None
+        if not self.playing:
+            return
+
+        self.playing = False
+        if self._playback_thread:
+            self._playback_thread.join()
+            self._playback_thread = None
 
     def close(self):
         """
@@ -281,7 +298,7 @@ class HeliosDAC(LaserDAC):
         self._lib.CloseDevices()
         self.dac_idx = -1
 
-    def _get_status(self):
+    def _get_native_status(self):
         # 1 means ready to receive frame
         # 0 means not ready to receive frame
         # Any negative status means error
