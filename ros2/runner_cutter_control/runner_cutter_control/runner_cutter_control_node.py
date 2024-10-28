@@ -7,18 +7,14 @@ finding a specific runner to burn, and burning said runner.
 """
 
 import asyncio
-import json
 import logging
-import os
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import List, Optional, Set, Tuple
+from typing import Coroutine, List, Optional, Set, Tuple
 
 import numpy as np
 from rcl_interfaces.msg import Log
 from std_srvs.srv import Trigger
-from transitions.extensions.asyncio import AsyncMachine
 
 import camera_control.camera_control_node as camera_control_node
 import laser_control.laser_control_node as laser_control_node
@@ -31,6 +27,7 @@ from aioros2 import (
     serve_nodes,
     service,
     start,
+    subscribe,
     topic,
 )
 from camera_control_interfaces.msg import DetectionType
@@ -79,43 +76,99 @@ class RunnerCutterControlNode:
 
     @start
     async def start(self):
-        self.calibration = Calibration(
+        self._calibration = Calibration(
             self.laser_node,
             self.camera_node,
             self.runner_cutter_control_params.tracking_laser_color,
             self.get_logger(),
         )
-        self.runner_tracker = Tracker()
-        self.state_machine = StateMachine(
-            self,
-            self.laser_node,
-            self.camera_node,
-            self.calibration,
-            self.runner_tracker,
-            self.runner_cutter_control_params.tracking_laser_color,
-            self.runner_cutter_control_params.burn_laser_color,
-            self.runner_cutter_control_params.burn_time_secs,
-            self.runner_cutter_control_params.enable_aiming,
-            self.runner_cutter_control_params.save_dir,
-            self.get_logger(),
-        )
+        self._camera_context = CameraContext(self.camera_node)
+        self._current_task: Optional[asyncio.Task] = None
+
+        self._runner_tracker = Tracker()
+        self._runner_tracker_lock = asyncio.Lock()
+        self._last_detected_track_ids: Set[int] = set()
+        self._runner_detection_event = asyncio.Event()
 
         # Publish initial state
         self.publish_state()
+
+    @subscribe(camera_node.detections_topic)
+    async def on_detection(self, detection_type, timestamp, instances, invalid_points):
+        if detection_type == DetectionType.RUNNER:
+            async with self._runner_tracker_lock:
+                # For new tracks, add to tracker and set as pending. For tracks that are detected
+                # again, update the track pixel and position; for FAILED tracks, set them as PENDING
+                # since they may have moved since the last detection.
+                prev_pending_tracks = set(
+                    [
+                        track.id
+                        for track in self._runner_tracker.get_tracks_with_state(
+                            TrackState.PENDING
+                        )
+                    ]
+                )
+                prev_detected_track_ids = set(self._last_detected_track_ids)
+                self._last_detected_track_ids.clear()
+                for instance in instances:
+                    pixel = (round(instance.point.x), round(instance.point.y))
+                    position = (
+                        instance.position.x,
+                        instance.position.y,
+                        instance.position.z,
+                    )
+                    track = self._runner_tracker.add_track(
+                        instance.track_id,
+                        pixel,
+                        position,
+                    )
+                    if track is None:
+                        continue
+
+                    self._last_detected_track_ids.add(instance.track_id)
+
+                    # Put detected tracks that are marked as failed back into the pending queue, since
+                    # we want to reattempt to burn them as they could now potentially be in bounds.
+                    if track.state == TrackState.FAILED:
+                        self._runner_tracker.process_track(track.id, TrackState.PENDING)
+
+                # Mark any tracks that were previously detected and are PENDING but are no longer
+                # detected as FAILED.
+                out_of_frame_track_ids = (
+                    prev_detected_track_ids - self._last_detected_track_ids
+                )
+                for track_id in out_of_frame_track_ids:
+                    track = self._runner_tracker.get_track(track_id)
+                    if track is None:
+                        continue
+
+                    track.pixel = (-1, -1)
+                    track.position = (-1.0, -1.0, -1.0)
+                    if track.state == TrackState.PENDING:
+                        self._runner_tracker.process_track(track_id, TrackState.FAILED)
+
+                # Notify when the pending tracks have changed
+                pending_tracks = set(
+                    [
+                        track.id
+                        for track in self._runner_tracker.get_tracks_with_state(
+                            TrackState.PENDING
+                        )
+                    ]
+                )
+                if prev_pending_tracks != pending_tracks:
+                    self._runner_detection_event.set()
 
     # TODO: use action instead once there's a new release of roslib. Currently
     # roslib does not support actions with ROS2
     @service("~/calibrate", Trigger)
     async def calibrate(self):
-        if self.state_machine.state != "idle":
-            return result(success=False)
-
-        asyncio.create_task(self.state_machine.run_calibration())
-        return result(success=True)
+        success = self._start_task(self._calibration.calibrate(), "calibration")
+        return result(success=success)
 
     @service("~/save_calibration", Trigger)
     async def save_calibration(self):
-        filepath = self.calibration.save(self.runner_cutter_control_params.save_dir)
+        filepath = self._calibration.save(self.runner_cutter_control_params.save_dir)
         if filepath is not None:
             self.publish_notification(f"Calibration saved: {filepath}")
             return result(success=True)
@@ -127,7 +180,7 @@ class RunnerCutterControlNode:
 
     @service("~/load_calibration", Trigger)
     async def load_calibration(self):
-        filepath = self.calibration.load(self.runner_cutter_control_params.save_dir)
+        filepath = self._calibration.load(self.runner_cutter_control_params.save_dir)
         if filepath is not None:
             self.publish_notification(f"Calibration loaded: {filepath}")
             self.publish_state()
@@ -140,50 +193,345 @@ class RunnerCutterControlNode:
 
     @service("~/add_calibration_points", AddCalibrationPoints)
     async def add_calibration_points(self, normalized_pixel_coords):
-        if self.state_machine.state != "idle":
-            return result(success=False)
-
-        asyncio.create_task(
-            self.state_machine.run_add_calibration_points(
+        success = self._start_task(
+            self._add_calibration_points_task(
                 [
                     (normalized_pixel_coord.x, normalized_pixel_coord.y)
                     for normalized_pixel_coord in normalized_pixel_coords
                 ]
-            )
+            ),
+            "add_calibration_points",
         )
-        return result(success=True)
+        return result(success=success)
 
     @service("~/manual_target_aim_laser", ManualTargetAimLaser)
     async def manual_target_aim_laser(self, normalized_pixel_coord):
-        if self.state_machine.state != "idle":
-            return result(success=False)
-
-        asyncio.create_task(
-            self.state_machine.run_manual_target_aim_laser(
+        success = self._start_task(
+            self._manual_target_aim_laser_task(
                 (normalized_pixel_coord.x, normalized_pixel_coord.y)
-            )
+            ),
+            "manual_target_aim_laser",
         )
-        return result(success=True)
+        return result(success=success)
 
     @service("~/start_runner_cutter", Trigger)
     async def start_runner_cutter(self):
-        if self.state_machine.state != "idle":
-            return result(success=False)
-
-        asyncio.create_task(self.state_machine.run_runner_cutter())
-        return result(success=True)
+        success = self._start_task(self._runner_cutter_task(), "runner_cutter")
+        return result(success=success)
 
     @service("~/stop", Trigger)
     async def stop(self):
-        if self.state_machine.state == "idle":
-            return result(success=False)
-
-        asyncio.create_task(self.state_machine.stop())
-        return result(success=True)
+        success = await self._stop_current_task()
+        return result(success=success)
 
     @service("~/get_state", GetState)
     async def get_state(self):
         return result(state=self._get_state())
+
+    # region Task management
+
+    def _start_task(self, coro: Coroutine, name: str | None = None) -> bool:
+        if self._current_task is not None and not self._current_task.done():
+            return False
+
+        self._current_task = asyncio.create_task(coro, name=name)
+
+        async def done_callback(task: asyncio.Task):
+            await self._reset_to_idle()
+            self._current_task = None
+            self.publish_state()
+
+        def done_callback_wrapper(task: asyncio.Task):
+            asyncio.create_task(done_callback(task))
+
+        self._current_task.add_done_callback(done_callback_wrapper)
+        self.publish_state()
+        return True
+
+    async def _stop_current_task(self) -> bool:
+        if self._current_task is None or self._current_task.done():
+            return False
+
+        self._current_task.cancel()
+        try:
+            await self._current_task
+        except asyncio.CancelledError:
+            pass
+
+        return True
+
+    async def _reset_to_idle(self):
+        await self.laser_node.stop()
+        await self.laser_node.clear_points()
+        await self.camera_node.stop_all_detections()
+        self._runner_tracker.clear()
+        self._last_detected_track_ids.clear()
+
+    # endregion
+
+    # region Task definitions
+
+    async def _add_calibration_points_task(
+        self, normalized_pixel_coords: List[Tuple[float, float]]
+    ):
+        # For each camera pixel, find the 3D position wrt the camera
+        result = await self.camera_node.get_positions(
+            normalized_pixel_coords=[
+                Vector2(
+                    x=normalized_pixel_coord[0],
+                    y=normalized_pixel_coord[1],
+                )
+                for normalized_pixel_coord in normalized_pixel_coords
+            ]
+        )
+        positions = [
+            (position.x, position.y, position.z) for position in result.positions
+        ]
+        # Filter out any invalid positions
+        positions = [p for p in positions if not all(x < 0 for x in p)]
+        # Convert camera positions to laser pixels
+        laser_coords = [
+            self._calibration.camera_point_to_laser_coord(position)
+            for position in positions
+        ]
+        # Filter out laser coords that are out of bounds
+        laser_coords = [
+            (x, y) for (x, y) in laser_coords if 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0
+        ]
+        await self._calibration.add_calibration_points(
+            laser_coords, update_transform=True
+        )
+
+    async def _manual_target_aim_laser_task(
+        self, normalized_pixel_coord: Tuple[float, float]
+    ):
+        # Find the 3D position wrt the camera
+        result = await self.camera_node.get_positions(
+            normalized_pixel_coords=[
+                Vector2(x=normalized_pixel_coord[0], y=normalized_pixel_coord[1])
+            ]
+        )
+        positions = [
+            (position.x, position.y, position.z) for position in result.positions
+        ]
+        target_position = positions[0]
+
+        camera_pixel = (
+            round(self._calibration.camera_frame_size[0] * normalized_pixel_coord[0]),
+            round(self._calibration.camera_frame_size[1] * normalized_pixel_coord[1]),
+        )
+        corrected_laser_coord = await self._aim(target_position, camera_pixel)
+        if corrected_laser_coord is not None:
+            self.log("Aim laser successful.")
+        else:
+            self.log("Failed to aim laser.")
+
+    async def _aim(
+        self, target_position: Tuple[float, float, float], target_pixel: Tuple[int, int]
+    ) -> Optional[Tuple[float, float]]:
+        # TODO: set exposure/gain automatically when detecting laser
+        async with self._camera_context.laser_detection_settings():
+            initial_laser_coord = self._calibration.camera_point_to_laser_coord(
+                target_position
+            )
+            await self.laser_node.set_points(
+                points=[Vector2(x=initial_laser_coord[0], y=initial_laser_coord[1])]
+            )
+            tracking_laser_color = (
+                self.runner_cutter_control_params.tracking_laser_color
+            )
+            await self.laser_node.set_color(
+                r=tracking_laser_color[0],
+                g=tracking_laser_color[1],
+                b=tracking_laser_color[2],
+                i=0.0,
+            )
+            try:
+                await self.laser_node.play()
+                corrected_laser_coord = await self._correct_laser(
+                    target_pixel, initial_laser_coord
+                )
+            finally:
+                await self.laser_node.stop()
+
+        return corrected_laser_coord
+
+    async def _correct_laser(
+        self,
+        target_pixel: Tuple[int, int],
+        original_laser_coord: Tuple[float, float],
+        dist_threshold: float = 2.5,
+    ) -> Optional[Tuple[float, float]]:
+        current_laser_coord = original_laser_coord
+
+        while True:
+            await self.laser_node.set_points(
+                points=[Vector2(x=current_laser_coord[0], y=current_laser_coord[1])]
+            )
+            laser_pixel, laser_pos = await self._get_laser_pixel_and_pos()
+            if laser_pixel is None or laser_pos is None:
+                self.log_warn("Could not detect laser.")
+                return None
+
+            # Calculate camera pixel distance
+            dist = np.linalg.norm(
+                np.array(laser_pixel).astype(float)
+                - np.array(target_pixel).astype(float)
+            )
+            self.log(
+                f"Aiming laser. Target camera pixel = {target_pixel}, laser detected at = {laser_pixel}, dist = {dist}"
+            )
+            if dist <= dist_threshold:
+                return current_laser_coord
+            else:
+                # Use this opportunity to add to calibration points since we have the laser
+                # coord and associated position in camera space
+                await self._calibration.add_point_correspondence(
+                    current_laser_coord, laser_pixel, laser_pos, update_transform=True
+                )
+
+                # Scale correction by the camera frame size
+                correction = (
+                    np.array(target_pixel) - np.array(laser_pixel)
+                ) / np.array(self._calibration.camera_frame_size)
+                # Invert Y axis as laser coord Y is flipped from camera frame Y
+                correction[1] *= -1
+                new_laser_coord = current_laser_coord + correction
+                self.log(
+                    f"Correcting laser. Dist = {dist}, correction = {correction}, current coord = {current_laser_coord}, new coord = {new_laser_coord}"
+                )
+
+                if np.any(
+                    new_laser_coord[0] > 1.0
+                    or new_laser_coord[1] > 1.0
+                    or new_laser_coord[0] < 0.0
+                    or new_laser_coord[1] < 0.0
+                ):
+                    self.log("Laser coord is outside of renderable area.")
+                    return None
+
+                current_laser_coord = new_laser_coord
+
+    async def _get_laser_pixel_and_pos(
+        self, max_attempts: int = 3
+    ) -> Tuple[Optional[Tuple[int, int]], Optional[Tuple[float, float, float]]]:
+        attempt = 0
+        while attempt < max_attempts:
+            result = await self.camera_node.get_detection(
+                detection_type=DetectionType.LASER, wait_for_next_frame=True
+            )
+            detection_result = result.result
+            instances = detection_result.instances
+            if instances:
+                if len(instances) > 1:
+                    self.log("Found more than 1 laser during correction")
+                # TODO: better handle case where more than 1 laser detected
+                instance = instances[0]
+                return (round(instance.point.x), round(instance.point.y)), (
+                    instance.position.x,
+                    instance.position.y,
+                    instance.position.z,
+                )
+            # No lasers detected. Try again.
+            attempt += 1
+        return None, None
+
+    async def _runner_cutter_task(self):
+        await self._reset_to_idle()
+        await self.camera_node.start_detection(detection_type=DetectionType.RUNNER)
+        while True:
+            # Acquire target. If there are no valid targets, wait for another detection event.
+            target = await self._acquire_next_target()
+            if target is None:
+                self.log("No targets found. Waiting for detection.")
+                await self._runner_detection_event.wait()
+                self._runner_detection_event.clear()
+                continue
+
+            try:
+                # Temporarily disable runner detection during aim/burn for now
+                await self.camera_node.stop_detection(
+                    detection_type=DetectionType.RUNNER
+                )
+
+                # Aim
+                if self.runner_cutter_control_params.enable_aiming:
+                    laser_coord = await self._aim(target.position, target.pixel)
+                    if laser_coord is None:
+                        self.log(f"Failed to aim laser at track {target.id}.")
+                        self._runner_tracker.process_track(target.id, TrackState.FAILED)
+                        continue
+                else:
+                    laser_coord = self._calibration.camera_point_to_laser_coord(
+                        target.position
+                    )
+
+                # Burn
+                await self._burn_target(target, laser_coord)
+            finally:
+                await self.camera_node.start_detection(
+                    detection_type=DetectionType.RUNNER
+                )
+
+    async def _acquire_next_target(self) -> Optional[Track]:
+        # If there is already an active track, just use that track. Otherwise, check pending
+        # tracks until we find a suitable target.
+        async with self._runner_tracker_lock:
+            active_tracks = self._runner_tracker.get_tracks_with_state(
+                TrackState.ACTIVE
+            )
+            if len(active_tracks) > 0:
+                self.log(
+                    f"Active track with ID {active_tracks[0].id} already exists. Setting it as target."
+                )
+                return active_tracks[0]
+
+            self.log(
+                f"Selecting target among {len(self._runner_tracker.get_tracks_with_state(TrackState.PENDING))} pending tracks."
+            )
+            while True:
+                track = self._runner_tracker.get_next_pending_track()
+                if track is None:
+                    return None
+
+                self.log(f"Processing pending track {track.id}...")
+                # If the laser coordinates of the track are in bounds, use the track as the
+                # target. Otherwise, mark the track as FAILED.
+                laser_coord = self._calibration.camera_point_to_laser_coord(
+                    track.position
+                )
+                if 0.0 <= laser_coord[0] <= 1.0 and 0.0 <= laser_coord[1] <= 1.0:
+                    self.log(f"Setting track {track.id} as target.")
+                    return track
+                else:
+                    self.log(
+                        f"Track {track.id} is out of laser bounds. Marking as failed."
+                    )
+                    self._runner_tracker.process_track(track.id, TrackState.FAILED)
+
+    async def _burn_target(self, target: Track, laser_coord: Tuple[float, float]):
+        self.log(f"Burning track {target.id}...")
+        burn_laser_color = self.runner_cutter_control_params.burn_laser_color
+        await self.laser_node.set_color(
+            r=burn_laser_color[0],
+            g=burn_laser_color[1],
+            b=burn_laser_color[2],
+            i=0.0,
+        )
+        await self.laser_node.set_points(
+            points=[Vector2(x=laser_coord[0], y=laser_coord[1])]
+        )
+        try:
+            await self.laser_node.play()
+            await asyncio.sleep(self.runner_cutter_control_params.burn_time_secs)
+        finally:
+            await self.laser_node.stop()
+        self._runner_tracker.process_track(target.id, TrackState.COMPLETED)
+        self.log(f"Burn complete on track {target.id}.")
+
+    # endregion
+
+    # region State and notifs publishing
 
     def publish_state(self):
         state = self._get_state()
@@ -215,10 +563,14 @@ class RunnerCutterControlNode:
         asyncio.create_task(self.tracks_topic(tracks=tracks_msg.tracks))
 
     def _get_state(self) -> State:
-        normalized_laser_bounds = self.calibration.normalized_laser_bounds
+        normalized_laser_bounds = self._calibration.normalized_laser_bounds
         return State(
-            calibrated=self.state_machine.is_calibrated,
-            state=self.state_machine.state,
+            calibrated=self._calibration.is_calibrated,
+            state=(
+                "idle"
+                if self._current_task is None or self._current_task.done()
+                else self._current_task.get_name()
+            ),
             normalized_laser_bounds=Vector4(
                 w=normalized_laser_bounds[0],
                 x=normalized_laser_bounds[1],
@@ -229,7 +581,7 @@ class RunnerCutterControlNode:
 
     def _get_tracks_msg(self) -> TracksMsg:
         tracks_msg = TracksMsg()
-        frame_size = self.calibration.camera_frame_size
+        frame_size = self._calibration.camera_frame_size
         for track_id in self.state_machine.detected_track_ids:
             track = self.runner_tracker.get_track(track_id)
             if track is None:
@@ -253,514 +605,7 @@ class RunnerCutterControlNode:
 
         return tracks_msg
 
-
-class StateMachine:
-
-    states = [
-        "idle",
-        "calibration",
-        "add_calibration_points",
-        "manual_target_aim_laser",
-        "acquire_target",
-        "aim_laser",
-        "burn_target",
-    ]
-
-    def __init__(
-        self,
-        node: RunnerCutterControlNode,
-        laser_node: laser_control_node.LaserControlNode,
-        camera_node: camera_control_node.CameraControlNode,
-        calibration: Calibration,
-        runner_tracker: Tracker,
-        tracking_laser_color: Tuple[float, float, float],
-        burn_laser_color: Tuple[float, float, float],
-        burn_time_secs: float,
-        enable_aiming: bool,
-        summary_save_dir: str,
-        logger: Optional[logging.Logger] = None,
-    ):
-        self._node = node
-        self._laser_node = laser_node
-        self._camera_node = camera_node
-        self._camera_context = CameraContext(camera_node)
-        self._calibration = calibration
-        self._runner_tracker = runner_tracker
-        self._tracking_laser_color = tracking_laser_color
-        self._burn_laser_color = burn_laser_color
-        self._burn_time_secs = burn_time_secs
-        self._enable_aiming = enable_aiming
-        self._summary_save_dir = summary_save_dir
-        if logger:
-            self._logger = logger
-        else:
-            self._logger = logging.getLogger(__name__)
-            self._logger.setLevel(logging.INFO)
-        self.detected_track_ids: Set[int] = set()
-
-        self.machine = AsyncMachine(
-            model=self,
-            states=StateMachine.states,
-            initial="idle",
-            ignore_invalid_triggers=True,
-        )
-        # Calibration states
-        self.machine.add_transition("run_calibration", "idle", "calibration")
-        self.machine.add_transition("calibration_complete", "calibration", "idle")
-        # Add Calibration Points states
-        self.machine.add_transition(
-            "run_add_calibration_points",
-            "idle",
-            "add_calibration_points",
-            conditions=["is_calibrated"],
-        )
-        self.machine.add_transition(
-            "add_calibration_points_complete", "add_calibration_points", "idle"
-        )
-        # Manual Target Aim Laser states
-        self.machine.add_transition(
-            "run_manual_target_aim_laser",
-            "idle",
-            "manual_target_aim_laser",
-            conditions=["is_calibrated"],
-        )
-        self.machine.add_transition(
-            "manual_target_aim_laser_complete", "manual_target_aim_laser", "idle"
-        )
-        # Runner Cutter states
-        self.machine.add_transition(
-            "run_runner_cutter", "idle", "acquire_target", conditions=["is_calibrated"]
-        )
-        if self._enable_aiming:
-            self.machine.add_transition(
-                "target_acquired", "acquire_target", "aim_laser"
-            )
-            self.machine.add_transition("aim_successful", "aim_laser", "burn_target")
-            self.machine.add_transition("aim_failed", "aim_laser", "acquire_target")
-        else:
-            self.machine.add_transition(
-                "target_acquired", "acquire_target", "burn_target"
-            )
-        self.machine.add_transition(
-            "no_target_found", "acquire_target", "acquire_target"
-        )
-        self.machine.add_transition("burn_complete", "burn_target", "acquire_target")
-        # Emergency Stop
-        self.machine.add_transition("stop", "*", "idle", before="stop_current_task")
-
-        self._current_task: Optional[asyncio.Task] = None
-
-    @property
-    def is_calibrated(self):
-        return self._calibration.is_calibrated
-
-    async def stop_current_task(self):
-        self._logger.info("Stopping current task")
-
-        if self._current_task:
-            self._current_task.cancel()
-            try:
-                await self._current_task
-            except asyncio.CancelledError:
-                pass
-
-    async def on_enter_idle(self):
-        self._logger.info("Entered state <idle>")
-        self._node.publish_state()
-
-        self._current_task = None
-        await self._laser_node.stop()
-        await self._laser_node.clear_points()
-
-        if len(self._runner_tracker.tracks) > 0:
-            self._save_summary()
-
-        self._runner_tracker.clear()
-        self._node.publish_tracks()
-
-    def _save_summary(self):
-        ts = time.time()
-        output = {
-            "timestamp": ts,
-            "tracks": self._runner_tracker.to_dict(),
-            "summary": {},
-        }
-        for track_state in TrackState:
-            output["summary"][track_state.name] = len(
-                self._runner_tracker.get_tracks_with_state(track_state)
-            )
-
-        save_dir = os.path.expanduser(self._summary_save_dir)
-        os.makedirs(save_dir, exist_ok=True)
-        datetime_obj = datetime.fromtimestamp(ts)
-        datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
-        filename = f"tracker_{datetime_string}.json"
-        filepath = os.path.join(save_dir, filename)
-        with open(filepath, "w") as f:
-            f.write(json.dumps(output))
-
-        self._logger.info(f"Runner Cutter summary: {json.dumps(output['summary'])}")
-
-    async def on_enter_calibration(self):
-        self._logger.info("Entered state <calibration>")
-        self._node.publish_state()
-
-        self._current_task = asyncio.create_task(self._calibration_task())
-
-    async def _calibration_task(self):
-        await self._calibration.calibrate()
-        await self.calibration_complete()
-
-    async def on_enter_add_calibration_points(
-        self, normalized_pixel_coords: List[Tuple[float, float]]
-    ):
-        self._logger.info("Entered state <add_calibration_points>")
-        self._node.publish_state()
-
-        self._current_task = asyncio.create_task(
-            self._add_calibration_points_task(normalized_pixel_coords)
-        )
-
-    async def _add_calibration_points_task(
-        self, normalized_pixel_coords: List[Tuple[float, float]]
-    ):
-        # For each camera pixel, find the 3D position wrt the camera
-        result = await self._camera_node.get_positions(
-            normalized_pixel_coords=[
-                Vector2(
-                    x=normalized_pixel_coord[0],
-                    y=normalized_pixel_coord[1],
-                )
-                for normalized_pixel_coord in normalized_pixel_coords
-            ]
-        )
-        positions = [
-            (position.x, position.y, position.z) for position in result.positions
-        ]
-        # Filter out any invalid positions
-        positions = [p for p in positions if not all(x < 0 for x in p)]
-        # Convert camera positions to laser pixels
-        laser_coords = [
-            self._calibration.camera_point_to_laser_coord(position)
-            for position in positions
-        ]
-        # Filter out laser coords that are out of bounds
-        laser_coords = [
-            (x, y) for (x, y) in laser_coords if 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0
-        ]
-        await self._calibration.add_calibration_points(
-            laser_coords, update_transform=True
-        )
-        await self.add_calibration_points_complete()
-
-    async def on_enter_manual_target_aim_laser(
-        self, normalized_pixel_coord: Tuple[float, float]
-    ):
-        self._logger.info("Entered state <manual_target_aim_laser>")
-        self._node.publish_state()
-
-        self._current_task = asyncio.create_task(
-            self._manual_target_aim_laser_task(normalized_pixel_coord)
-        )
-
-    async def _manual_target_aim_laser_task(
-        self, normalized_pixel_coord: Tuple[float, float]
-    ):
-        # Find the 3D position wrt the camera
-        result = await self._camera_node.get_positions(
-            normalized_pixel_coords=[
-                Vector2(x=normalized_pixel_coord[0], y=normalized_pixel_coord[1])
-            ]
-        )
-        positions = [
-            (position.x, position.y, position.z) for position in result.positions
-        ]
-        target_position = positions[0]
-
-        camera_pixel = (
-            round(self._calibration.camera_frame_size[0] * normalized_pixel_coord[0]),
-            round(self._calibration.camera_frame_size[1] * normalized_pixel_coord[1]),
-        )
-        corrected_laser_coord = await self._aim(target_position, camera_pixel)
-        if corrected_laser_coord is not None:
-            self._logger.info("Aim laser successful.")
-        else:
-            self._logger.info("Failed to aim laser.")
-
-        await self.manual_target_aim_laser_complete()
-
-    async def on_enter_acquire_target(self):
-        self._logger.info("Entered state <acquire_target>")
-        self._node.publish_state()
-
-        self._current_task = asyncio.create_task(self._acquire_target_task())
-
-    async def _acquire_target_task(self):
-        # Detect runners and create/update tracks
-        await self._detect_runners()
-
-        target_track = None
-
-        # If there is already an active track, just use that track
-        active_tracks = self._runner_tracker.get_tracks_with_state(TrackState.ACTIVE)
-        if len(active_tracks) > 0:
-            target_track = active_tracks[0]
-            self._logger.info(
-                f"Active track with ID {target_track.id} already exists. Setting it as target."
-            )
-        else:
-            # Find a track to target
-            while True:
-                track = self._runner_tracker.get_next_pending_track()
-                if track is None:
-                    break
-
-                self._logger.info(f"Processing pending track {track.id}...")
-
-                # Check whether the laser coordinates are out of bounds
-                laser_coord = self._calibration.camera_point_to_laser_coord(
-                    track.position
-                )
-                if 0.0 <= laser_coord[0] <= 1.0 and 0.0 <= laser_coord[1] <= 1.0:
-                    self._logger.info(f"Setting track {track.id} as target.")
-                    target_track = track
-                    break
-                else:
-                    self._logger.info(
-                        f"Track {track.id} is out of laser bounds. Marking as failed."
-                    )
-                    self._runner_tracker.process_track(track.id, TrackState.FAILED)
-                    continue
-
-        self._node.publish_tracks()
-
-        if target_track is None:
-            self._logger.info("No target found.")
-            # Add a delay here for now to avoid a tight loop when no viable targets are in view.
-            # TODO: enable constant runner detection, and move over to a push model for new tracks
-            await asyncio.sleep(0.2)
-            await self.no_target_found()
-        else:
-            if self._enable_aiming:
-                await self.target_acquired(target_track)
-            else:
-                laser_coord = self._calibration.camera_point_to_laser_coord(
-                    target_track.position
-                )
-                await self.target_acquired(target_track, laser_coord)
-
-    async def _detect_runners(self):
-        self._logger.info("Detecting runners...")
-        result = await self._camera_node.get_detection(
-            detection_type=DetectionType.RUNNER, wait_for_next_frame=False
-        )
-        detection_result = result.result
-
-        prev_detected_track_ids = set(self.detected_track_ids)
-        self.detected_track_ids.clear()
-        for instance in detection_result.instances:
-            pixel = (round(instance.point.x), round(instance.point.y))
-            position = (
-                instance.position.x,
-                instance.position.y,
-                instance.position.z,
-            )
-            track = self._runner_tracker.add_track(
-                instance.track_id,
-                pixel,
-                position,
-            )
-            if track is None:
-                continue
-
-            self.detected_track_ids.add(instance.track_id)
-
-            # Put detected tracks that are marked as failed back into the pending queue, since we want
-            # to reattempt to burn them as they could now potentially be in bounds
-            if track.state == TrackState.FAILED:
-                self._runner_tracker.process_track(track.id, TrackState.PENDING)
-
-        self._logger.info(
-            f"Detected {len(self.detected_track_ids)} tracks with IDs {self.detected_track_ids}."
-        )
-
-        # Mark any tracks that were previously detected but are no longer detected as out of frame
-        out_of_frame_track_ids = prev_detected_track_ids - self.detected_track_ids
-        for track_id in out_of_frame_track_ids:
-            self._logger.info(
-                f"Track {track_id} was detected in the previous frame but is no longer detected."
-            )
-            track = self._runner_tracker.get_track(track_id)
-            if track is None:
-                continue
-
-            track.pixel = (-1, -1)
-            track.position = (-1.0, -1.0, -1.0)
-            if track.state == TrackState.PENDING:
-                self._runner_tracker.process_track(track_id, TrackState.FAILED)
-
-    async def on_enter_aim_laser(self, target: Track):
-        self._logger.info("Entered state <aim_laser>")
-        self._node.publish_state()
-
-        self._current_task = asyncio.create_task(self._aim_laser_task(target))
-
-    async def _aim_laser_task(self, target: Track):
-        self._logger.info(f"Attempting to aim laser at target track {target.id}...")
-        corrected_laser_coord = await self._aim(target.position, target.pixel)
-        if corrected_laser_coord is not None:
-            self._logger.info(f"Aim at track {target.id} successful.")
-            await self.aim_successful(target, corrected_laser_coord)
-        else:
-            self._logger.info(
-                f"Failed to aim laser at track {target.id}. Marking track as failed."
-            )
-            self._runner_tracker.process_track(target.id, TrackState.FAILED)
-            await self.aim_failed()
-
-    async def _aim(
-        self, target_position: Tuple[float, float, float], target_pixel: Tuple[int, int]
-    ) -> Optional[Tuple[float, float]]:
-        # TODO: set exposure/gain automatically when detecting laser
-        async with self._camera_context.laser_detection_settings():
-            initial_laser_coord = self._calibration.camera_point_to_laser_coord(
-                target_position
-            )
-            await self._laser_node.set_points(
-                points=[Vector2(x=initial_laser_coord[0], y=initial_laser_coord[1])]
-            )
-            await self._laser_node.set_color(
-                r=self._tracking_laser_color[0],
-                g=self._tracking_laser_color[1],
-                b=self._tracking_laser_color[2],
-                i=0.0,
-            )
-            try:
-                await self._laser_node.play()
-                corrected_laser_coord = await self._correct_laser(
-                    target_pixel, initial_laser_coord
-                )
-            finally:
-                await self._laser_node.stop()
-
-        return corrected_laser_coord
-
-    async def _correct_laser(
-        self,
-        target_pixel: Tuple[int, int],
-        original_laser_coord: Tuple[float, float],
-        dist_threshold: float = 2.5,
-    ) -> Optional[Tuple[float, float]]:
-        current_laser_coord = original_laser_coord
-
-        while True:
-            await self._laser_node.set_points(
-                points=[Vector2(x=current_laser_coord[0], y=current_laser_coord[1])]
-            )
-            laser_pixel, laser_pos = await self._get_laser_pixel_and_pos(
-                attempt_interval_s=0.25
-            )
-            if laser_pixel is None or laser_pos is None:
-                self._logger.info("Could not detect laser.")
-                return None
-
-            # Calculate camera pixel distance
-            dist = np.linalg.norm(
-                np.array(laser_pixel).astype(float)
-                - np.array(target_pixel).astype(float)
-            )
-            self._logger.info(
-                f"Aiming laser. Target camera pixel = {target_pixel}, laser detected at = {laser_pixel}, dist = {dist}"
-            )
-            if dist <= dist_threshold:
-                return current_laser_coord
-            else:
-                # Use this opportunity to add to calibration points since we have the laser
-                # coord and associated position in camera space
-                await self._calibration.add_point_correspondence(
-                    current_laser_coord, laser_pixel, laser_pos, update_transform=True
-                )
-
-                # Scale correction by the camera frame size
-                correction = (
-                    np.array(target_pixel) - np.array(laser_pixel)
-                ) / np.array(self._calibration.camera_frame_size)
-                # Invert Y axis as laser coord Y is flipped from camera frame Y
-                correction[1] *= -1
-                new_laser_coord = current_laser_coord + correction
-                self._logger.info(
-                    f"Correcting laser. Dist = {dist}, correction = {correction}, current coord = {current_laser_coord}, new coord = {new_laser_coord}"
-                )
-
-                if np.any(
-                    new_laser_coord[0] > 1.0
-                    or new_laser_coord[1] > 1.0
-                    or new_laser_coord[0] < 0.0
-                    or new_laser_coord[1] < 0.0
-                ):
-                    self._logger.info("Laser coord is outside of renderable area.")
-                    return None
-
-                current_laser_coord = new_laser_coord
-
-    async def _get_laser_pixel_and_pos(
-        self, max_attempts: int = 3, attempt_interval_s: float = 0.2
-    ) -> Tuple[Optional[Tuple[int, int]], Optional[Tuple[float, float, float]]]:
-        attempt = 0
-        while attempt < max_attempts:
-            result = await self._camera_node.get_detection(
-                detection_type=DetectionType.LASER, wait_for_next_frame=True
-            )
-            detection_result = result.result
-            instances = detection_result.instances
-            if instances:
-                if len(instances) > 1:
-                    self._logger.info("Found more than 1 laser during correction")
-                # TODO: better handle case where more than 1 laser detected
-                instance = instances[0]
-                return (round(instance.point.x), round(instance.point.y)), (
-                    instance.position.x,
-                    instance.position.y,
-                    instance.position.z,
-                )
-            # No lasers detected. Try again.
-            await asyncio.sleep(attempt_interval_s)
-            attempt += 1
-        return None, None
-
-    async def on_enter_burn_target(
-        self, target: Track, laser_coord: Tuple[float, float]
-    ):
-        self._logger.info(f"Entered state <burn_target>")
-        self._node.publish_state()
-
-        self._current_task = asyncio.create_task(
-            self._burn_target_task(target, laser_coord)
-        )
-
-    async def _burn_target_task(self, target: Track, laser_coord: Tuple[float, float]):
-        self._logger.info(f"Burning track {target.id}...")
-        await self._laser_node.set_points(
-            points=[Vector2(x=laser_coord[0], y=laser_coord[1])]
-        )
-        await self._laser_node.set_color(
-            r=self._burn_laser_color[0],
-            g=self._burn_laser_color[1],
-            b=self._burn_laser_color[2],
-            i=0.0,
-        )
-        try:
-            await self._laser_node.play()
-            await asyncio.sleep(self._burn_time_secs)
-        finally:
-            await self._laser_node.stop()
-
-        self._logger.info(
-            f"Burn complete on track {target.id}. Marking track as completed."
-        )
-        self._runner_tracker.process_track(target.id, TrackState.COMPLETED)
-        self._node.publish_tracks()
-        await self.burn_complete()
+    # endregion
 
 
 def main():

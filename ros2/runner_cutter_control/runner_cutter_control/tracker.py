@@ -17,17 +17,23 @@ class Track:
     state: TrackState
 
     def __init__(
-        self, id: int, pixel: Tuple[int, int], position: Tuple[float, float, float]
+        self,
+        id: int,
+        pixel: Tuple[int, int],
+        position: Tuple[float, float, float],
+        state: TrackState = TrackState.PENDING,
     ):
         """
         Args:
+            id (int): Track ID.
             pixel (Tuple[int, int]): Pixel coordinates (x, y) of target in camera frame.
             position (Tuple[float, float, float]): 3D position (x, y, z) of target relative to camera.
+            state (TrackState): Track state.
         """
         self.id = id
         self.pixel = pixel
         self.position = position
-        self.state = TrackState.PENDING
+        self.state = state
 
     def __repr__(self):
         return f"Track(id={self.id}, pixel={self.pixel}, position={self.position}, state={self.state.name})"
@@ -46,6 +52,12 @@ class Track:
 
 
 class Tracker:
+    """
+    Tracker maintains a collection of Tracks with state management.
+    New tracks start in the PENDING state. PENDING tracks are maintained in a queue for FIFO
+    ordering.
+    """
+
     tracks: Dict[int, Track]
 
     def __init__(self):
@@ -56,6 +68,10 @@ class Tracker:
         return any(track.state == state for track in self.tracks.values())
 
     def get_tracks_with_state(self, state: TrackState) -> List[Track]:
+        if state == TrackState.PENDING:
+            return list(self._pending_tracks)
+
+        # TODO: cache the active track(s) so we don't need to to a linear scan for it
         return [track for track in self.tracks.values() if track.state == state]
 
     def get_track(self, track_id: int) -> Optional[Track]:
@@ -89,12 +105,13 @@ class Tracker:
             return None
 
         # If the track already exists, update that track instead of adding a new one.
+        # Otherwise, create a new track and set as PENDING.
         if track_id in self.tracks:
             track = self.tracks[track_id]
             track.pixel = pixel
             track.position = position
         else:
-            track = Track(track_id, pixel, position)
+            track = Track(track_id, pixel, position, state=TrackState.PENDING)
             self.tracks[track_id] = track
             self._pending_tracks.append(track)
         return track

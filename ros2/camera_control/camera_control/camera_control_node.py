@@ -77,8 +77,6 @@ class CameraControlParams:
 class CameraControlNode:
     camera_control_params = params(CameraControlParams)
     state_topic = topic("~/state", State, qos=QOS_LATCHED)
-    # Note: setting queue size to > 1 for Image topics seems to help prevent web_video_server's subscription
-    # from stalling
     color_frame_topic = topic("~/color_frame", Image, qos=qos_profile_sensor_data)
     debug_frame_topic = topic("~/debug_frame", Image, qos=qos_profile_sensor_data)
     detections_topic = topic("~/detections", DetectionResult, qos=5)
@@ -87,12 +85,12 @@ class CameraControlNode:
     @start
     async def start(self):
         self.enabled_detection_types = set()
-        self.record_video_task = None
-        self.video_writer = None
-        self.debug_frame = None
-        self.interval_capture_task = None
+        self._record_video_task_ref = None
+        self._video_writer = None
+        self._debug_frame = None
+        self._interval_capture_task_ref = None
         # For converting numpy array to image msg
-        self.cv_bridge = CvBridge()
+        self._cv_bridge = CvBridge()
 
         # Camera
 
@@ -110,7 +108,7 @@ class CameraControlNode:
             asyncio.Event()
         )  # to notify when a detection task has completed, used to avoid destroying frame buffer(s) while detection is happening
         self._detection_completed_event.set()
-        self._camera_started = False
+        self._camera_started = False  # flag to prevent frame callback or detection task from executing after device is closed
         self._frame_event = asyncio.Event()  # to notify when a new frame is available
 
         async def process_detection_task_queue():
@@ -295,54 +293,34 @@ class CameraControlNode:
 
         return result(success=False)
 
+    @service("~/stop_all_detections", Trigger)
+    async def stop_all_detections(self):
+        if len(self.enabled_detection_types) > 0:
+            self.enabled_detection_types.clear()
+            self._publish_state()
+            return result(success=True)
+
+        return result(success=False)
+
     @service("~/start_recording_video", Trigger)
     async def start_recording_video(self):
-        if self.record_video_task is not None:
-            self.record_video_task.cancel()
-            self.record_video_task = None
+        if self._record_video_task_ref is not None:
+            self._record_video_task_ref.cancel()
+            self._record_video_task_ref = None
 
-        self.record_video_task = asyncio.create_task(
-            self._record_video_task(1 / self.camera_control_params.debug_video_fps)
+        self._record_video_task_ref = asyncio.create_task(
+            self._record_video_task(self.camera_control_params.debug_video_fps)
         )
         self._publish_state()
         return result(success=True)
 
-    async def _record_video_task(self, interval_secs: float):
-        try:
-            while True:
-                self._write_video_frame()
-                await asyncio.sleep(interval_secs)
-        finally:
-            self.video_writer = None
-
-    def _write_video_frame(self):
-        if self.video_writer is None and self.debug_frame is not None:
-            save_dir = os.path.expanduser(self.camera_control_params.save_dir)
-            os.makedirs(save_dir, exist_ok=True)
-            ts = time.time()
-            datetime_obj = datetime.fromtimestamp(ts)
-            datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
-            video_name = f"{datetime_string}.avi"
-            video_path = os.path.join(save_dir, video_name)
-            h, w, _ = self.debug_frame.shape
-            self.video_writer = cv2.VideoWriter(
-                video_path,
-                cv2.VideoWriter_fourcc(*"XVID"),
-                self.camera_control_params.debug_video_fps,
-                (w, h),
-            )
-            self._publish_notification(f"Started recording video: {video_path}")
-
-        if self.video_writer is not None:
-            self.video_writer.write(cv2.cvtColor(self.debug_frame, cv2.COLOR_RGB2BGR))
-
     @service("~/stop_recording_video", Trigger)
     async def stop_recording_video(self):
-        if self.record_video_task is None:
+        if self._record_video_task_ref is None:
             return result(success=False)
 
-        self.record_video_task.cancel()
-        self.record_video_task = None
+        self._record_video_task_ref.cancel()
+        self._record_video_task_ref = None
         self._publish_state()
         self._publish_notification("Stopped recording video")
         return result(success=True)
@@ -356,12 +334,12 @@ class CameraControlNode:
 
     @service("~/start_interval_capture", StartIntervalCapture)
     async def start_interval_capture(self, interval_secs):
-        if self.interval_capture_task is not None:
-            self.interval_capture_task.cancel()
-            self.interval_capture_task = None
+        if self._interval_capture_task_ref is not None:
+            self._interval_capture_task_ref.cancel()
+            self._interval_capture_task_ref = None
 
         await self.camera_control_params.set(image_capture_interval_secs=interval_secs)
-        self.interval_capture_task = asyncio.create_task(
+        self._interval_capture_task_ref = asyncio.create_task(
             self._interval_capture_task(interval_secs)
         )
         self._publish_state()
@@ -372,38 +350,14 @@ class CameraControlNode:
 
     @service("~/stop_interval_capture", Trigger)
     async def stop_interval_capture(self):
-        if self.interval_capture_task is None:
+        if self._interval_capture_task_ref is None:
             return result(success=False)
 
-        self.interval_capture_task.cancel()
-        self.interval_capture_task = None
+        self._interval_capture_task_ref.cancel()
+        self._interval_capture_task_ref = None
         self._publish_state()
         self._publish_notification("Stopped interval capture")
         return result(success=True)
-
-    async def _interval_capture_task(self, interval_secs: float):
-        while True:
-            self._save_image()
-            await asyncio.sleep(interval_secs)
-
-    def _save_image(self) -> Optional[str]:
-        frame = self.current_frame
-        if frame is None:
-            return None
-
-        save_dir = os.path.expanduser(self.camera_control_params.save_dir)
-        os.makedirs(save_dir, exist_ok=True)
-        ts = time.time()
-        datetime_obj = datetime.fromtimestamp(ts)
-        datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
-        image_name = f"{datetime_string}.png"
-        image_path = os.path.join(save_dir, image_name)
-        cv2.imwrite(
-            image_path,
-            cv2.cvtColor(frame.color_frame, cv2.COLOR_RGB2BGR),
-        )
-        self._publish_notification(f"Saved image: {image_path}")
-        return image_path
 
     @service("~/set_save_directory", SetSaveDirectory)
     async def set_save_directory(self, save_directory):
@@ -434,6 +388,8 @@ class CameraControlNode:
                 else Vector3(x=-1.0, y=-1.0, z=-1.0)
             )
         return result(positions=positions)
+
+    # region Task definitions
 
     async def _frame_callback(self, frame: RgbdFrame):
         if not self._camera_started or self.camera.state != RgbdCameraState.STREAMING:
@@ -536,7 +492,7 @@ class CameraControlNode:
                 debug_frame, (new_width, new_height), interpolation=cv2.INTER_NEAREST
             )
 
-            self.debug_frame = debug_frame
+            self._debug_frame = debug_frame
 
             msg = self._get_color_frame_msg(debug_frame, frame.timestamp_millis)
             asyncio.create_task(
@@ -553,6 +509,63 @@ class CameraControlNode:
         finally:
             self._detection_completed_event.set()
 
+    async def _interval_capture_task(self, interval_secs: float):
+        while True:
+            self._save_image()
+            await asyncio.sleep(interval_secs)
+
+    def _save_image(self) -> Optional[str]:
+        frame = self.current_frame
+        if frame is None:
+            return None
+
+        save_dir = os.path.expanduser(self.camera_control_params.save_dir)
+        os.makedirs(save_dir, exist_ok=True)
+        ts = time.time()
+        datetime_obj = datetime.fromtimestamp(ts)
+        datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
+        image_name = f"{datetime_string}.png"
+        image_path = os.path.join(save_dir, image_name)
+        cv2.imwrite(
+            image_path,
+            cv2.cvtColor(frame.color_frame, cv2.COLOR_RGB2BGR),
+        )
+        self._publish_notification(f"Saved image: {image_path}")
+        return image_path
+
+    async def _record_video_task(self, fps: float):
+        try:
+            while True:
+                self._write_video_frame()
+                await asyncio.sleep(1 / fps)
+        finally:
+            self._video_writer = None
+
+    def _write_video_frame(self):
+        if self._video_writer is None and self._debug_frame is not None:
+            save_dir = os.path.expanduser(self.camera_control_params.save_dir)
+            os.makedirs(save_dir, exist_ok=True)
+            ts = time.time()
+            datetime_obj = datetime.fromtimestamp(ts)
+            datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
+            video_name = f"{datetime_string}.avi"
+            video_path = os.path.join(save_dir, video_name)
+            h, w, _ = self._debug_frame.shape
+            self._video_writer = cv2.VideoWriter(
+                video_path,
+                cv2.VideoWriter_fourcc(*"XVID"),
+                self.camera_control_params.debug_video_fps,
+                (w, h),
+            )
+            self._publish_notification(f"Started recording video: {video_path}")
+
+        if self._video_writer is not None:
+            self._video_writer.write(cv2.cvtColor(self._debug_frame, cv2.COLOR_RGB2BGR))
+
+    # endregion
+
+    # region State and notifs publishing
+
     def _get_device_state(self) -> DeviceState:
         if self.camera is None:
             return DeviceState.DISCONNECTED
@@ -568,8 +581,8 @@ class CameraControlNode:
         state = State()
         state.device_state = self._get_device_state()
         state.enabled_detection_types = list(self.enabled_detection_types)
-        state.recording_video = self.record_video_task is not None
-        state.interval_capture_active = self.interval_capture_task is not None
+        state.recording_video = self._record_video_task_ref is not None
+        state.interval_capture_active = self._interval_capture_task_ref is not None
         state.exposure_us = self.camera.exposure_us
         exposure_us_range = self.camera.get_exposure_us_range()
         state.exposure_us_range = Vector2(
@@ -616,7 +629,9 @@ class CameraControlNode:
             )
         )
 
-    ## region Message builders
+    # endregion
+
+    # region Message builders
 
     def _create_detection_result_msg(
         self,
@@ -653,7 +668,7 @@ class CameraControlNode:
     def _get_color_frame_msg(
         self, color_frame: np.ndarray, timestamp_millis: float
     ) -> Image:
-        msg = self.cv_bridge.cv2_to_imgmsg(color_frame, encoding="rgb8")
+        msg = self._cv_bridge.cv2_to_imgmsg(color_frame, encoding="rgb8")
         sec, nanosec = milliseconds_to_ros_time(timestamp_millis)
         msg.header.stamp.sec = sec
         msg.header.stamp.nanosec = nanosec
@@ -662,7 +677,7 @@ class CameraControlNode:
     def _get_depth_frame_msg(
         self, depth_frame: np.ndarray, timestamp_millis: float
     ) -> Image:
-        msg = self.cv_bridge.cv2_to_imgmsg(depth_frame, encoding="mono16")
+        msg = self._cv_bridge.cv2_to_imgmsg(depth_frame, encoding="mono16")
         sec, nanosec = milliseconds_to_ros_time(timestamp_millis)
         msg.header.stamp.sec = sec
         msg.header.stamp.nanosec = nanosec
@@ -682,7 +697,9 @@ class CameraControlNode:
         msg.header.stamp.nanosec = nanosec
         return msg
 
-    ## endregion
+    # endregion
+
+    # region Debug frame drawing
 
     def _debug_draw_lasers(
         self, debug_frame, laser_points, confs, color=(255, 0, 255), draw_conf=True
@@ -774,6 +791,8 @@ class CameraControlNode:
             2,
         )
         return debug_frame
+
+    # endregion
 
 
 def main():

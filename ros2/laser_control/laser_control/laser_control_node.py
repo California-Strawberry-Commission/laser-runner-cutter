@@ -8,6 +8,7 @@ from ament_index_python.packages import get_package_share_directory
 from std_srvs.srv import Trigger
 
 from aioros2 import (
+    QOS_LATCHED,
     node,
     params,
     result,
@@ -15,7 +16,6 @@ from aioros2 import (
     service,
     start,
     topic,
-    QOS_LATCHED,
 )
 from laser_control.laser_dac import EtherDreamDAC, HeliosDAC
 from laser_control_interfaces.msg import DeviceState, State
@@ -49,91 +49,91 @@ class LaserControlNode:
             "include",
             platform.machine(),
         )
-        self.dac = None
+        self._dac = None
         if self.laser_control_params.dac_type == "helios":
-            self.dac = HeliosDAC(
+            self._dac = HeliosDAC(
                 os.path.join(include_dir, "libHeliosDacAPI.so"),
                 logger=self.get_logger(),
             )
         elif self.laser_control_params.dac_type == "ether_dream":
-            self.dac = EtherDreamDAC(
+            self._dac = EtherDreamDAC(
                 os.path.join(include_dir, "libEtherDream.so"), logger=self.get_logger()
             )
         else:
             raise Exception(f"Unknown dac_type: {self.laser_control_params.dac_type}")
-        self.connecting = False
+        self._connecting = False
 
         # Publish initial state
         self._publish_state()
 
     @service("~/start_device", Trigger)
     async def start_device(self):
-        if self.dac is None:
+        if self._dac is None:
             return result(success=False)
 
-        self.connecting = True
+        self._connecting = True
         self._publish_state()
 
-        await asyncio.get_running_loop().run_in_executor(None, self.dac.initialize)
+        await asyncio.get_running_loop().run_in_executor(None, self._dac.initialize)
         await asyncio.get_running_loop().run_in_executor(
             None,
-            functools.partial(self.dac.connect, self.laser_control_params.dac_index),
+            functools.partial(self._dac.connect, self.laser_control_params.dac_index),
         )
 
-        self.connecting = False
+        self._connecting = False
         self._publish_state()
 
         return result(success=True)
 
     @service("~/close_device", Trigger)
     async def close_device(self):
-        if self.dac is None:
+        if self._dac is None:
             return result(success=False)
 
-        await asyncio.get_running_loop().run_in_executor(None, self.dac.close)
+        await asyncio.get_running_loop().run_in_executor(None, self._dac.close)
         self._publish_state()
         return result(success=True)
 
     @service("~/set_color", SetColor)
     async def set_color(self, r, g, b, i):
-        if self.dac is None:
+        if self._dac is None:
             return result(success=False)
 
-        self.dac.set_color(r, g, b, i)
+        self._dac.set_color(r, g, b, i)
         return result(success=True)
 
     @service("~/add_point", AddPoint)
     async def add_point(self, point):
-        if self.dac is None:
+        if self._dac is None:
             return result(success=False)
 
-        self.dac.add_point(point.x, point.y)
+        self._dac.add_point(point.x, point.y)
         return result(success=True)
 
     @service("~/set_points", SetPoints)
     async def set_points(self, points):
-        if self.dac is None:
+        if self._dac is None:
             return result(success=False)
 
-        self.dac.clear_points()
+        self._dac.clear_points()
         for point in points:
-            self.dac.add_point(point.x, point.y)
+            self._dac.add_point(point.x, point.y)
         return result(success=True)
 
     @service("~/remove_point", Trigger)
     async def remove_point(self):
-        if self.dac is None:
+        if self._dac is None:
             return result(success=False)
 
-        self.dac.remove_point()
+        self._dac.remove_point()
         return result(success=True)
 
     @service("~/clear_points", Trigger)
     async def clear_points(self):
-        if self.dac is None:
+        if self._dac is None:
             return result(success=False)
 
-        self.dac.clear_points()
+        self._dac.clear_points()
         return result(success=True)
 
     @service("~/set_playback_params", SetPlaybackParams)
@@ -147,10 +147,10 @@ class LaserControlNode:
 
     @service("~/play", Trigger)
     async def play(self):
-        if self.dac is None:
+        if self._dac is None:
             return result(success=False)
 
-        self.dac.play(
+        self._dac.play(
             self.laser_control_params.fps,
             self.laser_control_params.pps,
             self.laser_control_params.transition_duration_ms,
@@ -160,10 +160,10 @@ class LaserControlNode:
 
     @service("~/stop", Trigger)
     async def stop(self):
-        if self.dac is None:
+        if self._dac is None:
             return result(success=False)
 
-        self.dac.stop()
+        self._dac.stop()
         self._publish_state()
         return result(success=True)
 
@@ -172,11 +172,11 @@ class LaserControlNode:
         return result(state=self._get_state())
 
     def _get_device_state(self) -> DeviceState:
-        if self.connecting:
+        if self._connecting:
             return DeviceState.CONNECTING
-        elif self.dac is None or not self.dac.is_connected:
+        elif self._dac is None or not self._dac.is_connected:
             return DeviceState.DISCONNECTED
-        elif self.dac.playing:
+        elif self._dac.playing:
             return DeviceState.PLAYING
         else:
             return DeviceState.STOPPED
