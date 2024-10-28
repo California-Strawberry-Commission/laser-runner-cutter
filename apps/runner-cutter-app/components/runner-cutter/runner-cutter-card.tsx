@@ -1,4 +1,3 @@
-import { CalibrationState } from "@/components/runner-cutter/calibration-card";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -8,45 +7,81 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
+export enum RunnerCutterState {
+  UNAVAILABLE,
+  IDLE,
+  TRACKING,
+  ARMED,
+}
+
 export default function RunnerCutterCard({
-  calibrationState,
+  runnerCutterState,
+  disabled,
   onTrackClick,
+  onTrackStopClick,
   onArmClick,
-  onStopClick,
+  onArmStopClick,
   className,
 }: {
-  calibrationState: CalibrationState;
+  runnerCutterState: RunnerCutterState;
+  disabled?: boolean;
   onTrackClick?: React.MouseEventHandler<HTMLButtonElement>;
+  onTrackStopClick?: React.MouseEventHandler<HTMLButtonElement>;
   onArmClick?: React.MouseEventHandler<HTMLButtonElement>;
-  onStopClick?: React.MouseEventHandler<HTMLButtonElement>;
+  onArmStopClick?: React.MouseEventHandler<HTMLButtonElement>;
   className?: string;
 }) {
-  let cardColor;
+  let cardColor =
+    runnerCutterState === RunnerCutterState.UNAVAILABLE
+      ? "bg-gray-300"
+      : "bg-green-500";
+
   let trackButton = null;
   let armButton = null;
-  let stopButton = null;
-  switch (calibrationState) {
-    case CalibrationState.BUSY:
-      cardColor = "bg-gray-300";
-      stopButton = (
-        <Button variant="destructive" onClick={onStopClick}>
+  switch (runnerCutterState) {
+    case RunnerCutterState.IDLE:
+      trackButton = (
+        <Button disabled={disabled} onClick={onTrackClick}>
+          Tracking Only
+        </Button>
+      );
+      armButton = (
+        <Button disabled={disabled} onClick={onArmClick}>
+          Arm
+        </Button>
+      );
+      break;
+    case RunnerCutterState.TRACKING:
+      trackButton = (
+        <Button
+          disabled={disabled}
+          variant="destructive"
+          onClick={onTrackStopClick}
+        >
+          Stop Tracking
+        </Button>
+      );
+      armButton = <Button disabled>Arm</Button>;
+      break;
+    case RunnerCutterState.ARMED:
+      trackButton = <Button disabled>Tracking Only</Button>;
+      armButton = (
+        <Button
+          disabled={disabled}
+          variant="destructive"
+          onClick={onArmStopClick}
+        >
           Stop
         </Button>
       );
       break;
-    case CalibrationState.CALIBRATED:
-      cardColor = "bg-green-500";
-      trackButton = <Button onClick={onTrackClick}>Tracking Only</Button>;
-      armButton = <Button onClick={onArmClick}>Arm</Button>;
-      break;
     default:
-      cardColor = "bg-gray-300";
       trackButton = <Button disabled>Tracking Only</Button>;
       armButton = <Button disabled>Arm</Button>;
       break;
   }
 
-  let stateStr = CalibrationState[calibrationState];
+  let stateStr = RunnerCutterState[runnerCutterState];
   stateStr = stateStr.charAt(0).toUpperCase() + stateStr.slice(1).toLowerCase();
 
   return (
@@ -60,7 +95,6 @@ export default function RunnerCutterCard({
       <div className="p-4 pt-0 w-full flex flex-row gap-4">
         {trackButton}
         {armButton}
-        {stopButton}
       </div>
     </Card>
   );

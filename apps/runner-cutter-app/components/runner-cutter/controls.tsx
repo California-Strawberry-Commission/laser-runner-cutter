@@ -8,7 +8,9 @@ import DeviceCard, {
   DeviceState,
 } from "@/components/runner-cutter/device-card";
 import NodesCarousel from "@/components/runner-cutter/nodes-carousel";
-import RunnerCutterCard from "@/components/runner-cutter/runner-cutter-card";
+import RunnerCutterCard, {
+  RunnerCutterState,
+} from "@/components/runner-cutter/runner-cutter-card";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,6 +25,7 @@ import {
 import useROS from "@/lib/ros/useROS";
 import useCameraNode, {
   DeviceState as CameraDeviceState,
+  DetectionType,
 } from "@/lib/useCameraNode";
 import useControlNode from "@/lib/useControlNode";
 import useLaserNode, {
@@ -156,12 +159,32 @@ export default function Controls() {
     cameraDeviceState === DeviceState.CONNECTED &&
     laserDeviceState === DeviceState.CONNECTED
   ) {
-    if (controlNode.state.state === "idle") {
+    if (controlNode.state.state === "calibration") {
+      calibrationState = CalibrationState.CALIBRATING;
+    } else {
       calibrationState = controlNode.state.calibrated
         ? CalibrationState.CALIBRATED
         : CalibrationState.UNCALIBRATED;
-    } else {
-      calibrationState = CalibrationState.BUSY;
+    }
+  }
+
+  let runnerCutterState = RunnerCutterState.UNAVAILABLE;
+  if (
+    controlNode.connected &&
+    cameraDeviceState === DeviceState.CONNECTED &&
+    laserDeviceState === DeviceState.CONNECTED &&
+    calibrationState === CalibrationState.CALIBRATED
+  ) {
+    if (controlNode.state.state === "idle") {
+      if (
+        cameraNode.state.enabledDetectionTypes.includes(DetectionType.RUNNER)
+      ) {
+        runnerCutterState = RunnerCutterState.TRACKING;
+      } else {
+        runnerCutterState = RunnerCutterState.IDLE;
+      }
+    } else if (controlNode.state.state === "runner_cutter") {
+      runnerCutterState = RunnerCutterState.ARMED;
     }
   }
 
@@ -187,16 +210,23 @@ export default function Controls() {
         />
         <CalibrationCard
           calibrationState={calibrationState}
+          disabled={
+            calibrationState !== CalibrationState.CALIBRATING &&
+            controlNode.state.state !== "idle"
+          }
           onCalibrateClick={() => controlNode.calibrate()}
           onStopClick={() => controlNode.stop()}
           onSaveClick={() => controlNode.saveCalibration()}
           onLoadClick={() => controlNode.loadCalibration()}
         />
         <RunnerCutterCard
-          calibrationState={calibrationState}
-          // TODO: onTrackClick={() => controlNode.startRunnerCutter()}
+          runnerCutterState={runnerCutterState}
+          onTrackClick={() => cameraNode.startDetection(DetectionType.RUNNER)}
+          onTrackStopClick={() =>
+            cameraNode.stopDetection(DetectionType.RUNNER)
+          }
           onArmClick={() => controlNode.startRunnerCutter()}
-          onStopClick={() => controlNode.stop()}
+          onArmStopClick={() => controlNode.stop()}
         />
       </div>
       <FramePreviewWithOverlay

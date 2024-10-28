@@ -234,7 +234,11 @@ class RunnerCutterControlNode:
         if self._current_task is not None and not self._current_task.done():
             return False
 
-        self._current_task = asyncio.create_task(coro, name=name)
+        async def coro_wrapper(coro: Coroutine):
+            await self._reset_to_idle()
+            await coro
+
+        self._current_task = asyncio.create_task(coro_wrapper(coro), name=name)
 
         async def done_callback(task: asyncio.Task):
             await self._reset_to_idle()

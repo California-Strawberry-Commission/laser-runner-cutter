@@ -8,14 +8,15 @@ import {
 import { cn } from "@/lib/utils";
 
 export enum CalibrationState {
-  UNCALIBRATED,
-  BUSY,
-  CALIBRATED,
   UNAVAILABLE,
+  UNCALIBRATED,
+  CALIBRATING,
+  CALIBRATED,
 }
 
 export default function CalibrationCard({
   calibrationState,
+  disabled,
   onCalibrateClick,
   onStopClick,
   onSaveClick,
@@ -23,6 +24,7 @@ export default function CalibrationCard({
   className,
 }: {
   calibrationState: CalibrationState;
+  disabled?: boolean;
   onCalibrateClick?: React.MouseEventHandler<HTMLButtonElement>;
   onStopClick?: React.MouseEventHandler<HTMLButtonElement>;
   onSaveClick?: React.MouseEventHandler<HTMLButtonElement>;
@@ -34,19 +36,27 @@ export default function CalibrationCard({
   switch (calibrationState) {
     case CalibrationState.UNCALIBRATED:
       cardColor = "bg-red-500";
-      calibrateButton = <Button onClick={onCalibrateClick}>Calibrate</Button>;
-      break;
-    case CalibrationState.BUSY:
-      cardColor = "bg-gray-300";
       calibrateButton = (
-        <Button variant="destructive" onClick={onStopClick}>
+        <Button disabled={disabled} onClick={onCalibrateClick}>
+          Calibrate
+        </Button>
+      );
+      break;
+    case CalibrationState.CALIBRATING:
+      cardColor = "bg-red-500";
+      calibrateButton = (
+        <Button disabled={disabled} variant="destructive" onClick={onStopClick}>
           Stop
         </Button>
       );
       break;
     case CalibrationState.CALIBRATED:
       cardColor = "bg-green-500";
-      calibrateButton = <Button onClick={onCalibrateClick}>Calibrate</Button>;
+      calibrateButton = (
+        <Button disabled={disabled} onClick={onCalibrateClick}>
+          Calibrate
+        </Button>
+      );
       break;
     default:
       cardColor = "bg-gray-300";
@@ -68,15 +78,18 @@ export default function CalibrationCard({
       <div className="p-4 pt-0 w-full flex flex-row gap-4">
         {calibrateButton}
         <Button
-          disabled={calibrationState !== CalibrationState.CALIBRATED}
+          disabled={
+            disabled || calibrationState !== CalibrationState.CALIBRATED
+          }
           onClick={onSaveClick}
         >
           Save
         </Button>
         <Button
           disabled={
+            disabled ||
             calibrationState === CalibrationState.UNAVAILABLE ||
-            calibrationState === CalibrationState.BUSY
+            calibrationState === CalibrationState.CALIBRATING
           }
           onClick={onLoadClick}
         >
