@@ -348,7 +348,7 @@ class LucidRgbdCamera(RgbdCamera):
                         device_was_ever_connected = True
                         device_connected = True
                     else:
-                        self._logger.warn(
+                        self._logger.warning(
                             f"Either device (color) {self.color_camera_serial_number} or device (depth) {self.depth_camera_serial_number} was not found"
                         )
                         time.sleep(5)
@@ -371,7 +371,7 @@ class LucidRgbdCamera(RgbdCamera):
                         color_frame = future_color_frame.result()
                         depth_frame = future_depth_frame.result()
                     except:
-                        self._logger.warn(
+                        self._logger.warning(
                             f"There was an issue with the camera. Signaling connection thread"
                         )
                         self._cv.notify()
@@ -379,7 +379,7 @@ class LucidRgbdCamera(RgbdCamera):
                         continue
 
                 if color_frame is None or depth_frame is None:
-                    self._logger.warn(
+                    self._logger.warning(
                         f"No frame available. Signaling connection thread"
                     )
                     self._cv.notify()

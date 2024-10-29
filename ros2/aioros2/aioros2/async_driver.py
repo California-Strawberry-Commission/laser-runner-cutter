@@ -62,7 +62,7 @@ class AsyncDriver:
         self._logger.debug(msg)
 
     def log_warn(self, msg: str):
-        self._logger.warn(msg)
+        self._logger.warning(msg)
 
     def log_error(self, msg: str):
         self._logger.error(msg)
@@ -97,7 +97,7 @@ class AsyncDriver:
                 setattr(self, attr, attacher(attr, definition))
 
     def _warn_unimplemented(self, readable_name, fn_name):
-        self._logger.warn(
+        self._logger.warning(
             f"Failed to initialize >{readable_name}< because >{fn_name}< is not implemented in driver >{self.__class__.__qualname__}<"
         )
 

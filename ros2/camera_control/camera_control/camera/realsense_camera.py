@@ -181,7 +181,9 @@ class RealSenseCamera(RgbdCamera):
                         device_was_ever_connected = True
                         device_connected = True
                     else:
-                        self._logger.warn(f"Device {self.serial_number} was not found")
+                        self._logger.warning(
+                            f"Device {self.serial_number} was not found"
+                        )
                         time.sleep(5)
 
             # Clean up existing connection
@@ -197,7 +199,7 @@ class RealSenseCamera(RgbdCamera):
                 try:
                     frames = self._pipeline.wait_for_frames()
                 except:
-                    self._logger.warn(
+                    self._logger.warning(
                         f"There was an issue with the camera. Signaling connection thread"
                     )
                     self._cv.notify()
@@ -205,7 +207,7 @@ class RealSenseCamera(RgbdCamera):
                     continue
 
                 if not frames:
-                    self._logger.warn(
+                    self._logger.warning(
                         f"No frame available. Signaling connection thread"
                     )
                     self._cv.notify()
