@@ -333,7 +333,7 @@ class LucidRgbdCamera(RgbdCamera):
                     # If the devices are connected, set up and start streaming
                     if color_device_info is not None and depth_device_info is not None:
                         self._logger.info(
-                            f"Device (color) {self.color_camera_serial_number} and device (depth) {self.depth_camera_serial_number} found"
+                            f"Device (color, model={color_device_info['model']}, serial={color_device_info['serial']}, firmware_ver={color_device_info['version']}) and device (depth, model={depth_device_info['model']}, serial={depth_device_info['serial']}, firmware_ver={depth_device_info['version']}) found"
                         )
                         # Only set exposure/gain if this is the first time the device is connected
                         self._start_stream(
@@ -349,7 +349,7 @@ class LucidRgbdCamera(RgbdCamera):
                         device_connected = True
                     else:
                         self._logger.warning(
-                            f"Either device (color) {self.color_camera_serial_number} or device (depth) {self.depth_camera_serial_number} was not found"
+                            f"Either device (color, serial={self.color_camera_serial_number}) or device (depth, serial={self.depth_camera_serial_number}) was not found"
                         )
                         time.sleep(5)
 
@@ -425,26 +425,26 @@ class LucidRgbdCamera(RgbdCamera):
         self._depth_device = devices[1]
 
         # Configure color device nodemap
-        nodemap = self._color_device.nodemap
-        stream_nodemap = self._color_device.tl_stream_nodemap
-        nodemap["AcquisitionMode"].value = "Continuous"
+        color_nodemap = self._color_device.nodemap
+        color_stream_nodemap = self._color_device.tl_stream_nodemap
+        color_nodemap["AcquisitionMode"].value = "Continuous"
         # Setting the buffer handling mode to "NewestOnly" ensures the most recent image
         # is delivered, even if it means skipping frames
-        stream_nodemap["StreamBufferHandlingMode"].value = "NewestOnly"
+        color_stream_nodemap["StreamBufferHandlingMode"].value = "NewestOnly"
         # Enable stream auto negotiate packet size, which instructs the camera to receive
         # the largest packet size that the system will allow
-        stream_nodemap["StreamAutoNegotiatePacketSize"].value = True
+        color_stream_nodemap["StreamAutoNegotiatePacketSize"].value = True
         # Enable stream packet resend. If a packet is missed while receiving an image, a
         # packet resend is requested which retrieves and redelivers the missing packet
         # in the correct order.
-        stream_nodemap["StreamPacketResendEnable"].value = True
+        color_stream_nodemap["StreamPacketResendEnable"].value = True
         # Set frame size and pixel format
-        nodemap["PixelFormat"].value = PixelFormat.RGB8
+        color_nodemap["PixelFormat"].value = PixelFormat.RGB8
         # Reset ROI (Region of Interest) offset, as it persists on the device.
-        nodemap["OffsetX"].value = 0
-        nodemap["OffsetY"].value = 0
-        max_width = nodemap["Width"].max
-        max_height = nodemap["Height"].max
+        color_nodemap["OffsetX"].value = 0
+        color_nodemap["OffsetY"].value = 0
+        max_width = color_nodemap["Width"].max
+        max_height = color_nodemap["Height"].max
         # Check that the desired color frame size is valid before attempting to set
         if (
             self.color_frame_size[0] <= 0
@@ -455,51 +455,54 @@ class LucidRgbdCamera(RgbdCamera):
             raise Exception(
                 f"Invalid color frame size specified: {self.color_frame_size[0]}x{self.color_frame_size[1]}. Max size is {max_width}x{max_height}."
             )
-        nodemap["Width"].value = self.color_frame_size[0]
-        nodemap["Height"].value = self.color_frame_size[1]
+        color_nodemap["Width"].value = self.color_frame_size[0]
+        color_nodemap["Height"].value = self.color_frame_size[1]
         # Set the ROI offset to be the center of the full frame
         self._color_frame_offset = (
             (max_width - self.color_frame_size[0]) // 2,
             (max_height - self.color_frame_size[1]) // 2,
         )
-        nodemap["OffsetX"].value = self._color_frame_offset[0]
-        nodemap["OffsetY"].value = self._color_frame_offset[1]
+        color_nodemap["OffsetX"].value = self._color_frame_offset[0]
+        color_nodemap["OffsetY"].value = self._color_frame_offset[1]
         # Set the following when Persistent IP is set on the camera
-        nodemap["GevPersistentARPConflictDetectionEnable"].value = False
+        color_nodemap["GevPersistentARPConflictDetectionEnable"].value = False
 
         # Configure depth device nodemap
-        nodemap = self._depth_device.nodemap
-        stream_nodemap = self._depth_device.tl_stream_nodemap
-        nodemap["AcquisitionMode"].value = "Continuous"
+        depth_nodemap = self._depth_device.nodemap
+        depth_stream_nodemap = self._depth_device.tl_stream_nodemap
+        depth_nodemap["AcquisitionMode"].value = "Continuous"
         # Setting the buffer handling mode to "NewestOnly" ensures the most recent image
         # is delivered, even if it means skipping frames
-        stream_nodemap["StreamBufferHandlingMode"].value = "NewestOnly"
+        depth_stream_nodemap["StreamBufferHandlingMode"].value = "NewestOnly"
         # Enable stream auto negotiate packet size, which instructs the camera to receive
         # the largest packet size that the system will allow
-        stream_nodemap["StreamAutoNegotiatePacketSize"].value = True
+        depth_stream_nodemap["StreamAutoNegotiatePacketSize"].value = True
         # Enable stream packet resend. If a packet is missed while receiving an image, a
         # packet resend is requested which retrieves and redelivers the missing packet
         # in the correct order.
-        stream_nodemap["StreamPacketResendEnable"].value = True
+        depth_stream_nodemap["StreamPacketResendEnable"].value = True
         # Set pixel format
-        self.depth_frame_size = (nodemap["Width"].value, nodemap["Height"].value)
-        nodemap["PixelFormat"].value = PixelFormat.Coord3D_ABCY16
+        self.depth_frame_size = (
+            depth_nodemap["Width"].value,
+            depth_nodemap["Height"].value,
+        )
+        depth_nodemap["PixelFormat"].value = PixelFormat.Coord3D_ABCY16
         # Set Scan 3D node values
-        nodemap["Scan3dOperatingMode"].value = "Distance3000mmSingleFreq"
-        nodemap["ExposureTimeSelector"].value = "Exp88Us"
-        self._xyz_scale = nodemap["Scan3dCoordinateScale"].value
-        nodemap["Scan3dCoordinateSelector"].value = "CoordinateA"
-        x_offset = nodemap["Scan3dCoordinateOffset"].value
-        nodemap["Scan3dCoordinateSelector"].value = "CoordinateB"
-        y_offset = nodemap["Scan3dCoordinateOffset"].value
-        nodemap["Scan3dCoordinateSelector"].value = "CoordinateC"
-        z_offset = nodemap["Scan3dCoordinateOffset"].value
+        depth_nodemap["Scan3dOperatingMode"].value = "Distance3000mmSingleFreq"
+        depth_nodemap["ExposureTimeSelector"].value = "Exp88Us"
+        self._xyz_scale = depth_nodemap["Scan3dCoordinateScale"].value
+        depth_nodemap["Scan3dCoordinateSelector"].value = "CoordinateA"
+        x_offset = depth_nodemap["Scan3dCoordinateOffset"].value
+        depth_nodemap["Scan3dCoordinateSelector"].value = "CoordinateB"
+        y_offset = depth_nodemap["Scan3dCoordinateOffset"].value
+        depth_nodemap["Scan3dCoordinateSelector"].value = "CoordinateC"
+        z_offset = depth_nodemap["Scan3dCoordinateOffset"].value
         self._xyz_offset = (x_offset, y_offset, z_offset)
         # Set confidence threshold
-        nodemap["Scan3dConfidenceThresholdEnable"].value = True
-        nodemap["Scan3dConfidenceThresholdMin"].value = 500
+        depth_nodemap["Scan3dConfidenceThresholdEnable"].value = True
+        depth_nodemap["Scan3dConfidenceThresholdMin"].value = 500
         # Set the following when Persistent IP is set on the camera
-        nodemap["GevPersistentARPConflictDetectionEnable"].value = False
+        depth_nodemap["GevPersistentARPConflictDetectionEnable"].value = False
 
         # Set exposure and gain
         if exposure_us is not None:
@@ -510,11 +513,11 @@ class LucidRgbdCamera(RgbdCamera):
         # Start streams
         self._color_device.start_stream(10)
         self._logger.info(
-            f"Device (color) {self.color_camera_serial_number} is now streaming at {self.color_frame_size[0]}x{self.color_frame_size[1]}"
+            f"Device (color, serial={self.color_camera_serial_number}) is now streaming with resolution ({self.color_frame_size[0]}, {self.color_frame_size[1]})"
         )
         self._depth_device.start_stream(10)
         self._logger.info(
-            f"Device (depth) {self.depth_camera_serial_number} is now streaming at {self.depth_frame_size[0]}x{self.depth_frame_size[1]}"
+            f"Device (depth, serial={self.depth_camera_serial_number}) is now streaming with resolution ({self.depth_frame_size[0]}, {self.depth_frame_size[1]})"
         )
         self._call_state_change_callback()
 
@@ -760,10 +763,7 @@ def _get_calibration_params_dir():
 def _get_frame(output_dir):
     output_dir = os.path.expanduser(output_dir)
 
-    camera = create_lucid_rgbd_camera(
-        color_camera_serial_number="241300039",
-        depth_camera_serial_number="241400544",
-    )
+    camera = create_lucid_rgbd_camera()
     camera.start()
     time.sleep(1)
 
