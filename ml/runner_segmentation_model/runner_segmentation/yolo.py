@@ -96,6 +96,7 @@ class Yolo:
         result = self.model.track(
             cv2.cvtColor(image, cv2.COLOR_RGB2BGR),
             imgsz=self.imgsz,
+            tracker="bytetrack.yaml",
             iou=iou,
             persist=True,
             half=True,
@@ -132,20 +133,24 @@ class Yolo:
             # Measure inference time
             # Warmup
             for i in range(5):
-                self.model(
+                self.model.track(
                     image_array,
                     imgsz=self.imgsz,
+                    tracker="bytetrack.yaml",
                     iou=iou,
+                    persist=True,
                     half=True,
                 )
             num_inferences = 10
             total_time_secs = 0
             for i in range(num_inferences):
                 inference_start = perf_counter()
-                self.model(
+                self.model.track(
                     image_array,
                     imgsz=self.imgsz,
+                    tracker="bytetrack.yaml",
                     iou=iou,
+                    persist=True,
                     half=True,
                 )
                 total_time_secs = total_time_secs + (perf_counter() - inference_start)
