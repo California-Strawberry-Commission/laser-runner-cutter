@@ -95,7 +95,10 @@ class RunnerCutterControlNode:
 
     @subscribe(camera_node.detections_topic)
     async def on_detection(self, detection_type, timestamp, instances, invalid_points):
-        if detection_type == DetectionType.RUNNER:
+        if (
+            detection_type == DetectionType.RUNNER
+            or detection_type == DetectionType.CIRCLE
+        ):
             async with self._runner_tracker_lock:
                 # For new tracks, add to tracker and set as pending. For tracks that are detected
                 # again, update the track pixel and position; for FAILED tracks, set them as PENDING
@@ -217,6 +220,16 @@ class RunnerCutterControlNode:
     @service("~/start_runner_cutter", Trigger)
     async def start_runner_cutter(self):
         success = self._start_task(self._runner_cutter_task(), "runner_cutter")
+        return result(success=success)
+
+    @service("~/start_circle_follower", Trigger)
+    async def start_circle_follower(self):
+        success = self._start_task(
+            self._runner_cutter_task(
+                detection_type=DetectionType.CIRCLE, enable_detection_during_burn=False
+            ),
+            "circle_follower",
+        )
         return result(success=success)
 
     @service("~/stop", Trigger)
@@ -440,9 +453,11 @@ class RunnerCutterControlNode:
             attempt += 1
         return None, None
 
-    async def _runner_cutter_task(self):
+    async def _runner_cutter_task(
+        self, detection_type=DetectionType.RUNNER, enable_detection_during_burn=False
+    ):
         await self._reset_to_idle()
-        await self.camera_node.start_detection(detection_type=DetectionType.RUNNER)
+        await self.camera_node.start_detection(detection_type=detection_type)
         while True:
             # Acquire target. If there are no valid targets, wait for another detection event.
             target = await self._acquire_next_target()
@@ -453,10 +468,9 @@ class RunnerCutterControlNode:
                 continue
 
             try:
-                # Temporarily disable runner detection during aim/burn for now
-                await self.camera_node.stop_detection(
-                    detection_type=DetectionType.RUNNER
-                )
+                if not enable_detection_during_burn:
+                    # Temporarily disable runner detection during aim/burn
+                    await self.camera_node.stop_detection(detection_type=detection_type)
 
                 # Aim
                 if self.runner_cutter_control_params.enable_aiming:
@@ -473,9 +487,10 @@ class RunnerCutterControlNode:
                 # Burn
                 await self._burn_target(target, laser_coord)
             finally:
-                await self.camera_node.start_detection(
-                    detection_type=DetectionType.RUNNER
-                )
+                if not enable_detection_during_burn:
+                    await self.camera_node.start_detection(
+                        detection_type=detection_type
+                    )
 
     async def _acquire_next_target(self) -> Optional[Track]:
         # If there is already an active track, just use that track. Otherwise, check pending

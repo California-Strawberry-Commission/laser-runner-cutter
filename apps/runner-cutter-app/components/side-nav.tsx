@@ -29,6 +29,10 @@ const SIDENAV_ITEMS: SideNavItem[] = [
     path: "/test/aim",
   },
   {
+    title: "Track Test",
+    path: "/test/track",
+  },
+  {
     title: "Navigation",
     path: "/test/navigation",
   },

@@ -111,6 +111,13 @@ export default function useControlNode(nodeName: string) {
     successOutputMapper
   );
 
+  const startCircleFollower = node.useService(
+    "~/start_circle_follower",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
+
   const stop = node.useService(
     "~/stop",
     "std_srvs/Trigger",
@@ -127,6 +134,7 @@ export default function useControlNode(nodeName: string) {
     addCalibrationPoint,
     manualTargetAimLaser,
     startRunnerCutter,
+    startCircleFollower,
     stop,
   };
 }

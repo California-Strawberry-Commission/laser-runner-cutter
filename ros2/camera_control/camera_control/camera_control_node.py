@@ -269,7 +269,10 @@ class CameraControlNode:
             circle_centers = await self.circle_detector.detect(frame.color_frame)
             return result(
                 result=self._create_detection_result_msg(
-                    detection_type, circle_centers, frame
+                    detection_type,
+                    circle_centers,
+                    frame,
+                    [i + 1 for i in range(len(circle_centers))],
                 )
             )
         else:
@@ -468,7 +471,10 @@ class CameraControlNode:
                 circle_centers = await self.circle_detector.detect(frame.color_frame)
                 debug_frame = self._debug_draw_circles(debug_frame, circle_centers)
                 msg = self._create_detection_result_msg(
-                    DetectionType.CIRCLE, circle_centers, frame
+                    DetectionType.CIRCLE,
+                    circle_centers,
+                    frame,
+                    [i + 1 for i in range(len(circle_centers))],
                 )
                 asyncio.create_task(
                     self.detections_topic(
