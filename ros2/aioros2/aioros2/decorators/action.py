@@ -1,10 +1,11 @@
 import inspect
 from ._decorators import RosDefinition
 
+
 class RosAction(RosDefinition):
     def __init__(self, path, idl, handler) -> None:
         self._check_action_handler_signature(handler, idl)
-        
+
         self.path = path
         self.idl = idl
         self.handler = handler
@@ -14,7 +15,7 @@ class RosAction(RosDefinition):
         fn_inspection = inspect.signature(fn)
         fn_dict = fn_inspection.parameters
         fn_params = set(fn_dict)
-        
+
         idl_dict = act.Goal.get_fields_and_field_types()
         idl_params = set(idl_dict.keys())
 
@@ -28,8 +29,9 @@ class RosAction(RosDefinition):
                 f"    IDL: {act.__name__} -> \t{idl_params}"
             )
 
+
 def action(namespace, act_idl):
-    def _action(fn):        
+    def _action(fn):
         return RosAction(namespace, act_idl, fn)
 
     return _action

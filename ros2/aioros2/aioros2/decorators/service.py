@@ -7,8 +7,10 @@ from ._decorators import RosDefinition, idl_to_kwargs
 class RosService(RosDefinition):
     def __init__(self, path, idl, handler):
         if not hasattr(idl, "Request"):
-            raise TypeError("Passed object is not a service-compatible IDL object! Make sure it isn't a topic or action IDL.")
-        
+            raise TypeError(
+                "Passed object is not a service-compatible IDL object! Make sure it isn't a topic or action IDL."
+            )
+
         self._check_service_handler_signature(handler, idl)
         self.path = path
         self.idl = idl
@@ -20,7 +22,7 @@ class RosService(RosDefinition):
         fn_dict = fn_inspection.parameters
         fn_params = set(fn_dict)
         fn_params.discard("self")
-        
+
         idl_dict = srv.Request.get_fields_and_field_types()
         idl_params = set(idl_dict.keys())
 
@@ -33,9 +35,9 @@ class RosService(RosDefinition):
                 f"    IDL: {fn_name} -> \t{idl_params}"
             )
 
+
 def service(namespace, srv_idl):
     def _service(fn):
         return RosService(namespace, srv_idl, fn)
 
     return _service
-

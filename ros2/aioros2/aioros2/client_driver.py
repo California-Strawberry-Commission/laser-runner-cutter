@@ -18,12 +18,13 @@ from .decorators.timer import RosTimer
 from .decorators.topic import RosTopic
 from .decorators.start import RosStart
 
+
 # Extend RosTopic for downstream references
 class CachedSubscription(RosTopic):
     def __init__(self, topic: RosTopic, client: "ClientDriver"):
         super().__init__(topic.path, topic.idl, topic.qos)
         self.node = client
-        self.value = None 
+        self.value = None
 
         fqt = expand_topic_name(topic.path, client._node_name, client._node_namespace)
 
@@ -33,8 +34,8 @@ class CachedSubscription(RosTopic):
             self.value = msg
 
         client._node.create_subscription(topic.idl, fqt, cb, topic.qos)
-        
-        
+
+
 class AsyncActionClient:
     _action_complete = False
     result = None
@@ -69,7 +70,6 @@ class AsyncActionClient:
             return val.feedback
 
 
-
 class ClientDriver(AsyncDriver):
     """
     Generates an interface to communicate with an imported node from a server driver.
@@ -80,9 +80,10 @@ class ClientDriver(AsyncDriver):
     ):
         self._node: "server_driver.ServerDriver" = server_node
 
-
         if logger is None:
-            logger = rclpy.logging.get_logger(self._get_logger_name(node_name, node_namespace))
+            logger = rclpy.logging.get_logger(
+                self._get_logger_name(node_name, node_namespace)
+            )
 
         super().__init__(node_def, logger, node_name, node_namespace)
 
@@ -107,14 +108,18 @@ class ClientDriver(AsyncDriver):
 
         # Lookup the import parameters on the remote server node
         # Need to use param api because these params are not local to this server node.
-        fqt = expand_topic_name("~/get_parameters", self._node_name, self._node_namespace)
+        fqt = expand_topic_name(
+            "~/get_parameters", self._node_name, self._node_namespace
+        )
 
         param_cli = self._node.create_client(GetParameters, fqt)
 
         while not param_cli.wait_for_service(timeout_sec=1.0):
-            self.log_debug(f'>{fqt}< service not available.')
+            self.log_debug(f">{fqt}< service not available.")
 
-        req = GetParameters.Request(names=[node_name_param_name, node_namespace_param_name])
+        req = GetParameters.Request(
+            names=[node_name_param_name, node_namespace_param_name]
+        )
 
         # Block asyncio to perform this service call - initialization is sync so this
         # call needs to be too.
@@ -124,31 +129,38 @@ class ClientDriver(AsyncDriver):
             if res.done():
                 res = res.result()
                 break
-        
+
         import_name_param, import_ns_param = res.values
 
         # The configured import name and namespace!
         import_name = import_name_param.string_value
         import_ns = import_ns_param.string_value or "/"
 
-        if import_name == '':
-            self.log_warn(f"Could not complete import for >{attr}< - "
-                          f"Service was found, but params >{node_name_param_name}< "
-                          f"or >{node_namespace_param_name}< were not set.")
+        if import_name == "":
+            self.log_warn(
+                f"Could not complete import for >{attr}< - "
+                f"Service was found, but params >{node_name_param_name}< "
+                f"or >{node_namespace_param_name}< were not set."
+            )
 
         # If the referenced node is the same as the serverDriver (circular reference)
         # DON'T create a client driver. Return the server driver.
-        if import_name == self._node._node_name and import_ns == self._node._node_namespace:
+        if (
+            import_name == self._node._node_name
+            and import_ns == self._node._node_namespace
+        ):
             return self._node
 
         node_def = ros_import.resolve()
 
-        # Create a new clientdriver for this node
+        # Create a new ClientDriver for this node
         return ClientDriver(node_def, self._node, import_name, import_ns)
 
     def _attach_publisher(self, attr, topic: RosTopic):
-        topic.node = self # Set topic node in definition so other attachers know about it.
-        
+        topic.node = (
+            self  # Set topic node in definition so other attachers know about it.
+        )
+
         return CachedSubscription(topic, self)
 
     def _attach_timer(self, attr, ros_timer: RosTimer):

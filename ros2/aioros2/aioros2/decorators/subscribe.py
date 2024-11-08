@@ -18,9 +18,13 @@ class RosSubscription(RosDefinition):
             if self.topic.path.startswith("/"):
                 return RosTopic(self.topic.path, self.topic.idl, self.topic.qos)
             else:
-                raise RuntimeError(f"Node for topic >{self.topic.path}< was never set!a")
-        
-        fully_qual = expand_topic_name(self.topic.path, self.topic.node._node_name, self.topic.node._node_namespace)
+                raise RuntimeError(
+                    f"Node for topic >{self.topic.path}< was never set!a"
+                )
+
+        fully_qual = expand_topic_name(
+            self.topic.path, self.topic.node._node_name, self.topic.node._node_namespace
+        )
         return RosTopic(fully_qual, self.topic.idl, self.topic.qos)
 
 
@@ -30,7 +34,7 @@ def subscribe(topic: Union[Any, str], idl: Union[Any, None] = None, qos_queue=10
             # Do arg checks
             if idl is None:
                 raise ValueError("An IDL must be provided for a string-based topic")
-            
+
             return RosSubscription.raw_topic(topic, idl, qos_queue, fn)
         else:
             return RosSubscription(topic, fn)

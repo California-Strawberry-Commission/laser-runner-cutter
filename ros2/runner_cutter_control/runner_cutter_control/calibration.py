@@ -211,7 +211,7 @@ class Calibration:
                 self._logger.info(f"Successfully loaded calibration file {filepath}")
                 return filepath
             except Exception as e:
-                self._logger.warning(f"Could not load calibration file {filepath}: {e}")
+                self._logger.error(f"Could not load calibration file {filepath}: {e}")
                 return None
         else:
             self._logger.info(f"Could not find calibration file {filepath}")

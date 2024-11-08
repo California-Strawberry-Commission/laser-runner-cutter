@@ -1,5 +1,6 @@
 from ._decorators import RosDefinition
 
+
 class RosParam(RosDefinition):
     def __init__(self, *args):
         # self._desc = ParameterDescriptor()

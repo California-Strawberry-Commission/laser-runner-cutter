@@ -1,6 +1,5 @@
 import asyncio
 from inspect import getmembers
-import traceback
 import types
 import rclpy
 from typing import List
