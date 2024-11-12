@@ -150,6 +150,7 @@ class LucidRgbdCamera(RgbdCamera):
         depth_camera_serial_number: Optional[str] = None,
         color_frame_size: Tuple[int, int] = (2048, 1536),
         state_change_callback: Optional[Callable[[State], None]] = None,
+        ptp_enabled: bool = False,
         logger: Optional[logging.Logger] = None,
     ):
         """
@@ -197,6 +198,8 @@ class LucidRgbdCamera(RgbdCamera):
         self._is_running = False
         self._connection_thread = None
         self._acquisition_thread = None
+
+        self._ptp_enabled = ptp_enabled
 
     @property
     def state(self) -> State:
@@ -361,52 +364,52 @@ class LucidRgbdCamera(RgbdCamera):
     def _acquisition_thread_fn(
         self, frame_callback: Optional[Callable[[RgbdFrame], None]] = None
     ):
-        with self._cv:
-            while self._is_running:
-                with concurrent.futures.ThreadPoolExecutor() as executor:
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            with self._cv:
+                while self._is_running:
                     future_color_frame = executor.submit(self._get_color_frame)
                     future_depth_frame = executor.submit(self._get_depth_frame)
 
                     try:
                         color_frame = future_color_frame.result()
                         depth_frame = future_depth_frame.result()
-                    except:
-                        self._logger.warning(
-                            f"There was an issue with the camera. Signaling connection thread"
+                    except Exception as e:
+                        self._logger.error(
+                            f"There was an issue with the camera: {e}. Signaling connection thread"
                         )
                         self._cv.notify()
                         self._cv.wait()
                         continue
 
-                if color_frame is None or depth_frame is None:
-                    self._logger.warning(
-                        f"No frame available. Signaling connection thread"
-                    )
-                    self._cv.notify()
-                    self._cv.wait()
-                    continue
-
-                # depth_frame is a numpy structured array containing both xyz and intensity data
-                # depth_frame_intensity = (depth_frame["i"] / 256).astype(np.uint8)
-                depth_frame_xyz = np.stack(
-                    [depth_frame["x"], depth_frame["y"], depth_frame["z"]], axis=-1
-                )
-
-                if frame_callback is not None:
-                    frame_callback(
-                        LucidFrame(
-                            color_frame,
-                            depth_frame_xyz,  # type: ignore
-                            time.time() * 1000,
-                            self._color_camera_intrinsic_matrix,
-                            self._color_camera_distortion_coeffs,
-                            self._depth_camera_intrinsic_matrix,
-                            self._depth_camera_distortion_coeffs,
-                            self._xyz_to_color_camera_extrinsic_matrix,
-                            self._xyz_to_depth_camera_extrinsic_matrix,
-                            color_frame_offset=self._color_frame_offset,
+                    if color_frame is None or depth_frame is None:
+                        self._logger.error(
+                            f"No frame available. Signaling connection thread"
                         )
+                        self._cv.notify()
+                        self._cv.wait()
+                        continue
+
+                    # depth_frame is a numpy structured array containing both xyz and intensity data
+                    # depth_frame_intensity = (depth_frame["i"] / 256).astype(np.uint8)
+                    depth_frame_xyz = np.stack(
+                        [depth_frame["x"], depth_frame["y"], depth_frame["z"]], axis=-1
                     )
+
+                    if frame_callback is not None:
+                        frame_callback(
+                            LucidFrame(
+                                color_frame,
+                                depth_frame_xyz,  # type: ignore
+                                time.time() * 1000,
+                                self._color_camera_intrinsic_matrix,
+                                self._color_camera_distortion_coeffs,
+                                self._depth_camera_intrinsic_matrix,
+                                self._depth_camera_distortion_coeffs,
+                                self._xyz_to_color_camera_extrinsic_matrix,
+                                self._xyz_to_depth_camera_extrinsic_matrix,
+                                color_frame_offset=self._color_frame_offset,
+                            )
+                        )
 
         self._logger.info(f"Terminating acquisition thread")
 
@@ -424,20 +427,26 @@ class LucidRgbdCamera(RgbdCamera):
         self._color_device = devices[0]
         self._depth_device = devices[1]
 
+        def set_network_settings(device):
+            device_nodemap = device.nodemap
+            stream_nodemap = device.tl_stream_nodemap
+            # Setting the buffer handling mode to "NewestOnly" ensures the most recent image
+            # is delivered, even if it means skipping frames
+            stream_nodemap["StreamBufferHandlingMode"].value = "NewestOnly"
+            # Enable stream auto negotiate packet size, which instructs the camera to receive
+            # the largest packet size that the system will allow
+            stream_nodemap["StreamAutoNegotiatePacketSize"].value = True
+            # Enable stream packet resend. If a packet is missed while receiving an image, a
+            # packet resend is requested which retrieves and redelivers the missing packet
+            # in the correct order.
+            stream_nodemap["StreamPacketResendEnable"].value = True
+            # Set the following when Persistent IP is set on the camera
+            device_nodemap["GevPersistentARPConflictDetectionEnable"].value = False
+
         # Configure color device nodemap
+        set_network_settings(self._color_device)
         color_nodemap = self._color_device.nodemap
-        color_stream_nodemap = self._color_device.tl_stream_nodemap
         color_nodemap["AcquisitionMode"].value = "Continuous"
-        # Setting the buffer handling mode to "NewestOnly" ensures the most recent image
-        # is delivered, even if it means skipping frames
-        color_stream_nodemap["StreamBufferHandlingMode"].value = "NewestOnly"
-        # Enable stream auto negotiate packet size, which instructs the camera to receive
-        # the largest packet size that the system will allow
-        color_stream_nodemap["StreamAutoNegotiatePacketSize"].value = True
-        # Enable stream packet resend. If a packet is missed while receiving an image, a
-        # packet resend is requested which retrieves and redelivers the missing packet
-        # in the correct order.
-        color_stream_nodemap["StreamPacketResendEnable"].value = True
         # Set frame size and pixel format
         color_nodemap["PixelFormat"].value = PixelFormat.RGB8
         # Reset ROI (Region of Interest) offset, as it persists on the device.
@@ -464,23 +473,11 @@ class LucidRgbdCamera(RgbdCamera):
         )
         color_nodemap["OffsetX"].value = self._color_frame_offset[0]
         color_nodemap["OffsetY"].value = self._color_frame_offset[1]
-        # Set the following when Persistent IP is set on the camera
-        color_nodemap["GevPersistentARPConflictDetectionEnable"].value = False
 
         # Configure depth device nodemap
+        set_network_settings(self._depth_device)
         depth_nodemap = self._depth_device.nodemap
-        depth_stream_nodemap = self._depth_device.tl_stream_nodemap
         depth_nodemap["AcquisitionMode"].value = "Continuous"
-        # Setting the buffer handling mode to "NewestOnly" ensures the most recent image
-        # is delivered, even if it means skipping frames
-        depth_stream_nodemap["StreamBufferHandlingMode"].value = "NewestOnly"
-        # Enable stream auto negotiate packet size, which instructs the camera to receive
-        # the largest packet size that the system will allow
-        depth_stream_nodemap["StreamAutoNegotiatePacketSize"].value = True
-        # Enable stream packet resend. If a packet is missed while receiving an image, a
-        # packet resend is requested which retrieves and redelivers the missing packet
-        # in the correct order.
-        depth_stream_nodemap["StreamPacketResendEnable"].value = True
         # Set pixel format
         self.depth_frame_size = (
             depth_nodemap["Width"].value,
@@ -501,8 +498,61 @@ class LucidRgbdCamera(RgbdCamera):
         # Set confidence threshold
         depth_nodemap["Scan3dConfidenceThresholdEnable"].value = True
         depth_nodemap["Scan3dConfidenceThresholdMin"].value = 500
-        # Set the following when Persistent IP is set on the camera
-        depth_nodemap["GevPersistentARPConflictDetectionEnable"].value = False
+
+        # Configure PTP
+        if self._ptp_enabled:
+            # Enable PTP Sync
+            color_nodemap["PtpEnable"].value = True
+            depth_nodemap["PtpEnable"].value = True
+            color_nodemap["PtpSlaveOnly"].value = False
+            depth_nodemap["PtpSlaveOnly"].value = True
+            color_nodemap["AcquisitionStartMode"].value = "PTPSync"
+            depth_nodemap["AcquisitionStartMode"].value = "PTPSync"
+
+            # Set frame rate
+            # When PTPSync mode is turned on, the AcquisitionFrameRate node will not be controlling
+            # the actual frame rate but it might cap the max achievable frame rate. Instead, PTPSyncFrameRate
+            # is used to change the frame rate. However, in order to avoid capping the frame rate, we need to
+            # set AcquisitionFrameRate to its maximum value.
+            color_fps = color_nodemap["AcquisitionFrameRate"].max
+            color_nodemap["AcquisitionFrameRate"].value = color_fps
+            depth_fps = depth_nodemap["AcquisitionFrameRate"].max
+            depth_nodemap["AcquisitionFrameRate"].value = depth_fps
+            # PTPSyncFrameRate needs to always be less than AcquisitionFrameRate
+            # Use the min frame rate across both devices
+            fps = min(color_fps, depth_fps)
+            color_nodemap["PTPSyncFrameRate"].value = fps
+            depth_nodemap["PTPSyncFrameRate"].value = fps
+
+            # Set packet delay and frame transmission delay
+            # See https://support.thinklucid.com/app-note-bandwidth-sharing-in-multi-camera-systems/
+            # With packet size of 9000 bytes on a 1 Gbps link, the packet delay is:
+            # (9000 bytes * 8 ns/byte) * 1.1 buffer = 79200 ns
+            color_nodemap["GevSCFTD"].value = 0
+            depth_nodemap["GevSCFTD"].value = 79200
+            color_nodemap["GevSCPD"].value = 79200
+            depth_nodemap["GevSCPD"].value = 79200
+
+            # Wait for PTP status to be set
+            self._logger.info(
+                f"Waiting for device (color, serial={self.color_camera_serial_number}) to become Master. Current state: {color_nodemap['PtpStatus'].value}"
+            )
+            while color_nodemap["PtpStatus"].value != "Master":
+                time.sleep(2)
+            self._logger.info(
+                f"Waiting for device (depth, serial={self.depth_camera_serial_number}) to become Slave. Current state: {depth_nodemap['PtpStatus'].value}"
+            )
+            while depth_nodemap["PtpStatus"].value != "Slave":
+                time.sleep(2)
+        else:
+            color_nodemap["PtpEnable"].value = False
+            depth_nodemap["PtpEnable"].value = False
+            color_nodemap["AcquisitionStartMode"].value = "Normal"
+            depth_nodemap["AcquisitionStartMode"].value = "Normal"
+            color_nodemap["GevSCFTD"].value = 0
+            depth_nodemap["GevSCFTD"].value = 0
+            color_nodemap["GevSCPD"].value = 80
+            depth_nodemap["GevSCPD"].value = 80
 
         # Set exposure and gain
         if exposure_us is not None:
@@ -629,10 +679,12 @@ class LucidRgbdCamera(RgbdCamera):
         nodemap = self._color_device.nodemap
         return (nodemap["Gain"].min, nodemap["Gain"].max)
 
-    def _get_color_frame(self) -> Optional[np.ndarray]:
+    def _get_color_frame(
+        self, timeout_ms: Optional[int] = None
+    ) -> Optional[np.ndarray]:
         # get_buffer must be called after start_stream and before stop_stream (or
         # system.destroy_device), and buffers must be requeued
-        buffer = self._color_device.get_buffer()
+        buffer = self._color_device.get_buffer(timeout=timeout_ms)
 
         # Convert to numpy array
         # buffer is a list of (buffer.width * buffer.height * num_channels) uint8s
@@ -649,10 +701,12 @@ class LucidRgbdCamera(RgbdCamera):
 
         return np_array
 
-    def _get_depth_frame(self) -> Optional[np.ndarray]:
+    def _get_depth_frame(
+        self, timeout_ms: Optional[int] = None
+    ) -> Optional[np.ndarray]:
         # get_buffer must be called after start_stream and before stop_stream (or
         # system.destroy_device), and buffers must be requeued
-        buffer = self._depth_device.get_buffer()
+        buffer = self._depth_device.get_buffer(timeout=timeout_ms)
 
         # Convert to numpy structured array
         # buffer is a list of (buffer.width * buffer.height * 8) 1-byte values. The 8 bytes per
