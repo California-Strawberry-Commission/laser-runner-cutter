@@ -20,12 +20,12 @@ start_runner_cutter() {
   ros2 launch runner_cutter_control launch.py
 }
 
-start_web_video_server() {
+start_webrtc() {
   cd $script_dir
   source setup.sh
-  ros2 launch runner_cutter_control web_video_server_launch.py
+  ros2 launch webrtc_ros2 launch.py
 }
 
-start_lifecycle_manager & start_rosbridge  & start_runner_cutter & start_web_video_server
+start_lifecycle_manager & start_rosbridge  & start_runner_cutter & start_webrtc
 
 wait

@@ -4,30 +4,30 @@ import { cn } from "@/lib/utils";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Track, TrackState } from "@/lib/useControlNode";
 
-function getImageSizeAndOffset(imgElement: HTMLImageElement) {
-  const rect = imgElement.getBoundingClientRect();
+function getVideoSizeAndOffset(videoElement: HTMLVideoElement) {
+  const rect = videoElement.getBoundingClientRect();
 
-  // The dimensions of the image element (including the padding caused by object-contain)
+  // The dimensions of the video element (including the padding caused by object-contain)
   const containerWidth = rect.width;
   const containerHeight = rect.height;
 
-  // Get the actual image size based on its intrinsic dimensions and container's aspect ratio
-  const naturalWidth = imgElement.naturalWidth;
-  const naturalHeight = imgElement.naturalHeight;
+  // Get the actual video size based on its intrinsic dimensions and container's aspect ratio
+  const naturalWidth = videoElement.videoWidth;
+  const naturalHeight = videoElement.videoHeight;
   const aspectRatio = naturalWidth / naturalHeight;
 
   let renderedWidth, renderedHeight;
   if (containerWidth / containerHeight > aspectRatio) {
-    // Image is constrained by height
+    // Video is constrained by height
     renderedHeight = containerHeight;
     renderedWidth = renderedHeight * aspectRatio;
   } else {
-    // Image is constrained by width
+    // Video is constrained by width
     renderedWidth = containerWidth;
     renderedHeight = renderedWidth / aspectRatio;
   }
 
-  // Calculate the top-left corner of the image inside the container
+  // Calculate the top-left corner of the video inside the container
   const offsetX = (containerWidth - renderedWidth) / 2;
   const offsetY = (containerHeight - renderedHeight) / 2;
 
@@ -36,7 +36,6 @@ function getImageSizeAndOffset(imgElement: HTMLImageElement) {
 
 export default function FramePreviewWithOverlay({
   topicName,
-  quality = 30,
   enableStream = false,
   onImageClick,
   enableOverlay = false,
@@ -46,7 +45,6 @@ export default function FramePreviewWithOverlay({
   className,
 }: {
   topicName?: string;
-  quality?: number;
   enableStream?: boolean;
   onImageClick?: (normalizedX: number, normalizedY: number) => void;
   enableOverlay?: boolean;
@@ -60,7 +58,8 @@ export default function FramePreviewWithOverlay({
   overlayTracks?: Track[];
   className?: string;
 }) {
-  const imgRef = useRef<HTMLImageElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [canvasStyle, setCanvasStyle] = useState({
     width: 0,
@@ -71,25 +70,89 @@ export default function FramePreviewWithOverlay({
 
   let streamUrl = "";
   if (typeof window !== "undefined" && enableStream && topicName) {
-    const videoServer =
+    const signalingServerUrl =
       process.env.NEXT_PUBLIC_VIDEO_SERVER_URL ??
-      `http://${window.location.hostname}:8080`;
-    streamUrl = `${videoServer}/stream?topic=${topicName}&quality=${quality}&qos_profile=sensor_data`;
+      `ws://${window.location.hostname}:8080`;
+    streamUrl = `${signalingServerUrl}?topic=${topicName}`;
   }
 
-  const renderOverlay = streamUrl && enableOverlay;
+  const renderOverlay = streamUrl && enableOverlay && !isLoading;
 
-  // Handle image click and calculate normalized coordinates
-  const handleImageClick = useCallback(
-    (e: React.MouseEvent<HTMLImageElement, MouseEvent>) => {
-      if (!imgRef.current || !streamUrl) {
+  // Unfortunately, with SSR, this needed for code that should only run on client side
+  // TODO: move this to a separate custom hook
+  useEffect(() => {
+    if (typeof window === "undefined" || !streamUrl) {
+      return;
+    }
+
+    const pc = new RTCPeerConnection({
+      iceServers: [], // No STUN/TURN servers needed
+    });
+    // From https://stackoverflow.com/questions/50002099/webrtc-one-way-video-call
+    pc.addTransceiver("video");
+    // This step seems to be optional:
+    pc.getTransceivers().forEach((t) => (t.direction = "recvonly"));
+
+    pc.ontrack = (event) => {
+      if (event.track.kind === "video") {
+        console.log(`Video track received`);
+        if (videoRef.current) {
+          videoRef.current.srcObject = event.streams[0];
+        }
+      }
+    };
+
+    pc.oniceconnectionstatechange = (event) => {
+      console.log(`oniceconnectionstatechange: ${pc.iceConnectionState}`);
+    };
+
+    pc.onsignalingstatechange = (event) => {
+      console.log(`onsignalingstatechange: ${pc.signalingState}`);
+    };
+
+    const startTime = Date.now();
+    pc.onconnectionstatechange = (event) => {
+      console.log(`onconnectionstatechange: ${pc.connectionState}`);
+      if (pc.iceConnectionState === "connected") {
+        console.log(`Connected in ${Date.now() - startTime} ms`);
+      }
+    };
+
+    const socket = new WebSocket(streamUrl);
+
+    socket.onmessage = async (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.answer) {
+        await pc.setRemoteDescription(data.answer);
+      } else if (data.candidate) {
+        await pc.addIceCandidate(data.candidate);
+      }
+    };
+
+    socket.onopen = async () => {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socket.send(JSON.stringify({ offer: pc.localDescription }));
+    };
+
+    return () => {
+      socket.close();
+      pc.close();
+    };
+  }, [streamUrl]);
+
+  // Handle video click and calculate normalized coordinates
+  const handleVideoClick = useCallback(
+    (e: React.MouseEvent<HTMLVideoElement, MouseEvent>) => {
+      if (!videoRef.current || !streamUrl) {
         return;
       }
 
-      const imgElement = imgRef.current;
+      const videoElement = videoRef.current;
       const { renderedWidth, renderedHeight, offsetX, offsetY } =
-        getImageSizeAndOffset(imgElement);
-      const rect = imgElement.getBoundingClientRect();
+        getVideoSizeAndOffset(videoElement);
+      const rect = videoElement.getBoundingClientRect();
 
       // Get the click position relative to the image
       const clickX = e.clientX - rect.left - offsetX;
@@ -115,13 +178,16 @@ export default function FramePreviewWithOverlay({
 
   // Update canvas position and size to exactly match the rendered image
   const updateCanvasSize = useCallback(() => {
-    if (!imgRef.current || !canvasRef.current) {
+    if (!videoRef.current || !canvasRef.current) {
       return;
     }
 
-    const imgElement = imgRef.current;
+    const videoElement = videoRef.current;
     const { renderedWidth, renderedHeight, offsetX, offsetY } =
-      getImageSizeAndOffset(imgElement);
+      getVideoSizeAndOffset(videoElement);
+    console.log(
+      `setCanvasStyle(renderedWidth: ${renderedWidth}, renderedHeight: ${renderedHeight}, offsetX: ${offsetX}, offsetY: ${offsetY})`
+    );
     setCanvasStyle({
       width: renderedWidth,
       height: renderedHeight,
@@ -190,31 +256,29 @@ export default function FramePreviewWithOverlay({
     updateCanvasSize();
     window.addEventListener("resize", updateCanvasSize);
 
-    let imgRefValue = null;
-    if (imgRef.current) {
-      imgRef.current.addEventListener("load", updateCanvasSize);
-      imgRefValue = imgRef.current;
-    }
-
     return () => {
       window.removeEventListener("resize", updateCanvasSize);
-      if (imgRefValue) {
-        imgRefValue.removeEventListener("load", updateCanvasSize);
-      }
     };
   }, [updateCanvasSize, renderOverlay]);
 
-  // Note: we render <img> even when streamUrl is empty in order to properly close
-  // the connection to the stream and avoid potential cases of multiple simultaneous
-  // connections on rerenders.
   return (
     <div className={cn("relative", className)}>
-      <img
-        ref={imgRef}
-        src={streamUrl}
-        alt="Camera Stream"
+      <video
+        ref={videoRef}
         className="w-full h-full object-contain bg-black"
-        onClick={handleImageClick}
+        autoPlay
+        playsInline
+        muted
+        onWaiting={() => {
+          setIsLoading(true);
+        }}
+        onCanPlay={() => {
+          setIsLoading(false);
+        }}
+        onPlaying={() => {
+          setIsLoading(false);
+        }}
+        onClick={handleVideoClick}
       />
       {renderOverlay && (
         <canvas
