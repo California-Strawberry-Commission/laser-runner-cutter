@@ -22,7 +22,7 @@ from aioros2 import (
     subscribe_param,
     param,
     start,
-    QOS_LATCHED
+    QOS_LATCHED,
 )
 from cv_bridge import CvBridge, CvBridgeError
 from std_msgs.msg import String
@@ -61,7 +61,7 @@ class PerceiverNodeParams:
 
 
 # Executable to call to launch this node (defined in `setup.py`)
-@node("furrow_perceiver")
+@node("furrow_perceiver_node")
 class FurrowPerceiverNode:
     p = params(PerceiverNodeParams)
     state = topic("~/state", State, QOS_LATCHED)
@@ -76,9 +76,7 @@ class FurrowPerceiverNode:
     annotator = None
 
     async def emit_state(self):
-        asyncio.create_task(self.state(
-            guidance_offset=self.tracker.guidance_offset_x
-        ))
+        asyncio.create_task(self.state(guidance_offset=self.tracker.guidance_offset_x))
 
     @subscribe(realsense.depth_image_topic)
     async def on_depth_image(
@@ -107,9 +105,9 @@ class FurrowPerceiverNode:
 
         # Process image for guidance
         self.tracker.process(cv_image)
-        
+
         err = self.tracker.get_error()
-        
+
         if err is None:
             await self.tracker_result_topic(
                 linear_deviation=0.0, heading=0.0, is_valid=False
@@ -131,8 +129,9 @@ class FurrowPerceiverNode:
     async def set_guidance_offset(self, data):
         self.tracker.guidance_offset_x = data
         await self.emit_state()
-        return{}
-        
+        return {}
+
+
 # Boilerplate below here.
 def main():
     serve_nodes(FurrowPerceiverNode())

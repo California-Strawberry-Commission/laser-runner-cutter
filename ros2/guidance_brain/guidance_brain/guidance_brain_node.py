@@ -8,7 +8,7 @@ from common_interfaces.msg import Vector2, PID
 from common_interfaces.srv import SetFloat32
 
 from guidance_brain_interfaces.msg import State
-from guidance_brain_interfaces.srv import SetPID 
+from guidance_brain_interfaces.srv import SetPID
 from furrow_perceiver_interfaces.msg import PositionResult
 from enum import IntEnum
 import asyncio
@@ -24,89 +24,84 @@ from aioros2 import (
     QOS_LATCHED,
 )
 
+
 class GoDirection(IntEnum):
-    FORWARD=0
-    BACKWARD=1
+    FORWARD = 0
+    BACKWARD = 1
+
 
 # Executable to call to launch this node (defined in `setup.py`)
-@node("guidance_brain")
+@node("guidance_brain_node")
 class GuidanceBrainNode:
-    perceiver_forward = import_node(fpn, "furrow0")
-    # perceiver_backward = import_node(fpn, "furrow1")
-
+    perceiver_forward = import_node(fpn)
+    perceiver_backward = import_node(fpn)
     amiga = import_node(acn)
-        
+
     # State Vars
     state = State(
-        guidance_active = False,
-        amiga_connected = False,
-        
-        speed = 20., # Default - 10ft/min
-        follower_pid = PID(p=50.),
-        
+        guidance_active=False,
+        amiga_connected=False,
+        speed=20.0,  # Default - 10ft/min
+        follower_pid=PID(p=50.0),
         # Keeps selected (forward/backward) perciever result
-        perceiver_valid = False,
-        error = 0.,
-        
-        command = 0.,
-        
-        go_direction = GoDirection.FORWARD,
-        go_last_valid_time = 0.,
+        perceiver_valid=False,
+        error=0.0,
+        command=0.0,
+        go_direction=GoDirection.FORWARD,
+        go_last_valid_time=0.0,
     )
-    
+
     # Emits state.
     state_topic = topic("~/state", State, QOS_LATCHED)
 
     def emit_state(self):
         asyncio.create_task(self.state_topic(self.state))
 
-    
     @timer(0.05, False)
-    async def s(self):      
+    async def s(self):
         self.emit_state()
 
         # Feed timeout
         if self.state.perceiver_valid:
             self.state.go_last_valid_time = time.time()
-                
+
         # 1 second has passed since furrow perciever was valid - kill following
-        if self.state.guidance_active and (time.time() - self.state.go_last_valid_time > 1):
+        if self.state.guidance_active and (
+            time.time() - self.state.go_last_valid_time > 1
+        ):
             self.state.guidance_active = False
-        
+
         # Short circuit if perciever isn't valid.
         if not (self.state.guidance_active and self.state.perceiver_valid):
-            self.state.command = 0.
-            await self.amiga.set_twist(twist=Vector2(x=0., y=0.))
+            self.state.command = 0.0
+            await self.amiga.set_twist(twist=Vector2(x=0.0, y=0.0))
             return
 
         # Run PID
-        self.state.command = self.state.follower_pid.p * self.state.error / 5000.
+        self.state.command = self.state.follower_pid.p * self.state.error / 5000.0
         speed_ms = self.state.speed * 0.00508
-        
+
         if self.state.go_direction == GoDirection.BACKWARD:
             speed_ms = -speed_ms
-            
-        await self.amiga.set_twist(twist=Vector2(
-            x=self.state.command,
-            y=speed_ms
-        ))
+
+        await self.amiga.set_twist(twist=Vector2(x=self.state.command, y=speed_ms))
 
     @subscribe(amiga.amiga_available)
     async def on_amiga_available(self, data):
         self.state.amiga_connected = data
-    
+
     @subscribe("/furrow1/tracker_result", PositionResult)
     async def on_fp_back_result(self, linear_deviation, heading, is_valid):
         if self.state.go_direction == GoDirection.BACKWARD:
             self.state.perceiver_valid = is_valid
             self.state.error = linear_deviation
-            
+
     @subscribe(perceiver_forward.tracker_result_topic)
     async def on_fp_forw_result(self, linear_deviation, heading, is_valid):
         if self.state.go_direction != GoDirection.BACKWARD:
             self.state.perceiver_valid = is_valid
             self.state.error = linear_deviation
-        
+
     @service("~/set_p", SetFloat32)
     async def set_p(self, data: float):
         self.state.follower_pid.p = data
@@ -126,27 +121,28 @@ class GuidanceBrainNode:
     async def set_speed(self, data: float):
         self.state.speed = data
         return {"success": True}
-    
+
     @service("~/go_forward", Trigger)
     async def go_forward(self):
         self.state.go_last_valid_time = time.time()
         self.state.guidance_active = True
-        self.state.go_direction = GoDirection.FORWARD  
-     
+        self.state.go_direction = GoDirection.FORWARD
+
         return {"success": True}
-    
+
     @service("~/go_backward", Trigger)
     async def go_backward(self):
         self.state.go_last_valid_time = time.time()
         self.state.guidance_active = True
-        self.state.go_direction = GoDirection.BACKWARD  
+        self.state.go_direction = GoDirection.BACKWARD
         return {"success": True}
-    
+
     @service("~/stop", Trigger)
     async def stop(self):
         self.state.guidance_active = False
         return {"success": True}
-    
+
+
 # Boilerplate below here.
 def main():
     serve_nodes(GuidanceBrainNode())

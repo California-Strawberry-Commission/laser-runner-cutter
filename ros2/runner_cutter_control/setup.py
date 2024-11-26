@@ -30,6 +30,7 @@ setup(
     entry_points={
         "console_scripts": [
             "runner_cutter_control_node = runner_cutter_control.runner_cutter_control_node:main",
+            "single_process_runner = runner_cutter_control.single_process_runner:main",
         ],
     },
 )
