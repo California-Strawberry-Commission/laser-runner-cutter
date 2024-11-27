@@ -1,28 +1,25 @@
-from dataclasses import dataclass
-import time
-import furrow_perceiver.furrow_perceiver_node as fpn
-import amiga_control.amiga_control_node as acn
-
-from std_srvs.srv import SetBool, Trigger
-from common_interfaces.msg import Vector2, PID
-from common_interfaces.srv import SetFloat32
-
-from guidance_brain_interfaces.msg import State
-from guidance_brain_interfaces.srv import SetPID
-from furrow_perceiver_interfaces.msg import PositionResult
-from enum import IntEnum
 import asyncio
+import time
+from enum import IntEnum
 
+from std_srvs.srv import Trigger
+
+import amiga_control.amiga_control_node as amiga_control_node
+import furrow_perceiver.furrow_perceiver_node as furrow_perceiver_node
 from aioros2 import (
-    timer,
-    service,
-    serve_nodes,
-    subscribe,
-    topic,
+    QOS_LATCHED,
     import_node,
     node,
-    QOS_LATCHED,
+    serve_nodes,
+    service,
+    subscribe,
+    timer,
+    topic,
 )
+from common_interfaces.msg import PID, Vector2
+from common_interfaces.srv import SetFloat32
+from furrow_perceiver_interfaces.msg import PositionResult
+from guidance_brain_interfaces.msg import State
 
 
 class GoDirection(IntEnum):
@@ -33,9 +30,10 @@ class GoDirection(IntEnum):
 # Executable to call to launch this node (defined in `setup.py`)
 @node("guidance_brain_node")
 class GuidanceBrainNode:
-    perceiver_forward = import_node(fpn)
-    perceiver_backward = import_node(fpn)
-    amiga = import_node(acn)
+    perceiver_forward = import_node(furrow_perceiver_node)
+    # TODO: aioros2 currently has a bug when importing nodes twice
+    # perceiver_backward = import_node(furrow_perceiver_node)
+    amiga = import_node(amiga_control_node)
 
     # State Vars
     state = State(
@@ -54,12 +52,9 @@ class GuidanceBrainNode:
     # Emits state.
     state_topic = topic("~/state", State, QOS_LATCHED)
 
-    def emit_state(self):
-        asyncio.create_task(self.state_topic(self.state))
-
     @timer(0.05, False)
     async def s(self):
-        self.emit_state()
+        self._publish_state()
 
         # Feed timeout
         if self.state.perceiver_valid:
@@ -90,6 +85,8 @@ class GuidanceBrainNode:
     async def on_amiga_available(self, data):
         self.state.amiga_connected = data
 
+    # TODO: aioros2 currently has a bug when importing nodes twice, so we hardcode the topic
+    # path here
     @subscribe("/furrow1/tracker_result", PositionResult)
     async def on_fp_back_result(self, linear_deviation, heading, is_valid):
         if self.state.go_direction == GoDirection.BACKWARD:
@@ -142,8 +139,10 @@ class GuidanceBrainNode:
         self.state.guidance_active = False
         return {"success": True}
 
+    def _publish_state(self):
+        asyncio.create_task(self.state_topic(self.state))
 
-# Boilerplate below here.
+
 def main():
     serve_nodes(GuidanceBrainNode())
 

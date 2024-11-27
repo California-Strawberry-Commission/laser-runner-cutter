@@ -64,9 +64,9 @@ def generate_launch_description():
             "serial_no": "'819312072040'",
             "camera_name": "cam0",
             "camera_namespace": "/",
-            "decimation_filter.enable": "true",
+            # Hole filling and temporal filters significantly improve depth map quality,
+            # but the other filters do not.
             "temporal_filter.enable": "true",
-            "spatial_filter.enable": "true",
             "hole_filling_filter.enable": "true",
         }.items(),
         condition=IfCondition(launch_nav_nodes),
@@ -86,9 +86,9 @@ def generate_launch_description():
             "serial_no": "'017322073371'",
             "camera_name": "cam1",
             "camera_namespace": "/",
-            "decimation_filter.enable": "true",
+            # Hole filling and temporal filters significantly improve depth map quality,
+            # but the other filters do not.
             "temporal_filter.enable": "true",
-            "spatial_filter.enable": "true",
             "hole_filling_filter.enable": "true",
         }.items(),
         condition=IfCondition(launch_nav_nodes),
@@ -132,7 +132,8 @@ def generate_launch_description():
 
     # Link node dependencies
     brain.perceiver_forward.link(furrow_perc0)
-    brain.perceiver_backward.link(furrow_perc1)
+    # TODO: aioros2 currently has a bug when importing nodes twice
+    # brain.perceiver_backward.link(furrow_perc1)
     brain.amiga.link(amiga)
 
     # endregion

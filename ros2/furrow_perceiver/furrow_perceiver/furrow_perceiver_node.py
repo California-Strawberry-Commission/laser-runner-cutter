@@ -1,34 +1,28 @@
 import asyncio
-from typing import AsyncGenerator
-from .furrow_tracker import FurrowTracker
-from common_interfaces.srv import SetInt32
-from furrow_perceiver_interfaces.msg import State, PositionResult
-from furrow_perceiver_interfaces.srv import GetState
 from dataclasses import dataclass
+
 import cv2
+from cv_bridge import CvBridge
+from rclpy.qos import qos_profile_sensor_data
+from sensor_msgs.msg import Image
 
 from aioros2 import (
-    timer,
-    service,
-    action,
-    serve_nodes,
+    QOS_LATCHED,
+    import_node,
+    node,
+    params,
     result,
-    feedback,
+    serve_nodes,
+    service,
+    start,
     subscribe,
     topic,
-    import_node,
-    params,
-    node,
-    subscribe_param,
-    param,
-    start,
-    QOS_LATCHED,
 )
-from cv_bridge import CvBridge, CvBridgeError
-from std_msgs.msg import String
-from common_interfaces.msg import Vector2
+from common_interfaces.srv import SetInt32
+from furrow_perceiver_interfaces.msg import PositionResult, State
+
 from . import realsense_stub
-from sensor_msgs.msg import Image
+from .furrow_tracker import FurrowTracker
 from .furrow_tracker_annotator import FurrowTrackerAnnotator
 
 #                              /\                         X
@@ -56,27 +50,26 @@ from .furrow_tracker_annotator import FurrowTrackerAnnotator
 
 
 @dataclass
-class PerceiverNodeParams:
+class PerceiverParams:
     guidance_offset: int = 0
 
 
 # Executable to call to launch this node (defined in `setup.py`)
 @node("furrow_perceiver_node")
 class FurrowPerceiverNode:
-    p = params(PerceiverNodeParams)
-    state = topic("~/state", State, QOS_LATCHED)
-    cvb = CvBridge()
+    perceiver_params = params(PerceiverParams)
+    state_topic = topic("~/state", State, QOS_LATCHED)
+    debug_img_topic = topic("~/debug_img", Image, qos=qos_profile_sensor_data)
+    tracker_result_topic = topic("~/tracker_result", PositionResult, qos=5)
 
     realsense: realsense_stub.RealsenseStub = import_node(realsense_stub)
 
-    debug_img_topic = topic("~/debug_img", Image)
-    tracker_result_topic = topic("~/tracker_result", PositionResult)
-
-    tracker = None
-    annotator = None
-
-    async def emit_state(self):
-        asyncio.create_task(self.state(guidance_offset=self.tracker.guidance_offset_x))
+    @start
+    async def start(self):
+        self._tracker = None
+        self._annotator = None
+        # For converting numpy array to image msg
+        self._cv_bridge = CvBridge()
 
     @subscribe(realsense.depth_image_topic)
     async def on_depth_image(
@@ -84,7 +77,7 @@ class FurrowPerceiverNode:
     ):
         """Takes a realsense depth image, processes it, and emits a debug image"""
 
-        cv_image = self.cvb.imgmsg_to_cv2(
+        cv_image = self._cv_bridge.imgmsg_to_cv2(
             Image(
                 header=header,
                 height=height,
@@ -97,16 +90,16 @@ class FurrowPerceiverNode:
         )
 
         # Initialize tracker on first image
-        if not self.tracker:
-            self.tracker = FurrowTracker()
-            self.tracker.init(cv_image)
-            self.annotator = FurrowTrackerAnnotator(self.tracker)
-            self.tracker.guidance_offset_x = self.p.guidance_offset
+        if not self._tracker:
+            self._tracker = FurrowTracker()
+            self._tracker.init(cv_image)
+            self._annotator = FurrowTrackerAnnotator(self._tracker)
+            self._tracker.guidance_offset_x = self.perceiver_params.guidance_offset
 
         # Process image for guidance
-        self.tracker.process(cv_image)
+        self._tracker.process(cv_image)
 
-        err = self.tracker.get_error()
+        err = self._tracker.get_error()
 
         if err is None:
             await self.tracker_result_topic(
@@ -121,18 +114,22 @@ class FurrowPerceiverNode:
         depth_colormap = cv2.applyColorMap(
             cv2.convertScaleAbs(cv_image, alpha=0.09), cv2.COLORMAP_JET
         )
-        self.annotator.annotate(depth_colormap)
-        m = self.cvb.cv2_to_imgmsg(depth_colormap, "bgr8")
+        self._annotator.annotate(depth_colormap)
+        m = self._cv_bridge.cv2_to_imgmsg(depth_colormap, "bgr8")
         await self.debug_img_topic(m)
 
     @service("~/set_guidance_offset", SetInt32)
     async def set_guidance_offset(self, data):
-        self.tracker.guidance_offset_x = data
-        await self.emit_state()
-        return {}
+        self._tracker.guidance_offset_x = data
+        self._publish_state()
+        return result(success=True)
+
+    def _publish_state(self):
+        asyncio.create_task(
+            self.state_topic(guidance_offset=self._tracker.guidance_offset_x)
+        )
 
 
-# Boilerplate below here.
 def main():
     serve_nodes(FurrowPerceiverNode())
 
