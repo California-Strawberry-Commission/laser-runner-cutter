@@ -102,12 +102,16 @@ class FurrowPerceiverNode:
         err = self._tracker.get_error()
 
         if err is None:
-            await self.tracker_result_topic(
-                linear_deviation=0.0, heading=0.0, is_valid=False
+            asyncio.create_task(
+                self.tracker_result_topic(
+                    linear_deviation=0.0, heading=0.0, is_valid=False
+                )
             )
         else:
-            await self.tracker_result_topic(
-                linear_deviation=float(err), heading=0.0, is_valid=True
+            asyncio.create_task(
+                self.tracker_result_topic(
+                    linear_deviation=float(err), heading=0.0, is_valid=True
+                )
             )
 
         # Create & publish debug image
@@ -116,7 +120,7 @@ class FurrowPerceiverNode:
         )
         self._annotator.annotate(depth_colormap)
         msg = self._cv_bridge.cv2_to_imgmsg(depth_colormap, "bgr8")
-        await self.debug_img_topic(msg)
+        asyncio.create_task(self.debug_img_topic(msg))
 
     @service("~/set_guidance_offset", SetInt32)
     async def set_guidance_offset(self, data):

@@ -22,6 +22,11 @@ from furrow_perceiver_interfaces.msg import PositionResult
 from guidance_brain_interfaces.msg import State
 
 
+FEET_PER_MIN_TO_METERS_PER_SEC = 0.00508
+# Arbitrary scaling factor for P
+P_SCALING = 1.0 / 5000.0
+
+
 class GoDirection(IntEnum):
     FORWARD = 0
     BACKWARD = 1
@@ -35,13 +40,16 @@ class GuidanceBrainNode:
     # perceiver_backward = import_node(furrow_perceiver_node)
     amiga = import_node(amiga_control_node)
 
+    # Emits state.
+    state_topic = topic("~/state", State, QOS_LATCHED)
+
     # State Vars
     state = State(
         guidance_active=False,
         amiga_connected=False,
         speed=20.0,  # Default - 10ft/min
         follower_pid=PID(p=50.0),
-        # Keeps selected (forward/backward) perciever result
+        # Keeps selected (forward/backward) perceiver result
         perceiver_valid=False,
         error=0.0,
         command=0.0,
@@ -49,14 +57,10 @@ class GuidanceBrainNode:
         go_last_valid_time=0.0,
     )
 
-    # Emits state.
-    state_topic = topic("~/state", State, QOS_LATCHED)
-
     @timer(0.05, False)
     async def s(self):
         self._publish_state()
 
-        # Feed timeout
         if self.state.perceiver_valid:
             self.state.go_last_valid_time = time.time()
 
@@ -66,15 +70,15 @@ class GuidanceBrainNode:
         ):
             self.state.guidance_active = False
 
-        # Short circuit if perciever isn't valid.
+        # Short circuit if perceiver isn't valid.
         if not (self.state.guidance_active and self.state.perceiver_valid):
             self.state.command = 0.0
             await self.amiga.set_twist(twist=Vector2(x=0.0, y=0.0))
             return
 
         # Run PID
-        self.state.command = self.state.follower_pid.p * self.state.error / 5000.0
-        speed_ms = self.state.speed * 0.00508
+        self.state.command = self.state.follower_pid.p * self.state.error * P_SCALING
+        speed_ms = self.state.speed * FEET_PER_MIN_TO_METERS_PER_SEC
 
         if self.state.go_direction == GoDirection.BACKWARD:
             speed_ms = -speed_ms

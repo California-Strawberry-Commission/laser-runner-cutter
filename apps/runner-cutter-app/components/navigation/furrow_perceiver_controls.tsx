@@ -1,12 +1,7 @@
 "use client";
 
-import { Input } from "@/components/ui/input";
-import useROS from "@/lib/ros/useROS";
 import useFurrowPerceiverNode from "@/lib/useFurrowPerceiverNode";
-import useLaserNode from "@/lib/useFurrowPerceiverNode";
-import { useState } from "react";
 import { InputWithLabel } from "@/components/ui/input-with-label";
-import { Button } from "@/components/ui/button";
 
 export default function FurrowPercieverControls() {
   const f1 = useFurrowPerceiverNode("/furrow0");
@@ -22,7 +17,12 @@ export default function FurrowPercieverControls() {
         min={-300}
         max={300}
         value={f1.state.guidance_offset}
-        onChange={(str) => f1.setGuidanceOffset(Number(str))}
+        onChange={(str) => {
+          const value = Number(str);
+          if (!isNaN(value)) {
+            f1.setGuidanceOffset(value);
+          }
+        }}
       />
       <InputWithLabel
         className="flex-none w-24 rounded-r-none"
@@ -32,7 +32,12 @@ export default function FurrowPercieverControls() {
         min={-300}
         max={300}
         value={f2.state.guidance_offset}
-        onChange={(str) => f2.setGuidanceOffset(Number(str))}
+        onChange={(str) => {
+          const value = Number(str);
+          if (!isNaN(value)) {
+            f2.setGuidanceOffset(value);
+          }
+        }}
       />
     </div>
   );
