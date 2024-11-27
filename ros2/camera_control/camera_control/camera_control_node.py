@@ -77,7 +77,6 @@ class CameraControlParams:
 class CameraControlNode:
     camera_control_params = params(CameraControlParams)
     state_topic = topic("~/state", State, qos=QOS_LATCHED)
-    color_frame_topic = topic("~/color_frame", Image, qos=qos_profile_sensor_data)
     debug_frame_topic = topic("~/debug_frame", Image, qos=qos_profile_sensor_data)
     detections_topic = topic("~/detections", DetectionResult, qos=5)
     notifications_topic = topic("/notifications", Log, qos=1)
@@ -427,14 +426,7 @@ class CameraControlNode:
                 msg = self._create_detection_result_msg(
                     DetectionType.LASER, laser_points, frame
                 )
-                asyncio.create_task(
-                    self.detections_topic(
-                        detection_type=DetectionType.LASER,
-                        timestamp=msg.timestamp,
-                        instances=msg.instances,
-                        invalid_points=msg.invalid_points,
-                    )
-                )
+                asyncio.create_task(self.detections_topic(msg))
 
             if DetectionType.RUNNER in self.enabled_detection_types:
                 runner_masks, runner_centers, confs, track_ids = (
@@ -460,14 +452,7 @@ class CameraControlNode:
                 msg = self._create_detection_result_msg(
                     DetectionType.RUNNER, runner_centers, frame, track_ids
                 )
-                asyncio.create_task(
-                    self.detections_topic(
-                        detection_type=DetectionType.RUNNER,
-                        timestamp=msg.timestamp,
-                        instances=msg.instances,
-                        invalid_points=msg.invalid_points,
-                    )
-                )
+                asyncio.create_task(self.detections_topic(msg))
 
             if DetectionType.CIRCLE in self.enabled_detection_types:
                 circle_centers = await self.circle_detector.detect(frame.color_frame)
@@ -478,14 +463,7 @@ class CameraControlNode:
                     frame,
                     [i + 1 for i in range(len(circle_centers))],
                 )
-                asyncio.create_task(
-                    self.detections_topic(
-                        detection_type=DetectionType.CIRCLE,
-                        timestamp=msg.timestamp,
-                        instances=msg.instances,
-                        invalid_points=msg.invalid_points,
-                    )
-                )
+                asyncio.create_task(self.detections_topic(msg))
 
             debug_frame = self._debug_draw_timestamp(
                 debug_frame, frame.timestamp_millis
@@ -503,17 +481,7 @@ class CameraControlNode:
             self._debug_frame = debug_frame
 
             msg = self._get_color_frame_msg(debug_frame, frame.timestamp_millis)
-            asyncio.create_task(
-                self.debug_frame_topic(
-                    header=msg.header,
-                    height=msg.height,
-                    width=msg.width,
-                    encoding=msg.encoding,
-                    is_bigendian=msg.is_bigendian,
-                    step=msg.step,
-                    data=msg.data,
-                )
-            )
+            asyncio.create_task(self.debug_frame_topic(msg))
         finally:
             self._detection_completed_event.set()
 
@@ -607,20 +575,7 @@ class CameraControlNode:
 
     def _publish_state(self):
         state = self._get_state()
-        asyncio.create_task(
-            self.state_topic(
-                device_state=state.device_state,
-                enabled_detection_types=state.enabled_detection_types,
-                recording_video=state.recording_video,
-                interval_capture_active=state.interval_capture_active,
-                exposure_us=state.exposure_us,
-                exposure_us_range=state.exposure_us_range,
-                gain_db=state.gain_db,
-                gain_db_range=state.gain_db_range,
-                save_directory=state.save_directory,
-                image_capture_interval_secs=state.image_capture_interval_secs,
-            )
-        )
+        asyncio.create_task(self.state_topic(state))
 
     def _publish_notification(self, msg: str, level: int = logging.INFO):
         timestamp_millis = int(time.time() * 1000)
@@ -631,11 +586,7 @@ class CameraControlNode:
         log_message.level = level
         log_message.msg = msg
         self.get_logger().log(msg, level)
-        asyncio.create_task(
-            self.notifications_topic(
-                stamp=log_message.stamp, level=log_message.level, msg=log_message.msg
-            )
-        )
+        asyncio.create_task(self.notifications_topic(log_message))
 
     # endregion
 

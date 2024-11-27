@@ -91,7 +91,7 @@ class RunnerCutterControlNode:
         self._runner_detection_event = asyncio.Event()
 
         # Publish initial state
-        self.publish_state()
+        self._publish_state()
 
     @subscribe(camera_node.detections_topic)
     async def on_detection(self, detection_type, timestamp, instances, invalid_points):
@@ -173,10 +173,10 @@ class RunnerCutterControlNode:
     async def save_calibration(self):
         filepath = self._calibration.save(self.runner_cutter_control_params.save_dir)
         if filepath is not None:
-            self.publish_notification(f"Calibration saved: {filepath}")
+            self._publish_notification(f"Calibration saved: {filepath}")
             return result(success=True)
         else:
-            self.publish_notification(
+            self._publish_notification(
                 "Calibration could not be saved", level=logging.WARNING
             )
             return result(success=False)
@@ -185,11 +185,11 @@ class RunnerCutterControlNode:
     async def load_calibration(self):
         filepath = self._calibration.load(self.runner_cutter_control_params.save_dir)
         if filepath is not None:
-            self.publish_notification(f"Calibration loaded: {filepath}")
-            self.publish_state()
+            self._publish_notification(f"Calibration loaded: {filepath}")
+            self._publish_state()
             return result(success=True)
         else:
-            self.publish_notification(
+            self._publish_notification(
                 "Calibration could not be loaded", level=logging.WARNING
             )
             return result(success=False)
@@ -256,13 +256,13 @@ class RunnerCutterControlNode:
         async def done_callback(task: asyncio.Task):
             await self._reset_to_idle()
             self._current_task = None
-            self.publish_state()
+            self._publish_state()
 
         def done_callback_wrapper(task: asyncio.Task):
             asyncio.create_task(done_callback(task))
 
         self._current_task.add_done_callback(done_callback_wrapper)
-        self.publish_state()
+        self._publish_state()
         return True
 
     async def _stop_current_task(self) -> bool:
@@ -552,17 +552,11 @@ class RunnerCutterControlNode:
 
     # region State and notifs publishing
 
-    def publish_state(self):
+    def _publish_state(self):
         state = self._get_state()
-        asyncio.create_task(
-            self.state_topic(
-                calibrated=state.calibrated,
-                state=state.state,
-                normalized_laser_bounds=state.normalized_laser_bounds,
-            )
-        )
+        asyncio.create_task(self.state_topic(state))
 
-    def publish_notification(self, msg: str, level: int = logging.INFO):
+    def _publish_notification(self, msg: str, level: int = logging.INFO):
         timestamp_millis = int(time.time() * 1000)
         sec, nanosec = milliseconds_to_ros_time(timestamp_millis)
         log_message = Log()
@@ -571,15 +565,11 @@ class RunnerCutterControlNode:
         log_message.level = level
         log_message.msg = msg
         self.get_logger().log(msg, level)
-        asyncio.create_task(
-            self.notifications_topic(
-                stamp=log_message.stamp, level=log_message.level, msg=log_message.msg
-            )
-        )
+        asyncio.create_task(self.notifications_topic(log_message))
 
-    def publish_tracks(self):
+    def _publish_tracks(self):
         tracks_msg = self._get_tracks_msg()
-        asyncio.create_task(self.tracks_topic(tracks=tracks_msg.tracks))
+        asyncio.create_task(self.tracks_topic(tracks_msg))
 
     def _get_state(self) -> State:
         normalized_laser_bounds = self._calibration.normalized_laser_bounds

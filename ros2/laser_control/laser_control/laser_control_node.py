@@ -186,7 +186,7 @@ class LaserControlNode:
 
     def _publish_state(self):
         state = self._get_state()
-        asyncio.create_task(self.state_topic(device_state=state.device_state))
+        asyncio.create_task(self.state_topic(state))
 
 
 def main():

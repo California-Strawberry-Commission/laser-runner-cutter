@@ -115,8 +115,8 @@ class FurrowPerceiverNode:
             cv2.convertScaleAbs(cv_image, alpha=0.09), cv2.COLORMAP_JET
         )
         self._annotator.annotate(depth_colormap)
-        m = self._cv_bridge.cv2_to_imgmsg(depth_colormap, "bgr8")
-        await self.debug_img_topic(m)
+        msg = self._cv_bridge.cv2_to_imgmsg(depth_colormap, "bgr8")
+        await self.debug_img_topic(msg)
 
     @service("~/set_guidance_offset", SetInt32)
     async def set_guidance_offset(self, data):
