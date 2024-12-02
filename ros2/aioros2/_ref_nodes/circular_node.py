@@ -1,24 +1,39 @@
 from . import amiga_control_node
-from aioros2 import  timer, service, action, serve_nodes, result, feedback, subscribe, topic, import_node, params, node, subscribe_param
+from aioros2 import (
+    timer,
+    service,
+    action,
+    serve_nodes,
+    result,
+    feedback,
+    subscribe,
+    topic,
+    import_node,
+    params,
+    node,
+    subscribe_param,
+)
 from std_msgs.msg import String
 from dataclasses import dataclass
+
 
 @dataclass
 class CircularParams:
     s: str = "A setting"
 
+
 @node("circular_node")
 class CircularNode:
     params = params(CircularParams)
     a_topic = topic("/atopic", String, 10)
-    dependant_node_1: "amiga_control_node.AmigaControlNode" = import_node(amiga_control_node)
-    
+    dependant_node_1: "amiga_control_node.AmigaControlNode" = import_node(
+        amiga_control_node
+    )
+
     @subscribe(dependant_node_1.my_topic)
     async def on_global(self, data):
         print("On node topic", data)
-        await self.params.set(
-            s="test"
-        )
+        await self.params.set(s="test")
 
     @subscribe("localtopic", String)
     async def on_gdls(self, data):
@@ -35,10 +50,11 @@ class CircularNode:
         # await self.dependant_node_1.amiga_params.set(
         #     host = data
         # )
- 
+
 
 def main():
     serve_nodes(CircularNode())
+
 
 if __name__ == "__main__":
     main()

@@ -4,17 +4,14 @@ import launch_ros.actions
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition, UnlessCondition
-from launch.launch_description_sources import (
-    FrontendLaunchDescriptionSource,
-    PythonLaunchDescriptionSource,
-)
+from launch.conditions import IfCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
 
 from aioros2 import LaunchNode
 from amiga_control import amiga_control_node
 from camera_control import camera_control_node
-from furrow_perceiver import furrow_perceiver_node, realsense_stub
+from furrow_perceiver import furrow_perceiver_node
 from guidance_brain import guidance_brain_node
 from laser_control import laser_control_node
 from runner_cutter_control import runner_cutter_control_node

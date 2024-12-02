@@ -1,12 +1,26 @@
 import asyncio
-from typing import AsyncGenerator
-from amiga_control_interfaces.srv import SetTwist
-from amiga_control_interfaces.action import Run
 from dataclasses import dataclass
-from aioros2 import timer, service, action, serve_nodes, result, feedback, subscribe, topic, import_node, params, node, subscribe_param, param
+from typing import AsyncGenerator
+
 from std_msgs.msg import String
 
-from aioros2.decorators.subscribe import RosSubscription
+from aioros2 import (
+    action,
+    feedback,
+    import_node,
+    node,
+    param,
+    params,
+    result,
+    serve_nodes,
+    service,
+    subscribe,
+    subscribe_param,
+    timer,
+    topic,
+)
+from amiga_control_interfaces.action import Run
+from amiga_control_interfaces.srv import SetTwist
 
 from . import circular_node
 
@@ -32,7 +46,7 @@ from . import circular_node
 
 # NOTE: dataclass REQUIRES type annotations to work
 # The annotation should be the underlying type of the parameter.
-# Only ros parameter types are supported. 
+# Only ros parameter types are supported.
 # Look at `aioros2.async_driver.dataclass_ros_enum_map` for a full list of python annotations that work here
 @dataclass
 class AmigaParams:
@@ -43,17 +57,19 @@ class AmigaParams:
     # TODO: support parameterdescriptors
     read_me: str = param("A test value", description="test", read_only=True)
 
+
 @dataclass
 class GenericParams:
     generic_one: str = "test1"
     a_test: str = "test2"
+
 
 # Executable to call to launch this node (defined in `setup.py`)
 @node("amiga_control_node")
 class AmigaControlNode:
     # Parameter definitions. Multiple instances of same dataclass are supported.
     # Actual parameter name is `attr.dataclass_attr`
-    # IE `host` in AmigaParams is fully qualified as `amiga_params.host` 
+    # IE `host` in AmigaParams is fully qualified as `amiga_params.host`
     amiga_params = params(AmigaParams)
     generic_params = params(GenericParams)
 
@@ -61,7 +77,7 @@ class AmigaControlNode:
     # If typing for intellisense, use quotations around the type
     # Import the module itself, NOT the specific node class
     dependant_node_1: "circular_node.CircularNode" = import_node(circular_node)
-    
+
     # Defines a topic accessible internally and externally.
     my_topic = topic("~/atopic", String, 10)
 
@@ -74,10 +90,10 @@ class AmigaControlNode:
     @subscribe("/test/topic", String)
     async def test_topic(self, data):
         print(data)
-    
-    # Can subscribe to topics within other nodes. 
+
+    # Can subscribe to topics within other nodes.
     # NOTE: MORE THAN ONE IMPORT LEVEL IS BROKEN FOR NON-GLOBAL TOPICS!
-    # A 2-level import will link to the wrong topic. 
+    # A 2-level import will link to the wrong topic.
     @subscribe(dependant_node_1.a_topic)
     def sub_another_topic(self, data):
         print(data)
@@ -88,7 +104,7 @@ class AmigaControlNode:
         print("CHANGE HANDLER: ", self.amiga_params.host, self.amiga_params.port_canbus)
 
     # Runs every x seconds.
-    @timer(2) 
+    @timer(2)
     async def task(self):
         print(self.amiga_params, self.amiga_params.port_canbus)
         self.print_host()
@@ -112,26 +128,26 @@ class AmigaControlNode:
     async def set_host(self, data):
         # Sets own parameter. Valid keys are any that are in
         # the dataclass
-        await self.amiga_params.set(
-            host = data
-        )
+        await self.amiga_params.set(host=data)
 
         # New value should be available after awaiting
         print("New host name: ", self.amiga_params.host)
-        
+
     @action("~/test", Run)
     async def act(self, fast) -> AsyncGenerator[int, None]:
         for i in range(10):
-            yield feedback(progress=float(i)) 
+            yield feedback(progress=float(i))
             await asyncio.sleep(0.1 if fast else 1)
         # LAST YIELD MUST BE RESPONSE!!
         yield result(success=True)
 
-
     a_value = 10
+
     def print_host(self):
         print(f"Host param is {self.amiga_params.host}")
-        self.log(f"Canbus: {self.amiga_params.port_canbus}, host {self.amiga_params.host}")
+        self.log(
+            f"Canbus: {self.amiga_params.port_canbus}, host {self.amiga_params.host}"
+        )
         print(f"A value is {self.a_value}")
         self.a_static_method()
 
@@ -139,9 +155,11 @@ class AmigaControlNode:
     def a_static_method():
         print("Called static method")
 
+
 # Boilerplate below here.
 def main():
     serve_nodes(AmigaControlNode())
+
 
 if __name__ == "__main__":
     main()

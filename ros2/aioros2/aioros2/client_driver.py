@@ -1,5 +1,5 @@
 from queue import Empty, SimpleQueue
-from rcl_interfaces.srv import DescribeParameters, GetParameters, GetParameterTypes
+from rcl_interfaces.srv import GetParameters
 import rclpy
 import rclpy.logging
 import rclpy.node
@@ -17,23 +17,6 @@ from .decorators.subscribe import RosSubscription
 from .decorators.timer import RosTimer
 from .decorators.topic import RosTopic
 from .decorators.start import RosStart
-
-
-# Extend RosTopic for downstream references
-class CachedSubscription(RosTopic):
-    def __init__(self, topic: RosTopic, client: "ClientDriver"):
-        super().__init__(topic.path, topic.idl, topic.qos)
-        self.node = client
-        self.value = None
-
-        fqt = expand_topic_name(topic.path, client._node_name, client._node_namespace)
-
-        client.log_debug(f"[SERVER] Attach topic cache >{fqt}<")
-
-        def cb(msg):
-            self.value = msg
-
-        client._node.create_subscription(topic.idl, fqt, cb, topic.qos)
 
 
 class AsyncActionClient:
@@ -156,12 +139,11 @@ class ClientDriver(AsyncDriver):
         # Create a new ClientDriver for this node
         return ClientDriver(node_def, self._node, import_name, import_ns)
 
-    def _attach_publisher(self, attr, topic: RosTopic):
-        topic.node = (
-            self  # Set topic node in definition so other attachers know about it.
-        )
+    def _attach_publisher(self, attr, ros_topic: RosTopic):
+        # Set topic node in definition so that other attachers know about it
+        ros_topic.node = self
 
-        return CachedSubscription(topic, self)
+        return ros_topic
 
     def _attach_timer(self, attr, ros_timer: RosTimer):
         # Unused on clients
@@ -180,7 +162,7 @@ class ClientDriver(AsyncDriver):
         topic = ros_sub.get_fqt()
 
         # Creates a publisher for this channel
-        self.log_debug(f"[CLIENT] Attach subscriber publisher @ >{topic.path}<")
+        self.log(f"[CLIENT] Attach subscriber publisher @ >{topic.path}<")
 
         pub = self._node.create_publisher(topic.idl, topic.path, topic.qos)
 
