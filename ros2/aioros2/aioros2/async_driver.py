@@ -4,7 +4,6 @@ import types
 import rclpy
 from typing import List
 
-from .decorators import RosDefinition
 from .decorators.service import RosService
 from .decorators.topic import RosTopic
 from .decorators.subscribe import RosSubscription
@@ -21,12 +20,12 @@ class AsyncDriver:
     """Base class for all adapters"""
 
     def __getattr__(self, attr):
-        if not hasattr(self._n, attr):
+        if not hasattr(self._node_def, attr):
             raise AttributeError(
                 f"Attr >{attr}< not found in either driver or definition class"
             )
 
-        value = getattr(self._n, attr)
+        value = getattr(self._node_def, attr)
 
         # Rebind self-bound definition functions to this driver
         if isinstance(value, types.MethodType):
@@ -38,13 +37,13 @@ class AsyncDriver:
 
         return value
 
-    def __init__(self, async_node, logger, node_name, node_namespace):
+    def __init__(self, node_def, logger, node_name, node_namespace):
         self._logger = logger
-        self._n = async_node
+        self._node_def = node_def
         self._node_name = node_name
         self._node_namespace = node_namespace if node_namespace is not None else "/"
 
-        # self._n.params = self._attach_params_dataclass(self._n.params)
+        # self._node_def.params = self._attach_params_dataclass(self._node_def.params)
         self._loop = asyncio.get_running_loop()
 
     async def run_executor(self, fn, *args, **kwargs):
@@ -91,7 +90,7 @@ class AsyncDriver:
 
         for ros_element, attacher in att.items():
             for attr, definition in getmembers(
-                self._n, lambda v: isinstance(v, ros_element)
+                self._node_def, lambda v: isinstance(v, ros_element)
             ):
                 setattr(self, attr, attacher(attr, definition))
 

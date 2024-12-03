@@ -1,10 +1,20 @@
-from ._decorators import RosDefinition
+import inspect
 
 
-class RosStart(RosDefinition):
-    def __init__(self, fn) -> None:
-        self.server_handler = fn
+class RosStart:
+    def __init__(self, func) -> None:
+        self.func = func
 
 
-def start(fn):
-    return RosStart(fn)
+def start(func) -> RosStart:
+    """
+    A function decorator for functions that will run immediately on node start.
+
+    Raises:
+        TypeError: If the decorated object is not a function.
+    """
+
+    if not inspect.isfunction(func):
+        raise TypeError("This decorator can only be applied to functions.")
+
+    return RosStart(func)

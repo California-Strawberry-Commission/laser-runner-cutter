@@ -1,0 +1,6 @@
+main0:
+  ros__parameters:
+    some_params:
+      my_string: "Hello some_params world"
+    some_other_params:
+      my_string: "Hello some_other_params world"

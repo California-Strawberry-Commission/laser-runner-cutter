@@ -14,10 +14,10 @@ from .server_driver import ServerDriver
 # https://robotics.stackexchange.com/questions/106026/ros2-multi-nodes-each-on-a-thread-in-same-process
 
 
-async def _spin(nodes, num_threads: Optional[int] = None):
+async def _spin(node_defs, num_threads: Optional[int] = None):
     # From https://github.com/mavlink/MAVSDK-Python/issues/419
 
-    servers = [ServerDriver(n) for n in nodes]
+    servers = [ServerDriver(node_def) for node_def in node_defs]
     executor = MultiThreadedExecutor(num_threads=num_threads)
     for node in servers:
         executor.add_node(node)
@@ -68,7 +68,7 @@ async def _spin(nodes, num_threads: Optional[int] = None):
         node.destroy_guard_condition(cancels[idx])
 
 
-def serve_nodes(*nodes, num_threads: Optional[int] = None):
+def serve_nodes(*node_defs, num_threads: Optional[int] = None):
     from .decorators import deferrable_accessor
 
     # Notify deferrables that load has fully completed
@@ -76,6 +76,6 @@ def serve_nodes(*nodes, num_threads: Optional[int] = None):
 
     rclpy.init()
 
-    asyncio.run(_spin(nodes, num_threads=num_threads))
+    asyncio.run(_spin(node_defs, num_threads=num_threads))
 
     rclpy.shutdown()

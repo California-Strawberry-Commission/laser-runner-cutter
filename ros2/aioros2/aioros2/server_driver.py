@@ -13,10 +13,9 @@ from .async_driver import (
     dataclass_ros_map,
     ros_type_getter_map,
 )
-from .decorators import RosDefinition, idl_to_kwargs
+from .decorators import idl_to_kwargs
 from .decorators.action import RosAction
 from .decorators.import_node import RosImport
-from .decorators.param import RosParam
 from .decorators.param_subscription import RosParamSubscription
 from .decorators.params import RosParams
 from .decorators.service import RosService
@@ -30,7 +29,6 @@ from .util import catch
 # https://answers.ros.org/question/340600/how-to-get-ros2-parameter-hosted-by-another-node/
 # https://roboticsbackend.com/rclpy-params-tutorial-get-set-ros2-params-with-python/
 # https://roboticsbackend.com/ros2-rclpy-parameter-callback/
-# https://github.com/mikeferguson/ros2_cookbook/blob/main/rclpy/parameters.md
 # https://github.com/mikeferguson/ros2_cookbook/blob/main/rclpy/parameters.md
 # https://github.com/ros2/demos/blob/rolling/demo_nodes_py/demo_nodes_py/parameters/set_parameters_callback.py
 
@@ -67,15 +65,12 @@ class ParamDriver:
         self.fqpn = fqpn
 
         # TODO: Allow passing in descriptors
-        if isinstance(field.default, RosParam):
-            self.value = 0
-        else:
-            # Check if default_factory exists. If it does, call the factory function to get the default value
-            self.value = (
-                field.default
-                if field.default_factory is dataclasses.MISSING
-                else field.default_factory()
-            )
+        # Check if default_factory exists. If it does, call the factory function to get the default value
+        self.value = (
+            field.default
+            if field.default_factory is dataclasses.MISSING
+            else field.default_factory()
+        )
 
         self.__listeners = []
         self.__ros_type = dataclass_ros_map[field.type]
@@ -234,21 +229,21 @@ class ParamsDriver:
 
 
 class ServerDriver(AsyncDriver, Node):
-    def __init__(self, async_node):
+    def __init__(self, node_def):
         node_name = (
-            async_node._aioros2_name
-            if async_node._aioros2_name
-            else async_node.__class__.__name__
+            node_def._aioros2_name
+            if node_def._aioros2_name
+            else node_def.__class__.__name__
         )
-        node_namespace = async_node._aioros2_namespace
+        node_namespace = node_def._aioros2_namespace
         Node.__init__(
             self,
             node_name,
             namespace=node_namespace,
-            parameter_overrides=async_node._aioros2_parameter_overrides,
+            parameter_overrides=node_def._aioros2_parameter_overrides,
         )
         AsyncDriver.__init__(
-            self, async_node, self.get_logger(), node_name, node_namespace
+            self, node_def, self.get_logger(), node_name, node_namespace
         )
 
         self._attach()
@@ -300,7 +295,7 @@ class ServerDriver(AsyncDriver, Node):
 
     def _attach_service(self, attr, ros_service: RosService):
         """Attaches a service"""
-        self.log_debug(f"[SERVER] Attach service >{attr}< @ >{ros_service.path}<")
+        self.log_debug(f"[SERVER] Attach service >{attr}< @ >{ros_service.name}<")
 
         # Will be called from MultiThreadedExecutor
         @catch(self.log_error, ros_service.idl.Response())
@@ -313,7 +308,7 @@ class ServerDriver(AsyncDriver, Node):
 
             return marshal_returnable_to_idl(user_return, ros_service.idl.Response)
 
-        self.create_service(ros_service.idl, ros_service.path, cb)
+        self.create_service(ros_service.idl, ros_service.name, cb)
 
     def _attach_action(self, attr, ros_action: RosAction):
         self.log_debug(f"[SERVER] Attach action >{attr}<")
@@ -396,9 +391,9 @@ class ServerDriver(AsyncDriver, Node):
 
             @catch(self.log_error)
             def _timer_callback():
-                self.run_coroutine(ros_timer.server_handler, self)
+                self.run_coroutine(ros_timer.func, self)
 
-            self.create_timer(ros_timer.interval, _timer_callback)
+            self.create_timer(ros_timer.interval_secs, _timer_callback)
         else:
             task_queue = asyncio.Queue(1)
             loop = asyncio.get_running_loop()
@@ -411,7 +406,7 @@ class ServerDriver(AsyncDriver, Node):
 
             async def _enqueue_task():
                 if task_queue.empty():
-                    await task_queue.put(ros_timer.server_handler)
+                    await task_queue.put(ros_timer.func)
 
             async def _process_queue():
                 while True:
@@ -419,21 +414,21 @@ class ServerDriver(AsyncDriver, Node):
                     await task_func(self)
                     task_queue.task_done()
 
-            self.create_timer(ros_timer.interval, _timer_callback)
+            self.create_timer(ros_timer.interval_secs, _timer_callback)
             loop.create_task(_process_queue())
 
-        return ros_timer.server_handler
+        return ros_timer.func
 
     def _attach_params(self, attr, ros_params: RosParams):
         self.log_debug(f"[SERVER] Attach params >{attr}<")
-        return ParamsDriver(attr, ros_params.params_class, self)
+        return ParamsDriver(attr, ros_params.params_dataclass, self)
 
     def _attach_param_subscription(self, attr, ros_param_sub: RosParamSubscription):
         self.log_debug(f"[SERVER] Attach param subscription >{attr}<")
         # For each reference, find its definition's corrosponding attribute name
         # so that we can reference its instantiated version through getattr.
         for ref in ros_param_sub.references:
-            for member in inspect.getmembers(self._n):
+            for member in inspect.getmembers(self._node_def):
                 if member[1] == ref.params_def:
                     attr = member[0]
                     break
@@ -451,5 +446,5 @@ class ServerDriver(AsyncDriver, Node):
 
     def _process_start(self, attr, ros_start: RosStart):
         self.log_debug(f"[SERVER] Process start >{attr}<")
-        self.run_coroutine(ros_start.server_handler, self)
-        return ros_start.server_handler
+        self.run_coroutine(ros_start.func, self)
+        return ros_start.func

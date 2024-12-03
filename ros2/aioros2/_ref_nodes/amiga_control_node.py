@@ -9,7 +9,6 @@ from aioros2 import (
     feedback,
     import_node,
     node,
-    param,
     params,
     result,
     serve_nodes,
@@ -55,7 +54,7 @@ class AmigaParams:
 
     # ParameterDescriptor(description="test", read_only=True)
     # TODO: support parameterdescriptors
-    read_me: str = param("A test value", description="test", read_only=True)
+    # read_me: str = param("A test value", description="test", read_only=True)
 
 
 @dataclass

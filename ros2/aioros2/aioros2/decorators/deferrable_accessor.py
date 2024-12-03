@@ -1,4 +1,3 @@
-from collections.abc import Iterable
 from typing import Any
 
 # Global which should be set after initial load is completed, and main() is running

@@ -1,8 +1,7 @@
 import inspect
-from ._decorators import RosDefinition
 
 
-class RosAction(RosDefinition):
+class RosAction:
     def __init__(self, path, idl, handler) -> None:
         self._check_action_handler_signature(handler, idl)
 

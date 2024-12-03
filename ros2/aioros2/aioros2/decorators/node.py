@@ -1,3 +1,4 @@
+import inspect
 from typing import List, Optional
 
 from rclpy.parameter import Parameter
@@ -7,15 +8,27 @@ class RosNode:
     pass
 
 
-def node(executable: str) -> RosNode:
+def node(executable: str):
+    """
+    A class decorator that indicates that the class is a node definition.
+
+    Args:
+        executable (str): Name of the executable (as defined in entry_points in setup.py) that will get called when the module containing this node is referred to from a launch file.
+    Raises:
+        TypeError: If the decorated object is not a class.
+    """
+
     def _node(cls):
+        if not inspect.isclass(cls):
+            raise TypeError("This decorator can only be applied to classes.")
+
         def __init__(
             self,
             name: Optional[str] = None,
             namespace: Optional[str] = None,
             parameter_overrides: Optional[List[Parameter]] = None,
             *args,
-            **kwargs
+            **kwargs,
         ):
             super(cls, self).__init__(*args, **kwargs)
             self._aioros2_name = name

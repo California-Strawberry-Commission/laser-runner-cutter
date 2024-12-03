@@ -1,44 +1,27 @@
 # aioros2
+
 The point of this library is to make working with ROS2/`rclpy` bearable (and possibly even enjoyable). Its syntax is heavily inspired by `python-socketio`.
 
 ## Features
+
 - Massive boilerplate reduction
-- First-class asyncio compatibility.
+- First-class asyncio compatibility
 - Generators instead of callbacks
 - Transparent clients (use the same class as both client and server)
 
-## Installation
-This will install `aioros2` in dev mode in the current environment
-```
-$ cd aioros2
-$ pip install -e . --config-settings editable_mode=strict
-```
+### TODO
 
-### Feature Tracker
-- [x] Action Server
-- [x] Service Server
-- [x] Service Client
-- [x] Action Client
-- [x] Topic Publisher
-- [x] Topic Subscriber
-- [x] Server timer tasks
-- [x] Namespace linking
-    - Need to properly resolve ROS namespaces (including `~`) to other nodes
-- [x] Remapping
-    - Want to provide helpers to make linking nodes in launch files easy.
-    - ` link(node1.dep_node_1, node2.dep_node_2) ` -> list of remaps to use in launch.py
-- [x] Server param side effects
-- [x] 2+ order import topic resolution
-- [ ] Non-async handlers / better warnings?
-- [x] Server background tasks
-- [ ] Comprehensive error handling
+- Non-async handlers / better warnings?
+- Comprehensive error handling
 
-## Limitations
+## Known Limitations
+
 - Param dataclasses must be flat.
 - Non-async handlers are not currently supported
 - Probably fragile. Next steps are improving validation, error handling, and error messaging
 
 ## Why?
+
 Here's a comparison between the [example ROS2 action client/server](https://docs.ros.org/en/foxy/Tutorials/Intermediate/Writing-an-Action-Server-Client/Py.html) and a fully-featured equivalent using `aioros2`:
 
 <table>
@@ -46,7 +29,7 @@ Here's a comparison between the [example ROS2 action client/server](https://docs
 <th> aioros2 </th> <th> rclpy </th>
 </tr>
 <tr>
-<td> 
+<td>
 
 ```python
 # server.py
@@ -67,7 +50,7 @@ class Fibonacci:
 
         # Last yield is result
         yield result(sequence=sequence)
-        
+
 
 def main():
     serve_nodes(Fibonacci())
@@ -75,6 +58,7 @@ def main():
 if __name__ == "__main__":
     main()
 ```
+
 ```python
 # client.py
 import asyncio
@@ -99,7 +83,7 @@ if __name__ == "__main__":
 ```
 
 </td>
-<td> 
+<td>
 
 ```python
 # Server.py
@@ -153,6 +137,7 @@ def main(args=None):
 if __name__ == '__main__':
     main()
 ```
+
 ```python
 # Client.py
 import rclpy
@@ -217,3 +202,12 @@ if __name__ == '__main__':
 </table>
 
 1/2 the lines, 10x the readability. Enough said :)
+
+## Installation
+
+This will install `aioros2` in dev mode in the current environment
+
+```
+$ cd aioros2
+$ pip install -e . --config-settings editable_mode=strict
+```

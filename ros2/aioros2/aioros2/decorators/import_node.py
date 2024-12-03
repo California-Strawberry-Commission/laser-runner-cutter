@@ -1,11 +1,11 @@
 from types import ModuleType
 from typing import Optional
-from ._decorators import RosDefinition
-from .node import RosNode
+
 from .deferrable_accessor import DeferrableAccessor
+from .node import RosNode
 
 
-class RosImport(RosDefinition, DeferrableAccessor):
+class RosImport(DeferrableAccessor):
     def __init__(
         self,
         module,
@@ -32,5 +32,13 @@ def import_node(
     module: ModuleType,
     node_name: Optional[str] = None,
     node_namespace: Optional[str] = None,
-):
+) -> RosImport:
+    """
+    Defines a node dependency.
+
+    Args:
+        module (ModuleType): A module that contains a node definition for the dependency.
+        node_name (Optional[str]): Does not need to be provided if the nodes are launched from a launch file and linked properly.
+        node_namespace (Optional[str]): Does not need to be provided if the nodes are launched from a launch file and linked properly.
+    """
     return RosImport(module, node_name, node_namespace)
