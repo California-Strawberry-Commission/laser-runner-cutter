@@ -6,6 +6,7 @@ from cv_bridge import CvBridge
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
 
+import furrow_perceiver.realsense_node_stub as realsense_node_stub
 from aioros2 import (
     QOS_LATCHED,
     import_node,
@@ -19,11 +20,9 @@ from aioros2 import (
     topic,
 )
 from common_interfaces.srv import SetInt32
+from furrow_perceiver.furrow_tracker import FurrowTracker
+from furrow_perceiver.furrow_tracker_annotator import FurrowTrackerAnnotator
 from furrow_perceiver_interfaces.msg import PositionResult, State
-
-from . import realsense_stub
-from .furrow_tracker import FurrowTracker
-from .furrow_tracker_annotator import FurrowTrackerAnnotator
 
 #                              /\                         X
 #  #####________________________________________________#####
@@ -62,7 +61,9 @@ class FurrowPerceiverNode:
     debug_img_topic = topic("~/debug_img", Image, qos=qos_profile_sensor_data)
     tracker_result_topic = topic("~/tracker_result", PositionResult, qos=5)
 
-    realsense_node: realsense_stub.RealsenseStub = import_node(realsense_stub)
+    realsense_node: realsense_node_stub.RealsenseNodeStub = import_node(
+        realsense_node_stub
+    )
 
     @start
     async def start(self):

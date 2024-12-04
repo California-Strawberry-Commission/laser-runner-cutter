@@ -1,45 +1,68 @@
 import time
-from typing import List
-import numpy as np
-import time
-from scipy.stats import linregress
-from .furrow_strip_tracker import FurrowStripTracker
+from typing import List, Optional
 
-MARKER_SIZE = 10
-DISPLAY_LINES = True
-BG_WIDTH = 140
+import numpy as np
+from scipy.stats import linregress
+
+from .furrow_strip_tracker import FurrowStripTracker
 
 
 class FurrowTracker:
-    last_process_time = 0
-    strips: List[FurrowStripTracker] = []
+    def __init__(self, num_strips: int = 10):
+        self._num_strips = num_strips
+        self._last_process_time = 0.0
+        self._strips: List[FurrowStripTracker] = []
 
-    width: int = 0
-    height: int = 0
+        self._width: int = 0
+        self._height: int = 0
 
-    reg_slope = 0
-    reg_intercept = 0
+        self._reg_slope: Optional[float] = 0
+        self._reg_intercept: Optional[float] = 0
 
-    pin_y = 0
-    guidance_offset_x = -40
-    is_controlling_angular = 0
+        self._pin_y = 0
 
-    def __init__(self, num_strips=10):
-        self.num_strips = num_strips
+        self.guidance_offset_x = -40
+
+    @property
+    def last_process_time(self) -> float:
+        return self._last_process_time
+
+    @property
+    def strips(self) -> List[FurrowStripTracker]:
+        return self._strips
+
+    @property
+    def width(self) -> int:
+        return self._width
+
+    @property
+    def height(self) -> int:
+        return self._height
+
+    @property
+    def reg_slope(self) -> Optional[float]:
+        return self._reg_slope
+
+    @property
+    def reg_intercept(self) -> Optional[float]:
+        return self._reg_intercept
+
+    @property
+    def pin_y(self) -> int:
+        return self._pin_y
 
     def init(self, depth_img):
-        if self.width and self.height:
+        if self._width and self._height:
             return
         depth_img = np.asarray(depth_img)
         depth_shape = depth_img.shape
-        self.height, self.width = depth_shape
-        self.strip_height = self.height // self.num_strips
+        self._height, self._width = depth_shape
+        self.strip_height = self._height // self._num_strips
 
-        self.pin_y = 2 * self.height // 4
+        self._pin_y = 2 * self._height // 4
 
-        for i in range(self.num_strips):
-            self.strips.append(FurrowStripTracker(
-                self.strip_height, i, depth_shape))
+        for i in range(self._num_strips):
+            self._strips.append(FurrowStripTracker(self.strip_height, i, depth_shape))
 
     def process(self, depth_img):
         self.init(depth_img)
@@ -47,25 +70,25 @@ class FurrowTracker:
         start = time.perf_counter()
 
         prev = None
-        for s in self.strips:
+        for s in self._strips:
             s.process(depth_img, prev)
             prev = s
 
         self.regress_strips()
 
-        self.last_process_time = time.perf_counter() - start
+        self._last_process_time = time.perf_counter() - start
 
     def regress_strips(self):
-        """Regresses current centerpoints 
+        """Regresses current centerpoints
         NOTE: Resulting regression is transposed to avoid infinite slope"""
-        if not self.width and not self.height:
+        if not self._width and not self._height:
             return
 
-        self.reg_slope = None
-        self.reg_intercept = None
+        self._reg_slope = None
+        self._reg_intercept = None
 
         valid_centerpoints = [
-            (s.x_center, s.y_center) for s in self.strips if s.is_valid
+            (s.x_center, s.y_center) for s in self._strips if s.is_valid
         ]
 
         if len(valid_centerpoints) <= 2:
@@ -78,21 +101,18 @@ class FurrowTracker:
 
         regression = linregress(y, x)
 
-        self.reg_slope = regression.slope
-        self.reg_intercept = regression.intercept
+        self._reg_slope = regression.slope
+        self._reg_intercept = regression.intercept
 
-    def get_reg_x(self, y):
-        if self.reg_intercept is not None:
-            return int(y * (self.reg_slope or 1) + self.reg_intercept)
+    def get_reg_x(self, y: int) -> Optional[int]:
+        if self._reg_intercept is not None:
+            return int(y * (self._reg_slope or 1) + self._reg_intercept)
         return None
 
     def get_error(self):
-        guidance_x = self.width // 2 + self.guidance_offset_x
+        guidance_x = self._width // 2 + self.guidance_offset_x
 
-        if pin_x := self.get_reg_x(self.pin_y):
+        if pin_x := self.get_reg_x(self._pin_y):
             return guidance_x - pin_x
 
         return None
-
-    def set_angular_control(self, state):
-        self.is_controlling_angular = state

@@ -1,30 +1,35 @@
 import cv2
 
+from furrow_perceiver.furrow_tracker import FurrowTracker
+from furrow_perceiver.furrow_strip_tracker import FurrowStripTracker
+
 MARKER_SIZE = 10
+DISPLAY_LINES = True
+BG_WIDTH = 140
 
 
 class FurrowTrackerAnnotator:
-    def __init__(self, tracker):
-        self.tracker = tracker
+    def __init__(self, tracker: FurrowTracker):
+        self._tracker = tracker
 
     def annotate(self, img, draw_timings=False):
         # if draw_timings:
         #     cv2.rectangle(img, (0, 0), (BG_WIDTH, self.height), (127, 127, 0), -1)
 
         # Annotate strips
-        for s in self.tracker.strips:
+        for s in self._tracker.strips:
             self.annotate_strip(s, img, draw_timings)
 
         self.annotate_guidance(img)
 
     def annotate_guidance(self, img):
-        t = self.tracker
+        tracker = self._tracker
 
         # Annotate pin
-        if pin_x := t.get_reg_x(t.pin_y):
+        if pin_x := tracker.get_reg_x(tracker.pin_y):
             cv2.drawMarker(
                 img,
-                (pin_x, t.pin_y),
+                (pin_x, tracker.pin_y),
                 (0, 255, 0),
                 markerType=cv2.MARKER_TRIANGLE_DOWN,
                 markerSize=MARKER_SIZE * 2,
@@ -33,12 +38,19 @@ class FurrowTrackerAnnotator:
             )
 
             # Annotate guidance
-            x = t.width // 2 + t.guidance_offset_x
-            cv2.line(img, (x, t.height), (x, t.pin_y), (0, 255, 255), 2, cv2.LINE_AA)
+            x = tracker.width // 2 + tracker.guidance_offset_x
+            cv2.line(
+                img,
+                (x, tracker.height),
+                (x, tracker.pin_y),
+                (0, 255, 255),
+                2,
+                cv2.LINE_AA,
+            )
             cv2.arrowedLine(
                 img,
-                (x, t.pin_y),
-                (pin_x, t.pin_y),
+                (x, tracker.pin_y),
+                (pin_x, tracker.pin_y),
                 (0, 255, 255),
                 2,
                 cv2.LINE_AA,
@@ -47,7 +59,7 @@ class FurrowTrackerAnnotator:
 
         cv2.putText(
             img,
-            f"{t.last_process_time * 1000:.1f}ms",
+            f"{tracker.last_process_time * 1000:.1f}ms",
             (0, 20),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
@@ -55,10 +67,12 @@ class FurrowTrackerAnnotator:
             2,
         )
 
-        if t.reg_intercept is not None:
-            y0, y1 = 0, t.height
-            x0 = t.get_reg_x(y0)  # (x0 - self.reg_intercept) / (self.reg_slope or 1)
-            x1 = t.get_reg_x(y1)
+        if tracker.reg_intercept is not None:
+            y0, y1 = 0, tracker.height
+            x0 = tracker.get_reg_x(
+                y0
+            )  # (x0 - self.reg_intercept) / (self.reg_slope or 1)
+            x1 = tracker.get_reg_x(y1)
 
             try:
                 cv2.line(
@@ -73,7 +87,7 @@ class FurrowTrackerAnnotator:
                 print("ERROR DRAWING LINE", x0, x1, y0, y1)
                 raise Exception("sda")
 
-    def annotate_strip(self, strip, img, display_timings=False):
+    def annotate_strip(self, strip: FurrowStripTracker, img, display_timings=False):
         cv2.drawMarker(
             img,
             (strip.x_center, strip.y_center),
