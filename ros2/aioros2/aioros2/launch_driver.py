@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import Optional
 
 from launch_ros.actions import Node as RosLaunchNode
@@ -14,7 +15,7 @@ class ImportLinker:
         self._cb = cb
         self._attr = attr
 
-    def link(self, node: "LaunchNode"):
+    def link(self, node: LaunchNode):
         self._cb(self._attr, node)
 
 

@@ -1,22 +1,25 @@
+import logging
 from queue import Empty, SimpleQueue
-from rcl_interfaces.srv import GetParameters
+from typing import Any, Optional
+
 import rclpy
 import rclpy.logging
 import rclpy.node
+from rcl_interfaces.srv import GetParameters
 from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.expand_topic_name import expand_topic_name
 
-from . import server_driver
 from .async_driver import AsyncDriver
 from .decorators.action import RosAction
 from .decorators.import_node import RosImport
 from .decorators.params import RosParams
 from .decorators.service import RosService
+from .decorators.start import RosStart
 from .decorators.subscribe import RosSubscription
 from .decorators.timer import RosTimer
 from .decorators.topic import RosTopic
-from .decorators.start import RosStart
+from .server_driver import ServerDriver
 
 
 class AsyncActionClient:
@@ -60,13 +63,13 @@ class ClientDriver(AsyncDriver):
 
     def __init__(
         self,
-        node_def,
-        server_node,
-        node_name,
-        node_namespace=None,
-        logger=None,
+        node_def: Any,
+        server_node: ServerDriver,
+        node_name: str,
+        node_namespace: Optional[str] = None,
+        logger: Optional[logging.Logger] = None,
     ):
-        self._node: "server_driver.ServerDriver" = server_node
+        self._node = server_node
 
         if logger is None:
             logger = rclpy.logging.get_logger(
@@ -79,7 +82,7 @@ class ClientDriver(AsyncDriver):
 
         self._attach()
 
-    def _get_logger_name(self, name, ns):
+    def _get_logger_name(self, name: str, ns: str) -> str:
         """Returns a pretty name for this client's logger"""
         if name == "/":
             return f"{name}-client"
@@ -87,7 +90,7 @@ class ClientDriver(AsyncDriver):
             ns = ns.lstrip("/")
             return f"{ns}.{name}-client"
 
-    def _process_import(self, attr, ros_import: RosImport):
+    def _process_import(self, attr: str, ros_import: RosImport):
         self.log_debug("Processing client import")
 
         # Get node name and namespace for the import
@@ -146,22 +149,22 @@ class ClientDriver(AsyncDriver):
             imported_node_def, self._node, imported_node_name, imported_node_namespace
         )
 
-    def _attach_publisher(self, attr, ros_topic: RosTopic):
+    def _attach_publisher(self, attr: str, ros_topic: RosTopic):
         return ros_topic
 
-    def _attach_timer(self, attr, ros_timer: RosTimer):
+    def _attach_timer(self, attr: str, ros_timer: RosTimer):
         # Unused on clients
         return None
 
-    def _attach_params(self, attr, ros_params: RosParams):
+    def _attach_params(self, attr: str, ros_params: RosParams):
         # Unused on clients
         return None
 
-    def _process_start(self, attr, ros_start: RosStart):
+    def _process_start(self, attr: str, ros_start: RosStart):
         # Unused on clients
         return None
 
-    def _attach_subscriber(self, attr, ros_sub: RosSubscription):
+    def _attach_subscriber(self, attr: str, ros_sub: RosSubscription):
         topic = ros_sub.get_fully_qualified_topic(self)
 
         # Creates a publisher for this channel
@@ -175,7 +178,7 @@ class ClientDriver(AsyncDriver):
 
         return _dispatch_pub
 
-    def _attach_action(self, attr, ros_action: RosAction):
+    def _attach_action(self, attr: str, ros_action: RosAction):
         self.log_debug(f"[CLIENT] Attach action >{attr}<")
 
         client = ActionClient(
@@ -249,7 +252,7 @@ class ClientDriver(AsyncDriver):
         yield result
         raise StopAsyncIteration()
 
-    def _attach_service(self, attr, ros_service: RosService):
+    def _attach_service(self, attr: str, ros_service: RosService):
         self.log_debug(f"[CLIENT] Attach service >{attr}< @ >{ros_service.path}<")
 
         ros_client = self._node.create_client(
@@ -270,5 +273,5 @@ class ClientDriver(AsyncDriver):
     # Resolves a path into a fully resolved path based on this client's
     # fully qualified node path
     # https://design.ros2.org/articles/topic_and_service_names.html
-    def _resolve_path(self, path: str):
+    def _resolve_path(self, path: str) -> str:
         return expand_topic_name(path, self._node_name, self._node_namespace)

@@ -5,6 +5,7 @@ from typing import Any
 deferrables_frozen = False
 
 
+# TODO: Consolidate with LazyAccessor
 class _DeferrableAccessor:
     """Magic class that can cache access to an object without evaluating it.
     Can be used to define access paths before they actually exist.

@@ -1,19 +1,21 @@
 import asyncio
-from inspect import getmembers
+import logging
 import types
-import rclpy
-from typing import List
-
-from .decorators.service import RosService
-from .decorators.topic import RosTopic
-from .decorators.subscribe import RosSubscription
-from .decorators.import_node import RosImport
-from .decorators.action import RosAction
-from .decorators.timer import RosTimer
-from .decorators.params import RosParams
-from .decorators.param_subscription import RosParamSubscription
-from .decorators.start import RosStart
 from collections import OrderedDict
+from inspect import getmembers
+from typing import Any, List, Optional
+
+import rclpy
+
+from .decorators.action import RosAction
+from .decorators.import_node import RosImport
+from .decorators.param_subscription import RosParamSubscription
+from .decorators.params import RosParams
+from .decorators.service import RosService
+from .decorators.start import RosStart
+from .decorators.subscribe import RosSubscription
+from .decorators.timer import RosTimer
+from .decorators.topic import RosTopic
 
 
 class AsyncDriver:
@@ -37,7 +39,13 @@ class AsyncDriver:
 
         return value
 
-    def __init__(self, node_def, logger, node_name, node_namespace):
+    def __init__(
+        self,
+        node_def: Any,
+        logger: logging.Logger,
+        node_name: str,
+        node_namespace: Optional[str],
+    ):
         self._logger = logger
         self._node_def = node_def
         self._node_name = node_name
@@ -106,36 +114,38 @@ class AsyncDriver:
             ):
                 setattr(self, attr, attacher(attr, definition))
 
-    def _warn_unimplemented(self, readable_name, fn_name):
+    def _warn_unimplemented(self, readable_name: str, fn_name: str):
         self._logger.warning(
             f"Failed to initialize >{readable_name}< because >{fn_name}< is not implemented in driver >{self.__class__.__qualname__}<"
         )
 
-    def _process_import(self, attr, ros_import: RosImport):
+    def _process_import(self, attr: str, ros_import: RosImport):
         self._warn_unimplemented("import", "_process_import")
 
-    def _attach_service(self, attr, ros_service: RosService):
+    def _attach_service(self, attr: str, ros_service: RosService):
         self._warn_unimplemented("service", "_attach_service")
 
-    def _attach_subscriber(self, attr, ros_sub: RosSubscription):
+    def _attach_subscriber(self, attr: str, ros_sub: RosSubscription):
         self._warn_unimplemented("subscriber", "_attach_subscriber")
 
-    def _attach_publisher(self, attr, ros_topic: RosTopic):
+    def _attach_publisher(self, attr: str, ros_topic: RosTopic):
         self._warn_unimplemented("topic publisher", "_attach_publisher")
 
-    def _attach_action(self, attr, ros_action: RosAction):
+    def _attach_action(self, attr: str, ros_action: RosAction):
         self._warn_unimplemented("action", "_attach_action")
 
-    def _attach_timer(self, attr, ros_timer: RosTimer):
+    def _attach_timer(self, attr: str, ros_timer: RosTimer):
         self._warn_unimplemented("timer", "_attach_timer")
 
-    def _attach_params(self, attr, ros_params: RosParams):
+    def _attach_params(self, attr: str, ros_params: RosParams):
         self._warn_unimplemented("params", "_attach_params")
 
-    def _attach_param_subscription(self, attr, ros_param_sub: RosParamSubscription):
+    def _attach_param_subscription(
+        self, attr: str, ros_param_sub: RosParamSubscription
+    ):
         self._warn_unimplemented("param subscription", "_attach_param_subscription")
 
-    def _process_start(self, attr, ros_start: RosStart):
+    def _process_start(self, attr: str, ros_start: RosStart):
         self._warn_unimplemented("start", "_process_start")
 
 

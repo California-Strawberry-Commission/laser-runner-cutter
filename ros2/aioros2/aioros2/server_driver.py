@@ -1,3 +1,4 @@
+from __future__ import annotations
 import asyncio
 import dataclasses
 import inspect
@@ -34,7 +35,7 @@ from .util import catch
 
 
 class CachedPublisher(RosTopic):
-    def __init__(self, topic: RosTopic, node: "ServerDriver"):
+    def __init__(self, topic: RosTopic, node: ServerDriver):
         super().__init__(topic.path, topic.idl, topic.qos)
         self._value = None
         self._node = node
