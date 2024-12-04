@@ -5,10 +5,26 @@ import numpy as np
 
 
 class RgbdFrame(ABC):
-    color_frame: np.ndarray
-    depth_frame: np.ndarray
-    timestamp_millis: float
-    color_depth_aligned: bool
+
+    @property
+    @abstractmethod
+    def color_frame(self) -> np.ndarray:
+        pass
+
+    @property
+    @abstractmethod
+    def depth_frame(self) -> np.ndarray:
+        pass
+
+    @property
+    @abstractmethod
+    def timestamp_millis(self) -> float:
+        pass
+
+    @property
+    @abstractmethod
+    def color_depth_aligned(self) -> bool:
+        pass
 
     @abstractmethod
     def get_position(

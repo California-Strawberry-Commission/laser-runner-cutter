@@ -11,11 +11,6 @@ DEPTH_MAX_METERS = 10
 
 
 class RealSenseFrame(RgbdFrame):
-    color_frame: np.ndarray
-    depth_frame: np.ndarray
-    timestamp_millis: float
-    color_depth_aligned: bool
-
     def __init__(
         self,
         color_frame: rs.frame,
@@ -40,16 +35,32 @@ class RealSenseFrame(RgbdFrame):
             depth_to_color_extrinsics (Optional[rs.extrinsics]): Must be defined if color_depth_aligned is True.
             color_to_depth_extrinsics (Optional[rs.extrinsics]): Must be defined if color_depth_aligned is True.
         """
-        self.color_frame = np.asanyarray(color_frame.get_data())
-        self.depth_frame = np.asanyarray(depth_frame.get_data())
+        self._color_frame = np.asanyarray(color_frame.get_data())
+        self._depth_frame = np.asanyarray(depth_frame.get_data())
         self._rs_depth_frame = depth_frame
-        self.timestamp_millis = timestamp_millis
-        self.color_depth_aligned = color_depth_aligned
+        self._timestamp_millis = timestamp_millis
+        self._color_depth_aligned = color_depth_aligned
         self._depth_scale = depth_scale
         self._depth_intrinsics = depth_intrinsics
         self._color_intrinsics = color_intrinsics
         self._depth_to_color_extrinsics = depth_to_color_extrinsics
         self._color_to_depth_extrinsics = color_to_depth_extrinsics
+
+    @property
+    def color_frame(self) -> np.ndarray:
+        return self._color_frame
+
+    @property
+    def depth_frame(self) -> np.ndarray:
+        return self._depth_frame
+
+    @property
+    def timestamp_millis(self) -> float:
+        return self._timestamp_millis
+
+    @property
+    def color_depth_aligned(self) -> bool:
+        return self._color_depth_aligned
 
     def get_position(
         self, color_pixel: Tuple[int, int]

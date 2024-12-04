@@ -12,9 +12,6 @@ DEPTH_MAX_MM = 10000
 
 
 class LucidFrame(RgbdFrame):
-    color_frame: np.ndarray
-    depth_frame: np.ndarray
-    timestamp_millis: float
 
     def __init__(
         self,
@@ -42,13 +39,13 @@ class LucidFrame(RgbdFrame):
             xyz_to_color_camera_extrinsic_matrix (np.ndarray): Extrinsic matrix from depth camera's XYZ positions to the depth camera.
             color_frame_offset (Tuple[int, int]): Offset of the ROI area of the color frame.
         """
-        self.color_frame = color_frame
+        self._color_frame = color_frame
         self._depth_frame_xyz = depth_frame_xyz
-        self.depth_frame = np.sqrt(np.sum(np.square(depth_frame_xyz), axis=-1)).astype(
+        self._depth_frame = np.sqrt(np.sum(np.square(depth_frame_xyz), axis=-1)).astype(
             np.uint16
         )  # Represent the depth frame as the L2 norm, and convert to mono16
 
-        self.timestamp_millis = timestamp_millis
+        self._timestamp_millis = timestamp_millis
         self._color_camera_intrinsic_matrix = color_camera_intrinsic_matrix
         self._color_camera_distortion_coeffs = color_camera_distortion_coeffs
         self._depth_camera_intrinsic_matrix = depth_camera_intrinsic_matrix
@@ -64,6 +61,22 @@ class LucidFrame(RgbdFrame):
             @ invert_extrinsic_matrix(xyz_to_color_camera_extrinsic_matrix)
         )
         self._color_frame_offset = color_frame_offset
+
+    @property
+    def color_frame(self) -> np.ndarray:
+        return self._color_frame
+
+    @property
+    def depth_frame(self) -> np.ndarray:
+        return self._depth_frame
+
+    @property
+    def timestamp_millis(self) -> float:
+        return self._timestamp_millis
+
+    @property
+    def color_depth_aligned(self) -> bool:
+        return False
 
     def get_corresponding_depth_pixel_deprecated(
         self, color_pixel: Tuple[int, int]
