@@ -46,6 +46,18 @@ class AsyncDriver:
         # self._node_def.params = self._attach_params_dataclass(self._node_def.params)
         self._loop = asyncio.get_running_loop()
 
+    @property
+    def node_def(self):
+        return self._node_def
+
+    @property
+    def node_name(self):
+        return self._node_name
+
+    @property
+    def node_namespace(self):
+        return self._node_namespace
+
     async def run_executor(self, fn, *args, **kwargs):
         """Runs a synchronous function in an executor"""
         return await self._loop.run_in_executor(None, fn, *args, **kwargs)

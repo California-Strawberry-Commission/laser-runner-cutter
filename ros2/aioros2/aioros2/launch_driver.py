@@ -1,6 +1,6 @@
 from typing import Optional
 
-from launch_ros.actions import Node as RclpyNode
+from launch_ros.actions import Node as RosLaunchNode
 from rclpy.logging import get_logger
 
 from .async_driver import AsyncDriver
@@ -18,14 +18,14 @@ class ImportLinker:
         self._cb(self._attr, node)
 
 
-class LaunchNode(RclpyNode, AsyncDriver):
+class LaunchNode(RosLaunchNode, AsyncDriver):
     def __init_rclpy_node(self):
         # Override parameters kwargs with launch params in addition to passed params
         self._kwargs["parameters"] = self._parameters + (
             self._kwargs["parameters"] if ("parameters" in self._kwargs) else []
         )
 
-        RclpyNode.__init__(
+        RosLaunchNode.__init__(
             self,
             package=self._package,
             executable=self._executable,

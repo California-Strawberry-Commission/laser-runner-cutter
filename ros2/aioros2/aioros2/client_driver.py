@@ -59,7 +59,12 @@ class ClientDriver(AsyncDriver):
     """
 
     def __init__(
-        self, node_def, server_node, node_name, node_namespace=None, logger=None
+        self,
+        node_def,
+        server_node,
+        node_name,
+        node_namespace=None,
+        logger=None,
     ):
         self._node: "server_driver.ServerDriver" = server_node
 
@@ -86,8 +91,8 @@ class ClientDriver(AsyncDriver):
         self.log_debug("Processing client import")
 
         # Get node name and namespace for the import
-        node_name_param_name = f"{attr}.name"
-        node_namespace_param_name = f"{attr}.ns"
+        imported_node_name_param_name = f"{attr}.name"
+        imported_node_namespace_param_name = f"{attr}.ns"
 
         # Lookup the import parameters on the remote server node
         # Need to use param api because these params are not local to this server node.
@@ -101,7 +106,7 @@ class ClientDriver(AsyncDriver):
             self.log_debug(f">{fqt}< service not available.")
 
         req = GetParameters.Request(
-            names=[node_name_param_name, node_namespace_param_name]
+            names=[imported_node_name_param_name, imported_node_namespace_param_name]
         )
 
         # Block asyncio to perform this service call - initialization is sync so this
@@ -113,36 +118,35 @@ class ClientDriver(AsyncDriver):
                 res = res.result()
                 break
 
-        import_name_param, import_ns_param = res.values
+        imported_node_name_param, imported_node_namespace_param = res.values
 
         # The configured import name and namespace!
-        import_name = import_name_param.string_value
-        import_ns = import_ns_param.string_value or "/"
+        imported_node_name = imported_node_name_param.string_value
+        imported_node_namespace = imported_node_namespace_param.string_value or "/"
 
-        if import_name == "":
+        if imported_node_name == "":
             self.log_warn(
                 f"Could not complete import for >{attr}< - "
-                f"Service was found, but params >{node_name_param_name}< "
-                f"or >{node_namespace_param_name}< were not set."
+                f"Service was found, but params >{imported_node_name_param_name}< "
+                f"or >{imported_node_namespace_param_name}< were not set."
             )
 
-        # If the referenced node is the same as the serverDriver (circular reference)
-        # DON'T create a client driver. Return the server driver.
+        # If the referenced node is the same as the ServerDriver (circular reference)
+        # DON'T create a client driver. Return the server driver instead.
         if (
-            import_name == self._node._node_name
-            and import_ns == self._node._node_namespace
+            imported_node_name == self._node._node_name
+            and imported_node_namespace == self._node._node_namespace
         ):
             return self._node
 
-        node_def = ros_import.resolve()
+        imported_node_def = ros_import.get_node_def()
 
         # Create a new ClientDriver for this node
-        return ClientDriver(node_def, self._node, import_name, import_ns)
+        return ClientDriver(
+            imported_node_def, self._node, imported_node_name, imported_node_namespace
+        )
 
     def _attach_publisher(self, attr, ros_topic: RosTopic):
-        # Set topic node in definition so that other attachers know about it
-        ros_topic.node = self
-
         return ros_topic
 
     def _attach_timer(self, attr, ros_timer: RosTimer):
@@ -158,11 +162,10 @@ class ClientDriver(AsyncDriver):
         return None
 
     def _attach_subscriber(self, attr, ros_sub: RosSubscription):
-        # TODO: This doesn't work as expected for 2nd order imports
-        topic = ros_sub.get_fqt()
+        topic = ros_sub.get_fully_qualified_topic(self)
 
         # Creates a publisher for this channel
-        self.log(f"[CLIENT] Attach subscriber publisher @ >{topic.path}<")
+        self.log_debug(f"[CLIENT] Attach subscriber publisher @ >{topic.path}<")
 
         pub = self._node.create_publisher(topic.idl, topic.path, topic.qos)
 

@@ -1,6 +1,8 @@
 from typing import Any, Union
 
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile
+from rclpy.expand_topic_name import expand_topic_name
+
 
 # QoS profile for a latched topic (the last message published is saved and sent to any late subscribers)
 QOS_LATCHED = QoSProfile(
@@ -15,7 +17,9 @@ class RosTopic:
         self.path = name
         self.idl = idl
         self.qos: QoSProfile = qos
-        self.node = None
+
+    def get_fully_qualified_name(self, node_name: str, node_namespace: str):
+        return expand_topic_name(self.path, node_name, node_namespace)
 
 
 def topic(name: str, idl: Any, qos: Union[QoSProfile, int] = 10) -> RosTopic:

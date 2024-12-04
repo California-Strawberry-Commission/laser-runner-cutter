@@ -1,25 +1,27 @@
 from types import ModuleType
 from typing import Optional
 
-from .deferrable_accessor import DeferrableAccessor
 from .node import RosNode
+from .lazy_accessor import LazyAccessor
 
 
-class RosImport(DeferrableAccessor):
+class RosImport(LazyAccessor):
     def __init__(
         self,
         module,
         node_name: Optional[str] = None,
         node_namespace: Optional[str] = None,
     ):
-        DeferrableAccessor.__init__(self, self.resolve)
-        self.__module = module
+        LazyAccessor.__init__(self)
+        self._module = module
         self.node_name = node_name
         self.node_namespace = node_namespace
 
-    def resolve(self):
-        """Returns an instance of the first RosNode subclass within the passed module"""
-        for _, obj in self.__module.__dict__.items():
+    def get_node_def(self):
+        """
+        Returns an instance of the first RosNode subclass within the module.
+        """
+        for _, obj in self._module.__dict__.items():
             if (
                 isinstance(obj, type)
                 and obj is not RosNode

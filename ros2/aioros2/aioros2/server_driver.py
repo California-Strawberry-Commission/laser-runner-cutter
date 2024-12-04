@@ -33,22 +33,22 @@ from .util import catch
 # https://github.com/ros2/demos/blob/rolling/demo_nodes_py/demo_nodes_py/parameters/set_parameters_callback.py
 
 
-class CachedPublisher:
+class CachedPublisher(RosTopic):
     def __init__(self, topic: RosTopic, node: "ServerDriver"):
-        self.value = None
-        self.topic = topic
-        self.node = node
+        super().__init__(topic.path, topic.idl, topic.qos)
+        self._value = None
+        self._node = node
 
-        self.pub = node.create_publisher(topic.idl, topic.path, topic.qos)
+        self._pub = node.create_publisher(topic.idl, topic.path, topic.qos)
 
     async def __call__(self, *args, **kwargs):
         if len(args) == 1:
             msg = args[0]
         else:
-            msg = self.topic.idl(*args, **kwargs)
+            msg = self.idl(*args, **kwargs)
 
-        self.value = msg
-        await self.node.run_executor(self.pub.publish, msg)
+        self._value = msg
+        await self._node.run_executor(self._pub.publish, msg)
 
 
 class ParamDriver:
@@ -242,8 +242,10 @@ class ServerDriver(AsyncDriver, Node):
             namespace=node_namespace,
             parameter_overrides=node_def._aioros2_parameter_overrides,
         )
+        # Note: the node name can be overridden during launch in many ways. We can get
+        # the final name by calling Node.get_name().
         AsyncDriver.__init__(
-            self, node_def, self.get_logger(), node_name, node_namespace
+            self, node_def, self.get_logger(), self.get_name(), node_namespace
         )
 
         self._attach()
@@ -257,45 +259,50 @@ class ServerDriver(AsyncDriver, Node):
         # in launch_driver._process_imports
 
         # Create parameters to pass import name & namespace
-        node_name_param_name = f"{attr}.name"
-        node_namespace_param_name = f"{attr}.ns"
+        imported_node_name_param_name = f"{attr}.name"
+        imported_node_namespace_param_name = f"{attr}.ns"
 
         self.declare_parameter(
-            node_name_param_name,
+            imported_node_name_param_name,
             ros_import.node_name if ros_import.node_name is not None else attr,
         )
         self.declare_parameter(
-            node_namespace_param_name,
+            imported_node_namespace_param_name,
             ros_import.node_namespace if ros_import.node_namespace is not None else "/",
         )
 
-        node_name = (
-            self.get_parameter(node_name_param_name).get_parameter_value().string_value
-        )
-
-        node_ns = (
-            self.get_parameter(node_namespace_param_name)
+        imported_node_name = (
+            self.get_parameter(imported_node_name_param_name)
             .get_parameter_value()
             .string_value
         )
 
-        if node_name == attr:
+        imported_node_namespace = (
+            self.get_parameter(imported_node_namespace_param_name)
+            .get_parameter_value()
+            .string_value
+        )
+
+        if imported_node_name == attr:
             self.log_warn(
                 f"Node name for import >{attr}< was not set at "
-                f">{node_name_param_name}<. Using default name: >{attr}<"
+                f">{imported_node_name_param_name}<. Using default name: >{attr}<"
             )
 
-        if node_ns == "/":
+        if imported_node_namespace == "/":
             self.log_debug(
                 f"Node namespace for import >{attr}< was not set at "
-                f">{node_namespace_param_name}<. Using default namespace: >/<"
+                f">{imported_node_namespace_param_name}<. Using default namespace: >/<"
             )
 
-        return ClientDriver(ros_import, self, node_name, node_ns)
+        imported_node_def = ros_import.get_node_def()
+
+        return ClientDriver(
+            imported_node_def, self, imported_node_name, imported_node_namespace
+        )
 
     def _attach_service(self, attr, ros_service: RosService):
-        """Attaches a service"""
-        self.log_debug(f"[SERVER] Attach service >{attr}< @ >{ros_service.name}<")
+        self.log_debug(f"[SERVER] Attach service >{attr}< @ >{ros_service.path}<")
 
         # Will be called from MultiThreadedExecutor
         @catch(self.log_error, ros_service.idl.Response())
@@ -308,7 +315,7 @@ class ServerDriver(AsyncDriver, Node):
 
             return marshal_returnable_to_idl(user_return, ros_service.idl.Response)
 
-        self.create_service(ros_service.idl, ros_service.name, cb)
+        self.create_service(ros_service.idl, ros_service.path, cb)
 
     def _attach_action(self, attr, ros_action: RosAction):
         self.log_debug(f"[SERVER] Attach action >{attr}<")
@@ -365,20 +372,18 @@ class ServerDriver(AsyncDriver, Node):
         return ros_action.handler
 
     def _attach_subscriber(self, attr, ros_sub: RosSubscription):
-        fqt = ros_sub.get_fqt()
-
-        self.log_debug(f"[SERVER] Attach subscriber >{attr}<, {fqt.path}")
+        self.log_debug(f"[SERVER] Attach subscriber {attr}")
+        topic = ros_sub.get_fully_qualified_topic(self)
 
         @catch(self.log_error)
         def cb(msg):
             kwargs = idl_to_kwargs(msg)
             self.run_coroutine(ros_sub.handler, self, **kwargs)
 
-        self.create_subscription(fqt.idl, fqt.path, cb, fqt.qos)
+        self.create_subscription(topic.idl, topic.path, cb, topic.qos)
 
     def _attach_publisher(self, attr, ros_topic: RosTopic):
         self.log_debug(f"[SERVER] Attach publisher {attr} @ >{ros_topic.path}<")
-        ros_topic.node = self
 
         return CachedPublisher(ros_topic, self)
 

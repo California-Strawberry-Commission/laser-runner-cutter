@@ -10,7 +10,7 @@ class RosService:
             )
 
         self._check_service_handler_signature(func, idl)
-        self.name = name
+        self.path = name
         self.idl = idl
         self.handler = func
 

@@ -20,7 +20,7 @@ from aioros2 import (
     timer,
     topic,
 )
-from . import another_node
+from . import another_node, circular_node
 
 
 # NOTE: dataclass REQUIRES type annotations to work
@@ -52,7 +52,8 @@ class MainNode:
     my_topic = topic("~/my_topic", String, QOS_LATCHED)
 
     # Defines dependencies.
-    another_node_0 = import_node(another_node)
+    another_node = import_node(another_node)
+    circular_node = import_node(circular_node)
 
     # Defines a function that will run immediately on node start.
     @start
@@ -66,7 +67,7 @@ class MainNode:
     async def timer(self):
         print("timer called")
         # Publish to topics by calling the topic directly.
-        asyncio.create_task(self.my_topic(data="Hello World"))
+        asyncio.create_task(self.my_topic(data="Hello from MainNode"))
 
     # Defines a function that will run as a result of a ROS 2 service call.
     @service("~/my_service", Trigger)
@@ -76,9 +77,13 @@ class MainNode:
         return result(success=True)
 
     # Defines a function that will run when a message is received on a topic.
-    @subscribe(another_node_0.my_topic)
-    async def on_another_node_0_my_topic(self, data):
-        print(f"message from another_node_0.my_topic received: {data}")
+    @subscribe(another_node.my_topic)
+    async def on_another_node_my_topic(self, data):
+        print(f"message from another_node.my_topic received: {data}")
+
+    @subscribe(circular_node.my_topic)
+    async def on_circular_node_my_topic(self, data):
+        print(f"message from circular_node.my_topic received: {data}")
 
     # Defines a function that will run whenever the specified parameters change.
     @subscribe_param(some_params.my_string, some_other_params.my_string)
