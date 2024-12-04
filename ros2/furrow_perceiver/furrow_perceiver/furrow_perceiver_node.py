@@ -62,7 +62,7 @@ class FurrowPerceiverNode:
     debug_img_topic = topic("~/debug_img", Image, qos=qos_profile_sensor_data)
     tracker_result_topic = topic("~/tracker_result", PositionResult, qos=5)
 
-    realsense: realsense_stub.RealsenseStub = import_node(realsense_stub)
+    realsense_node: realsense_stub.RealsenseStub = import_node(realsense_stub)
 
     @start
     async def start(self):
@@ -71,7 +71,7 @@ class FurrowPerceiverNode:
         # For converting numpy array to image msg
         self._cv_bridge = CvBridge()
 
-    @subscribe(realsense.depth_image_topic)
+    @subscribe(realsense_node.depth_image_topic)
     async def on_depth_image(
         self, header, height, width, encoding, is_bigendian, step, data
     ):

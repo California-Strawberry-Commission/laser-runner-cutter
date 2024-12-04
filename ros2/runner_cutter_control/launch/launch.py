@@ -47,7 +47,7 @@ def generate_launch_description():
 
     # region Nav nodes
 
-    rs_node0 = IncludeLaunchDescription(
+    realsense_forward_launch_node = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             [
                 os.path.join(
@@ -59,7 +59,10 @@ def generate_launch_description():
         launch_arguments={
             "camera": "camera_1",
             "serial_no": "'819312072040'",
-            "camera_name": "cam0",
+            # Note: the furrow perceiver node depends on the RealSense node topics, but since
+            # the RealSense topics are not using aioros2, we use a stub node def. This name
+            # must match the one in parameters.yaml.
+            "camera_name": "cam_forward",
             "camera_namespace": "/",
             # Hole filling and temporal filters significantly improve depth map quality,
             # but the other filters do not.
@@ -69,7 +72,7 @@ def generate_launch_description():
         condition=IfCondition(launch_nav_nodes),
     )
 
-    rs_node1 = IncludeLaunchDescription(
+    realsense_backward_launch_node = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             [
                 os.path.join(
@@ -81,7 +84,10 @@ def generate_launch_description():
         launch_arguments={
             "camera": "camera_2",
             "serial_no": "'017322073371'",
-            "camera_name": "cam1",
+            # Note: the furrow perceiver node depends on the RealSense node topics, but since
+            # the RealSense topics are not using aioros2, we use a stub node def. This name
+            # must match the one in parameters.yaml.
+            "camera_name": "cam_backward",
             "camera_namespace": "/",
             # Hole filling and temporal filters significantly improve depth map quality,
             # but the other filters do not.
@@ -91,36 +97,36 @@ def generate_launch_description():
         condition=IfCondition(launch_nav_nodes),
     )
 
-    furrow_perc0 = LaunchNode(
+    furrow_perceiver_forward_launch_node = LaunchNode(
         furrow_perceiver_node,
-        name="furrow0",
+        name="furrow_perceiver_forward",
         parameters=[parameters_file],
         output="screen",
         emulate_tty=True,
         condition=IfCondition(launch_nav_nodes),
     )
 
-    furrow_perc1 = LaunchNode(
+    furrow_perceiver_backward_launch_node = LaunchNode(
         furrow_perceiver_node,
-        name="furrow1",
+        name="furrow_perceiver_backward",
         parameters=[parameters_file],
         output="screen",
         emulate_tty=True,
         condition=IfCondition(launch_nav_nodes),
     )
 
-    amiga = LaunchNode(
+    amiga_launch_node = LaunchNode(
         amiga_control_node,
-        name="amiga0",
+        name="amiga",
         parameters=[parameters_file],
         output="screen",
         emulate_tty=True,
         condition=IfCondition(launch_nav_nodes),
     )
 
-    brain = LaunchNode(
+    guidance_brain_launch_node = LaunchNode(
         guidance_brain_node,
-        name="brain0",
+        name="guidance_brain",
         parameters=[parameters_file],
         output="screen",
         emulate_tty=True,
@@ -128,16 +134,19 @@ def generate_launch_description():
     )
 
     # Link node dependencies
-    brain.perceiver_forward.link(furrow_perc0)
-    # TODO: aioros2 currently has a bug when importing nodes twice
-    # brain.perceiver_backward.link(furrow_perc1)
-    brain.amiga.link(amiga)
+    guidance_brain_launch_node.furrow_perceiver_forward_node.link(
+        furrow_perceiver_forward_launch_node
+    )
+    guidance_brain_launch_node.furrow_perceiver_backward_node.link(
+        furrow_perceiver_backward_launch_node
+    )
+    guidance_brain_launch_node.amiga_node.link(amiga_launch_node)
 
     # endregion
 
     # region Cutter nodes
 
-    camera_node = LaunchNode(
+    camera_control_launch_node = LaunchNode(
         camera_control_node,
         name="camera0",
         parameters=[parameters_file],
@@ -150,7 +159,7 @@ def generate_launch_description():
         ),
     )
 
-    laser_node = LaunchNode(
+    laser_control_launch_node = LaunchNode(
         laser_control_node,
         name="laser0",
         parameters=[parameters_file],
@@ -163,7 +172,7 @@ def generate_launch_description():
         ),
     )
 
-    runner_cutter_node = LaunchNode(
+    runner_cutter_control_launch_node = LaunchNode(
         runner_cutter_control_node,
         name="control0",
         parameters=[parameters_file],
@@ -177,13 +186,13 @@ def generate_launch_description():
     )
 
     # Link node dependencies
-    runner_cutter_node.camera_node.link(camera_node)
-    runner_cutter_node.laser_node.link(laser_node)
+    runner_cutter_control_launch_node.camera_node.link(camera_control_launch_node)
+    runner_cutter_control_launch_node.laser_node.link(laser_control_launch_node)
 
     # The following is for if we want to run runner cutter related nodes in a single process.
     # Composable nodes are not supported for Python nodes yet, so we use an executable that spins
     # multiple nodes.
-    single_process_runner = launch_ros.actions.Node(
+    single_process_runner_launch_node = launch_ros.actions.Node(
         package="runner_cutter_control",
         executable="single_process_runner",
         parameters=[parameters_file],
@@ -203,15 +212,15 @@ def generate_launch_description():
             launch_nav_nodes_launch_arg,
             launch_cutter_nodes_launch_arg,
             use_single_process_launch_arg,
-            rs_node0,
-            rs_node1,
-            furrow_perc0,
-            furrow_perc1,
-            amiga,
-            brain,
-            camera_node,
-            laser_node,
-            runner_cutter_node,
-            single_process_runner,
+            realsense_forward_launch_node,
+            realsense_backward_launch_node,
+            furrow_perceiver_forward_launch_node,
+            furrow_perceiver_backward_launch_node,
+            amiga_launch_node,
+            guidance_brain_launch_node,
+            camera_control_launch_node,
+            laser_control_launch_node,
+            runner_cutter_control_launch_node,
+            single_process_runner_launch_node,
         ]
     )  # type: ignore

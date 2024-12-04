@@ -18,9 +18,7 @@ from aioros2 import (
 )
 from common_interfaces.msg import PID, Vector2
 from common_interfaces.srv import SetFloat32
-from furrow_perceiver_interfaces.msg import PositionResult
 from guidance_brain_interfaces.msg import State
-
 
 FEET_PER_MIN_TO_METERS_PER_SEC = 0.00508
 # Arbitrary scaling factor for P
@@ -32,22 +30,18 @@ class GoDirection(IntEnum):
     BACKWARD = 1
 
 
-# Executable to call to launch this node (defined in `setup.py`)
 @node("guidance_brain_node")
 class GuidanceBrainNode:
-    perceiver_forward = import_node(furrow_perceiver_node)
-    # TODO: aioros2 currently has a bug when importing nodes twice
-    # perceiver_backward = import_node(furrow_perceiver_node)
-    amiga = import_node(amiga_control_node)
+    amiga_node = import_node(amiga_control_node)
+    furrow_perceiver_forward_node = import_node(furrow_perceiver_node)
+    furrow_perceiver_backward_node = import_node(furrow_perceiver_node)
 
-    # Emits state.
     state_topic = topic("~/state", State, QOS_LATCHED)
 
-    # State Vars
     state = State(
         guidance_active=False,
         amiga_connected=False,
-        speed=20.0,  # Default - 10ft/min
+        speed=20.0,
         follower_pid=PID(p=50.0),
         # Keeps selected (forward/backward) perceiver result
         perceiver_valid=False,
@@ -73,7 +67,7 @@ class GuidanceBrainNode:
         # Short circuit if perceiver isn't valid.
         if not (self.state.guidance_active and self.state.perceiver_valid):
             self.state.command = 0.0
-            await self.amiga.set_twist(twist=Vector2(x=0.0, y=0.0))
+            await self.amiga_node.set_twist(twist=Vector2(x=0.0, y=0.0))
             return
 
         # Run PID
@@ -83,23 +77,21 @@ class GuidanceBrainNode:
         if self.state.go_direction == GoDirection.BACKWARD:
             speed_ms = -speed_ms
 
-        await self.amiga.set_twist(twist=Vector2(x=self.state.command, y=speed_ms))
+        await self.amiga_node.set_twist(twist=Vector2(x=self.state.command, y=speed_ms))
 
-    @subscribe(amiga.amiga_available)
+    @subscribe(amiga_node.amiga_available)
     async def on_amiga_available(self, data):
         self.state.amiga_connected = data
 
-    # TODO: aioros2 currently has a bug when importing nodes twice, so we hardcode the topic
-    # path here
-    @subscribe("/furrow1/tracker_result", PositionResult)
-    async def on_fp_back_result(self, linear_deviation, heading, is_valid):
-        if self.state.go_direction == GoDirection.BACKWARD:
+    @subscribe(furrow_perceiver_forward_node.tracker_result_topic)
+    async def on_fp_forw_result(self, linear_deviation, heading, is_valid):
+        if self.state.go_direction == GoDirection.FORWARD:
             self.state.perceiver_valid = is_valid
             self.state.error = linear_deviation
 
-    @subscribe(perceiver_forward.tracker_result_topic)
-    async def on_fp_forw_result(self, linear_deviation, heading, is_valid):
-        if self.state.go_direction != GoDirection.BACKWARD:
+    @subscribe(furrow_perceiver_backward_node.tracker_result_topic)
+    async def on_fp_back_result(self, linear_deviation, heading, is_valid):
+        if self.state.go_direction == GoDirection.BACKWARD:
             self.state.perceiver_valid = is_valid
             self.state.error = linear_deviation
 

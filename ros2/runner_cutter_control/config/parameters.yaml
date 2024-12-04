@@ -26,11 +26,17 @@ laser0:
       fps: 1000
       pps: 1000
       transition_duration_ms: 0.5
-furrow0: # Forward
+furrow_perceiver_forward:
   ros__parameters:
-    realsense:
-      name: cam0
-furrow1: # Backward
+    # Since RealSense ROS nodes are not using aioros2, we use a stub node def to represent the
+    # dependency. We set the name of the dependent node here so that the topic names are resolved
+    # properly.
+    realsense_node:
+      name: cam_forward
+furrow_perceiver_backward:
   ros__parameters:
-    realsense:
-      name: cam1
+    # Since RealSense ROS nodes are not using aioros2, we use a stub node def to represent the
+    # dependency. We set the name of the dependent node here so that the topic names are resolved
+    # properly.
+    realsense_node:
+      name: cam_backward
