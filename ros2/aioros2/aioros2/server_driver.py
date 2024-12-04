@@ -38,8 +38,11 @@ class CachedPublisher(RosTopic):
         super().__init__(topic.path, topic.idl, topic.qos)
         self._value = None
         self._node = node
-
         self._pub = node.create_publisher(topic.idl, topic.path, topic.qos)
+
+    @property
+    def value(self):
+        return self._value
 
     async def __call__(self, *args, **kwargs):
         if len(args) == 1:
