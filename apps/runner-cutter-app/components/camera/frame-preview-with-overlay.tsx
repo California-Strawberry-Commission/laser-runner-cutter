@@ -61,6 +61,7 @@ export default function FramePreviewWithOverlay({
   className?: string;
 }) {
   const imgRef = useRef<HTMLImageElement>(null);
+  const [streamUrl, setStreamUrl] = useState<string>("");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [canvasStyle, setCanvasStyle] = useState({
     width: 0,
@@ -69,13 +70,19 @@ export default function FramePreviewWithOverlay({
     left: 0,
   });
 
-  let streamUrl = "";
-  if (typeof window !== "undefined" && enableStream && topicName) {
-    const videoServer =
-      process.env.NEXT_PUBLIC_VIDEO_SERVER_URL ??
-      `http://${window.location.hostname}:8080`;
-    streamUrl = `${videoServer}/stream?topic=${topicName}&quality=${quality}&qos_profile=sensor_data`;
-  }
+  // Unfortunately, with SSR, this needed for code that should only run on client side. Otherwise
+  // we will get an error when enableStream is true on initial render since the server and
+  // client "src" values will not match.
+  useEffect(() => {
+    if (typeof window !== "undefined" && enableStream && topicName) {
+      const videoServer =
+        process.env.NEXT_PUBLIC_VIDEO_SERVER_URL ??
+        `http://${window.location.hostname}:8080`;
+      setStreamUrl(
+        `${videoServer}/stream?topic=${topicName}&quality=${quality}&qos_profile=sensor_data`
+      );
+    }
+  }, [enableStream, topicName, quality]);
 
   const renderOverlay = streamUrl && enableOverlay;
 

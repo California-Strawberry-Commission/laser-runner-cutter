@@ -456,7 +456,6 @@ class RunnerCutterControlNode:
     async def _runner_cutter_task(
         self, detection_type=DetectionType.RUNNER, enable_detection_during_burn=False
     ):
-        await self._reset_to_idle()
         await self.camera_node.start_detection(detection_type=detection_type)
         while True:
             # Acquire target. If there are no valid targets, wait for another detection event.

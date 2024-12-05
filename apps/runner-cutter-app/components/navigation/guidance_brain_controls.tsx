@@ -9,36 +9,37 @@ import { Button } from "@/components/ui/button";
 import useGuidanceBrainNode from "@/lib/useGuidanceBrainNode";
 
 export default function GuidanceBrainControls() {
-  const node = useGuidanceBrainNode("/brain0");
+  const node = useGuidanceBrainNode("/guidance_brain");
 
   const disableButtons = !node.connected;
 
-  return (<div className="flex flex-col gap-2 mb-2 mt-2">
-    <div className="flex gap-2">
-      <InputWithLabel
-        className="flex-none w-24 rounded-r-none"
-        type="number"
-        id="exposure"
-        label="Speed (ft/min)"
-        step={1}
-        min={0}
-        max={30}
-        value={node.state.speed}
-        onChange={(str) => node.setSpeed(Number(str))}
-      />
-      <InputWithLabel
-        className="flex-none w-24 rounded-r-none"
-        type="number"
-        id="exposure"
-        label="P Gain"
-        step={5}
-        min={0}
-        max={100}
-        value={node.state.follower_pid.p}
-        onChange={(str) => node.setP(Number(str))}
-      />
+  return (
+    <div className="flex flex-col gap-2 mb-2 mt-2 items-center">
+      <div className="flex gap-2">
+        <InputWithLabel
+          className="flex-none w-24 rounded-r-none"
+          type="number"
+          id="exposure"
+          label="Speed (ft/min)"
+          step={1}
+          min={0}
+          max={30}
+          value={node.state.speed}
+          onChange={(str) => node.setSpeed(Number(str))}
+        />
+        <InputWithLabel
+          className="flex-none w-24 rounded-r-none"
+          type="number"
+          id="exposure"
+          label="P Gain"
+          step={5}
+          min={0}
+          max={100}
+          value={node.state.follower_pid.p}
+          onChange={(str) => node.setP(Number(str))}
+        />
 
-      {/* <InputWithLabel
+        {/* <InputWithLabel
         className="flex-none w-24 rounded-r-none"
         type="number"
         id="exposure"
@@ -57,39 +58,38 @@ export default function GuidanceBrainControls() {
         onChange={(str) => node.setD(Number(str))}
     /> */}
 
-      <Button
-        disabled={disableButtons}
-        onClick={() => {
-          node.stop()
-        }}
-      >
-        STOP
-      </Button>
+        <Button
+          disabled={disableButtons}
+          variant="destructive"
+          onClick={() => {
+            node.stop();
+          }}
+        >
+          Stop
+        </Button>
 
-      <Button
-        disabled={disableButtons || node.state.guidance_active}
-        onClick={() => {
-          node.goForward()
-        }}
-      >
-        Forward
-      </Button>
+        <Button
+          disabled={disableButtons || node.state.guidance_active}
+          onClick={() => {
+            node.goForward();
+          }}
+        >
+          Forward
+        </Button>
 
-      <Button
-        disabled={disableButtons || node.state.guidance_active}
-        onClick={() => {
-          node.goBackward()
-        }}
-      >
-        Backward
-      </Button>
+        <Button
+          disabled={disableButtons || node.state.guidance_active}
+          onClick={() => {
+            node.goBackward();
+          }}
+        >
+          Backward
+        </Button>
+      </div>
 
+      <p>{node.connected ? "Node connected" : "Node disconnected"}</p>
+
+      <pre className="text-xs">{JSON.stringify(node.state, null, 2)}</pre>
     </div>
-
-    <p>{node.connected ? "CONN" : "DISCONN"}</p>
-
-    <pre>
-      {JSON.stringify(node.state, null, 2)}
-    </pre>
-  </div>);
+  );
 }
