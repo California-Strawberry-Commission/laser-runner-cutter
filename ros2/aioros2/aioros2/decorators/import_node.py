@@ -1,8 +1,8 @@
 from types import ModuleType
 from typing import Optional
 
-from .node import RosNode
-from .lazy_accessor import LazyAccessor
+from aioros2.decorators.node import RosNode
+from aioros2.lazy_accessor import LazyAccessor
 
 
 class RosImport(LazyAccessor):

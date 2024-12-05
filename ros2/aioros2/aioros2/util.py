@@ -15,3 +15,8 @@ def catch(log_fn, return_val=None):
         return _safe_exec
 
     return _catch
+
+
+def idl_to_kwargs(req):
+    msg_keys = req.get_fields_and_field_types().keys()
+    return {k: getattr(req, k) for k in msg_keys}

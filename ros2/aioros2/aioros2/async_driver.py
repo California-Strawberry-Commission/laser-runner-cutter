@@ -7,15 +7,15 @@ from typing import Any, List, Optional
 
 import rclpy
 
-from .decorators.action import RosAction
-from .decorators.import_node import RosImport
-from .decorators.param_subscription import RosParamSubscription
-from .decorators.params import RosParams
-from .decorators.service import RosService
-from .decorators.start import RosStart
-from .decorators.subscribe import RosSubscription
-from .decorators.timer import RosTimer
-from .decorators.topic import RosTopic
+from aioros2.decorators.action import RosAction
+from aioros2.decorators.import_node import RosImport
+from aioros2.decorators.param_subscription import RosParamSubscription
+from aioros2.decorators.params import RosParams
+from aioros2.decorators.service import RosService
+from aioros2.decorators.start import RosStart
+from aioros2.decorators.subscribe import RosSubscription
+from aioros2.decorators.timer import RosTimer
+from aioros2.decorators.topic import RosTopic
 
 
 class AsyncDriver:

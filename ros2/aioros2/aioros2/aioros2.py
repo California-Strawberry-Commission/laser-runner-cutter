@@ -6,7 +6,7 @@ from typing import Optional
 import rclpy
 from rclpy.executors import Executor, MultiThreadedExecutor
 
-from .server_driver import ServerDriver
+from aioros2.server_driver import ServerDriver
 
 # pip install -e laser-runner-cutter/ros2/aioros2/ --config-settings editable_mode=strict
 
@@ -69,7 +69,7 @@ async def _spin(node_defs, num_threads: Optional[int] = None):
 
 
 def serve_nodes(*node_defs, num_threads: Optional[int] = None):
-    from .decorators import deferrable_accessor
+    from . import deferrable_accessor
 
     # Notify deferrables that load has fully completed
     deferrable_accessor.deferrables_frozen = True

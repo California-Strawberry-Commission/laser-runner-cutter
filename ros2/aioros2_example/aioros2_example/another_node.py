@@ -1,12 +1,8 @@
-from aioros2 import (
-    QOS_LATCHED,
-    node,
-    serve_nodes,
-    timer,
-    topic,
-)
-from std_msgs.msg import String
 import asyncio
+
+from std_msgs.msg import String
+
+from aioros2 import QOS_LATCHED, node, serve_nodes, timer, topic
 
 
 @node("another_node")

@@ -1,7 +1,7 @@
 import inspect
 from typing import List
 
-from .params import RosParamReference
+from aioros2.decorators.params import RosParamReference
 
 
 class RosParamSubscription:

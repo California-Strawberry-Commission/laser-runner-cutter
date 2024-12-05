@@ -1,7 +1,7 @@
 import dataclasses
 from typing import TypeVar
 
-from .deferrable_accessor import DeferrableAccessor
+from aioros2.deferrable_accessor import DeferrableAccessor
 
 
 class RosParamReference:
