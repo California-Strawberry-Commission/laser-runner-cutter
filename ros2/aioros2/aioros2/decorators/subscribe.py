@@ -65,15 +65,14 @@ class LazyAccessorRosSubscription(RosSubscription):
         # in the case where the import traversal circles back to the ServerDriver), and travering
         # the path up to the penultimate element (if available) should resolve into its AsyncDriver.
         imported_node_driver = getattr(async_driver, ros_import_attr)
-        ros_topic = self._topic_accessor.resolve(imported_node_driver)
+        self._topic_accessor.set_target_obj(imported_node_driver)
+        ros_topic = self._topic_accessor.resolve()
         if not isinstance(ros_topic, RosTopic):
             raise TypeError(
                 "Attempting to subscribe to a reference that is not a topic."
             )
         if len(self._topic_accessor.path) > 1:
-            ros_topic_driver = self._topic_accessor.resolve(
-                imported_node_driver, depth=-1
-            )
+            ros_topic_driver = self._topic_accessor.resolve(depth=-1)
         else:
             ros_topic_driver = imported_node_driver
 

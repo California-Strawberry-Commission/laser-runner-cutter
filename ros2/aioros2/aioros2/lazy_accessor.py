@@ -8,6 +8,7 @@ class LazyAccessor:
         self,
         path: Optional[List[str]] = None,
         root_accessor: Optional[LazyAccessor] = None,
+        target_obj: Optional[Any] = None,
     ):
         """
         Initialize a LazyAccessor with an optional path.
@@ -15,12 +16,14 @@ class LazyAccessor:
         Args:
             path (Optional[List[str]]): List of attribute keys representing the path.
             root_accessor (Optional[Any]): The root LazyAccessor instance on which the path is based on.
+            target_obj (Optional[Any]): The object (or dictionary) on which to resolve the path.
         """
         self._path = path or []
         # If the root accessor is not defined and the path is empty, use self as the root accessor
         self._root_accessor = (
             self if root_accessor is None and not self._path else root_accessor
         )
+        self._target_obj = target_obj
 
     @property
     def root_accessor(self) -> Optional[LazyAccessor]:
@@ -47,21 +50,37 @@ class LazyAccessor:
         Called when an attribute is accessed. Returns a new LazyAccessor
         with the updated path including the accessed attribute.
         """
-        return LazyAccessor(self._path + [name], self._root_accessor)
+        return LazyAccessor(self._path + [name], self._root_accessor, self._target_obj)
 
-    def resolve(self, obj: Any, depth: Optional[int] = None) -> Any:
+    def set_target_obj(self, target_obj: Any) -> LazyAccessor:
+        """
+        Set the object instance on which to resolve the path when resolve() is called.
+
+        Args:
+            target_obj (Any): The object (or dictionary) on which to resolve the path.
+        Returns:
+            self
+        """
+        self._target_obj = target_obj
+        return self
+
+    def resolve(self, depth: Optional[int] = None) -> Any:
         """
         Resolves the stored path on the provided object instance.
 
         Args:
-            obj (Any): The object (or dictionary) on which to resolve the path.
-            depth (Optional[int]): Depth to traverse. Positive depth goes up to that many elements. Negative depth excludes that many elements from the end. None (default) or 0 traverses the entire path.
+            depth (Optional[int]): Depth to traverse. Positive depth goes up to that many elements. Negative depth excludes that many elements from the end. None (default) traverses the entire path. Zero depth just returns the target object.
         Returns:
             The value at the resolved path.
         Raises:
             KeyError or AttributeError: If the path cannot be resolved.
-            ValueError: If depth is out of bounds for the path.
+            ValueError: If the target object instance has not been set yet.
         """
+        if self._target_obj is None:
+            raise ValueError(
+                "Target object instance on which to resolve has not been set."
+            )
+
         if depth is None:
             effective_path = self._path
         elif depth > 0:
@@ -69,9 +88,9 @@ class LazyAccessor:
         elif depth < 0:
             effective_path = self._path[: len(self._path) + depth]
         else:
-            raise ValueError("Depth must be non-zero when specified.")
+            return self._target_obj
 
-        value = obj
+        value = self._target_obj
         for key in effective_path:
             if isinstance(value, dict):
                 value = value[key]
