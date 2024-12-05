@@ -69,11 +69,6 @@ async def _spin(node_defs, num_threads: Optional[int] = None):
 
 
 def serve_nodes(*node_defs, num_threads: Optional[int] = None):
-    from . import deferrable_accessor
-
-    # Notify deferrables that load has fully completed
-    deferrable_accessor.deferrables_frozen = True
-
     rclpy.init()
 
     asyncio.run(_spin(node_defs, num_threads=num_threads))

@@ -34,7 +34,6 @@ class AsyncDriver:
             value = types.MethodType(value.__func__, self)
 
         # Cache result for future accesses to bypass this
-        # getattr
         setattr(self, attr, value)
 
         return value
@@ -50,8 +49,6 @@ class AsyncDriver:
         self._node_def = node_def
         self._node_name = node_name
         self._node_namespace = node_namespace if node_namespace is not None else "/"
-
-        # self._node_def.params = self._attach_params_dataclass(self._node_def.params)
         self._loop = asyncio.get_running_loop()
 
     @property

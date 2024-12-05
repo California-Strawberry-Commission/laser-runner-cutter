@@ -1,8 +1,6 @@
 import dataclasses
 from typing import TypeVar
 
-from aioros2.deferrable_accessor import DeferrableAccessor
-
 
 class RosParamReference:
     prefix = None
@@ -24,7 +22,7 @@ class RosParamReference:
         pass
 
 
-class RosParams(DeferrableAccessor):
+class RosParams:
     def __init__(self, params_dataclass) -> None:
         self.params_dataclass = params_dataclass
 

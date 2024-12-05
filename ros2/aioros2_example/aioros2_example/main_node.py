@@ -59,8 +59,10 @@ class MainNode:
     @start
     async def start(self):
         print("start called")
-        print(f"Param some_params.my_string: {self.some_params.my_string}")
-        print(f"Param some_other_params.my_string: {self.some_other_params.my_string}")
+        print(f"    Param some_params.my_string: {self.some_params.my_string}")
+        print(
+            f"    Param some_other_params.my_string: {self.some_other_params.my_string}"
+        )
 
     # Defines a function that will run at regular intervals.
     @timer(1.0, allow_concurrent_execution=False)
@@ -88,10 +90,10 @@ class MainNode:
     # Defines a function that will run whenever the specified parameters change.
     @subscribe_param(some_params.my_string, some_other_params.my_string)
     async def on_param_change(self):
+        print("on_param_change called")
+        print(f"    Param some_params.my_string: {self.some_params.my_string}")
         print(
-            "on_param_change called: ",
-            self.some_params.my_string,
-            self.some_other_params.my_string,
+            f"    Param some_other_params.my_string: {self.some_other_params.my_string}"
         )
 
     """
