@@ -3,3 +3,9 @@ realsense2*
 install
 build
 installed 
+
+# VS Code ROS 2 specific settings
+!.vscode
+.vscode/*
+!.vscode/settings.json
+!.vscode/c_cpp_properties.json

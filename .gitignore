@@ -28,5 +28,5 @@ eggs/
 .vscode
 *.code-workspace
 
-#DVC controlled files 
+# DVC controlled files 
 /data_store

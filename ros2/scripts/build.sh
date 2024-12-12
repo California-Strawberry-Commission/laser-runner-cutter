@@ -7,4 +7,4 @@ source /opt/ros/$ROS_DISTRO/setup.sh
 
 # Build
 cd $ROS_WS_DIR
-colcon build --symlink-install
+colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
