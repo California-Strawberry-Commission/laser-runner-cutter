@@ -130,7 +130,6 @@ class CameraControlNode:
             )
         elif self.camera_control_params.camera_type == "lucid":
             self.camera = create_lucid_rgbd_camera(
-                color_frame_size=(1024, 768),
                 state_change_callback=state_change_callback,
                 logger=self.get_logger(),
             )

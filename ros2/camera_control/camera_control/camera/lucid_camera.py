@@ -389,6 +389,9 @@ class LucidRgbdCamera(RgbdCamera):
                         self._cv.wait()
                         continue
 
+                    # Convert BayerRG8 to RGB8
+                    color_frame = cv2.cvtColor(color_frame, cv2.COLOR_BayerRGGB2RGB)
+
                     # depth_frame is a numpy structured array containing both xyz and intensity data
                     # depth_frame_intensity = (depth_frame["i"] / 256).astype(np.uint8)
                     depth_frame_xyz = np.stack(
@@ -448,7 +451,9 @@ class LucidRgbdCamera(RgbdCamera):
         color_nodemap = self._color_device.nodemap
         color_nodemap["AcquisitionMode"].value = "Continuous"
         # Set frame size and pixel format
-        color_nodemap["PixelFormat"].value = PixelFormat.RGB8
+        # Use BayerRG (RGGB pattern) to achieve streaming at 30 FPS at max resolution. We will
+        # demosaic to RGB on the host device.
+        color_nodemap["PixelFormat"].value = PixelFormat.BayerRG8
         # Reset ROI (Region of Interest) offset, as it persists on the device.
         color_nodemap["OffsetX"].value = 0
         color_nodemap["OffsetY"].value = 0
@@ -688,7 +693,7 @@ class LucidRgbdCamera(RgbdCamera):
 
         # Convert to numpy array
         # buffer is a list of (buffer.width * buffer.height * num_channels) uint8s
-        num_channels = 3
+        num_channels = 1  # one channel per pixel for BayerRG8
         np_array = np.ndarray(
             buffer=(
                 ctypes.c_ubyte * num_channels * buffer.width * buffer.height
