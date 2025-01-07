@@ -34,13 +34,20 @@ import useLaserNode, {
 import useLifecycleManagerNode from "@/lib/useLifecycleManagerNode";
 import { useCallback, useMemo } from "react";
 
+const LIFECYCLE_MANAGER_NODE_NAME = "/lifecycle_manager";
+const CAMERA_NODE_NAME = "/camera0";
+const LASER_NODE_NAME = "/laser0";
+const CONTROL_NODE_NAME = "/control0";
+
 export default function Controls() {
   const { connected: rosConnected } = useROS();
 
-  const lifecycleManagerNode = useLifecycleManagerNode("/lifecycle_manager");
-  const cameraNode = useCameraNode("/camera0");
-  const laserNode = useLaserNode("/laser0");
-  const controlNode = useControlNode("/control0");
+  const lifecycleManagerNode = useLifecycleManagerNode(
+    LIFECYCLE_MANAGER_NODE_NAME
+  );
+  const cameraNode = useCameraNode(CAMERA_NODE_NAME);
+  const laserNode = useLaserNode(LASER_NODE_NAME);
+  const controlNode = useControlNode(CONTROL_NODE_NAME);
 
   const onImageClick = useCallback(
     (normalizedX: number, normalizedY: number) => {
@@ -70,9 +77,9 @@ export default function Controls() {
   const restartServiceDialog = (
     <Dialog>
       <DialogTrigger asChild>
-        <div className="w-full h-full flex flex-col justify-center">
+        <div className="pointer-events-none w-full h-full flex flex-col justify-center">
           <Button
-            className="w-full"
+            className="pointer-events-auto w-full"
             disabled={!lifecycleManagerNode.connected}
             variant="destructive"
           >
@@ -195,14 +202,12 @@ export default function Controls() {
       </NodesCarousel>
       <div className="flex flex-row items-center gap-4">
         <DeviceCard
-          className="w-36"
           deviceName="Camera"
           deviceState={cameraDeviceState}
           onConnectClick={() => cameraNode.startDevice()}
           onDisconnectClick={() => cameraNode.closeDevice()}
         />
         <DeviceCard
-          className="w-36"
           deviceName="Laser"
           deviceState={laserDeviceState}
           onConnectClick={() => laserNode.startDevice()}
