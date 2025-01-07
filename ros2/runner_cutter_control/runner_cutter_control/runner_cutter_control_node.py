@@ -59,7 +59,7 @@ class RunnerCutterControlParams:
     burn_laser_color: List[float] = field(default_factory=lambda: [0.0, 0.0, 1.0])
     burn_time_secs: float = 5.0
     enable_aiming: bool = True
-    save_dir: str = "~/runner-cutter-output"
+    save_dir: str = "~/runner_cutter"
 
 
 @node("runner_cutter_control_node")
@@ -190,7 +190,8 @@ class RunnerCutterControlNode:
             return result(success=True)
         else:
             self._publish_notification(
-                "Calibration could not be loaded", level=logging.WARNING
+                "Calibration file does not exist or could not be loaded",
+                level=logging.WARNING,
             )
             return result(success=False)
 

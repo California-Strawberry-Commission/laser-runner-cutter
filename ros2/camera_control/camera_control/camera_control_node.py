@@ -67,7 +67,7 @@ class CameraControlParams:
     camera_index: int = 0
     exposure_us: float = -1.0
     gain_db: float = -1.0
-    save_dir: str = "~/runner-cutter-output"
+    save_dir: str = "~/runner_cutter/camera"
     debug_frame_width: int = 640
     debug_video_fps: float = 30.0
     image_capture_interval_secs: float = 5.0
