@@ -700,16 +700,19 @@ class CameraControlNode:
                 pts=[np.array(runner_mask, dtype=np.int32)],
                 color=mask_color,
             )
-            if runner_center is not None:
-                pos = [int(runner_center[0]), int(runner_center[1])]
-                debug_frame = cv2.drawMarker(
-                    debug_frame,
-                    pos,
-                    center_color,
-                    cv2.MARKER_TILTED_CROSS,
-                    thickness=3,
-                    markerSize=20,
-                )
+
+            if runner_center is None:
+                continue
+
+            pos = [int(runner_center[0]), int(runner_center[1])]
+            debug_frame = cv2.drawMarker(
+                debug_frame,
+                pos,
+                center_color,
+                cv2.MARKER_TILTED_CROSS,
+                thickness=3,
+                markerSize=20,
+            )
             if draw_conf:
                 pos = [int(runner_center[0]) + 15, int(runner_center[1]) - 5]
                 font = cv2.FONT_HERSHEY_SIMPLEX

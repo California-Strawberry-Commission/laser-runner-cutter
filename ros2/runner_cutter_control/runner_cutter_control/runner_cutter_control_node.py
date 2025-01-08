@@ -7,9 +7,12 @@ finding a specific runner to burn, and burning said runner.
 """
 
 import asyncio
+import json
 import logging
+import os
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Coroutine, List, Optional, Set, Tuple
 
 import numpy as np
@@ -457,40 +460,66 @@ class RunnerCutterControlNode:
     async def _runner_cutter_task(
         self, detection_type=DetectionType.RUNNER, enable_detection_during_burn=False
     ):
-        await self.camera_node.start_detection(detection_type=detection_type)
-        while True:
-            # Acquire target. If there are no valid targets, wait for another detection event.
-            target = await self._acquire_next_target()
-            if target is None:
-                self.log("No targets found. Waiting for detection.")
-                await self._runner_detection_event.wait()
-                self._runner_detection_event.clear()
-                continue
+        try:
+            await self._reset_to_idle()
 
-            try:
-                if not enable_detection_during_burn:
-                    # Temporarily disable runner detection during aim/burn
-                    await self.camera_node.stop_detection(detection_type=detection_type)
+            datetime_obj = datetime.fromtimestamp(time.time())
+            datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
+            run_data_dir = os.path.join(
+                self.runner_cutter_control_params.save_dir, "runs", datetime_string
+            )
+            os.makedirs(run_data_dir, exist_ok=True)
+            await self.camera_node.set_save_directory(save_directory=run_data_dir)
+            await self.camera_node.save_image()
+            await self.camera_node.start_detection(detection_type=detection_type)
 
-                # Aim
-                if self.runner_cutter_control_params.enable_aiming:
-                    laser_coord = await self._aim(target.position, target.pixel)
-                    if laser_coord is None:
-                        self.log(f"Failed to aim laser at track {target.id}.")
-                        self._runner_tracker.process_track(target.id, TrackState.FAILED)
-                        continue
-                else:
-                    laser_coord = self._calibration.camera_point_to_laser_coord(
-                        target.position
-                    )
+            while True:
+                # Acquire target. If there are no valid targets, wait for another detection event.
+                target = await self._acquire_next_target()
+                if target is None:
+                    self.log("No targets found. Waiting for detection.")
+                    await self._runner_detection_event.wait()
+                    self._runner_detection_event.clear()
+                    continue
 
-                # Burn
-                await self._burn_target(target, laser_coord)
-            finally:
-                if not enable_detection_during_burn:
-                    await self.camera_node.start_detection(
-                        detection_type=detection_type
-                    )
+                try:
+                    if not enable_detection_during_burn:
+                        # Temporarily disable runner detection during aim/burn
+                        await self.camera_node.stop_detection(
+                            detection_type=detection_type
+                        )
+
+                    # Aim
+                    if self.runner_cutter_control_params.enable_aiming:
+                        laser_coord = await self._aim(target.position, target.pixel)
+                        if laser_coord is None:
+                            self.log(f"Failed to aim laser at track {target.id}.")
+                            async with self._runner_tracker_lock:
+                                self._runner_tracker.process_track(
+                                    target.id, TrackState.FAILED
+                                )
+                            continue
+                    else:
+                        laser_coord = self._calibration.camera_point_to_laser_coord(
+                            target.position
+                        )
+
+                    # Burn
+                    await self._burn_target(target, laser_coord)
+                finally:
+                    if not enable_detection_during_burn:
+                        await self.camera_node.start_detection(
+                            detection_type=detection_type
+                        )
+        finally:
+            await self.camera_node.stop_all_detections()
+            await self.camera_node.save_image()
+
+            summary = {
+                state.name: count for state, count in self._runner_tracker.get_summary()
+            }
+            with open(os.path.join(run_data_dir, "summary.json"), "w") as summary_file:
+                json.dump(summary, summary_file, indent=2)
 
     async def _acquire_next_target(self) -> Optional[Track]:
         # If there is already an active track, just use that track. Otherwise, check pending
@@ -545,7 +574,8 @@ class RunnerCutterControlNode:
             await asyncio.sleep(self.runner_cutter_control_params.burn_time_secs)
         finally:
             await self.laser_node.stop()
-        self._runner_tracker.process_track(target.id, TrackState.COMPLETED)
+        async with self._runner_tracker_lock:
+            self._runner_tracker.process_track(target.id, TrackState.COMPLETED)
         self.log(f"Burn complete on track {target.id}.")
 
     # endregion

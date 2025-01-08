@@ -1,4 +1,4 @@
-from collections import deque
+from collections import Counter, deque
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
@@ -147,3 +147,7 @@ class Tracker:
 
     def to_dict(self):
         return {track_id: track.to_dict() for track_id, track in self.tracks.items()}
+
+    def get_summary(self):
+        state_counts = Counter(track.state for track in self.tracks.values())
+        return dict(state_counts)
