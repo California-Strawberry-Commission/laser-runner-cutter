@@ -555,11 +555,6 @@ class LucidRgbdCamera(RgbdCamera):
             color_nodemap["AcquisitionStartMode"].value = "Normal"
             depth_nodemap["AcquisitionStartMode"].value = "Normal"
 
-            color_fps = color_nodemap["AcquisitionFrameRate"].max
-            color_nodemap["AcquisitionFrameRate"].value = color_fps
-            depth_fps = depth_nodemap["AcquisitionFrameRate"].max
-            depth_nodemap["AcquisitionFrameRate"].value = depth_fps
-
             color_nodemap["GevSCFTD"].value = 0
             depth_nodemap["GevSCFTD"].value = 0
             color_nodemap["GevSCPD"].value = 80

@@ -81,6 +81,8 @@ export default function FramePreviewWithOverlay({
       setStreamUrl(
         `${videoServer}/stream?topic=${topicName}&quality=${quality}&qos_profile=sensor_data`
       );
+    } else {
+      setStreamUrl("");
     }
   }, [enableStream, topicName, quality]);
 
