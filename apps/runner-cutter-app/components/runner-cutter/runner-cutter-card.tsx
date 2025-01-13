@@ -31,15 +31,12 @@ export default function RunnerCutterCard({
   onArmStopClick?: React.MouseEventHandler<HTMLButtonElement>;
   className?: string;
 }) {
-  let cardColor =
-    runnerCutterState === RunnerCutterState.UNAVAILABLE
-      ? "bg-gray-300"
-      : "bg-green-500";
-
+  let cardColor = null;
   let trackButton = null;
   let armButton = null;
   switch (runnerCutterState) {
     case RunnerCutterState.IDLE:
+      cardColor = "bg-green-500";
       trackButton = (
         <Button disabled={disabled} onClick={onTrackClick}>
           Tracking Only
@@ -52,6 +49,7 @@ export default function RunnerCutterCard({
       );
       break;
     case RunnerCutterState.TRACKING:
+      cardColor = "bg-yellow-300";
       trackButton = (
         <Button
           disabled={disabled}
@@ -64,6 +62,7 @@ export default function RunnerCutterCard({
       armButton = <Button disabled>Arm</Button>;
       break;
     case RunnerCutterState.ARMED:
+      cardColor = "bg-yellow-300";
       trackButton = <Button disabled>Tracking Only</Button>;
       armButton = (
         <Button
@@ -76,6 +75,7 @@ export default function RunnerCutterCard({
       );
       break;
     default:
+      cardColor = "bg-gray-300";
       trackButton = <Button disabled>Tracking Only</Button>;
       armButton = <Button disabled>Arm</Button>;
       break;
