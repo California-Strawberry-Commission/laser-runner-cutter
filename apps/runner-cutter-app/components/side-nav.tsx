@@ -17,26 +17,6 @@ const SIDENAV_ITEMS: SideNavItem[] = [
     path: "/",
   },
   {
-    title: "Camera Test",
-    path: "/test/camera",
-  },
-  {
-    title: "Laser Test",
-    path: "/test/laser",
-  },
-  {
-    title: "Aim Test",
-    path: "/test/aim",
-  },
-  {
-    title: "Track Test",
-    path: "/test/track",
-  },
-  {
-    title: "Navigation",
-    path: "/test/navigation",
-  },
-  {
     title: "Wi-Fi",
     path: "/wifi",
   },
