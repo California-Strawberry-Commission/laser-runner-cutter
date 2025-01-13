@@ -33,6 +33,7 @@ import useLaserNode, {
 } from "@/lib/useLaserNode";
 import useLifecycleManagerNode from "@/lib/useLifecycleManagerNode";
 import { useCallback, useMemo } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const LIFECYCLE_MANAGER_NODE_NAME = "/lifecycle_manager";
 const CAMERA_NODE_NAME = "/camera0";
@@ -200,40 +201,45 @@ export default function Controls() {
       <NodesCarousel className="w-full" nodeInfos={nodeInfos}>
         {restartServiceDialog}
       </NodesCarousel>
-      <div className="flex flex-row items-center gap-4">
-        <DeviceCard
-          deviceName="Camera"
-          deviceState={cameraDeviceState}
-          onConnectClick={() => cameraNode.startDevice()}
-          onDisconnectClick={() => cameraNode.closeDevice()}
-        />
-        <DeviceCard
-          deviceName="Laser"
-          deviceState={laserDeviceState}
-          onConnectClick={() => laserNode.startDevice()}
-          onDisconnectClick={() => laserNode.closeDevice()}
-        />
-        <CalibrationCard
-          calibrationState={calibrationState}
-          disabled={
-            calibrationState !== CalibrationState.CALIBRATING &&
-            controlNode.state.state !== "idle"
-          }
-          onCalibrateClick={() => controlNode.calibrate()}
-          onStopClick={() => controlNode.stop()}
-          onSaveClick={() => controlNode.saveCalibration()}
-          onLoadClick={() => controlNode.loadCalibration()}
-        />
-        <RunnerCutterCard
-          runnerCutterState={runnerCutterState}
-          onTrackClick={() => cameraNode.startDetection(DetectionType.RUNNER)}
-          onTrackStopClick={() =>
-            cameraNode.stopDetection(DetectionType.RUNNER)
-          }
-          onArmClick={() => controlNode.startRunnerCutter()}
-          onArmStopClick={() => controlNode.stop()}
-        />
-      </div>
+      <Card>
+        <CardHeader className="p-4">
+          <CardTitle className="text-lg">Control Panel</CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 pt-0 flex flex-row items-center gap-4">
+          <DeviceCard
+            deviceName="Camera"
+            deviceState={cameraDeviceState}
+            onConnectClick={() => cameraNode.startDevice()}
+            onDisconnectClick={() => cameraNode.closeDevice()}
+          />
+          <DeviceCard
+            deviceName="Laser"
+            deviceState={laserDeviceState}
+            onConnectClick={() => laserNode.startDevice()}
+            onDisconnectClick={() => laserNode.closeDevice()}
+          />
+          <CalibrationCard
+            calibrationState={calibrationState}
+            disabled={
+              calibrationState !== CalibrationState.CALIBRATING &&
+              controlNode.state.state !== "idle"
+            }
+            onCalibrateClick={() => controlNode.calibrate()}
+            onStopClick={() => controlNode.stop()}
+            onSaveClick={() => controlNode.saveCalibration()}
+            onLoadClick={() => controlNode.loadCalibration()}
+          />
+          <RunnerCutterCard
+            runnerCutterState={runnerCutterState}
+            onTrackClick={() => cameraNode.startDetection(DetectionType.RUNNER)}
+            onTrackStopClick={() =>
+              cameraNode.stopDetection(DetectionType.RUNNER)
+            }
+            onArmClick={() => controlNode.startRunnerCutter()}
+            onArmStopClick={() => controlNode.stop()}
+          />
+        </CardContent>
+      </Card>
       <FramePreviewWithOverlay
         className="w-full h-[360px]"
         topicName="/camera0/debug_frame"

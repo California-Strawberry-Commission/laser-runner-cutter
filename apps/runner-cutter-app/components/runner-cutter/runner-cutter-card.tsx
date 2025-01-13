@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -92,10 +93,10 @@ export default function RunnerCutterCard({
           {stateStr}
         </CardDescription>
       </CardHeader>
-      <div className="p-4 pt-0 w-full flex flex-row gap-4">
+      <CardContent className="p-4 pt-0 flex flex-row gap-4">
         {trackButton}
         {armButton}
-      </div>
+      </CardContent>
     </Card>
   );
 }

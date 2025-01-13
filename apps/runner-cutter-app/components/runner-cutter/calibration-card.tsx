@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -75,7 +76,7 @@ export default function CalibrationCard({
           {stateStr}
         </CardDescription>
       </CardHeader>
-      <div className="p-4 pt-0 w-full flex flex-row gap-4">
+      <CardContent className="p-4 pt-0 flex flex-row gap-4">
         {calibrateButton}
         <Button
           disabled={
@@ -95,7 +96,7 @@ export default function CalibrationCard({
         >
           Load
         </Button>
-      </div>
+      </CardContent>
     </Card>
   );
 }

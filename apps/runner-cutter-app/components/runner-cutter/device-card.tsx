@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -76,7 +77,7 @@ export default function DeviceCard({
           {stateStr}
         </CardDescription>
       </CardHeader>
-      <div className="p-4 pt-0 w-full">{button}</div>
+      <CardContent className="p-4 pt-0">{button}</CardContent>
     </Card>
   );
 }
