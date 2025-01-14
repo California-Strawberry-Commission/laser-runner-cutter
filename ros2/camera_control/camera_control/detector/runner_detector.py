@@ -37,7 +37,9 @@ class RunnerDetector:
 
     async def detect(
         self, color_frame: np.ndarray, conf_threshold: float = 0.0
-    ) -> Tuple[List[np.ndarray], List[Tuple[int, int] | None], List[float], List[int]]:
+    ) -> Tuple[
+        List[np.ndarray], List[Optional[Tuple[int, int]]], List[float], List[int]
+    ]:
         """
         Detects runners in a color image.
 
@@ -45,7 +47,7 @@ class RunnerDetector:
             color_frame (np.ndarray): Color image.
             conf_threshold (float): Minimum confidence score that should be considered.
         Returns:
-            Tuple[List[np.ndarray], List[Tuple[int, int] | None], List[float], List[int]]: A tuple of (list of detected runner masks, list of associated center points, list of associated confidence scores, list of associated instance IDs).
+            Tuple[List[np.ndarray], List[Optional[Tuple[int, int]]], List[float], List[int]]: A tuple of (list of detected runner masks, list of associated center points, list of associated confidence scores, list of associated instance IDs).
         """
         runner_masks, confs, track_ids = await self._get_runner_masks(
             color_frame, conf_threshold
@@ -99,7 +101,7 @@ class RunnerDetector:
 
     async def _get_runner_centers(
         self, runner_masks: List[np.ndarray]
-    ) -> List[Tuple[int, int] | None]:
+    ) -> List[Optional[Tuple[int, int]]]:
         def get_contour_centers(contours: List[np.ndarray]):
             centers = []
             for contour in contours:

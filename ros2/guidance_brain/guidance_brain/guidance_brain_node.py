@@ -1,7 +1,7 @@
 import asyncio
 import time
 from enum import IntEnum
-from typing import Coroutine, Optional
+from typing import Awaitable, Optional
 
 from std_srvs.srv import Trigger
 
@@ -117,11 +117,11 @@ class GuidanceBrainNode:
 
     # region Task management
 
-    def _start_task(self, coro: Coroutine, name: str | None = None) -> bool:
+    def _start_task(self, coro: Awaitable, name: Optional[str] = None) -> bool:
         if self._current_task is not None and not self._current_task.done():
             return False
 
-        async def coro_wrapper(coro: Coroutine):
+        async def coro_wrapper(coro: Awaitable):
             await self._reset_to_idle()
             await coro
 

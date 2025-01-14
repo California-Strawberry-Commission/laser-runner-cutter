@@ -13,7 +13,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Coroutine, List, Optional, Set, Tuple
+from typing import Any, Awaitable, Callable, List, Optional, Set, Tuple
 
 import numpy as np
 from rcl_interfaces.msg import Log
@@ -169,7 +169,12 @@ class RunnerCutterControlNode:
     # roslib does not support actions with ROS2
     @service("~/calibrate", Trigger)
     async def calibrate(self):
-        success = self._start_task(self._calibration.calibrate(), "calibration")
+        self._publish_notification("Calibration started")
+        success = self._start_task(
+            self._calibration.calibrate(),
+            "calibration",
+            lambda _: self._publish_notification("Calibration complete"),
+        )
         return result(success=success)
 
     @service("~/save_calibration", Trigger)
@@ -208,6 +213,7 @@ class RunnerCutterControlNode:
                 ]
             ),
             "add_calibration_points",
+            lambda _: self._publish_notification("Added calibration point(s)"),
         )
         return result(success=success)
 
@@ -218,12 +224,18 @@ class RunnerCutterControlNode:
                 (normalized_pixel_coord.x, normalized_pixel_coord.y)
             ),
             "manual_target_aim_laser",
+            lambda _: self._publish_notification("Manual aim complete"),
         )
         return result(success=success)
 
     @service("~/start_runner_cutter", Trigger)
     async def start_runner_cutter(self):
-        success = self._start_task(self._runner_cutter_task(), "runner_cutter")
+        self._publish_notification("Runner cutter armed")
+        success = self._start_task(
+            self._runner_cutter_task(),
+            "runner_cutter",
+            lambda _: self._publish_notification("Runner cutter disarmed"),
+        )
         return result(success=success)
 
     @service("~/start_circle_follower", Trigger)
@@ -239,6 +251,8 @@ class RunnerCutterControlNode:
     @service("~/stop", Trigger)
     async def stop(self):
         success = await self._stop_current_task()
+        if success:
+            self._publish_notification("Task stopped")
         return result(success=success)
 
     @service("~/get_state", GetState)
@@ -247,13 +261,23 @@ class RunnerCutterControlNode:
 
     # region Task management
 
-    def _start_task(self, coro: Coroutine, name: str | None = None) -> bool:
+    def _start_task(
+        self,
+        coro: Awaitable,
+        name: Optional[str] = None,
+        callback: Optional[Callable[[Any], Awaitable[None]]] = None,
+    ) -> bool:
         if self._current_task is not None and not self._current_task.done():
             return False
 
-        async def coro_wrapper(coro: Coroutine):
+        async def coro_wrapper(coro: Awaitable):
             await self._reset_to_idle()
-            await coro
+            result = await coro
+            if callback is not None:
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(result)
+                else:
+                    callback(result)
 
         self._current_task = asyncio.create_task(coro_wrapper(coro), name=name)
 
@@ -468,7 +492,6 @@ class RunnerCutterControlNode:
             run_data_dir = os.path.join(
                 self.runner_cutter_control_params.save_dir, "runs", datetime_string
             )
-            os.makedirs(run_data_dir, exist_ok=True)
             await self.camera_node.set_save_directory(save_directory=run_data_dir)
             await self.camera_node.save_image()
             await self.camera_node.start_detection(detection_type=detection_type)
@@ -516,8 +539,11 @@ class RunnerCutterControlNode:
             await self.camera_node.save_image()
 
             summary = {
-                state.name: count for state, count in self._runner_tracker.get_summary()
+                state.name: count
+                for state, count in self._runner_tracker.get_summary().items()
             }
+            run_data_dir = os.path.expanduser(run_data_dir)
+            os.makedirs(run_data_dir, exist_ok=True)
             with open(os.path.join(run_data_dir, "summary.json"), "w") as summary_file:
                 json.dump(summary, summary_file, indent=2)
 
