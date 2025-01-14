@@ -14,7 +14,7 @@ class Track:
     id: int
     pixel: Tuple[int, int]
     position: Tuple[float, float, float]
-    state: TrackState
+    state_count: Dict[TrackState, int]
 
     def __init__(
         self,
@@ -33,7 +33,17 @@ class Track:
         self.id = id
         self.pixel = pixel
         self.position = position
+        self.state_count = {state: 0 for state in TrackState}
         self.state = state
+
+    @property
+    def state(self):
+        return self._state
+
+    @state.setter
+    def state(self, new_state: TrackState):
+        self._state = new_state
+        self.state_count[new_state] += 1
 
     def __repr__(self):
         return f"Track(id={self.id}, pixel={self.pixel}, position={self.position}, state={self.state.name})"
@@ -48,6 +58,9 @@ class Track:
                 "z": self.position[2],
             },
             "state": self.state.name,
+            "state_count": {
+                state.name: count for state, count in self.state_count.items()
+            },
         }
 
 

@@ -62,6 +62,13 @@ class RunnerCutterControlParams:
     burn_laser_color: List[float] = field(default_factory=lambda: [0.0, 0.0, 1.0])
     burn_time_secs: float = 5.0
     enable_aiming: bool = True
+    # Max number of times to attempt to target a detected runner to burn. An attempt may fail if the
+    # runner burn point is outside the laser bounds, if the aiming process failed, or if the runner
+    # was no longer detected. A negative number means no limit.
+    target_attempts: int = -1
+    # Duration, in seconds, during which if no viable target becomes available, the runner cutter
+    # task will stop. A negative number means no auto disarm.
+    auto_disarm_secs: float = -1.0
     save_dir: str = "~/runner_cutter"
 
 
@@ -134,12 +141,17 @@ class RunnerCutterControlNode:
                     self._last_detected_track_ids.add(instance.track_id)
 
                     # Put detected tracks that are marked as failed back into the pending queue, since
-                    # we want to reattempt to burn them as they could now potentially be in bounds.
-                    if track.state == TrackState.FAILED:
+                    # we want to reattempt to burn them (up to target_attempts times) as they could
+                    # now potentially be in bounds.
+                    if track.state == TrackState.FAILED and (
+                        self.runner_cutter_control_params.target_attempts < 0
+                        or track.state_count[TrackState.FAILED]
+                        < self.runner_cutter_control_params.target_attempts
+                    ):
                         self._runner_tracker.process_track(track.id, TrackState.PENDING)
 
-                # Mark any tracks that were previously detected and are PENDING but are no longer
-                # detected as FAILED.
+                # Mark as FAILED any tracks that were previously detected, are PENDING, but are no
+                # longer detected.
                 out_of_frame_track_ids = (
                     prev_detected_track_ids - self._last_detected_track_ids
                 )
@@ -501,8 +513,24 @@ class RunnerCutterControlNode:
                 target = await self._acquire_next_target()
                 if target is None:
                     self.log("No targets found. Waiting for detection.")
-                    await self._runner_detection_event.wait()
-                    self._runner_detection_event.clear()
+
+                    timeout_secs = self.runner_cutter_control_params.auto_disarm_secs
+                    if timeout_secs > 0.0:
+                        # End task if no new targets for timeout_secs
+                        try:
+                            await asyncio.wait_for(
+                                self._runner_detection_event.wait(), timeout_secs
+                            )
+                            self._runner_detection_event.clear()
+                        except asyncio.TimeoutError:
+                            self.log(
+                                f"No new targets after {timeout_secs} second(s). Ending runner cutter task."
+                            )
+                            break
+                    else:
+                        await self._runner_detection_event.wait()
+                        self._runner_detection_event.clear()
+
                     continue
 
                 try:
