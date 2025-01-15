@@ -220,7 +220,7 @@ export default function FramePreviewWithOverlay({
     <div className={cn("relative", className)}>
       <img
         ref={imgRef}
-        src={streamUrl}
+        src={streamUrl || undefined}
         alt="Camera Stream"
         className="w-full h-full object-contain bg-black"
         onClick={handleImageClick}
