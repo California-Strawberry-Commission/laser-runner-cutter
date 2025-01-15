@@ -16,7 +16,7 @@ export default function KeyboardProvider({
   const [keyboardOnChange, setKeyboardOnChange] = useState<KeyboardOnChange>();
   const [keyboardVisible, setKeyboardVisible] = useState<boolean>(false);
   const [layoutName, setLayoutName] = useState("default");
-  const keyboard = useRef<KeyboardReactInterface>();
+  const keyboard = useRef<KeyboardReactInterface>(null);
 
   // Add a global click listener to dismiss the virtual keyboard if user clicks outside
   // of it

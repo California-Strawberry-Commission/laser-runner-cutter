@@ -8,7 +8,7 @@ import { usePathname } from "next/navigation";
 type SideNavItem = {
   title: string;
   path: string;
-  icon?: JSX.Element;
+  icon?: React.ReactElement;
 };
 
 const SIDENAV_ITEMS: SideNavItem[] = [
