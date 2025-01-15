@@ -14,7 +14,7 @@ export type State = {
 
 export type Track = {
   id: number;
-  normalizedPixelCoords: { x: number; y: number };
+  normalizedPixelCoord: { x: number; y: number };
   state: TrackState;
 };
 
@@ -38,6 +38,17 @@ function convertStateMessage(message: any): State {
   };
 }
 
+function convertTracksMessage(message: any): Track[] {
+  return message.tracks.map((track: any) => ({
+    id: track.id,
+    normalizedPixelCoord: {
+      x: track.normalized_pixel_coord.x,
+      y: track.normalized_pixel_coord.y,
+    },
+    state: track.state as TrackState,
+  }));
+}
+
 function triggerInputMapper() {
   return {};
 }
@@ -57,6 +68,13 @@ export default function useControlNode(nodeName: string) {
       normalizedLaserBounds: { x: 0, y: 0, width: 0, height: 0 },
     },
     convertStateMessage
+  );
+
+  const tracks = node.useTopic(
+    "~/tracks",
+    "runner_cutter_control_interfaces/Tracks",
+    [],
+    convertTracksMessage
   );
 
   const calibrate = node.useService(
@@ -128,6 +146,7 @@ export default function useControlNode(nodeName: string) {
   return {
     ...node,
     state,
+    tracks,
     calibrate,
     saveCalibration,
     loadCalibration,

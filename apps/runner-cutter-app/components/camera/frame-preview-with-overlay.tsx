@@ -41,6 +41,7 @@ export default function FramePreviewWithOverlay({
   onImageClick,
   enableOverlay = false,
   overlayText,
+  overlaySubtext,
   overlayNormalizedRect,
   overlayTracks,
   className,
@@ -51,6 +52,7 @@ export default function FramePreviewWithOverlay({
   onImageClick?: (normalizedX: number, normalizedY: number) => void;
   enableOverlay?: boolean;
   overlayText?: string;
+  overlaySubtext?: string;
   overlayNormalizedRect?: {
     x: number;
     y: number;
@@ -175,6 +177,11 @@ export default function FramePreviewWithOverlay({
       ctx.fillStyle = "white";
       ctx.fillText(`${overlayText}`, 10, 25);
     }
+    if (overlaySubtext) {
+      ctx.font = "12px sans-serif";
+      ctx.fillStyle = "white";
+      ctx.fillText(`${overlaySubtext}`, 10, 45);
+    }
 
     // Draw tracks
     if (overlayTracks) {
@@ -193,7 +200,13 @@ export default function FramePreviewWithOverlay({
         ctx.stroke();
       });
     }
-  }, [setCanvasStyle, overlayText, overlayNormalizedRect, overlayTracks]);
+  }, [
+    setCanvasStyle,
+    overlayText,
+    overlaySubtext,
+    overlayNormalizedRect,
+    overlayTracks,
+  ]);
 
   useEffect(() => {
     updateCanvasSize();

@@ -1,13 +1,13 @@
 from collections import Counter, deque
-from enum import Enum
+from enum import Enum, auto
 from typing import Dict, List, Optional, Tuple
 
 
 class TrackState(Enum):
-    PENDING = 1  # Still needs to be burned
-    ACTIVE = 2  # Actively in the process of being targeted and burned
-    COMPLETED = 3  # Has successfully been burned
-    FAILED = 4  # Failed to burn
+    PENDING = auto()  # Still needs to be burned
+    ACTIVE = auto()  # Actively in the process of being targeted and burned
+    COMPLETED = auto()  # Has successfully been burned
+    FAILED = auto()  # Failed to burn
 
 
 class Track:

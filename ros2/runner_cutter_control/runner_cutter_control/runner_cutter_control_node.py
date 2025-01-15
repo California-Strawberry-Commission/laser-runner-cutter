@@ -498,6 +498,7 @@ class RunnerCutterControlNode:
     ):
         try:
             await self._reset_to_idle()
+            self._publish_tracks()
 
             datetime_obj = datetime.fromtimestamp(time.time())
             datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
@@ -511,6 +512,7 @@ class RunnerCutterControlNode:
             while True:
                 # Acquire target. If there are no valid targets, wait for another detection event.
                 target = await self._acquire_next_target()
+                self._publish_tracks()
                 if target is None:
                     self.log("No targets found. Waiting for detection.")
 
@@ -675,14 +677,10 @@ class RunnerCutterControlNode:
     def _get_tracks_msg(self) -> TracksMsg:
         tracks_msg = TracksMsg()
         frame_size = self._calibration.camera_frame_size
-        for track_id in self.state_machine.detected_track_ids:
-            track = self.runner_tracker.get_track(track_id)
-            if track is None:
-                continue
-
+        for track in self._runner_tracker.tracks.values():
             track_msg = TrackMsg()
             track_msg.id = track.id
-            track_msg.normalized_pixel_coords = Vector2(
+            track_msg.normalized_pixel_coord = Vector2(
                 x=(track.pixel[0] / frame_size[0] if frame_size[0] > 0 else -1.0),
                 y=(track.pixel[1] / frame_size[1] if frame_size[1] > 0 else -1.0),
             )

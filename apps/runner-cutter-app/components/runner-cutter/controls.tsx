@@ -27,7 +27,7 @@ import useCameraNode, {
   DeviceState as CameraDeviceState,
   DetectionType,
 } from "@/lib/useCameraNode";
-import useControlNode from "@/lib/useControlNode";
+import useControlNode, { TrackState } from "@/lib/useControlNode";
 import useLaserNode, {
   DeviceState as LaserDeviceState,
 } from "@/lib/useLaserNode";
@@ -196,6 +196,22 @@ export default function Controls() {
     }
   }
 
+  let framePreviewOverlaySubtext;
+  if (runnerCutterState === RunnerCutterState.ARMED) {
+    const trackStateCounts = {
+      [TrackState.PENDING]: 0,
+      [TrackState.ACTIVE]: 0,
+      [TrackState.COMPLETED]: 0,
+      [TrackState.FAILED]: 0,
+    };
+    controlNode.tracks.forEach((track) => (trackStateCounts[track.state] += 1));
+    framePreviewOverlaySubtext = `Pending: ${
+      trackStateCounts[TrackState.PENDING]
+    }, Active: ${trackStateCounts[TrackState.ACTIVE]}, Completed: ${
+      trackStateCounts[TrackState.COMPLETED]
+    }, Failed: ${trackStateCounts[TrackState.FAILED]}`;
+  }
+
   return (
     <div className="flex flex-col gap-4 items-center">
       <NodesCarousel className="w-full" nodeInfos={nodeInfos}>
@@ -249,6 +265,7 @@ export default function Controls() {
         onImageClick={onImageClick}
         enableOverlay
         overlayText={`State: ${controlNode.state.state}`}
+        overlaySubtext={framePreviewOverlaySubtext}
         overlayNormalizedRect={controlNode.state.normalizedLaserBounds}
       />
     </div>
