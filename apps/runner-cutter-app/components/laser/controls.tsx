@@ -1,9 +1,15 @@
 "use client";
 
 import ColorPicker from "@/components/laser/color-picker";
+import DeviceCard, {
+  DeviceState,
+} from "@/components/runner-cutter/device-card";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import useLaserNode, { DeviceState } from "@/lib/useLaserNode";
+import useLaserNode, {
+  DeviceState as LaserDeviceState,
+} from "@/lib/useLaserNode";
 import { useState } from "react";
 
 function hexToRgb(hexColor: string) {
@@ -26,18 +32,36 @@ export default function Controls() {
   const [x, setX] = useState<string>("0");
   const [y, setY] = useState<string>("0");
 
-  const disableButtons = !laserNode.connected;
+  let laserDeviceState = DeviceState.UNAVAILABLE;
+  if (laserNode.connected) {
+    switch (laserNode.state.deviceState) {
+      case LaserDeviceState.DISCONNECTED:
+        laserDeviceState = DeviceState.DISCONNECTED;
+        break;
+      case LaserDeviceState.CONNECTING:
+        laserDeviceState = DeviceState.CONNECTING;
+        break;
+      case LaserDeviceState.PLAYING:
+      case LaserDeviceState.STOPPED:
+        laserDeviceState = DeviceState.CONNECTED;
+        break;
+      default:
+        break;
+    }
+  }
+
+  const disableButtons = laserDeviceState !== DeviceState.CONNECTED;
 
   let playbackButton = null;
   switch (laserNode.state.deviceState) {
-    case DeviceState.STOPPED:
+    case LaserDeviceState.STOPPED:
       playbackButton = (
         <Button disabled={disableButtons} onClick={() => laserNode.play()}>
           Start Laser
         </Button>
       );
       break;
-    case DeviceState.PLAYING:
+    case LaserDeviceState.PLAYING:
       playbackButton = (
         <Button disabled={disableButtons} onClick={() => laserNode.stop()}>
           Stop Laser
@@ -52,61 +76,74 @@ export default function Controls() {
   return (
     <div className="flex flex-col gap-4 items-center">
       <div className="flex flex-row gap-4 items-center">
-        <Input
-          className="flex-none w-20"
-          type="number"
-          id="x"
-          name="x"
-          placeholder="x"
-          step={0.1}
-          value={x}
-          onChange={(str) => {
-            const value = Number(str);
-            if (!isNaN(value)) {
-              setX(str);
-            }
-          }}
+        <DeviceCard
+          className="h-fit"
+          deviceName="Laser"
+          deviceState={laserDeviceState}
+          onConnectClick={() => laserNode.startDevice()}
+          onDisconnectClick={() => laserNode.closeDevice()}
         />
-        <Input
-          className="flex-none w-20"
-          type="number"
-          id="y"
-          name="y"
-          placeholder="y"
-          step={0.1}
-          value={y}
-          onChange={(str) => {
-            const value = Number(str);
-            if (!isNaN(value)) {
-              setY(str);
-            }
-          }}
-        />
-        <Button
-          disabled={disableButtons}
-          onClick={() => laserNode.addPoint(Number(x), Number(y))}
-        >
-          Add Point
-        </Button>
-        <Button
-          disabled={disableButtons}
-          onClick={() => laserNode.clearPoints()}
-        >
-          Clear Points
-        </Button>
-      </div>
-      <div className="flex flex-row items-center gap-4">
-        <ColorPicker
-          color={laserColor}
-          onColorChange={(color: string) => {
-            setLaserColor(color);
-            const rgb = hexToRgb(color);
-            if (rgb) {
-              laserNode.setColor(rgb.r, rgb.g, rgb.b);
-            }
-          }}
-        />
-        {playbackButton}
+        <Card>
+          <CardContent className="p-4 flex flex-col items-center gap-4">
+            <div className="flex flex-row gap-4 items-center">
+              <Input
+                className="flex-none w-20"
+                type="number"
+                id="x"
+                name="x"
+                placeholder="x"
+                step={0.1}
+                value={x}
+                onChange={(str) => {
+                  const value = Number(str);
+                  if (!isNaN(value)) {
+                    setX(str);
+                  }
+                }}
+              />
+              <Input
+                className="flex-none w-20"
+                type="number"
+                id="y"
+                name="y"
+                placeholder="y"
+                step={0.1}
+                value={y}
+                onChange={(str) => {
+                  const value = Number(str);
+                  if (!isNaN(value)) {
+                    setY(str);
+                  }
+                }}
+              />
+              <Button
+                disabled={disableButtons}
+                onClick={() => laserNode.addPoint(Number(x), Number(y))}
+              >
+                Add Point
+              </Button>
+              <Button
+                disabled={disableButtons}
+                onClick={() => laserNode.clearPoints()}
+              >
+                Clear Points
+              </Button>
+            </div>
+            <div className="flex flex-row items-center gap-4">
+              <ColorPicker
+                color={laserColor}
+                onColorChange={(color: string) => {
+                  setLaserColor(color);
+                  const rgb = hexToRgb(color);
+                  if (rgb) {
+                    laserNode.setColor(rgb.r, rgb.g, rgb.b);
+                  }
+                }}
+              />
+              {playbackButton}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
