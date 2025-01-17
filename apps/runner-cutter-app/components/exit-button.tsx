@@ -51,9 +51,11 @@ export default function ExitButton({ className }: { className?: string }) {
       });
   }, []);
 
-  return appData.name ? (
-    <Button className={className} onClick={handleClick}>
-      Quit
-    </Button>
-  ) : null;
+  return (
+    appData.name && (
+      <Button className={className} onClick={handleClick}>
+        Quit
+      </Button>
+    )
+  );
 }

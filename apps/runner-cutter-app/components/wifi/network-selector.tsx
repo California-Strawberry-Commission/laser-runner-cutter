@@ -93,7 +93,7 @@ export default function NetworkSelector() {
             }}
           >
             <TableCell className="pr-0">
-              {network.connected ? <Check className="h-4 w-4" /> : null}
+              {network.connected && <Check className="h-4 w-4" />}
             </TableCell>
             <TableCell>{network.ssid}</TableCell>
             <TableCell>{network.signal}</TableCell>
