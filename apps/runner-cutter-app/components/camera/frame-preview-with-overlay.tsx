@@ -187,8 +187,8 @@ export default function FramePreviewWithOverlay({
     if (overlayTracks) {
       const markerSize = 14;
       overlayTracks.forEach((track) => {
-        const x = track.normalizedPixelCoords.x * canvasElement.width;
-        const y = track.normalizedPixelCoords.y * canvasElement.height;
+        const x = track.normalizedPixelCoord.x * canvasElement.width;
+        const y = track.normalizedPixelCoord.y * canvasElement.height;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(x - markerSize / 2, y - markerSize / 2);
