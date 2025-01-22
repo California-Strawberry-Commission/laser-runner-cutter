@@ -24,7 +24,7 @@ from aioros2 import (
     start,
     topic,
 )
-from camera_control.camera.lucid_camera import create_lucid_rgbd_camera
+from camera_control.camera.lucid_camera import SyncMode, create_lucid_rgbd_camera
 from camera_control.camera.realsense_camera import RealSenseCamera
 from camera_control.camera.rgbd_camera import State as RgbdCameraState
 from camera_control.camera.rgbd_frame import RgbdFrame
@@ -131,6 +131,7 @@ class CameraControlNode:
         elif self.camera_control_params.camera_type == "lucid":
             self.camera = create_lucid_rgbd_camera(
                 state_change_callback=state_change_callback,
+                sync_mode=SyncMode.HARDWARE_TRIGGER,
                 logger=self.get_logger(),
             )
         else:

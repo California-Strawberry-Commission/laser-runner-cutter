@@ -4,7 +4,9 @@ import ctypes
 import logging
 import os
 import sys
+import threading
 import time
+from enum import Enum, auto
 from typing import Callable, Optional, Tuple
 
 import cv2
@@ -13,17 +15,19 @@ from ament_index_python.packages import get_package_share_directory
 from arena_api.enums import PixelFormat
 from arena_api.system import system
 
-from .calibration import (
-    construct_extrinsic_matrix,
-    create_blob_detector,
-)
+from .calibration import construct_extrinsic_matrix, create_blob_detector
+from .lucid_frame import LucidFrame
 from .rgbd_camera import RgbdCamera, State
 from .rgbd_frame import RgbdFrame
-from .lucid_frame import LucidFrame
-import threading
 
 COLOR_CAMERA_MODEL_PREFIXES = ["ATL", "ATX", "PHX", "TRI", "TRT"]
 DEPTH_CAMERA_MODEL_PREFIXES = ["HTP", "HLT", "HTR", "HTW"]
+
+
+class SyncMode(Enum):
+    NONE = auto()
+    PTP = auto()
+    HARDWARE_TRIGGER = auto()
 
 
 def scale_grayscale_image(mono_image: np.ndarray) -> np.ndarray:
@@ -150,7 +154,7 @@ class LucidRgbdCamera(RgbdCamera):
         depth_camera_serial_number: Optional[str] = None,
         color_frame_size: Tuple[int, int] = (2048, 1536),
         state_change_callback: Optional[Callable[[State], None]] = None,
-        ptp_enabled: bool = False,
+        sync_mode: SyncMode = SyncMode.NONE,
         logger: Optional[logging.Logger] = None,
     ):
         """
@@ -199,7 +203,7 @@ class LucidRgbdCamera(RgbdCamera):
         self._connection_thread = None
         self._acquisition_thread = None
 
-        self._ptp_enabled = ptp_enabled
+        self._sync_mode = sync_mode
 
     @property
     def state(self) -> State:
@@ -504,9 +508,9 @@ class LucidRgbdCamera(RgbdCamera):
         depth_nodemap["Scan3dConfidenceThresholdEnable"].value = True
         depth_nodemap["Scan3dConfidenceThresholdMin"].value = 500
 
-        # Configure PTP
-        if self._ptp_enabled:
+        if self._sync_mode == SyncMode.PTP:
             # Enable PTP Sync
+            # See https://support.thinklucid.com/app-note-multi-camera-synchronization-using-ptp-and-scheduled-action-commands/
             color_nodemap["PtpEnable"].value = True
             depth_nodemap["PtpEnable"].value = True
             color_nodemap["PtpSlaveOnly"].value = False
@@ -559,6 +563,20 @@ class LucidRgbdCamera(RgbdCamera):
             depth_nodemap["GevSCFTD"].value = 0
             color_nodemap["GevSCPD"].value = 80
             depth_nodemap["GevSCPD"].value = 80
+
+            if self._sync_mode == SyncMode.HARDWARE_TRIGGER:
+                # See https://support.thinklucid.com/app-note-using-gpio-on-lucid-cameras/
+                # Select GPIO line to output strobe signal on color camera
+                color_nodemap["LineSelector"].value = "Line3"
+                color_nodemap["LineMode"].value = "Output"
+                color_nodemap["LineSource"].value = "ExposureActive"
+                # TODO: Enable trigger mode on depth camera. See https://support.thinklucid.com/app-note-using-gpio-on-lucid-cameras/#config
+            else:
+                # Disable GPIO line output on color camera
+                color_nodemap["LineSelector"].value = "Line3"
+                color_nodemap["LineMode"].value = "Output"
+                color_nodemap["LineSource"].value = "Off"
+                # TODO: Disable trigger mode on depth camera
 
         # Set exposure and gain
         if exposure_us is not None:
@@ -688,6 +706,9 @@ class LucidRgbdCamera(RgbdCamera):
     def _get_color_frame(
         self, timeout_ms: Optional[int] = None
     ) -> Optional[np.ndarray]:
+        if self._color_device is None:
+            return None
+
         # get_buffer must be called after start_stream and before stop_stream (or
         # system.destroy_device), and buffers must be requeued
         buffer = self._color_device.get_buffer(timeout=timeout_ms)
@@ -710,6 +731,9 @@ class LucidRgbdCamera(RgbdCamera):
     def _get_depth_frame(
         self, timeout_ms: Optional[int] = None
     ) -> Optional[np.ndarray]:
+        if self._depth_device is None:
+            return None
+
         # get_buffer must be called after start_stream and before stop_stream (or
         # system.destroy_device), and buffers must be requeued
         buffer = self._depth_device.get_buffer(timeout=timeout_ms)
@@ -776,6 +800,7 @@ def create_lucid_rgbd_camera(
     depth_camera_serial_number: Optional[str] = None,
     color_frame_size: Tuple[int, int] = (2048, 1536),
     state_change_callback: Optional[Callable[[State], None]] = None,
+    sync_mode: SyncMode = SyncMode.NONE,
     logger: Optional[logging.Logger] = None,
 ) -> LucidRgbdCamera:
     """
@@ -811,6 +836,7 @@ def create_lucid_rgbd_camera(
         depth_camera_serial_number=depth_camera_serial_number,
         color_frame_size=color_frame_size,
         state_change_callback=state_change_callback,
+        sync_mode=sync_mode,
         logger=logger,
     )
 
