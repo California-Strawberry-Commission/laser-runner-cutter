@@ -31,7 +31,6 @@ setup(
         "console_scripts": [
             "main_node = aioros2_example.main_node:main",
             "another_node = aioros2_example.another_node:main",
-            "circular_node = aioros2_example.circular_node:main",
         ],
     },
 )

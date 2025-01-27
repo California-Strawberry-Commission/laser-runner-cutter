@@ -21,14 +21,7 @@ class PreMarshalError(ValueError):
 def marshal_returnable_to_idl(
     returnable: Union[Returnable, tuple, Any], idl, enforce_tag=None
 ):
-    """
-    Instantiates the passed IDL using data within the `returnable` parameter.
-
-    `returnable` can be a Returnable namedtuple, a dictionary, or an already instantiated IDL.
-    """
-
     def _marshal(args, kwargs):
-        """Helper. Constructs the IDL from args and kwargs."""
         try:
             return idl(*args, **kwargs)
         except Exception as e:

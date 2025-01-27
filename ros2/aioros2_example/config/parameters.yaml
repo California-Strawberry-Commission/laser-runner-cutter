@@ -1,6 +1,14 @@
 main0:
   ros__parameters:
     some_params:
-      my_string: "Hello some_params world"
+      my_string: "This some_params.my_string is defined in parameters.yaml"
     some_other_params:
-      my_string: "Hello some_other_params world"
+      my_string: "This some_other_params.my_string is defined in parameters.yaml"
+another0:
+  ros__parameters:
+    my_params:
+      my_message: "Hello from another0"
+another1:
+  ros__parameters:
+    my_params:
+      my_message: "Hello from another1"

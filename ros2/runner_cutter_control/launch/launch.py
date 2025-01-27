@@ -1,6 +1,5 @@
 import os
 
-import launch_ros.actions
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
@@ -8,7 +7,7 @@ from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
 
-from aioros2 import LaunchNode
+from aioros2.launch import launch
 from amiga_control import amiga_control_node
 from camera_control import camera_control_node
 from furrow_perceiver import furrow_perceiver_node
@@ -36,12 +35,6 @@ def generate_launch_description():
         description="Launch cutter-related nodes",
     )
     launch_cutter_nodes = LaunchConfiguration("launch_cutter_nodes")
-    use_single_process_launch_arg = DeclareLaunchArgument(
-        "use_single_process",
-        default_value="False",
-        description="Start nodes in a single process",
-    )
-    use_single_process = LaunchConfiguration("use_single_process")
 
     # endregion
 
@@ -97,7 +90,7 @@ def generate_launch_description():
         condition=IfCondition(launch_nav_nodes),
     )
 
-    furrow_perceiver_forward_launch_node = LaunchNode(
+    furrow_perceiver_forward_launch_node = launch(
         furrow_perceiver_node,
         name="furrow_perceiver_forward",
         parameters=[parameters_file],
@@ -106,7 +99,7 @@ def generate_launch_description():
         condition=IfCondition(launch_nav_nodes),
     )
 
-    furrow_perceiver_backward_launch_node = LaunchNode(
+    furrow_perceiver_backward_launch_node = launch(
         furrow_perceiver_node,
         name="furrow_perceiver_backward",
         parameters=[parameters_file],
@@ -115,7 +108,7 @@ def generate_launch_description():
         condition=IfCondition(launch_nav_nodes),
     )
 
-    amiga_launch_node = LaunchNode(
+    amiga_launch_node = launch(
         amiga_control_node,
         name="amiga",
         parameters=[parameters_file],
@@ -124,7 +117,7 @@ def generate_launch_description():
         condition=IfCondition(launch_nav_nodes),
     )
 
-    guidance_brain_launch_node = LaunchNode(
+    guidance_brain_launch_node = launch(
         guidance_brain_node,
         name="guidance_brain",
         parameters=[parameters_file],
@@ -134,19 +127,19 @@ def generate_launch_description():
     )
 
     # Link node dependencies
-    guidance_brain_launch_node.furrow_perceiver_forward_node.link(
+    guidance_brain_launch_node.furrow_perceiver_forward_node = (
         furrow_perceiver_forward_launch_node
     )
-    guidance_brain_launch_node.furrow_perceiver_backward_node.link(
+    guidance_brain_launch_node.furrow_perceiver_backward_node = (
         furrow_perceiver_backward_launch_node
     )
-    guidance_brain_launch_node.amiga_node.link(amiga_launch_node)
+    guidance_brain_launch_node.amiga_node = amiga_launch_node
 
     # endregion
 
     # region Cutter nodes
 
-    camera_control_launch_node = LaunchNode(
+    camera_control_launch_node = launch(
         camera_control_node,
         name="camera0",
         parameters=[parameters_file],
@@ -154,12 +147,10 @@ def generate_launch_description():
         respawn_delay=2.0,
         output="screen",
         emulate_tty=True,
-        condition=IfCondition(
-            PythonExpression([launch_cutter_nodes, " and not ", use_single_process])
-        ),
+        condition=IfCondition(launch_cutter_nodes),
     )
 
-    laser_control_launch_node = LaunchNode(
+    laser_control_launch_node = launch(
         laser_control_node,
         name="laser0",
         parameters=[parameters_file],
@@ -167,12 +158,10 @@ def generate_launch_description():
         respawn_delay=2.0,
         output="screen",
         emulate_tty=True,
-        condition=IfCondition(
-            PythonExpression([launch_cutter_nodes, " and not ", use_single_process])
-        ),
+        condition=IfCondition(launch_cutter_nodes),
     )
 
-    runner_cutter_control_launch_node = LaunchNode(
+    runner_cutter_control_launch_node = launch(
         runner_cutter_control_node,
         name="control0",
         parameters=[parameters_file],
@@ -180,30 +169,12 @@ def generate_launch_description():
         respawn_delay=2.0,
         output="screen",
         emulate_tty=True,
-        condition=IfCondition(
-            PythonExpression([launch_cutter_nodes, " and not ", use_single_process])
-        ),
+        condition=IfCondition(launch_cutter_nodes),
     )
 
     # Link node dependencies
-    runner_cutter_control_launch_node.camera_node.link(camera_control_launch_node)
-    runner_cutter_control_launch_node.laser_node.link(laser_control_launch_node)
-
-    # The following is for if we want to run runner cutter related nodes in a single process.
-    # Composable nodes are not supported for Python nodes yet, so we use an executable that spins
-    # multiple nodes.
-    single_process_runner_launch_node = launch_ros.actions.Node(
-        package="runner_cutter_control",
-        executable="single_process_runner",
-        parameters=[parameters_file],
-        respawn=True,
-        respawn_delay=2.0,
-        output="screen",
-        emulate_tty=True,
-        condition=IfCondition(
-            PythonExpression([launch_cutter_nodes, " and ", use_single_process])
-        ),
-    )
+    runner_cutter_control_launch_node.camera_node = camera_control_launch_node
+    runner_cutter_control_launch_node.laser_node = laser_control_launch_node
 
     # endregion
 
@@ -211,7 +182,6 @@ def generate_launch_description():
         [
             launch_nav_nodes_launch_arg,
             launch_cutter_nodes_launch_arg,
-            use_single_process_launch_arg,
             realsense_forward_launch_node,
             realsense_backward_launch_node,
             furrow_perceiver_forward_launch_node,
@@ -221,6 +191,5 @@ def generate_launch_description():
             camera_control_launch_node,
             laser_control_launch_node,
             runner_cutter_control_launch_node,
-            single_process_runner_launch_node,
         ]
     )  # type: ignore

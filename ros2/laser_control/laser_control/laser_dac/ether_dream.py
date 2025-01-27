@@ -77,7 +77,6 @@ class EtherDreamDAC(LaserDAC):
     points: List[Tuple[float, float]]
     color: Tuple[float, float, float, float]
     connected_dac_id: int
-    playing: bool
 
     def __init__(self, lib_file: str, logger: Optional[logging.Logger] = None):
         """
@@ -90,7 +89,7 @@ class EtherDreamDAC(LaserDAC):
         self.color = (1.0, 1.0, 1.0, 1.0)  # (r, g, b, i)
         self.connected_dac_id = -1
         self._lib = ctypes.cdll.LoadLibrary(lib_file)
-        self.playing = False
+        self._playing = False
         self._playback_thread = None
         self._check_connection = False
         self._check_connection_thread = None
@@ -155,6 +154,14 @@ class EtherDreamDAC(LaserDAC):
             self.connected_dac_id >= 0
             and self._lib.etherdream_is_connected(self.connected_dac_id) > 0
         )
+
+    @property
+    def playing(self) -> bool:
+        """
+        Returns:
+            bool: Whether the DAC is playing.
+        """
+        return self._playing
 
     def set_color(self, r: float, g: float, b: float, i: float):
         """
@@ -290,7 +297,7 @@ class EtherDreamDAC(LaserDAC):
                 )
             self._lib.etherdream_stop(self.connected_dac_id)
 
-        self.playing = True
+        self._playing = True
         self._playback_thread = threading.Thread(target=playback_thread, daemon=True)
         self._playback_thread.start()
 
@@ -301,7 +308,7 @@ class EtherDreamDAC(LaserDAC):
         if not self.playing:
             return
 
-        self.playing = False
+        self._playing = False
         if self._playback_thread:
             self._playback_thread.join()
             self._playback_thread = None

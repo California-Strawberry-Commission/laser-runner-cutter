@@ -5,7 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "aioros2"
 version = "0.0.0"
-dependencies = []
+dependencies = [
+  "varname",
+  "pure-eval",
+]
 requires-python = ">=3.8"
 authors = [
     {name = "Dominic C", email = "dominicchm.gh@gmail.com"},
