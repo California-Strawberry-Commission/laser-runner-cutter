@@ -11,187 +11,158 @@ The point of this library is to make working with ROS2/`rclpy` bearable (and pos
 
 ### TODO
 
-- Non-async handlers / better warnings?
-- Comprehensive error handling
+- [x] Service Server
+- [x] Service Client
+- [x] Topic Publisher
+- [x] Topic Subscriber
+- [x] Server timer tasks
+- [x] Launch files
+- [x] Server background tasks
+- [x] Parameters
+- [ ] Parameter subscriptions
+- [ ] Action Server
+- [ ] Action Client
+- [ ] Comprehensive error handling
+- [x] Circular imports
+- [ ] Launching multiple nodes in a single process
 
-## Known Limitations
+### Known Limitations
 
-- Param dataclasses must be flat.
+- Param dataclasses must be flat
 - Non-async handlers are not currently supported
-- Probably fragile. Next steps are improving validation, error handling, and error messaging
+- Improve validation, error handling, and error messaging
 
-## Why?
+## Motivation
 
-Here's a comparison between the [example ROS2 action client/server](https://docs.ros.org/en/foxy/Tutorials/Intermediate/Writing-an-Action-Server-Client/Py.html) and a fully-featured equivalent using `aioros2`:
+Here is a comparison between the [example ROS 2 simple publisher and subscriber](https://docs.ros.org/en/humble/Tutorials/Beginner-Client-Libraries/Writing-A-Simple-Py-Publisher-And-Subscriber.html) and a fully-featured equivalent using `aioros2`:
 
 <table>
 <tr>
-<th> aioros2 </th> <th> rclpy </th>
+<th>rclpy</th>
+<th>aioros2</th>
 </tr>
 <tr>
 <td>
 
 ```python
-# server.py
-import asyncio
-from action_tutorials_interfaces.action import Fibonacci
-from aioros2 import node, action, serve_nodes, result, feedback
+# publisher.py
+import rclpy
+from rclpy.node import Node
 
-@node()
-class Fibonacci:
-
-    @action("~/fibonacci", Fibonacci)
-    async def action_fib(self, order):
-        sequence = [0, 1]
-        for i in range(order):
-            sequence.append(sequence[-1] + sequence[-2])
-            yield feedback(partial_sequence=sequence)
-            await asyncio.sleep(1)
-
-        # Last yield is result
-        yield result(sequence=sequence)
+from std_msgs.msg import String
 
 
-def main():
-    serve_nodes(Fibonacci())
+class MinimalPublisher(Node):
 
-if __name__ == "__main__":
+    def __init__(self):
+        super().__init__('minimal_publisher')
+        self.publisher_ = self.create_publisher(String, 'topic', 10)
+        timer_period = 0.5  # seconds
+        self.timer = self.create_timer(timer_period, self.timer_callback)
+        self.i = 0
+
+    def timer_callback(self):
+        msg = String()
+        msg.data = 'Hello World: %d' % self.i
+        self.publisher_.publish(msg)
+        self.get_logger().info('Publishing: "%s"' % msg.data)
+        self.i += 1
+
+
+def main(args=None):
+    rclpy.init(args=args)
+
+    minimal_publisher = MinimalPublisher()
+
+    rclpy.spin(minimal_publisher)
+
+    # Destroy the node explicitly
+    # (optional - otherwise it will be done automatically
+    # when the garbage collector destroys the node object)
+    minimal_publisher.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
     main()
-```
-
-```python
-# client.py
-import asyncio
-from .server import Fibonacci
-from aioros2 import ClientDriver
-
-async def _main():
-    n = ClientDriver(Fibonacci())
-
-    print("Calling action!")
-    action = n.action_fib(order=10)
-    async for feedback in action:
-        print("Got partial sequence:", feedback.partial_sequence)
-    print("Got result: ", action.result.sequence)
-
-def main():
-    asyncio.run(_main())
-
-if __name__ == "__main__":
-    main()
-
 ```
 
 </td>
 <td>
 
 ```python
-# Server.py
-import time
+# publisher.py
+import aioros2
 
-import rclpy
-from rclpy.action import ActionServer
-from rclpy.node import Node
-
-from action_tutorials_interfaces.action import Fibonacci
+from std_msgs.msg import String
 
 
-class FibonacciActionServer(Node):
-
-    def __init__(self):
-        super().__init__('fibonacci_action_server')
-        self._action_server = ActionServer(
-            self,
-            Fibonacci,
-            'fibonacci',
-            self.execute_callback)
-
-    def execute_callback(self, goal_handle):
-        self.get_logger().info('Executing goal...')
-
-        feedback_msg = Fibonacci.Feedback()
-        feedback_msg.partial_sequence = [0, 1]
-
-        for i in range(1, goal_handle.request.order):
-            feedback_msg.partial_sequence.append(
-                feedback_msg.partial_sequence[i] + feedback_msg.partial_sequence[i-1])
-            self.get_logger().info('Feedback: {0}'.format(feedback_msg.partial_sequence))
-            goal_handle.publish_feedback(feedback_msg)
-            time.sleep(1)
-
-        goal_handle.succeed()
-
-        result = Fibonacci.Result()
-        result.sequence = feedback_msg.partial_sequence
-        return result
+my_topic = aioros2.topic("~/topic", String, 10)
 
 
-def main(args=None):
-    rclpy.init(args=args)
-
-    fibonacci_action_server = FibonacciActionServer()
-
-    rclpy.spin(fibonacci_action_server)
+@aioros2.start
+async def start(node):
+    node.i = 0
 
 
-if __name__ == '__main__':
+@aioros2.timer(0.5)
+async def timer(node):
+    msg = String()
+    msg.data = 'Hello World: %d' % self.i
+    my_topic.publish(msg)
+    node.get_logger().info('Publishing: "%s"' % msg.data)
+    node.i += 1
+
+
+def main():
+    aioros2.run()
+
+
+if __name__ == "__main__":
     main()
+
 ```
 
+</td>
+</tr>
+<tr>
+<td>
+
 ```python
-# Client.py
+# subscriber.py
 import rclpy
-from rclpy.action import ActionClient
 from rclpy.node import Node
 
-from action_tutorials_interfaces.action import Fibonacci
+from std_msgs.msg import String
 
 
-class FibonacciActionClient(Node):
+class MinimalSubscriber(Node):
 
     def __init__(self):
-        super().__init__('fibonacci_action_client')
-        self._action_client = ActionClient(self, Fibonacci, 'fibonacci')
+        super().__init__('minimal_subscriber')
+        self.subscription = self.create_subscription(
+            String,
+            'topic',
+            self.listener_callback,
+            10)
+        self.subscription  # prevent unused variable warning
 
-    def send_goal(self, order):
-        goal_msg = Fibonacci.Goal()
-        goal_msg.order = order
-
-        self._action_client.wait_for_server()
-
-        self._send_goal_future = self._action_client.send_goal_async(goal_msg, feedback_callback=self.feedback_callback)
-
-        self._send_goal_future.add_done_callback(self.goal_response_callback)
-
-    def goal_response_callback(self, future):
-        goal_handle = future.result()
-        if not goal_handle.accepted:
-            self.get_logger().info('Goal rejected :(')
-            return
-
-        self.get_logger().info('Goal accepted :)')
-
-        self._get_result_future = goal_handle.get_result_async()
-        self._get_result_future.add_done_callback(self.get_result_callback)
-
-    def get_result_callback(self, future):
-        result = future.result().result
-        self.get_logger().info('Result: {0}'.format(result.sequence))
-        rclpy.shutdown()
-
-    def feedback_callback(self, feedback_msg):
-        feedback = feedback_msg.feedback
-        self.get_logger().info('Received feedback: {0}'.format(feedback.partial_sequence))
+    def listener_callback(self, msg):
+        self.get_logger().info('I heard: "%s"' % msg.data)
 
 
 def main(args=None):
     rclpy.init(args=args)
 
-    action_client = FibonacciActionClient()
+    minimal_subscriber = MinimalSubscriber()
 
-    action_client.send_goal(10)
+    rclpy.spin(minimal_subscriber)
 
-    rclpy.spin(action_client)
+    # Destroy the node explicitly
+    # (optional - otherwise it will be done automatically
+    # when the garbage collector destroys the node object)
+    minimal_subscriber.destroy_node()
+    rclpy.shutdown()
 
 
 if __name__ == '__main__':
@@ -199,9 +170,37 @@ if __name__ == '__main__':
 ```
 
 </td>
-</table>
+<td>
 
-1/2 the lines, 10x the readability. Enough said :)
+```python
+# subscriber.py
+import aioros2
+
+from std_msgs.msg import String
+import .publisher as publisher
+
+
+publisher_ref = aioros2.use(publisher)
+
+
+# We can directly reference the publisher node's topic. The fully qualified
+# topic name will be resolved automatically.
+@aioros2.subscribe(publisher_ref.my_topic)
+async def on_topic_msg(node, data):
+    node.get_logger().info('I heard: "%s"' % data)
+
+
+def main():
+    aioros2.run()
+
+
+if __name__ == "__main__":
+    main()
+```
+
+</td>
+
+</table>
 
 ## Installation
 

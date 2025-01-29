@@ -45,7 +45,7 @@ class LazyAccessor:
         """
         return self._path
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str):
         """
         Called when an attribute is accessed. Returns a new LazyAccessor
         with the updated path including the accessed attribute.

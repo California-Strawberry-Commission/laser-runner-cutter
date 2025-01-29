@@ -6,12 +6,12 @@ import pickle
 from typing import List, Optional, Tuple
 
 import numpy as np
-from scipy.optimize import least_squares, minimize
+from scipy.optimize import least_squares
 
-from camera_control.camera_control_node import CameraControlNode
+import camera_control.camera_control_node as camera_control_node
+import laser_control.laser_control_node as laser_control_node
 from camera_control_interfaces.msg import DetectionType
 from common_interfaces.msg import Vector2
-from laser_control.laser_control_node import LaserControlNode
 from runner_cutter_control.camera_context import CameraContext
 
 CALIBRATION_FILENAME = "calibration.pkl"
@@ -133,8 +133,8 @@ class Calibration:
 
     def __init__(
         self,
-        laser_node: LaserControlNode,
-        camera_node: CameraControlNode,
+        laser_node: laser_control_node,
+        camera_node: camera_control_node,
         laser_color: Tuple[float, float, float],
         logger: Optional[logging.Logger] = None,
     ):

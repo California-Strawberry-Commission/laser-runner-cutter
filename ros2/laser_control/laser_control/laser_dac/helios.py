@@ -67,7 +67,6 @@ class HeliosDAC(LaserDAC):
     points: List[Tuple[float, float]]
     color: Tuple[float, float, float, float]
     dac_idx: int
-    playing: bool
 
     def __init__(self, lib_file: str, logger: Optional[logging.Logger] = None):
         """
@@ -80,7 +79,7 @@ class HeliosDAC(LaserDAC):
         self.color = (1.0, 1.0, 1.0, 1.0)  # (r, g, b, i)
         self.dac_idx = -1
         self._lib = ctypes.cdll.LoadLibrary(lib_file)
-        self.playing = False
+        self._playing = False
         self._playback_thread = None
         self._check_connection = False
         self._check_connection_thread = None
@@ -133,6 +132,14 @@ class HeliosDAC(LaserDAC):
             bool: Whether the DAC is connected.
         """
         return self.dac_idx >= 0 and self._get_native_status() >= 0
+
+    @property
+    def playing(self) -> bool:
+        """
+        Returns:
+            bool: Whether the DAC is playing.
+        """
+        return self._playing
 
     def set_color(self, r: float, g: float, b: float, i: float):
         """
@@ -269,7 +276,7 @@ class HeliosDAC(LaserDAC):
                 )
             self._lib.Stop(self.dac_idx)
 
-        self.playing = True
+        self._playing = True
         self._playback_thread = threading.Thread(target=playback_thread, daemon=True)
         self._playback_thread.start()
 
@@ -280,7 +287,7 @@ class HeliosDAC(LaserDAC):
         if not self.playing:
             return
 
-        self.playing = False
+        self._playing = False
         if self._playback_thread:
             self._playback_thread.join()
             self._playback_thread = None

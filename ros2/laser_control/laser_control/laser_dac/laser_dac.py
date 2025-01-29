@@ -28,6 +28,15 @@ class LaserDAC(ABC):
         """
         pass
 
+    @property
+    @abstractmethod
+    def playing(self) -> bool:
+        """
+        Returns:
+            bool: Whether the DAC is playing.
+        """
+        pass
+
     @abstractmethod
     def set_color(self, r: float, g: float, b: float, i: float):
         """

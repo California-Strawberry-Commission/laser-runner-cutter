@@ -1,29 +1,24 @@
-import asyncio
-
 from std_msgs.msg import String
 
-from aioros2 import QOS_LATCHED, import_node, node, serve_nodes, subscribe, timer, topic
+import aioros2
+import aioros2_example.main_node as main_node
 
-from . import main_node
+my_topic = aioros2.topic("~/my_topic", String, aioros2.QOS_LATCHED)
+main_node_ref = aioros2.use(main_node)
 
 
-@node("circular_node")
-class CircularNode:
-    my_topic = topic("~/my_topic", String, QOS_LATCHED)
+@aioros2.timer(3.0)
+async def timer(node):
+    my_topic.publish(data=f"Hello from CircularNode")
 
-    main_node = import_node(main_node)
 
-    @timer(3.0)
-    async def timer(self):
-        asyncio.create_task(self.my_topic(data=f"Hello from CircularNode"))
-
-    @subscribe(main_node.my_topic)
-    async def on_main_node_my_topic(self, data):
-        print(f"message from main_node.my_topic received: {data}")
+@aioros2.subscribe(main_node_ref.my_topic)
+async def on_main_node_my_topic(node, data):
+    print(f"Message from main_node.my_topic received: {data}")
 
 
 def main():
-    serve_nodes(CircularNode())
+    aioros2.run()
 
 
 if __name__ == "__main__":

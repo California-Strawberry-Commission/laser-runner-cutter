@@ -1,21 +1,33 @@
-import asyncio
+from dataclasses import dataclass
 
 from std_msgs.msg import String
+from std_srvs.srv import Trigger
 
-from aioros2 import QOS_LATCHED, node, serve_nodes, timer, topic
+import aioros2
 
 
-@node("another_node")
-class AnotherNode:
-    my_topic = topic("~/my_topic", String, QOS_LATCHED)
+@dataclass
+class MyParams:
+    my_message: str = "Default"
 
-    @timer(2.0)
-    async def timer(self):
-        asyncio.create_task(self.my_topic(data=f"Hello from AnotherNode"))
+
+my_params = aioros2.params(MyParams)
+my_topic = aioros2.topic("~/my_topic", String, aioros2.QOS_LATCHED)
+
+
+@aioros2.timer(2.0)
+async def timer(node):
+    my_topic.publish(data=my_params.my_message)
+
+
+@aioros2.service("~/my_service", Trigger)
+async def my_service(node):
+    print("my_service called")
+    return {"success": True}
 
 
 def main():
-    serve_nodes(AnotherNode())
+    aioros2.run()
 
 
 if __name__ == "__main__":
