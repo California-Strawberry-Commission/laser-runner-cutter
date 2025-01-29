@@ -91,7 +91,7 @@ class Aioros2LaunchDescription(Node):
 
         return super().__setattr__(name, value)
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str):
         return getattr(self.__instance, name)
 
 

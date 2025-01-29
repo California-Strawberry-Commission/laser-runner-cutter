@@ -36,7 +36,7 @@ async def start(node):
     shared_state.logger = node.get_logger()
 
     shared_state.amiga_available = False
-    await amiga_available_topic.publish_async(data=shared_state.amiga_available)
+    await amiga_available_topic.publish_and_wait(data=shared_state.amiga_available)
 
     shared_state.cli_canbus = EventClient(
         config=EventServiceConfig(
@@ -53,7 +53,7 @@ async def start(node):
     shared_state.logger.info("Got amiga connection!")
 
     shared_state.amiga_available = True
-    await amiga_available_topic.publish_async(data=shared_state.amiga_available)
+    await amiga_available_topic.publish_and_wait(data=shared_state.amiga_available)
 
 
 @aioros2.service("~/set_twist", SetTwist)

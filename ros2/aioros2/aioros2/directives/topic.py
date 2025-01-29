@@ -37,9 +37,9 @@ class RosTopic(RosDirective):
 
     def publish(self, *args, **kwargs):
         """Publishes to this topic without blocking."""
-        self._loop.create_task(self.publish_async(*args, **kwargs))
+        self._loop.create_task(self.publish_and_wait(*args, **kwargs))
 
-    async def publish_async(self, *args, **kwargs):
+    async def publish_and_wait(self, *args, **kwargs):
         """Allows caller to wait"""
         publisher = self._get_publisher()
         idl = marshal_to_idl(self._idl, *args, **kwargs)

@@ -23,7 +23,7 @@ The point of this library is to make working with ROS2/`rclpy` bearable (and pos
 - [ ] Action Server
 - [ ] Action Client
 - [ ] Comprehensive error handling
-- [ ] Circular imports
+- [x] Circular imports
 - [ ] Launching multiple nodes in a single process
 
 ### Known Limitations

@@ -12,24 +12,29 @@ class Deferrable:
     IE:
 
     ```
-    def f(var)
-        return Deferrable(var)
+    def create_deferrable(var):
+        def inner(z):
+            # Note: frame depth must be manually set. frame = 1 corresponds to the current (local)
+            # scope.
+            return Deferrable(z, frame=3)
 
-    x = 5
-    d = f(x + 5)
-    d.resolve() # -> 10
+        return inner(var)
 
-    x = 10
-
-    # Returns as though `x=10` in `x + 5`
-    d.resolve() # -> 15
+    target_obj = SimpleNamespace(a=SimpleNamespace(b=SimpleNamespace(c=1)))
+    deferrable = create_deferrable(target_obj.a.b.c)
+    target_obj.a.b.c = 2
+    deferrable.resolve() # -> 2
     ```
     """
 
-    def __init__(self, var):
-        v = argname("var")
-        self._aname = argname(v, frame=2, vars_only=False)
-        self._globals = inspect.stack()[2].frame.f_globals
+    def __init__(self, var, frame: int = 1):
+        var_name = argname("var", vars_only=False)
+        for i in range(frame - 1):
+            var_name = argname(var_name, frame=i + 2, vars_only=False)
+        self._aname = var_name
+        stack_frame = inspect.stack()[frame].frame
+        self._globals = stack_frame.f_globals
+        self._locals = stack_frame.f_locals
 
     def resolve(self):
-        return eval(self._aname, self._globals)
+        return eval(self._aname, self._globals, self._locals)

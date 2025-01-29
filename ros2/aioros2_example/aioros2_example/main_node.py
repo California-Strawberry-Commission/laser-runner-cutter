@@ -4,8 +4,8 @@ from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
 import aioros2
-
-from . import another_node
+import aioros2_example.another_node as another_node
+import aioros2_example.circular_node as circular_node
 
 
 # NOTE: dataclass requires type annotations to work. The annotation should be the underlying type
@@ -14,6 +14,7 @@ from . import another_node
 @dataclass
 class SomeParams:
     my_string: str = "Default"
+    my_int: int = 0
 
 
 @dataclass
@@ -29,6 +30,7 @@ my_topic = aioros2.topic("~/my_topic", String, aioros2.QOS_LATCHED)
 # Declares dependencies
 another_node_ref = aioros2.use(another_node)
 yet_another_node_ref = aioros2.use(another_node)
+circular_node_ref = aioros2.use(circular_node)
 
 
 # Defines a function that will run immediately on node start.
@@ -52,7 +54,7 @@ async def my_service(node):
     print("my_service called")
 
     # Publishes to this node's topic (async)
-    await my_topic.publish_async(data="Hello from MainNode")
+    await my_topic.publish_and_wait(data="Hello from MainNode")
 
     # Publishes to this node's topic (fire and forget)
     my_topic.publish(data="Hello again from MainNode")
@@ -66,21 +68,34 @@ async def my_service(node):
     # service.
     await another_node_ref.my_service()
 
+    # Set param value
+    some_params.my_int += 1
+
     return {"success": True}
 
 
 # Defines a function that will run when a message is received on a topic.
 @aioros2.subscribe(another_node_ref.my_topic)
 async def on_another_node_my_topic(node, data):
-    print(f"message from another_node_ref.my_topic received: {data}")
+    print(f"Message from another_node_ref.my_topic received: {data}")
 
 
 @aioros2.subscribe(yet_another_node_ref.my_topic)
 async def on_yet_another_node_my_topic(node, data):
-    print(f"message from yet_another_node_ref.my_topic received: {data}")
+    print(f"Message from yet_another_node_ref.my_topic received: {data}")
+
+
+@aioros2.subscribe(circular_node_ref.my_topic)
+async def on_circular_node_my_topic(node, data):
+    print(f"Message from circular_node_ref.my_topic received: {data}")
 
 
 """
+
+@aioros2.subscribe_param(some_params.my_int)
+async def on_my_int_change(node):
+    print(f"Param some_params.my_int changed: {some_params.my_int}")
+
 @action("~/my_action", Run)
 async def my_action(self, fast) -> AsyncGenerator[int, None]:
     for i in range(10):
@@ -88,6 +103,7 @@ async def my_action(self, fast) -> AsyncGenerator[int, None]:
         await asyncio.sleep(0.1 if fast else 1)
     # LAST YIELD MUST BE RESPONSE!!
     yield result(success=True)
+
 """
 
 

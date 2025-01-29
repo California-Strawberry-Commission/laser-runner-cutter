@@ -17,17 +17,17 @@ class RosSubscription(RosDirective):
     def __init__(
         self,
         fn,
-        topic: Deferrable,
+        topic_deferrable: Deferrable,
         idl: Optional[Any] = None,
         qos: Union[QoSProfile, int] = 10,
     ):
         if not iscoroutinefunction(fn):
             raise TypeError("Subscription handlers must be async.")
 
-        self._topic = topic
+        self._fn = fn
+        self._topic_deferrable = topic_deferrable
         self._idl = idl
         self._qos = qos
-        self._fn = fn
 
         self._client_mode = False
 
@@ -38,7 +38,7 @@ class RosSubscription(RosDirective):
         return await self._fn(*args, **kwargs)
 
     def server_impl(self, node: Node, nodeinfo: NodeInfo, loop: asyncio.BaseEventLoop):
-        topic = self._topic.resolve()
+        topic = self._topic_deferrable.resolve()
         idl = self._idl
         qos = self._qos
 
@@ -90,11 +90,11 @@ def subscribe(
         TypeError: If the decorated object is not a function.
     """
 
-    topic = Deferrable(topic)
+    topic_deferrable = Deferrable(topic, frame=2)
 
     def _subscribe(fn) -> RosSubscription:
         if not isfunction(fn):
             raise TypeError("This decorator can only be applied to functions.")
-        return RosSubscription(fn, topic, idl, qos)
+        return RosSubscription(fn, topic_deferrable, idl, qos)
 
     return _subscribe
