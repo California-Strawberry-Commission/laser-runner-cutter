@@ -254,9 +254,7 @@ async def start_runner_cutter(node):
 @aioros2.service("~/start_circle_follower", Trigger)
 async def start_circle_follower(node):
     success = _start_task(
-        _runner_cutter_task(
-            detection_type=DetectionType.CIRCLE, enable_detection_during_burn=False
-        ),
+        _circle_follower_task(),
         "circle_follower",
     )
     return {"success": success}
@@ -638,6 +636,44 @@ async def _burn_target(target: Track, laser_coord: Tuple[float, float]):
     async with shared_state.runner_tracker_lock:
         shared_state.runner_tracker.process_track(target.id, TrackState.COMPLETED)
     shared_state.logger.info(f"Burn complete on track {target.id}.")
+
+
+async def _circle_follower_task(laser_interval_secs: float = 0.5):
+    try:
+        await _reset_to_idle()
+        # We use set_color() instead of play()/stop() as it is faster to temporarily turn on/off
+        # the laser
+        await laser_node.set_color(r=0.0, g=0.0, b=0.0, i=0.0)
+        await laser_node.play()
+        await camera_node.start_detection(detection_type=DetectionType.CIRCLE)
+
+        while True:
+            await asyncio.sleep(laser_interval_secs)
+            # Follow mode currently only supports a single target
+            track = shared_state.runner_tracker.get_track(1)
+            if track is None:
+                continue
+
+            # Fire tracking laser at target
+            laser_coord = shared_state.calibration.camera_point_to_laser_coord(
+                track.position
+            )
+            await laser_node.set_points(
+                points=[Vector2(x=laser_coord[0], y=laser_coord[1])]
+            )
+            try:
+                tracking_laser_color = runner_cutter_control_params.tracking_laser_color
+                await laser_node.set_color(
+                    r=tracking_laser_color[0],
+                    g=tracking_laser_color[1],
+                    b=tracking_laser_color[2],
+                    i=0.0,
+                )
+            finally:
+                await laser_node.set_color(r=0.0, g=0.0, b=0.0, i=0.0)
+    finally:
+        await laser_node.stop()
+        await camera_node.stop_all_detections()
 
 
 # endregion

@@ -7,9 +7,9 @@ import CalibrationCard, {
 import DeviceCard, {
   DeviceState,
 } from "@/components/runner-cutter/device-card";
-import RunnerCutterCard, {
-  RunnerCutterState,
-} from "@/components/runner-cutter/runner-cutter-card";
+import CircleFollowerCard, {
+  CircleFollowerState,
+} from "@/components/track/circle-follower-card";
 import { Card, CardContent } from "@/components/ui/card";
 import useCameraNode, {
   DeviceState as CameraDeviceState,
@@ -75,7 +75,7 @@ export default function Controls() {
     }
   }
 
-  let runnerCutterState = RunnerCutterState.UNAVAILABLE;
+  let circleFollowerState = CircleFollowerState.UNAVAILABLE;
   if (
     controlNode.connected &&
     cameraDeviceState === DeviceState.CONNECTED &&
@@ -86,12 +86,12 @@ export default function Controls() {
       if (
         cameraNode.state.enabledDetectionTypes.includes(DetectionType.CIRCLE)
       ) {
-        runnerCutterState = RunnerCutterState.TRACKING;
+        circleFollowerState = CircleFollowerState.TRACKING;
       } else {
-        runnerCutterState = RunnerCutterState.IDLE;
+        circleFollowerState = CircleFollowerState.IDLE;
       }
     } else if (controlNode.state.state === "circle_follower") {
-      runnerCutterState = RunnerCutterState.ARMED;
+      circleFollowerState = CircleFollowerState.FOLLOWING;
     }
   }
 
@@ -122,14 +122,14 @@ export default function Controls() {
             onSaveClick={() => controlNode.saveCalibration()}
             onLoadClick={() => controlNode.loadCalibration()}
           />
-          <RunnerCutterCard
-            runnerCutterState={runnerCutterState}
+          <CircleFollowerCard
+            circleFollowerState={circleFollowerState}
             onTrackClick={() => cameraNode.startDetection(DetectionType.CIRCLE)}
             onTrackStopClick={() =>
               cameraNode.stopDetection(DetectionType.CIRCLE)
             }
-            onArmClick={() => controlNode.startCircleFollower()}
-            onArmStopClick={() => controlNode.stop()}
+            onFollowClick={() => controlNode.startCircleFollower()}
+            onFollowStopClick={() => controlNode.stop()}
           />
         </CardContent>
       </Card>
