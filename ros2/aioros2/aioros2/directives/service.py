@@ -50,7 +50,8 @@ class RosService(RosDirective):
         def callback(req, result):
             kwargs = idl_to_kwargs(req)
 
-            # Call handler function
+            # Call handler function. This callback is called from another thread, so we need to
+            # use run_coroutine_threadsafe
             user_return = asyncio.run_coroutine_threadsafe(
                 self._fn(node, **kwargs), loop
             ).result()

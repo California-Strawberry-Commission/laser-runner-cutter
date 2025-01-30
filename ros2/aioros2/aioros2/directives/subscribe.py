@@ -59,10 +59,9 @@ class RosSubscription(RosDirective):
         def callback(data):
             kwargs = idl_to_kwargs(data)
 
-            if iscoroutinefunction(self._fn):
-                loop.create_task(self._fn(node, **kwargs))
-            else:
-                loop.run_in_executor(None, functools.partial(self._fn, node, **kwargs))
+            # Call handler function. This callback is called from another thread, so we need to
+            # use run_coroutine_threadsafe
+            asyncio.run_coroutine_threadsafe(self._fn(node, **kwargs), loop).result()
 
         node.create_subscription(idl, topic, callback, qos)
 

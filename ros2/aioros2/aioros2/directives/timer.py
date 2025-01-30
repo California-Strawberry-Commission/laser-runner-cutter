@@ -40,6 +40,8 @@ class RosTimer(RosDirective):
 
         @catch(node.get_logger().log)
         def callback():
+            # Call handler function. This callback is called from another thread, so we need to
+            # use run_coroutine_threadsafe
             asyncio.run_coroutine_threadsafe(self._fn(node), loop).result()
 
         node.create_timer(self._interval_secs, callback, callback_group=callback_group)
