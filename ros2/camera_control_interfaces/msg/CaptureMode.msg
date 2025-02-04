@@ -1,0 +1,2 @@
+uint8 CONTINUOUS=0
+uint8 SINGLE_FRAME=1

@@ -191,60 +191,48 @@ class RealSenseCamera(RgbdCamera):
 
         self._logger.info(f"Terminating connection thread")
 
+    def get_frame(self) -> Optional[RealSenseFrame]:
+        try:
+            frame = self._get_rgbd_frame()
+        except Exception as e:
+            self._logger.error(
+                f"There was an issue with the camera: {e}. Signaling connection thread"
+            )
+            self._cv.notify()
+            return None
+
+        if frame is None:
+            self._logger.error(f"No frame available. Signaling connection thread")
+            self._cv.notify()
+            return None
+
+        return frame
+
     def _acquisition_thread_fn(
         self, frame_callback: Optional[Callable[[RgbdFrame], None]] = None
     ):
         with self._cv:
             while self._is_running:
                 try:
-                    frames = self._pipeline.wait_for_frames()
-                except:
+                    frame = self._get_rgbd_frame()
+                except Exception as e:
                     self._logger.warning(
-                        f"There was an issue with the camera. Signaling connection thread"
+                        f"There was an issue with the camera: {e}. Signaling connection thread"
                     )
                     self._cv.notify()
                     self._cv.wait()
                     continue
 
-                if not frames:
-                    self._logger.warning(
+                if frame is None:
+                    self._logger.error(
                         f"No frame available. Signaling connection thread"
                     )
                     self._cv.notify()
                     self._cv.wait()
                     continue
 
-                # Align depth frame to color frame if needed
-                if self._align_depth_to_color_frame:
-                    frames = self._align.process(frames)
-
-                color_frame = frames.get_color_frame()
-                depth_frame = frames.get_depth_frame()
-                if not depth_frame or not color_frame:
-                    continue
-
-                # Apply post-processing filters
-                depth_frame = self.temporal_filter.process(depth_frame)
-                depth_frame = self.hole_filling_filter.process(depth_frame)
-
-                # The various post processing functions return a generic frame, so we need
-                # to cast back to depth_frame
-                depth_frame = depth_frame.as_depth_frame()
-
                 if frame_callback is not None:
-                    frame_callback(
-                        RealSenseFrame(
-                            color_frame,
-                            depth_frame,
-                            color_frame.get_timestamp(),
-                            self._align_depth_to_color_frame,
-                            self._depth_scale,
-                            self._depth_intrinsics,
-                            self._color_intrinsics,
-                            self._depth_to_color_extrinsics,
-                            self._color_to_depth_extrinsics,
-                        )
-                    )
+                    frame_callback(frame)
 
         self._logger.info(f"Terminating acquisition thread")
 
@@ -415,3 +403,37 @@ class RealSenseCamera(RgbdCamera):
         color_sensor = self._profile.get_device().first_color_sensor()
         gain_db_range = color_sensor.get_option_range(rs.option.gain)
         return (gain_db_range.min, gain_db_range.max)
+
+    def _get_rgbd_frame(self) -> Optional[RealSenseFrame]:
+        frames = self._pipeline.wait_for_frames()
+        if not frames:
+            return None
+
+        # Align depth frame to color frame if needed
+        if self._align_depth_to_color_frame:
+            frames = self._align.process(frames)
+
+        color_frame = frames.get_color_frame()
+        depth_frame = frames.get_depth_frame()
+        if not depth_frame or not color_frame:
+            return None
+
+        # Apply post-processing filters
+        depth_frame = self.temporal_filter.process(depth_frame)
+        depth_frame = self.hole_filling_filter.process(depth_frame)
+
+        # The various post processing functions return a generic frame, so we need
+        # to cast back to depth_frame
+        depth_frame = depth_frame.as_depth_frame()
+
+        return RealSenseFrame(
+            color_frame,
+            depth_frame,
+            color_frame.get_timestamp(),
+            self._align_depth_to_color_frame,
+            self._depth_scale,
+            self._depth_intrinsics,
+            self._color_intrinsics,
+            self._depth_to_color_extrinsics,
+            self._color_to_depth_extrinsics,
+        )

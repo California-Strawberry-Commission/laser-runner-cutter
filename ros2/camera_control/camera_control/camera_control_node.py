@@ -15,14 +15,17 @@ from sensor_msgs.msg import CompressedImage, Image
 from std_srvs.srv import Trigger
 
 import aioros2
-from camera_control.camera.lucid_camera import SyncMode, create_lucid_rgbd_camera
+from camera_control.camera.lucid_camera import CaptureMode as LucidCaptureMode
+from camera_control.camera.lucid_camera import LucidRgbdCamera, create_lucid_rgbd_camera
 from camera_control.camera.realsense_camera import RealSenseCamera
-from camera_control.camera.rgbd_camera import RgbdCamera, State as RgbdCameraState
+from camera_control.camera.rgbd_camera import RgbdCamera
+from camera_control.camera.rgbd_camera import State as RgbdCameraState
 from camera_control.camera.rgbd_frame import RgbdFrame
 from camera_control.detector.circle_detector import CircleDetector
 from camera_control.detector.laser_detector import LaserDetector
 from camera_control.detector.runner_detector import RunnerDetector
 from camera_control_interfaces.msg import (
+    CaptureMode,
     DetectionResult,
     DetectionType,
     DeviceState,
@@ -38,6 +41,7 @@ from camera_control_interfaces.srv import (
     SetGain,
     SetSaveDirectory,
     StartDetection,
+    StartDevice,
     StartIntervalCapture,
     StopDetection,
 )
@@ -98,6 +102,7 @@ class SharedState:
     # Used to notify when a detection task has completed, used to avoid destroying frame buffer(s)
     # while detection is happening
     detection_completed_event = asyncio.Event()
+    detection_completed_event.set()
     # Flag to prevent frame callback or detection task from executing after device is closed
     camera_started = False
     # Used to notify when a new frame is available
@@ -139,7 +144,6 @@ async def start(node):
     elif camera_control_params.camera_type == "lucid":
         shared_state.camera = create_lucid_rgbd_camera(
             state_change_callback=state_change_callback,
-            sync_mode=SyncMode.HARDWARE_TRIGGER,
             logger=shared_state.logger,
         )
     else:
@@ -154,19 +158,31 @@ async def start(node):
     _publish_state()
 
 
-@aioros2.service("~/start_device", Trigger)
-async def start_device(node):
+@aioros2.service("~/start_device", StartDevice)
+async def start_device(node, capture_mode):
     loop = asyncio.get_running_loop()
 
     def frame_callback(frame: RgbdFrame):
         # This callback is called from another thread, so we need to use run_coroutine_threadsafe
         asyncio.run_coroutine_threadsafe(_frame_callback(frame), loop)
 
+    is_lucid = isinstance(shared_state.camera, LucidRgbdCamera)
+    capture_mode_arg = (
+        None
+        if not is_lucid
+        else (
+            LucidCaptureMode.SINGLE_FRAME
+            if capture_mode == CaptureMode.SINGLE_FRAME
+            else LucidCaptureMode.CONTINUOUS
+        )
+    )
     shared_state.camera.start(
         exposure_us=camera_control_params.exposure_us,
         gain_db=camera_control_params.gain_db,
         frame_callback=frame_callback,
+        **({"capture_mode": capture_mode_arg} if capture_mode_arg is not None else {}),
     )
+
     shared_state.camera_started = True
 
     return {"success": True}
@@ -199,6 +215,20 @@ async def get_frame(node):
         "color_frame": _get_color_frame_msg(frame.color_frame, frame.timestamp_millis),
         "depth_frame": _get_depth_frame_msg(frame.depth_frame, frame.timestamp_millis),
     }
+
+
+@aioros2.service("~/acquire_single_frame", Trigger)
+async def acquire_single_frame(node):
+    frame = await asyncio.get_running_loop().run_in_executor(
+        None, shared_state.camera.get_frame
+    )
+    if frame is None:
+        _publish_notification("Failed to acquire frame", level=logging.ERROR)
+        return {"success": False}
+
+    await _frame_callback(frame)
+    _publish_notification("Successfully acquired frame")
+    return {"success": True}
 
 
 @aioros2.service("~/set_exposure", SetExposure)

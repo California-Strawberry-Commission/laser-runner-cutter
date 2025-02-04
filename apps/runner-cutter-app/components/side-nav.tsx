@@ -40,6 +40,11 @@ const SIDENAV_ITEMS: SideNavItem[] = [
     isTestPage: true,
   },
   {
+    title: "Strobe Test",
+    path: "/test/strobe",
+    isTestPage: true,
+  },
+  {
     title: "Navigation",
     path: "/test/navigation",
     isTestPage: true,

@@ -7,6 +7,11 @@ export enum DeviceState {
   STREAMING,
 }
 
+export enum CaptureMode {
+  CONTINUOUS,
+  SINGLE_FRAME,
+}
+
 export enum DetectionType {
   LASER,
   RUNNER,
@@ -76,13 +81,25 @@ export default function useCameraNode(nodeName: string) {
 
   const startDevice = node.useService(
     "~/start_device",
-    "std_srvs/Trigger",
-    triggerInputMapper,
+    "camera_control_interfaces/StartDevice",
+    useCallback(
+      (captureMode: CaptureMode = CaptureMode.CONTINUOUS) => ({
+        capture_mode: captureMode,
+      }),
+      []
+    ),
     successOutputMapper
   );
 
   const closeDevice = node.useService(
     "~/close_device",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper
+  );
+
+  const acquireSingleFrame = node.useService(
+    "~/acquire_single_frame",
     "std_srvs/Trigger",
     triggerInputMapper,
     successOutputMapper
@@ -186,6 +203,7 @@ export default function useCameraNode(nodeName: string) {
     state,
     startDevice,
     closeDevice,
+    acquireSingleFrame,
     setExposure,
     autoExposure,
     setGain,

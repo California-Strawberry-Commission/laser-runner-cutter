@@ -24,10 +24,16 @@ COLOR_CAMERA_MODEL_PREFIXES = ["ATL", "ATX", "PHX", "TRI", "TRT"]
 DEPTH_CAMERA_MODEL_PREFIXES = ["HTP", "HLT", "HTR", "HTW"]
 
 
-class SyncMode(Enum):
-    NONE = auto()
-    PTP = auto()
-    HARDWARE_TRIGGER = auto()
+class CaptureMode(Enum):
+    CONTINUOUS = (
+        auto()
+    )  # Continuous capture, with cameras synced using the color camera as the trigger signal
+    SINGLE_FRAME = (
+        auto()
+    )  # Single frame capture, with cameras synced using the color camera as the trigger signal
+    CONTINUOUS_PTP = (
+        auto()
+    )  # Continuous capture, with cameras synced using Precision Time Protocol
 
 
 def scale_grayscale_image(mono_image: np.ndarray) -> np.ndarray:
@@ -154,7 +160,6 @@ class LucidRgbdCamera(RgbdCamera):
         depth_camera_serial_number: Optional[str] = None,
         color_frame_size: Tuple[int, int] = (2048, 1536),
         state_change_callback: Optional[Callable[[State], None]] = None,
-        sync_mode: SyncMode = SyncMode.NONE,
         logger: Optional[logging.Logger] = None,
     ):
         """
@@ -203,8 +208,6 @@ class LucidRgbdCamera(RgbdCamera):
         self._connection_thread = None
         self._acquisition_thread = None
 
-        self._sync_mode = sync_mode
-
     @property
     def state(self) -> State:
         """
@@ -224,6 +227,7 @@ class LucidRgbdCamera(RgbdCamera):
         exposure_us: float = -1.0,
         gain_db: float = -1.0,
         frame_callback: Optional[Callable[[RgbdFrame], None]] = None,
+        **kwargs,
     ):
         """
         Connects device and starts streaming.
@@ -240,19 +244,23 @@ class LucidRgbdCamera(RgbdCamera):
         self._call_state_change_callback()
 
         # Start connection thread and acquisition thread
+        capture_mode = kwargs.get("capture_mode", CaptureMode.CONTINUOUS)
         self._connection_thread = threading.Thread(
             target=self._connection_thread_fn,
             args=(
                 exposure_us,
                 gain_db,
+                capture_mode,
             ),
             daemon=True,
         )
         self._connection_thread.start()
-        self._acquisition_thread = threading.Thread(
-            target=self._acquisition_thread_fn, args=(frame_callback,), daemon=True
-        )
-        self._acquisition_thread.start()
+        # We don't need an acquisition loop thread when doing single frame captures
+        if capture_mode != CaptureMode.SINGLE_FRAME:
+            self._acquisition_thread = threading.Thread(
+                target=self._acquisition_thread_fn, args=(frame_callback,), daemon=True
+            )
+            self._acquisition_thread.start()
 
     def stop(self):
         """
@@ -273,7 +281,12 @@ class LucidRgbdCamera(RgbdCamera):
         if self._acquisition_thread is not None:
             self._acquisition_thread.join()
 
-    def _connection_thread_fn(self, exposure_us: float = -1.0, gain_db: float = -1.0):
+    def _connection_thread_fn(
+        self,
+        exposure_us: float = -1.0,
+        gain_db: float = -1.0,
+        capture_mode: CaptureMode = CaptureMode.CONTINUOUS,
+    ):
         device_connected = False
         device_was_ever_connected = False
 
@@ -347,9 +360,15 @@ class LucidRgbdCamera(RgbdCamera):
                             color_device_info,
                             depth_device_info,
                             **(
-                                {}
+                                {
+                                    "capture_mode": capture_mode,
+                                }
                                 if device_was_ever_connected
-                                else {"exposure_us": exposure_us, "gain_db": gain_db}
+                                else {
+                                    "exposure_us": exposure_us,
+                                    "gain_db": gain_db,
+                                    "capture_mode": capture_mode,
+                                }
                             ),
                         )
                         device_was_ever_connected = True
@@ -365,18 +384,44 @@ class LucidRgbdCamera(RgbdCamera):
 
         self._logger.info(f"Terminating connection thread")
 
+    def get_frame(self) -> Optional[LucidFrame]:
+        # When in SingleFrame mode, we manually fire AcquisitionStart and AcquisitionStop
+        color_nodemap = self._color_device.nodemap
+        if color_nodemap["AcquisitionMode"].value == "SingleFrame":
+            color_nodemap["AcquisitionStart"].execute()
+        depth_nodemap = self._depth_device.nodemap
+        if depth_nodemap["AcquisitionMode"].value == "SingleFrame":
+            depth_nodemap["AcquisitionStart"].execute()
+
+        try:
+            frame = self._get_rgbd_frame()
+        except Exception as e:
+            self._logger.error(
+                f"There was an issue with the camera: {e}. Signaling connection thread"
+            )
+            self._cv.notify()
+            return None
+
+        if frame is None:
+            self._logger.error(f"No frame available. Signaling connection thread")
+            self._cv.notify()
+            return None
+
+        if color_nodemap["AcquisitionMode"].value == "SingleFrame":
+            color_nodemap["AcquisitionStop"].execute()
+        if depth_nodemap["AcquisitionMode"].value == "SingleFrame":
+            depth_nodemap["AcquisitionStop"].execute()
+
+        return frame
+
     def _acquisition_thread_fn(
         self, frame_callback: Optional[Callable[[RgbdFrame], None]] = None
     ):
         with concurrent.futures.ThreadPoolExecutor() as executor:
             with self._cv:
                 while self._is_running:
-                    future_color_frame = executor.submit(self._get_color_frame)
-                    future_depth_frame = executor.submit(self._get_depth_frame)
-
                     try:
-                        color_frame = future_color_frame.result()
-                        depth_frame = future_depth_frame.result()
+                        frame = self._get_rgbd_frame(executor)
                     except Exception as e:
                         self._logger.error(
                             f"There was an issue with the camera: {e}. Signaling connection thread"
@@ -385,7 +430,7 @@ class LucidRgbdCamera(RgbdCamera):
                         self._cv.wait()
                         continue
 
-                    if color_frame is None or depth_frame is None:
+                    if frame is None:
                         self._logger.error(
                             f"No frame available. Signaling connection thread"
                         )
@@ -393,30 +438,8 @@ class LucidRgbdCamera(RgbdCamera):
                         self._cv.wait()
                         continue
 
-                    # Convert BayerRG8 to RGB8
-                    color_frame = cv2.cvtColor(color_frame, cv2.COLOR_BayerRGGB2RGB)
-
-                    # depth_frame is a numpy structured array containing both xyz and intensity data
-                    # depth_frame_intensity = (depth_frame["i"] / 256).astype(np.uint8)
-                    depth_frame_xyz = np.stack(
-                        [depth_frame["x"], depth_frame["y"], depth_frame["z"]], axis=-1
-                    )
-
                     if frame_callback is not None:
-                        frame_callback(
-                            LucidFrame(
-                                color_frame,
-                                depth_frame_xyz,  # type: ignore
-                                time.time() * 1000,
-                                self._color_camera_intrinsic_matrix,
-                                self._color_camera_distortion_coeffs,
-                                self._depth_camera_intrinsic_matrix,
-                                self._depth_camera_distortion_coeffs,
-                                self._xyz_to_color_camera_extrinsic_matrix,
-                                self._xyz_to_depth_camera_extrinsic_matrix,
-                                color_frame_offset=self._color_frame_offset,
-                            )
-                        )
+                        frame_callback(frame)
 
         self._logger.info(f"Terminating acquisition thread")
 
@@ -426,6 +449,7 @@ class LucidRgbdCamera(RgbdCamera):
         depth_device_info,
         exposure_us: Optional[float] = None,
         gain_db: Optional[float] = None,
+        capture_mode: CaptureMode = CaptureMode.CONTINUOUS,
     ):
         if self._color_device is not None or self._depth_device is not None:
             return
@@ -453,7 +477,6 @@ class LucidRgbdCamera(RgbdCamera):
         # Configure color device nodemap
         set_network_settings(self._color_device)
         color_nodemap = self._color_device.nodemap
-        color_nodemap["AcquisitionMode"].value = "Continuous"
         # Set frame size and pixel format
         # Use BayerRG (RGGB pattern) to achieve streaming at 30 FPS at max resolution. We will
         # demosaic to RGB on the host device.
@@ -486,7 +509,6 @@ class LucidRgbdCamera(RgbdCamera):
         # Configure depth device nodemap
         set_network_settings(self._depth_device)
         depth_nodemap = self._depth_device.nodemap
-        depth_nodemap["AcquisitionMode"].value = "Continuous"
         # Set pixel format
         self.depth_frame_size = (
             depth_nodemap["Width"].value,
@@ -508,9 +530,11 @@ class LucidRgbdCamera(RgbdCamera):
         depth_nodemap["Scan3dConfidenceThresholdEnable"].value = True
         depth_nodemap["Scan3dConfidenceThresholdMin"].value = 500
 
-        if self._sync_mode == SyncMode.PTP:
+        if capture_mode == CaptureMode.CONTINUOUS_PTP:
             # Enable PTP Sync
             # See https://support.thinklucid.com/app-note-multi-camera-synchronization-using-ptp-and-scheduled-action-commands/
+            color_nodemap["AcquisitionMode"].value = "Continuous"
+            depth_nodemap["AcquisitionMode"].value = "Continuous"
             color_nodemap["PtpEnable"].value = True
             depth_nodemap["PtpEnable"].value = True
             color_nodemap["PtpSlaveOnly"].value = False
@@ -564,19 +588,19 @@ class LucidRgbdCamera(RgbdCamera):
             color_nodemap["GevSCPD"].value = 80
             depth_nodemap["GevSCPD"].value = 80
 
-            if self._sync_mode == SyncMode.HARDWARE_TRIGGER:
-                # See https://support.thinklucid.com/app-note-using-gpio-on-lucid-cameras/
-                # Select GPIO line to output strobe signal on color camera
-                color_nodemap["LineSelector"].value = "Line3"
-                color_nodemap["LineMode"].value = "Output"
-                color_nodemap["LineSource"].value = "ExposureActive"
-                # TODO: Enable trigger mode on depth camera. See https://support.thinklucid.com/app-note-using-gpio-on-lucid-cameras/#config
+            # See https://support.thinklucid.com/app-note-using-gpio-on-lucid-cameras/
+            # Select GPIO line to output strobe signal on color camera
+            color_nodemap["LineSelector"].value = "Line3"
+            color_nodemap["LineMode"].value = "Output"
+            color_nodemap["LineSource"].value = "ExposureActive"
+            # TODO: Enable trigger mode on depth camera. See https://support.thinklucid.com/app-note-using-gpio-on-lucid-cameras/#config
+
+            if capture_mode == CaptureMode.CONTINUOUS:
+                color_nodemap["AcquisitionMode"].value = "Continuous"
+                depth_nodemap["AcquisitionMode"].value = "Continuous"
             else:
-                # Disable GPIO line output on color camera
-                color_nodemap["LineSelector"].value = "Line3"
-                color_nodemap["LineMode"].value = "Output"
-                color_nodemap["LineSource"].value = "Off"
-                # TODO: Disable trigger mode on depth camera
+                color_nodemap["AcquisitionMode"].value = "SingleFrame"
+                depth_nodemap["AcquisitionMode"].value = "SingleFrame"
 
         # Set exposure and gain
         if exposure_us is not None:
@@ -703,6 +727,44 @@ class LucidRgbdCamera(RgbdCamera):
         nodemap = self._color_device.nodemap
         return (nodemap["Gain"].min, nodemap["Gain"].max)
 
+    def _get_rgbd_frame(
+        self, executor: Optional[concurrent.futures.Executor] = None
+    ) -> Optional[LucidFrame]:
+        if executor is not None:
+            future_color_frame = executor.submit(self._get_color_frame)
+            future_depth_frame = executor.submit(self._get_depth_frame)
+
+            color_frame = future_color_frame.result()
+            depth_frame = future_depth_frame.result()
+        else:
+            color_frame = self._get_color_frame()
+            depth_frame = self._get_depth_frame()
+
+        if color_frame is None or depth_frame is None:
+            return None
+
+        # Convert BayerRG8 to RGB8
+        color_frame = cv2.cvtColor(color_frame, cv2.COLOR_BayerRGGB2RGB)
+
+        # depth_frame is a numpy structured array containing both xyz and intensity data
+        # depth_frame_intensity = (depth_frame["i"] / 256).astype(np.uint8)
+        depth_frame_xyz = np.stack(
+            [depth_frame["x"], depth_frame["y"], depth_frame["z"]], axis=-1
+        )
+
+        return LucidFrame(
+            color_frame,
+            depth_frame_xyz,
+            time.time() * 1000,
+            self._color_camera_intrinsic_matrix,
+            self._color_camera_distortion_coeffs,
+            self._depth_camera_intrinsic_matrix,
+            self._depth_camera_distortion_coeffs,
+            self._xyz_to_color_camera_extrinsic_matrix,
+            self._xyz_to_depth_camera_extrinsic_matrix,
+            color_frame_offset=self._color_frame_offset,
+        )
+
     def _get_color_frame(
         self, timeout_ms: Optional[int] = None
     ) -> Optional[np.ndarray]:
@@ -800,7 +862,6 @@ def create_lucid_rgbd_camera(
     depth_camera_serial_number: Optional[str] = None,
     color_frame_size: Tuple[int, int] = (2048, 1536),
     state_change_callback: Optional[Callable[[State], None]] = None,
-    sync_mode: SyncMode = SyncMode.NONE,
     logger: Optional[logging.Logger] = None,
 ) -> LucidRgbdCamera:
     """
@@ -836,7 +897,6 @@ def create_lucid_rgbd_camera(
         depth_camera_serial_number=depth_camera_serial_number,
         color_frame_size=color_frame_size,
         state_change_callback=state_change_callback,
-        sync_mode=sync_mode,
         logger=logger,
     )
 

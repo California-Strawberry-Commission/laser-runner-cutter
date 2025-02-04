@@ -39,6 +39,16 @@ class RgbdCamera(ABC):
         pass
 
     @abstractmethod
+    def get_frame(self) -> Optional[RgbdFrame]:
+        """
+        Get the latest available frame.
+
+        Returns:
+            Optional[RgbdFrame]: The latest available frame.
+        """
+        pass
+
+    @abstractmethod
     def stop(self):
         """
         Stops streaming and disconnects device.
