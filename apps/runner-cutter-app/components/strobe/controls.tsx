@@ -1,21 +1,15 @@
 "use client";
 
-import FramePreviewWithOverlay from "@/components/camera/frame-preview-with-overlay";
 import DeviceCard, {
   DeviceState,
 } from "@/components/runner-cutter/device-card";
+import SingleFramePreview from "@/components/strobe/single-frame-preview";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InputWithLabel } from "@/components/ui/input-with-label";
 import useCameraNode, {
-  CaptureMode,
   DeviceState as CameraDeviceState,
+  CaptureMode,
 } from "@/lib/useCameraNode";
 import { useEffect, useState } from "react";
 
@@ -204,7 +198,7 @@ export default function Controls() {
           </CardContent>
         </Card>
       </div>
-      <FramePreviewWithOverlay
+      <SingleFramePreview
         className="w-full h-[480px]"
         topicName="/camera0/debug_frame"
         enableStream={

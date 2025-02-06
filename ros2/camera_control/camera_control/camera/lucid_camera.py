@@ -387,11 +387,13 @@ class LucidRgbdCamera(RgbdCamera):
     def get_frame(self) -> Optional[LucidFrame]:
         # When in SingleFrame mode, we manually fire AcquisitionStart and AcquisitionStop
         color_nodemap = self._color_device.nodemap
-        if color_nodemap["AcquisitionMode"].value == "SingleFrame":
-            color_nodemap["AcquisitionStart"].execute()
         depth_nodemap = self._depth_device.nodemap
-        if depth_nodemap["AcquisitionMode"].value == "SingleFrame":
+        is_single_frame_mode = color_nodemap["AcquisitionMode"].value == "SingleFrame"
+        if is_single_frame_mode:
+            color_nodemap["AcquisitionStart"].execute()
             depth_nodemap["AcquisitionStart"].execute()
+            # Add a delay to ensure signal fires before attempting to read buffer
+            time.sleep(0.1)
 
         try:
             frame = self._get_rgbd_frame()
@@ -407,9 +409,8 @@ class LucidRgbdCamera(RgbdCamera):
             self._cv.notify()
             return None
 
-        if color_nodemap["AcquisitionMode"].value == "SingleFrame":
+        if is_single_frame_mode:
             color_nodemap["AcquisitionStop"].execute()
-        if depth_nodemap["AcquisitionMode"].value == "SingleFrame":
             depth_nodemap["AcquisitionStop"].execute()
 
         return frame
@@ -609,11 +610,12 @@ class LucidRgbdCamera(RgbdCamera):
             self.gain_db = gain_db
 
         # Start streams
-        self._color_device.start_stream(10)
+        num_buffers = 1 if capture_mode == CaptureMode.SINGLE_FRAME else 10
+        self._color_device.start_stream(num_buffers)
         self._logger.info(
             f"Device (color, serial={self.color_camera_serial_number}) is now streaming with resolution ({self.color_frame_size[0]}, {self.color_frame_size[1]})"
         )
-        self._depth_device.start_stream(10)
+        self._depth_device.start_stream(num_buffers)
         self._logger.info(
             f"Device (depth, serial={self.depth_camera_serial_number}) is now streaming with resolution ({self.depth_frame_size[0]}, {self.depth_frame_size[1]})"
         )

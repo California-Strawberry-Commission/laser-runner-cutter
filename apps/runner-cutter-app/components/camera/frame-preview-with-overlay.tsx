@@ -1,8 +1,9 @@
 "use client";
 
+import { Track, TrackState } from "@/lib/useControlNode";
+import useVideoServerStreamUrl from "@/lib/useVideoServerStreamUrl";
 import { cn } from "@/lib/utils";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Track, TrackState } from "@/lib/useControlNode";
 
 function getImageSizeAndOffset(imgElement: HTMLImageElement) {
   const rect = imgElement.getBoundingClientRect();
@@ -63,7 +64,6 @@ export default function FramePreviewWithOverlay({
   className?: string;
 }) {
   const imgRef = useRef<HTMLImageElement>(null);
-  const [streamUrl, setStreamUrl] = useState<string>("");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [canvasStyle, setCanvasStyle] = useState({
     width: 0,
@@ -72,21 +72,7 @@ export default function FramePreviewWithOverlay({
     left: 0,
   });
 
-  // Unfortunately, with SSR, this needed for code that should only run on client side. Otherwise
-  // we will get an error when enableStream is true on initial render since the server and
-  // client "src" values will not match.
-  useEffect(() => {
-    if (typeof window !== "undefined" && enableStream && topicName) {
-      const videoServer =
-        process.env.NEXT_PUBLIC_VIDEO_SERVER_URL ??
-        `http://${window.location.hostname}:8080`;
-      setStreamUrl(
-        `${videoServer}/stream?topic=${topicName}&quality=${quality}&qos_profile=sensor_data`
-      );
-    } else {
-      setStreamUrl("");
-    }
-  }, [enableStream, topicName, quality]);
+  const streamUrl = useVideoServerStreamUrl(topicName, quality, enableStream);
 
   const renderOverlay = streamUrl && enableOverlay;
 
