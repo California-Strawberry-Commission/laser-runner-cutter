@@ -23,7 +23,9 @@ import aioros2
 import camera_control.camera_control_node as camera_control_node
 import laser_control.laser_control_node as laser_control_node
 from camera_control_interfaces.msg import DetectionType
+from camera_control_interfaces.msg import DeviceState as CameraDeviceState
 from common_interfaces.msg import Vector2, Vector4
+from laser_control_interfaces.msg import DeviceState as LaserDeviceState
 from runner_cutter_control.calibration import Calibration
 from runner_cutter_control.camera_context import CameraContext
 from runner_cutter_control.tracker import Track, Tracker, TrackState
@@ -172,6 +174,39 @@ async def on_detection(node, detection_type, timestamp, instances, invalid_point
             )
             if prev_pending_tracks != pending_tracks:
                 shared_state.runner_detection_event.set()
+
+
+# Failsafe - stop current task if camera is disconnected
+@aioros2.subscribe(camera_node.state_topic)
+async def on_camera_node_state(
+    node,
+    device_state,
+    enabled_detection_types,
+    recording_video,
+    interval_capture_active,
+    exposure_us,
+    exposure_us_range,
+    gain_db,
+    gain_db_range,
+    save_directory,
+    image_capture_interval_secs,
+):
+    if device_state != CameraDeviceState.STREAMING:
+        success = await _stop_current_task()
+        if success:
+            _publish_notification("Task stopped")
+
+
+# Failsafe - stop current task if laser is disconnected
+@aioros2.subscribe(laser_node.state_topic)
+async def on_laser_node_state(node, device_state):
+    if (
+        device_state != LaserDeviceState.STOPPED
+        and device_state != LaserDeviceState.PLAYING
+    ):
+        success = await _stop_current_task()
+        if success:
+            _publish_notification("Task stopped")
 
 
 # TODO: use action instead once there's a new release of roslib. Currently
