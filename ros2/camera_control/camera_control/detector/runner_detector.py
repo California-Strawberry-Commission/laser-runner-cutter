@@ -36,24 +36,33 @@ class RunnerDetector:
             self._logger.setLevel(logging.INFO)
 
     async def detect(
-        self, color_frame: np.ndarray, conf_threshold: float = 0.0
+        self,
+        color_frame: np.ndarray,
+        conf_threshold: float = 0.0,
+        bounds: Optional[Tuple[int, int, int, int]] = None,
     ) -> Tuple[
         List[np.ndarray], List[Optional[Tuple[int, int]]], List[float], List[int]
     ]:
         """
-        Detects runners in a color image.
+        Detects runners in a color image. For each detected runner, a representative point is
+        calculated. This point is the point on the runner that is closest to its centroid. If an
+        optional `bounds` is defined, only that region of the mask will be considered when
+        calculating the representative point.
 
         Args:
             color_frame (np.ndarray): Color image.
             conf_threshold (float): Minimum confidence score that should be considered.
+            bounds (Tuple[int, int, int, int]): (min x, min y, width, height) to be considered when finding the representative point for each mask.
         Returns:
-            Tuple[List[np.ndarray], List[Optional[Tuple[int, int]]], List[float], List[int]]: A tuple of (list of detected runner masks, list of associated center points, list of associated confidence scores, list of associated instance IDs).
+            Tuple[List[np.ndarray], List[Optional[Tuple[int, int]]], List[float], List[int]]: A tuple of (list of detected runner masks, list of representative point for each mask, list of associated confidence scores, list of associated instance IDs).
         """
-        runner_masks, confs, track_ids = await self._get_runner_masks(
+        masks, confs, track_ids = await self._get_runner_masks(
             color_frame, conf_threshold
         )
-        runner_centers = await self._get_runner_centers(runner_masks)
-        return runner_masks, runner_centers, confs, track_ids
+        representative_points = await self._get_runner_representative_points(
+            masks, bounds
+        )
+        return masks, representative_points, confs, track_ids
 
     async def _get_runner_masks(
         self, color_frame: np.ndarray, conf_threshold: float = 0.0
@@ -99,23 +108,25 @@ class RunnerDetector:
                 )
         return runner_masks, confs, track_ids
 
-    async def _get_runner_centers(
-        self, runner_masks: List[np.ndarray]
+    async def _get_runner_representative_points(
+        self,
+        runner_masks: List[np.ndarray],
+        bounds: Optional[Tuple[int, int, int, int]] = None,
     ) -> List[Optional[Tuple[int, int]]]:
-        def get_contour_centers(contours: List[np.ndarray]):
+        def get_contour_centers(
+            contours: List[np.ndarray],
+            bounds: Optional[Tuple[int, int, int, int]] = None,
+        ):
             centers = []
             for contour in contours:
-                center = contour_center(contour)
+                center = contour_center(contour, bounds)
                 centers.append(
                     (round(center[0]), round(center[1])) if center is not None else None
                 )
             return centers
 
-        runner_centers = await asyncio.get_running_loop().run_in_executor(
+        runner_points = await asyncio.get_running_loop().run_in_executor(
             None,
-            functools.partial(
-                get_contour_centers,
-                runner_masks,
-            ),
+            functools.partial(get_contour_centers, runner_masks, bounds),
         )
-        return runner_centers
+        return runner_points

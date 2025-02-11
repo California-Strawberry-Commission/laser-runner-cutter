@@ -512,7 +512,20 @@ async def _runner_cutter_task(
         )
         await camera_node.set_save_directory(save_directory=run_data_dir)
         await camera_node.save_image()
-        await camera_node.start_detection(detection_type=detection_type)
+        # Start runner detection with detection bounds set to the laser's FOV.
+        # Note: The ML model will still detect runners and assign instance IDs using the full color
+        # camera frame, but if the runner is completely out of the detection bounds, the result
+        # is not published via detections_topic.
+        normalized_laser_bounds = shared_state.calibration.normalized_laser_bounds
+        await camera_node.start_detection(
+            detection_type=detection_type,
+            normalized_bounds=Vector4(
+                w=normalized_laser_bounds[0],
+                x=normalized_laser_bounds[1],
+                y=normalized_laser_bounds[2],
+                z=normalized_laser_bounds[3],
+            ),
+        )
 
         while True:
             # Acquire target. If there are no valid targets, wait for another detection event.

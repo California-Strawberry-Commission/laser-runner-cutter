@@ -1,10 +1,11 @@
 import asyncio
 import logging
+import math
 import os
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import cv2
 import numpy as np
@@ -77,7 +78,8 @@ notifications_topic = aioros2.topic("/notifications", Log, qos=1)
 
 class SharedState:
     logger: Optional[logging.Logger] = None
-    enabled_detection_types: Set[int] = set()
+    # DetectionType -> normalized rect bounds (min x, min y, width, height)
+    enabled_detections: Dict[int, Tuple[float, float, float, float]] = {}
     record_video_task: Optional[asyncio.Task] = None
     video_writer: Optional[cv2.VideoWriter] = None
     debug_frame: Optional[np.ndarray] = None
@@ -321,9 +323,24 @@ async def get_detection(node, detection_type, wait_for_next_frame):
 
 
 @aioros2.service("~/start_detection", StartDetection)
-async def start_detection(node, detection_type):
-    if detection_type not in shared_state.enabled_detection_types:
-        shared_state.enabled_detection_types.add(detection_type)
+async def start_detection(node, detection_type, normalized_bounds):
+    if detection_type not in shared_state.enabled_detections:
+        # If normalized bounds are not defined, set to full bounds (0, 0, 1, 1)
+        shared_state.enabled_detections[detection_type] = (
+            (0.0, 0.0, 1.0, 1.0)
+            if (
+                normalized_bounds.w == 0.0
+                and normalized_bounds.x == 0.0
+                and normalized_bounds.y == 0.0
+                and normalized_bounds.z == 0.0
+            )
+            else (
+                normalized_bounds.w,
+                normalized_bounds.x,
+                normalized_bounds.y,
+                normalized_bounds.z,
+            )
+        )
         _publish_state()
         return {"success": True}
 
@@ -332,8 +349,8 @@ async def start_detection(node, detection_type):
 
 @aioros2.service("~/stop_detection", StopDetection)
 async def stop_detection(node, detection_type):
-    if detection_type in shared_state.enabled_detection_types:
-        shared_state.enabled_detection_types.discard(detection_type)
+    if detection_type in shared_state.enabled_detections:
+        shared_state.enabled_detections.pop(detection_type, None)
         _publish_state()
         return {"success": True}
 
@@ -342,8 +359,8 @@ async def stop_detection(node, detection_type):
 
 @aioros2.service("~/stop_all_detections", Trigger)
 async def stop_all_detections(node):
-    if len(shared_state.enabled_detection_types) > 0:
-        shared_state.enabled_detection_types.clear()
+    if len(shared_state.enabled_detections) > 0:
+        shared_state.enabled_detections.clear()
         _publish_state()
         return {"success": True}
 
@@ -476,7 +493,7 @@ async def _detection_task():
 
         debug_frame = np.copy(frame.color_frame)
 
-        if DetectionType.LASER in shared_state.enabled_detection_types:
+        if DetectionType.LASER in shared_state.enabled_detections:
             laser_points, confs = await shared_state.laser_detector.detect(
                 frame.color_frame
             )
@@ -484,33 +501,55 @@ async def _detection_task():
             msg = _create_detection_result_msg(DetectionType.LASER, laser_points, frame)
             detections_topic.publish(msg)
 
-        if DetectionType.RUNNER in shared_state.enabled_detection_types:
-            runner_masks, runner_centers, confs, track_ids = (
-                await shared_state.runner_detector.detect(frame.color_frame)
+        if DetectionType.RUNNER in shared_state.enabled_detections:
+            # Note: if bounds is defined, the runners' representative points are calculated to be
+            # the point on the runner closest to the centroid of only the portion of the mask that
+            # lies within the bounds. Thus, if a runner lies completely outside the bounds, its
+            # representative point will be None.
+            normalized_bounds = shared_state.enabled_detections.get(
+                DetectionType.RUNNER, (0.0, 0.0, 1.0, 1.0)
+            )
+            # Denormalize bounds to frame size and detect runners
+            width = frame.color_frame.shape[1]
+            height = frame.color_frame.shape[0]
+            runner_masks, runner_representative_points, confs, track_ids = (
+                await shared_state.runner_detector.detect(
+                    frame.color_frame,
+                    bounds=(
+                        math.ceil(normalized_bounds[0] * width),
+                        math.ceil(normalized_bounds[1] * height),
+                        math.floor(normalized_bounds[2] * width),
+                        math.floor(normalized_bounds[3] * height),
+                    ),
+                )
             )
             debug_frame = _debug_draw_runners(
-                debug_frame, runner_masks, runner_centers, confs, track_ids
+                debug_frame,
+                runner_masks,
+                runner_representative_points,
+                confs,
+                track_ids,
             )
-            # runner_centers may contain None elements, so filter them out and also remove
-            # the corresponding elements from track_ids
+            # runner_representative_points may contain None elements, so filter them out and also
+            # remove the corresponding elements from track_ids
             filtered = [
                 (center, track_id)
-                for center, track_id in zip(runner_centers, track_ids)
+                for center, track_id in zip(runner_representative_points, track_ids)
                 if center is not None
             ]
             if filtered:
-                runner_centers, track_ids = zip(*filtered)
-                runner_centers = list(runner_centers)
+                runner_representative_points, track_ids = zip(*filtered)
+                runner_representative_points = list(runner_representative_points)
                 track_ids = list(track_ids)
             else:
-                runner_centers = []
+                runner_representative_points = []
                 track_ids = []
             msg = _create_detection_result_msg(
-                DetectionType.RUNNER, runner_centers, frame, track_ids
+                DetectionType.RUNNER, runner_representative_points, frame, track_ids
             )
             detections_topic.publish(msg)
 
-        if DetectionType.CIRCLE in shared_state.enabled_detection_types:
+        if DetectionType.CIRCLE in shared_state.enabled_detections:
             circle_centers = await shared_state.circle_detector.detect(
                 frame.color_frame
             )
@@ -620,7 +659,7 @@ def _get_device_state() -> DeviceState:
 def _get_state() -> State:
     state = State()
     state.device_state = _get_device_state()
-    state.enabled_detection_types = list(shared_state.enabled_detection_types)
+    state.enabled_detection_types = list(shared_state.enabled_detections.keys())
     state.recording_video = shared_state.record_video_task is not None
     state.interval_capture_active = shared_state.interval_capture_task is not None
     state.exposure_us = shared_state.camera.exposure_us
