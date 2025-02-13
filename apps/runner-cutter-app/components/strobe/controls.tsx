@@ -3,7 +3,6 @@
 import DeviceCard, {
   DeviceState,
 } from "@/components/runner-cutter/device-card";
-import SingleFramePreview from "@/components/strobe/single-frame-preview";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InputWithLabel } from "@/components/ui/input-with-label";
@@ -11,7 +10,15 @@ import useCameraNode, {
   DeviceState as CameraDeviceState,
   CaptureMode,
 } from "@/lib/useCameraNode";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+function uint8ArrayToBase64(byteArray: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < byteArray.length; i++) {
+    binary += String.fromCharCode(byteArray[i]);
+  }
+  return btoa(binary);
+}
 
 export default function Controls() {
   // TODO: add ability to select node name
@@ -20,6 +27,8 @@ export default function Controls() {
   const [exposureUs, setExposureUs] = useState<string>("0");
   const [gainDb, setGainDb] = useState<string>("0");
   const [saveDir, setSaveDir] = useState<string>("");
+
+  const imgRef = useRef<HTMLImageElement>(null);
 
   let cameraDeviceState = DeviceState.UNAVAILABLE;
   if (cameraNode.connected) {
@@ -181,8 +190,14 @@ export default function Controls() {
           <CardContent className="p-4 pt-0 flex flex-row gap-4">
             <Button
               disabled={disableButtons}
-              onClick={() => {
-                cameraNode.acquireSingleFrame();
+              onClick={async () => {
+                const res = await cameraNode.acquireSingleFrame();
+                const imgElement = imgRef.current;
+                if (!imgElement) {
+                  return;
+                }
+                // sensor_msgs/CompressedImage data is base64 encoded
+                imgElement.src = `data:image/${res.format};base64,${res.data}`;
               }}
             >
               Acquire Frame
@@ -198,12 +213,10 @@ export default function Controls() {
           </CardContent>
         </Card>
       </div>
-      <SingleFramePreview
-        className="w-full h-[480px]"
-        topicName="/camera0/debug_frame"
-        enableStream={
-          cameraNode.state.deviceState === CameraDeviceState.STREAMING
-        }
+      <img
+        ref={imgRef}
+        className="object-contain bg-black w-full h-[480px]"
+        alt="Camera Frame Preview"
       />
     </div>
   );

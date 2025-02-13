@@ -100,9 +100,12 @@ export default function useCameraNode(nodeName: string) {
 
   const acquireSingleFrame = node.useService(
     "~/acquire_single_frame",
-    "std_srvs/Trigger",
+    "camera_control_interfaces/AcquireSingleFrame",
     triggerInputMapper,
-    successOutputMapper
+    useCallback(
+      (_data: any) => _data.preview_image as { data: any; format: string },
+      []
+    )
   );
 
   const setExposure = node.useService(

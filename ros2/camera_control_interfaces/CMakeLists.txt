@@ -32,6 +32,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DeviceState.msg"
   "msg/ObjectInstance.msg"
   "msg/State.msg"
+  "srv/AcquireSingleFrame.srv"
   "srv/GetDetectionResult.srv"
   "srv/GetFrame.srv"
   "srv/GetPositions.srv"

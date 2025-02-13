@@ -34,6 +34,7 @@ from camera_control_interfaces.msg import (
     State,
 )
 from camera_control_interfaces.srv import (
+    AcquireSingleFrame,
     GetDetectionResult,
     GetFrame,
     GetPositions,
@@ -219,18 +220,22 @@ async def get_frame(node):
     }
 
 
-@aioros2.service("~/acquire_single_frame", Trigger)
+@aioros2.service("~/acquire_single_frame", AcquireSingleFrame)
 async def acquire_single_frame(node):
     frame = await asyncio.get_running_loop().run_in_executor(
         None, shared_state.camera.get_frame
     )
     if frame is None:
         _publish_notification("Failed to acquire frame", level=logging.ERROR)
-        return {"success": False}
+        return {}
 
     await _frame_callback(frame)
     _publish_notification("Successfully acquired frame")
-    return {"success": True}
+    return {
+        "preview_image": _get_color_frame_compressed_msg(
+            frame.color_frame, frame.timestamp_millis
+        )
+    }
 
 
 @aioros2.service("~/set_exposure", SetExposure)
