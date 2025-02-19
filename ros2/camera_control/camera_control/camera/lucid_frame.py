@@ -338,8 +338,9 @@ class LucidFrame(RgbdFrame):
         """
         depth_pixel = self.get_corresponding_depth_pixel(color_pixel)
         position = self._depth_frame_xyz[depth_pixel[1]][depth_pixel[0]]
-        # Negative depth indicates an invalid position
-        if position[2] < 0.0:
+        # Negative depth indicates an invalid position. Depth greater than 2^14 - 1 also indicates
+        # invalid position.
+        if position[2] < 0.0 or position[2] >= 2**14 - 1:
             return None
 
         return (float(position[0]), float(position[1]), float(position[2]))
