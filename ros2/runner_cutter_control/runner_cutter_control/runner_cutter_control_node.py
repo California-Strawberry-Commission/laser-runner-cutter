@@ -128,6 +128,7 @@ async def on_detection(node, detection_type, timestamp, instances, invalid_point
                     instance.track_id,
                     pixel,
                     position,
+                    timestamp * 1000,
                 )
                 if track is None:
                     continue
@@ -702,10 +703,16 @@ async def _circle_follower_task(laser_interval_secs: float = 0.5):
             if track is None:
                 continue
 
-            # Fire tracking laser at target
-            laser_coord = shared_state.calibration.camera_point_to_laser_coord(
-                track.position
+            # Fire tracking laser at target using predicted future position
+            estimated_camera_latency_ms = 100.0
+            predicted_position = track.predictor.predict(
+                time.time() * 1000 + estimated_camera_latency_ms
             )
+            laser_coord = shared_state.calibration.camera_point_to_laser_coord(
+                predicted_position
+            )
+            track.predictor.reset()
+
             await laser_node.set_points(
                 points=[Vector2(x=laser_coord[0], y=laser_coord[1])]
             )

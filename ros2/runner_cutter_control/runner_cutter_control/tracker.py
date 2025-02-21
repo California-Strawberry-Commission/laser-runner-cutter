@@ -2,6 +2,8 @@ from collections import Counter, deque
 from enum import Enum, auto
 from typing import Dict, List, Optional, Tuple
 
+from runner_cutter_control.predictor import KalmanFilterPredictor, Predictor
+
 
 class TrackState(Enum):
     PENDING = auto()  # Still needs to be burned
@@ -15,6 +17,7 @@ class Track:
     pixel: Tuple[int, int]
     position: Tuple[float, float, float]
     state_count: Dict[TrackState, int]
+    predictor: Predictor
 
     def __init__(
         self,
@@ -22,6 +25,7 @@ class Track:
         pixel: Tuple[int, int],
         position: Tuple[float, float, float],
         state: TrackState = TrackState.PENDING,
+        predictor: Predictor = KalmanFilterPredictor(),
     ):
         """
         Args:
@@ -35,6 +39,7 @@ class Track:
         self.position = position
         self.state_count = {state: 0 for state in TrackState}
         self.state = state
+        self.predictor = predictor
 
     @property
     def state(self):
@@ -103,6 +108,7 @@ class Tracker:
         track_id: int,
         pixel: Tuple[int, int],
         position: Tuple[float, float, float],
+        timestamp_ms: float,
     ) -> Optional[Track]:
         """
         Add a track to list of current tracks.
@@ -111,6 +117,7 @@ class Tracker:
             track_id (int): Unique instance ID assigned to the object. Must be a positive integer.
             pixel (Tuple[int, int]): Pixel coordinates (x, y) of target in camera frame.
             position (Tuple[float, float, float]): 3D position (x, y, z) of target relative to camera.
+            timestamp_ms (float): Timestamp, in ms, of the camera frame.
         Returns:
             Optional[Track]: Track that was created or updated, or None if track was not created nor updated.
         """
@@ -127,6 +134,10 @@ class Tracker:
             track = Track(track_id, pixel, position, state=TrackState.PENDING)
             self.tracks[track_id] = track
             self._pending_tracks.append(track)
+
+        # Update predictor for the track
+        track.predictor.add(position, timestamp_ms)
+
         return track
 
     def get_next_pending_track(self) -> Optional[Track]:
