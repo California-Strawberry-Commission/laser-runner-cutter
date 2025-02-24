@@ -591,7 +591,7 @@ class LucidRgbdCamera(RgbdCamera):
 
             # Select GPIO line to output strobe signal on color camera
             # See https://support.thinklucid.com/app-note-using-gpio-on-lucid-cameras/
-            color_nodemap["LineSelector"].value = "Line3"
+            color_nodemap["LineSelector"].value = "Line1"
             color_nodemap["LineMode"].value = "Output"
             color_nodemap["LineSource"].value = "ExposureActive"
             # TODO: Enable trigger mode on depth camera. See https://support.thinklucid.com/app-note-using-gpio-on-lucid-cameras/#config
