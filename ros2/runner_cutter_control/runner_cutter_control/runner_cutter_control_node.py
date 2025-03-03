@@ -129,6 +129,7 @@ async def on_detection(node, detection_type, timestamp, instances, invalid_point
                     pixel,
                     position,
                     timestamp * 1000,
+                    instance.confidence,
                 )
                 if track is None:
                     continue

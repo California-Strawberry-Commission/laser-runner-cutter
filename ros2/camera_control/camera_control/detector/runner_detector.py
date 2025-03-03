@@ -91,7 +91,7 @@ class RunnerDetector:
         confs = []
         track_ids = []
         for idx in range(result_conf.size):
-            conf = result_conf[idx]
+            conf = float(result_conf[idx])
             if conf >= conf_threshold:
                 mask = result["masks"][idx]
                 # Scale the result coords to frame coords

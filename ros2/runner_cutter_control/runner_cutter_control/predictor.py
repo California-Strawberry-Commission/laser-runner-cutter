@@ -8,7 +8,12 @@ from filterpy.kalman import KalmanFilter
 
 class Predictor(ABC):
     @abstractmethod
-    def add(self, position: Tuple[float, float, float], timestamp_ms: float):
+    def add(
+        self,
+        position: Tuple[float, float, float],
+        timestamp_ms: float,
+        confidence: float = 1.0,
+    ):
         """
         Add a new position measurement to the predictor. Calls to `add` for measurements must be
         done in sequential order with respect to their timestamps.
@@ -16,6 +21,7 @@ class Predictor(ABC):
         Args:
             position (Tuple[float, float, float]): Position measurement (x, y, z).
             timestamp_ms (float): Timestamp (in ms) associated with the measurement.
+            confidence (float): Confidence score associated with the measurement.
         """
         pass
 
@@ -39,7 +45,12 @@ class KalmanFilterPredictor:
         self._kf = self._create_kalman_filter()
         self._last_timestamp_ms = 0.0
 
-    def add(self, position: Tuple[float, float, float], timestamp_ms: float):
+    def add(
+        self,
+        position: Tuple[float, float, float],
+        timestamp_ms: float,
+        confidence: float = 1.0,
+    ):
         """
         Add a new position measurement to the predictor. Calls to `add` for measurements must be
         done in sequential order with respect to their timestamps.
@@ -47,6 +58,7 @@ class KalmanFilterPredictor:
         Args:
             position (Tuple[float, float, float]): Position measurement (x, y, z).
             timestamp_ms (float): Timestamp (in ms) associated with the measurement.
+            confidence (float): Confidence score associated with the measurement.
         """
         if self._last_timestamp_ms == 0.0:
             # If this is the first measurement, set the initial state vector
@@ -57,10 +69,17 @@ class KalmanFilterPredictor:
                 # Ignore out-of-order measurements
                 return
 
-            # Update Kalman Filter transition matrix dynamically
+            # Update transition matrix dynamically
             self._kf.F[0, 3] = dt  # update dt in F matrix (x)
             self._kf.F[1, 4] = dt  # update dt in F matrix (y)
             self._kf.F[2, 5] = dt  # update dt in F matrix (z)
+
+            # Update measurement noise matrix dynamically based on confidence
+            # Lower R when confidence is high, and higher R when confidence is low
+            R_min = np.eye(3) * 10
+            R_max = np.eye(3) * 50
+            self._kf.R = R_max - (confidence * (R_max - R_min))
+
             self._kf.predict()
             self._kf.update(np.array(position))
 
@@ -97,7 +116,7 @@ class KalmanFilterPredictor:
         self._last_timestamp_ms = 0.0
 
     def _create_kalman_filter(self) -> KalmanFilter:
-        # Initialize Kalman Filter with 6D state (x, y, z, vx, vy, vz)
+        # Initialize Kalman filter with 6D state (x, y, z, vx, vy, vz)
         kf = KalmanFilter(dim_x=6, dim_z=3)
         # State transition matrix (F) - will be updated later with dt
         kf.F = np.array(
@@ -116,7 +135,7 @@ class KalmanFilterPredictor:
         kf.P = np.eye(6) * 1000
         # Measurement noise covariance matrix (R) - uncertainty in (x, y, z) detection
         # Lower = trust provided measurements more
-        # TODO: dynamically adjust based on confidence. High confidence -> decrease kf.R
+        # Will be dynamically set later based on confidence of each measurement
         kf.R = np.eye(3) * 10
         # Process noise covariance matrix (Q) - how much we expect motion to vary over time
         # Lower = smoother, more stable, but slower response to movement changes
@@ -159,7 +178,7 @@ if __name__ == "__main__":
     true_positions = []
     predicted_positions = []
 
-    # Run Kalman Filter
+    # Run Kalman filter
     for timestamp_ms, position in data:
         predictor.add(position, timestamp_ms)
 

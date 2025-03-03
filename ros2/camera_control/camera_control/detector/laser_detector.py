@@ -64,7 +64,7 @@ class LaserDetector:
         laser_points = []
         confs = []
         for idx in range(result["conf"].size):
-            conf = result["conf"][idx]
+            conf = float(result["conf"][idx])
             if conf >= conf_threshold:
                 # bbox is in xyxy format
                 bbox = result["bboxes"][idx]

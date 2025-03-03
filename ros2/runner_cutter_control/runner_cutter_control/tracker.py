@@ -109,6 +109,7 @@ class Tracker:
         pixel: Tuple[int, int],
         position: Tuple[float, float, float],
         timestamp_ms: float,
+        confidence: float = 1.0,
     ) -> Optional[Track]:
         """
         Add a track to list of current tracks.
@@ -118,6 +119,7 @@ class Tracker:
             pixel (Tuple[int, int]): Pixel coordinates (x, y) of target in camera frame.
             position (Tuple[float, float, float]): 3D position (x, y, z) of target relative to camera.
             timestamp_ms (float): Timestamp, in ms, of the camera frame.
+            confidence (float): Confidence score associated with the detected target.
         Returns:
             Optional[Track]: Track that was created or updated, or None if track was not created nor updated.
         """
@@ -136,7 +138,7 @@ class Tracker:
             self._pending_tracks.append(track)
 
         # Update predictor for the track
-        track.predictor.add(position, timestamp_ms)
+        track.predictor.add(position, timestamp_ms, confidence)
 
         return track
 
