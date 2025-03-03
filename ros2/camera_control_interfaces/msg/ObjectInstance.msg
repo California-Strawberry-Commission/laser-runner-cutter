@@ -4,3 +4,5 @@ int32 track_id
 common_interfaces/Vector3 position
 # 2D pixel coordinate on camera color frame
 common_interfaces/Vector2 point
+# Confidence score
+float32 confidence

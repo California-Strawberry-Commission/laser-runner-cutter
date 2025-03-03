@@ -286,9 +286,13 @@ async def get_detection(node, detection_type, wait_for_next_frame):
         return {}
 
     if detection_type == DetectionType.LASER:
-        laser_points, conf = await shared_state.laser_detector.detect(frame.color_frame)
+        laser_points, confs = await shared_state.laser_detector.detect(
+            frame.color_frame
+        )
         return {
-            "result": _create_detection_result_msg(detection_type, laser_points, frame)
+            "result": _create_detection_result_msg(
+                detection_type, laser_points, confs, frame
+            )
         }
     elif detection_type == DetectionType.RUNNER:
         runner_masks, runner_centers, confs, track_ids = (
@@ -297,28 +301,32 @@ async def get_detection(node, detection_type, wait_for_next_frame):
         # runner_centers may contain None elements, so filter them out and also remove
         # the corresponding elements from track_ids
         filtered = [
-            (center, track_id)
-            for center, track_id in zip(runner_centers, track_ids)
+            (center, conf, track_id)
+            for center, conf, track_id in zip(runner_centers, confs, track_ids)
             if center is not None
         ]
         if filtered:
-            runner_centers, track_ids = zip(*filtered)
+            runner_centers, confs, track_ids = zip(*filtered)
             runner_centers = list(runner_centers)
+            confs = list(confs)
             track_ids = list(track_ids)
         else:
             runner_centers = []
+            confs = []
             track_ids = []
         return {
             "result": _create_detection_result_msg(
-                detection_type, runner_centers, frame, track_ids
+                detection_type, runner_centers, confs, frame, track_ids
             )
         }
     elif detection_type == DetectionType.CIRCLE:
         circle_centers = await shared_state.circle_detector.detect(frame.color_frame)
+        confs = [1.0 for _ in circle_centers]
         return {
             "result": _create_detection_result_msg(
                 detection_type,
                 circle_centers,
+                confs,
                 frame,
                 [i + 1 for i in range(len(circle_centers))],
             )
@@ -503,7 +511,9 @@ async def _detection_task():
                 frame.color_frame
             )
             debug_frame = _debug_draw_lasers(debug_frame, laser_points, confs)
-            msg = _create_detection_result_msg(DetectionType.LASER, laser_points, frame)
+            msg = _create_detection_result_msg(
+                DetectionType.LASER, laser_points, confs, frame
+            )
             detections_topic.publish(msg)
 
         if DetectionType.RUNNER in shared_state.enabled_detections:
@@ -538,19 +548,27 @@ async def _detection_task():
             # runner_representative_points may contain None elements, so filter them out and also
             # remove the corresponding elements from track_ids
             filtered = [
-                (center, track_id)
-                for center, track_id in zip(runner_representative_points, track_ids)
+                (center, conf, track_id)
+                for center, conf, track_id in zip(
+                    runner_representative_points, confs, track_ids
+                )
                 if center is not None
             ]
             if filtered:
-                runner_representative_points, track_ids = zip(*filtered)
+                runner_representative_points, confs, track_ids = zip(*filtered)
                 runner_representative_points = list(runner_representative_points)
+                confs = list(confs)
                 track_ids = list(track_ids)
             else:
                 runner_representative_points = []
+                confs = []
                 track_ids = []
             msg = _create_detection_result_msg(
-                DetectionType.RUNNER, runner_representative_points, frame, track_ids
+                DetectionType.RUNNER,
+                runner_representative_points,
+                confs,
+                frame,
+                track_ids,
             )
             detections_topic.publish(msg)
 
@@ -558,10 +576,12 @@ async def _detection_task():
             circle_centers = await shared_state.circle_detector.detect(
                 frame.color_frame
             )
+            confs = [1.0 for _ in circle_centers]
             debug_frame = _debug_draw_circles(debug_frame, circle_centers)
             msg = _create_detection_result_msg(
                 DetectionType.CIRCLE,
                 circle_centers,
+                confs,
                 frame,
                 [i + 1 for i in range(len(circle_centers))],
             )
@@ -704,6 +724,7 @@ def _publish_notification(msg: str, level: int = logging.INFO):
 def _create_detection_result_msg(
     detection_type: int,
     points: List[Tuple[int, int]],
+    confs: List[float],
     frame: RgbdFrame,
     track_ids: Optional[List[int]] = None,
 ) -> DetectionResult:
@@ -722,6 +743,7 @@ def _create_detection_result_msg(
                 x=position[0], y=position[1], z=position[2]
             )
             object_instance.point = point_msg
+            object_instance.confidence = confs[idx]
             msg.instances.append(object_instance)
         else:
             msg.invalid_points.append(point_msg)
