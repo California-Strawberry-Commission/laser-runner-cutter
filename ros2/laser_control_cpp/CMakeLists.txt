@@ -1,0 +1,65 @@
+cmake_minimum_required(VERSION 3.8)
+project(laser_control_cpp)
+
+# Default to C++17
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+endif()
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+# Find dependencies
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
+find_package(laser_control_interfaces REQUIRED)
+find_package(spdlog REQUIRED)
+
+###########
+## Build ##
+###########
+
+include_directories(
+  include
+)
+
+# Find and add Helios DAC API shared library
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+    set(HELIOS_LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lib/aarch64/libHeliosDacAPI.so")
+elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+    set(HELIOS_LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lib/x86_64/libHeliosDacAPI.so")
+else()
+    message(FATAL_ERROR "Unsupported architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+add_library(helios_dac_lib SHARED IMPORTED)
+set_target_properties(helios_dac_lib PROPERTIES IMPORTED_LOCATION "${HELIOS_LIB_PATH}")
+
+add_library(helios
+  src/laser_dac/helios.cpp
+)
+target_link_libraries(helios PRIVATE spdlog::spdlog)
+
+add_executable(laser_control_node
+  src/laser_control_node.cpp
+)
+target_link_libraries(laser_control_node PRIVATE helios helios_dac_lib)
+ament_target_dependencies(laser_control_node PUBLIC rclcpp std_msgs std_srvs laser_control_interfaces)
+
+#############
+## Install ##
+#############
+
+install(TARGETS
+  laser_control_node
+  DESTINATION lib/${PROJECT_NAME})
+
+# Install launch files
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}/
+)
+
+ament_package()
