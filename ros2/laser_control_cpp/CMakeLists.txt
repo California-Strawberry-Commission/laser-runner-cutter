@@ -23,20 +23,18 @@ find_package(spdlog REQUIRED)
 ## Build ##
 ###########
 
-include_directories(
-  include
-)
+include_directories(include)
 
-# Find and add Helios DAC API shared library
-if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-    set(HELIOS_LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lib/aarch64/libHeliosDacAPI.so")
-elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
-    set(HELIOS_LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lib/x86_64/libHeliosDacAPI.so")
+# Add Helios DAC API shared library
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+    set(LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lib/x86_64")
+elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+    set(LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/lib/aarch64")
 else()
     message(FATAL_ERROR "Unsupported architecture: ${CMAKE_SYSTEM_PROCESSOR}")
 endif()
 add_library(helios_dac_lib SHARED IMPORTED)
-set_target_properties(helios_dac_lib PROPERTIES IMPORTED_LOCATION "${HELIOS_LIB_PATH}")
+set_target_properties(helios_dac_lib PROPERTIES IMPORTED_LOCATION "${LIB_PATH}/libHeliosDacAPI.so")
 
 add_library(helios
   src/laser_dac/helios.cpp

@@ -6,7 +6,7 @@
 #include <chrono>
 #include <cmath>
 
-HeliosDAC::HeliosDAC() : dacIdx_(-1), playing_(false) {
+HeliosDAC::HeliosDAC() {
   libHandle_ = dlopen("libHeliosDacAPI.so", RTLD_LAZY);
   if (!libHandle_) {
     spdlog::error("Failed to load library: {}", dlerror());
@@ -26,7 +26,7 @@ HeliosDAC::~HeliosDAC() {
 }
 
 int HeliosDAC::initialize() {
-  int num_devices = libOpenDevices();
+  int num_devices{libOpenDevices()};
   spdlog::info("Found {} Helios DACs.", num_devices);
   return num_devices;
 }
@@ -34,7 +34,7 @@ int HeliosDAC::initialize() {
 void HeliosDAC::connect(int dacIdx) {
   dacIdx_ = dacIdx;
 
-  auto checkConnectionFunc = [this]() {
+  auto checkConnectionFunc{[this]() {
     while (checkConnection_) {
       if (getNativeStatus() < 0) {
         spdlog::warn("DAC error {}. Attempting to reconnect.",
@@ -45,7 +45,7 @@ void HeliosDAC::connect(int dacIdx) {
       }
       std::this_thread::sleep_for(std::chrono::seconds(5));
     }
-  };
+  }};
 
   if (!checkConnectionThread_.joinable()) {
     checkConnection_ = true;
@@ -53,11 +53,11 @@ void HeliosDAC::connect(int dacIdx) {
   }
 }
 
-bool HeliosDAC::isConnected() {
+bool HeliosDAC::isConnected() const {
   return dacIdx_ >= 0 && libGetStatus(dacIdx_) >= 0;
 }
 
-bool HeliosDAC::isPlaying() { return playing_; }
+bool HeliosDAC::isPlaying() const { return playing_; }
 
 void HeliosDAC::setColor(float r, float g, float b, float i) {
   color_ = {r, g, b, i};
@@ -93,7 +93,7 @@ void HeliosDAC::play(int fps, int pps, float transitionDurationMs) {
 
   playbackThread_ = std::thread([this, fps, pps, transitionDurationMs]() {
     while (playing_) {
-      std::vector<HeliosPoint> frame = getFrame(fps, pps, transitionDurationMs);
+      std::vector<HeliosPoint> frame{getFrame(fps, pps, transitionDurationMs)};
 
       int statusAttempts = 0;
       while (statusAttempts < 512 && getNativeStatus() != 1) {
@@ -144,15 +144,16 @@ std::vector<HeliosPoint> HeliosDAC::getFrame(int fps, int pps,
   std::lock_guard<std::mutex> lock(pointsMutex_);
 
   // Calculate how many laxels of transition we need to add per point
-  int laxelsPerTransition = std::round(transitionDurationMs / (1000.0f / pps));
+  int laxelsPerTransition{
+      static_cast<int>(std::round(transitionDurationMs / (1000.0f / pps)))};
 
   // Calculate how many laxels we render each point
-  float ppf = static_cast<float>(pps) / fps;
-  int numPoints = points_.size();
-  int laxelsPerPoint =
-      (numPoints == 0) ? std::round(ppf) : std::round(ppf / numPoints);
-  int laxelsPerFrame =
-      (numPoints == 0) ? laxelsPerPoint : laxelsPerPoint * numPoints;
+  float ppf{static_cast<float>(pps) / fps};
+  int numPoints{static_cast<int>(points_.size())};
+  int laxelsPerPoint{static_cast<int>(
+      (numPoints == 0) ? std::round(ppf) : std::round(ppf / numPoints))};
+  int laxelsPerFrame{(numPoints == 0) ? laxelsPerPoint
+                                      : laxelsPerPoint * numPoints};
 
   // Prepare frame
   std::vector<HeliosPoint> frame(laxelsPerFrame);
@@ -160,10 +161,10 @@ std::vector<HeliosPoint> HeliosDAC::getFrame(int fps, int pps,
   // Extract color components from tuple and convert to DAC range
   float r_f, g_f, b_f, i_f;
   std::tie(r_f, g_f, b_f, i_f) = color_;
-  int r = std::round(r_f * MAX_COLOR);
-  int g = std::round(g_f * MAX_COLOR);
-  int b = std::round(b_f * MAX_COLOR);
-  int i = std::round(i_f * MAX_COLOR);
+  int r{static_cast<int>(std::round(r_f * MAX_COLOR))};
+  int g{static_cast<int>(std::round(g_f * MAX_COLOR))};
+  int b{static_cast<int>(std::round(b_f * MAX_COLOR))};
+  int i{static_cast<int>(std::round(i_f * MAX_COLOR))};
 
   if (numPoints == 0) {
     // Even if there are no points to render, we still to send over laxels so
@@ -173,12 +174,13 @@ std::vector<HeliosPoint> HeliosDAC::getFrame(int fps, int pps,
     }
   } else {
     for (size_t pointIdx = 0; pointIdx < points_.size(); ++pointIdx) {
-      auto [x, y] = points_[pointIdx];
+      auto [x, y]{points_[pointIdx]};
       for (int laxelIdx = 0; laxelIdx < laxelsPerPoint; ++laxelIdx) {
         // Pad BEFORE the "on" laxel so that the galvo settles first, and only
         // if there is more than one point
-        bool isTransition = (numPoints > 1 && laxelIdx < laxelsPerTransition);
-        int frameLaxelIdx = pointIdx * laxelsPerPoint + laxelIdx;
+        bool isTransition{numPoints > 1 && laxelIdx < laxelsPerTransition};
+        int frameLaxelIdx{static_cast<int>(pointIdx) * laxelsPerPoint +
+                          laxelIdx};
 
         frame[frameLaxelIdx] =
             HeliosPoint(std::round(x * X_MAX),  // convert to DAC range

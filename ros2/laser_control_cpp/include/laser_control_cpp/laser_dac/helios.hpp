@@ -2,10 +2,13 @@
 
 #include <dlfcn.h>
 
+#include <atomic>
 #include <mutex>
 #include <thread>
 #include <tuple>
 #include <vector>
+
+#include "laser_control_cpp/laser_dac/laser_dac.hpp"
 
 // Helios DAC uses 12 bits (unsigned) for x and y
 constexpr int X_MAX = 4095;
@@ -23,32 +26,34 @@ struct HeliosPoint {
       : x(x), y(y), r(r), g(g), b(b), i(i) {}
 };
 
-class HeliosDAC {
+class HeliosDAC final : public LaserDAC {
  public:
   HeliosDAC();
-  ~HeliosDAC();
+  ~HeliosDAC() override;
 
   /**
    * Search for online DACs.
+   *
+   * @return number of online DACs found.
    */
-  int initialize();
+  int initialize() override;
 
   /**
    * Connect to the specified DAC.
    *
    * @param dacIdx Index of the DAC to connect to.
    */
-  void connect(int dacIdx);
+  void connect(int dacIdx) override;
 
   /**
    * @return whether the DAC is connected.
    */
-  bool isConnected();
+  bool isConnected() const override;
 
   /**
    * @return whether the DAC is playing.
    */
-  bool isPlaying();
+  bool isPlaying() const override;
 
   /**
    * Set the color of the laser.
@@ -58,7 +63,7 @@ class HeliosDAC {
    * @param b Blue channel, with value normalized to [0, 1].
    * @param i Intensity channel, with value normalized to [0, 1].
    */
-  void setColor(float r, float g, float b, float i);
+  void setColor(float r, float g, float b, float i) override;
 
   /**
    * Add a point to be rendered by the DAC. (0, 0) corresponds to bottom left.
@@ -67,17 +72,17 @@ class HeliosDAC {
    * @param x x coordinate, normalized to [0, 1].
    * @param y y coordinate, normalized to [0, 1].
    */
-  void addPoint(float x, float y);
+  void addPoint(float x, float y) override;
 
   /**
    * Remove the last added point.
    */
-  void removePoint();
+  void removePoint() override;
 
   /**
    * Remove all points.
    */
-  void clearPoints();
+  void clearPoints() override;
 
   /**
    * Start playback of points.
@@ -93,26 +98,27 @@ class HeliosDAC {
    * there may be visible streaks between the points as the galvos take time to
    * move to the new position.
    */
-  void play(int fps = 30, int pps = 30000, float transitionDurationMs = 0.5);
+  void play(int fps = 30, int pps = 30000,
+            float transitionDurationMs = 0.5f) override;
 
   /**
    * Stop playback of points.
    */
-  void stop();
+  void stop() override;
 
   /**
    * Close connection to laser DAC.
    */
-  void close();
+  void close() override;
 
  private:
-  void* libHandle_;
-  int dacIdx_;
+  void* libHandle_{nullptr};
+  int dacIdx_{-1};
   std::vector<std::pair<float, float>> points_;
   std::mutex pointsMutex_;
   std::tuple<float, float, float, float> color_;
-  bool playing_;
-  bool checkConnection_;
+  std::atomic<bool> playing_{false};
+  std::atomic<bool> checkConnection_{false};
   std::thread checkConnectionThread_;
   std::thread playbackThread_;
 

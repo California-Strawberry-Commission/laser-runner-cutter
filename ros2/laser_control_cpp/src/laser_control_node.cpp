@@ -1,4 +1,5 @@
 #include "laser_control_cpp/laser_dac/helios.hpp"
+#include "laser_control_cpp/laser_dac/laser_dac.hpp"
 #include "laser_control_interfaces/msg/device_state.hpp"
 #include "laser_control_interfaces/msg/state.hpp"
 #include "laser_control_interfaces/srv/add_point.hpp"
@@ -11,21 +12,27 @@
 
 class LaserControlNode : public rclcpp::Node {
  public:
-  explicit LaserControlNode() : Node("laser_control_node"), connecting_(false) {
+  explicit LaserControlNode() : Node("laser_control_node") {
+    /////////////
     // Parameters
+    /////////////
     declare_parameter<int>("dac_index", 0);
     declare_parameter<int>("fps", 30);
     declare_parameter<int>("pps", 30000);
     // Note: float params become doubles under the hood
     declare_parameter<double>("transition_duration_ms", 0.5);
 
+    /////////
     // Topics
+    /////////
     rclcpp::QoS latchedQos(rclcpp::KeepLast(1));
     latchedQos.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
     statePublisher_ = create_publisher<laser_control_interfaces::msg::State>(
         "~/state", latchedQos);
 
+    ///////////
     // Services
+    ///////////
     startDeviceService_ = create_service<std_srvs::srv::Trigger>(
         "~/start_device",
         std::bind(&LaserControlNode::onStartDevice, this, std::placeholders::_1,
@@ -68,6 +75,10 @@ class LaserControlNode : public rclcpp::Node {
         "~/get_state", std::bind(&LaserControlNode::onGetState, this,
                                  std::placeholders::_1, std::placeholders::_2));
 
+    ////////////
+    // DAC Setup
+    ////////////
+    // TODO: Support Ether Dream DAC
     dac_ = std::make_shared<HeliosDAC>();
   }
 
@@ -75,6 +86,11 @@ class LaserControlNode : public rclcpp::Node {
   void onStartDevice(
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+    if (dac_->isConnected()) {
+      response->success = false;
+      return;
+    }
+
     connecting_ = true;
     publishState();
 
@@ -90,6 +106,11 @@ class LaserControlNode : public rclcpp::Node {
   void onCloseDevice(
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+    if (!dac_->isConnected()) {
+      response->success = false;
+      return;
+    }
+
     dac_->close();
     publishState();
 
@@ -177,7 +198,7 @@ class LaserControlNode : public rclcpp::Node {
       const std::shared_ptr<laser_control_interfaces::srv::GetState::Request>,
       std::shared_ptr<laser_control_interfaces::srv::GetState::Response>
           response) {
-    response->state = getState();
+    response->state = *getState();
   }
 
   uint8_t getDeviceState() {
@@ -192,13 +213,13 @@ class LaserControlNode : public rclcpp::Node {
     }
   }
 
-  laser_control_interfaces::msg::State getState() {
-    auto message = laser_control_interfaces::msg::State();
-    message.device_state = getDeviceState();
-    return message;
+  laser_control_interfaces::msg::State::SharedPtr getState() {
+    auto msg{std::make_shared<laser_control_interfaces::msg::State>()};
+    msg->device_state = getDeviceState();
+    return msg;
   }
 
-  void publishState() { statePublisher_->publish(getState()); }
+  void publishState() { statePublisher_->publish(*getState()); }
 
   rclcpp::Publisher<laser_control_interfaces::msg::State>::SharedPtr
       statePublisher_;
@@ -219,8 +240,8 @@ class LaserControlNode : public rclcpp::Node {
   rclcpp::Service<laser_control_interfaces::srv::GetState>::SharedPtr
       getStateService_;
 
-  std::shared_ptr<HeliosDAC> dac_;
-  bool connecting_;
+  std::shared_ptr<LaserDAC> dac_;
+  bool connecting_{false};
 };
 
 int main(int argc, char* argv[]) {
