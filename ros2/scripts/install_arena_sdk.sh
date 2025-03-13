@@ -13,15 +13,15 @@ cd ~
 arch=$(uname -i)
 if [[ $arch == x86_64* ]]; then
     gdown "https://drive.google.com/uc?id=1Vs0P9zoY8mvOaWPVK2tYuako1K6i9TZo" --output ArenaSDK_v0.1.91_Linux_x64.tar.gz
-    mkdir ~/ArenaSDK
-    tar -xvzf ArenaSDK_v0.1.91_Linux_x64.tar.gz -C ~/ArenaSDK
-    cd ~/ArenaSDK/ArenaSDK_Linux_x64
+    sudo mkdir /opt/ArenaSDK
+    sudo tar -xvzf ArenaSDK_v0.1.91_Linux_x64.tar.gz -C /opt/ArenaSDK
+    cd /opt/ArenaSDK/ArenaSDK_Linux_x64
     sudo sh Arena_SDK_Linux_x64.conf
 elif  [[ $arch == aarch64* ]]; then
     gdown "https://drive.google.com/uc?id=1cD2GqK06rWDhDDq9EsD6j4qIF3UeHVXE" --output ArenaSDK_v0.1.73_Linux_ARM64.tar.gz
-    mkdir ~/ArenaSDK
-    tar -xvzf ArenaSDK_v0.1.73_Linux_ARM64.tar.gz -C ~/ArenaSDK
-    cd ~/ArenaSDK/ArenaSDK_Linux_ARM64
+    sudo mkdir /opt/ArenaSDK
+    sudo tar -xvzf ArenaSDK_v0.1.73_Linux_ARM64.tar.gz -C /opt/ArenaSDK
+    cd /opt/ArenaSDK/ArenaSDK_Linux_ARM64
     sudo sh Arena_SDK_ARM64.conf
 fi
 
