@@ -9,8 +9,8 @@
 #include <thread>
 
 #include "ArenaApi.h"
+#include "BS_thread_pool.hpp"
 #include "camera_control_cpp/camera/lucid_frame.hpp"
-#include "third_party/bs_thread_pool/BS_thread_pool.hpp"
 
 class LucidCamera {
  public:

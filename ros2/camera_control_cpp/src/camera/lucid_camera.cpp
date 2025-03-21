@@ -2,8 +2,8 @@
 
 #include <chrono>
 
+#include "BS_thread_pool.hpp"
 #include "spdlog/spdlog.h"
-#include "third_party/bs_thread_pool/BS_thread_pool.hpp"
 
 LucidCamera::LucidCamera(const cv::Mat& colorCameraIntrinsicMatrix,
                          const cv::Mat& colorCameraDistortionCoeffs,
