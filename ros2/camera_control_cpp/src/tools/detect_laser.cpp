@@ -34,12 +34,24 @@ int main(int argc, char** argv) {
     return -1;
   }
 
-  // Run inference
+  // Warm-up
+  for (int i = 0; i < 5; ++i) {
+    yoloV8.detectObjects(img);
+  }
 
-  std::cout << "RUNNING INFERENCE" << std::endl;
+  double totalTime = 0.0;
+  for (int i = 0; i < 10; ++i) {
+    auto start = std::chrono::high_resolution_clock::now();
+    yoloV8.detectObjects(img);
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> duration = end - start;
+    totalTime += duration.count();
+  }
+
+  double averageTime = totalTime / 10.0;
+  std::cout << "Average execution time: " << averageTime << " ms" << std::endl;
 
   const auto objects = yoloV8.detectObjects(img);
-  std::cout << "RAN INFERENCE" << std::endl;
 
   // Draw the bounding boxes on the image
   yoloV8.drawObjectLabels(img, objects);
