@@ -88,6 +88,7 @@ void HeliosDAC::play(int fps, int pps, float transitionDurationMs) {
   }
 
   fps = std::max(0, fps);
+  // Helios max rate: 65535 pps
   pps = std::clamp(pps, 0, 65535);
   playing_ = true;
 
@@ -161,10 +162,10 @@ std::vector<HeliosPoint> HeliosDAC::getFrame(int fps, int pps,
   // Extract color components from tuple and convert to DAC range
   float r_f, g_f, b_f, i_f;
   std::tie(r_f, g_f, b_f, i_f) = color_;
-  int r{static_cast<int>(std::round(r_f * MAX_COLOR))};
-  int g{static_cast<int>(std::round(g_f * MAX_COLOR))};
-  int b{static_cast<int>(std::round(b_f * MAX_COLOR))};
-  int i{static_cast<int>(std::round(i_f * MAX_COLOR))};
+  int r{static_cast<int>(std::round(r_f * HeliosDAC::MAX_COLOR))};
+  int g{static_cast<int>(std::round(g_f * HeliosDAC::MAX_COLOR))};
+  int b{static_cast<int>(std::round(b_f * HeliosDAC::MAX_COLOR))};
+  int i{static_cast<int>(std::round(i_f * HeliosDAC::MAX_COLOR))};
 
   if (numPoints == 0) {
     // Even if there are no points to render, we still to send over laxels so
@@ -182,11 +183,11 @@ std::vector<HeliosPoint> HeliosDAC::getFrame(int fps, int pps,
         int frameLaxelIdx{static_cast<int>(pointIdx) * laxelsPerPoint +
                           laxelIdx};
 
-        frame[frameLaxelIdx] =
-            HeliosPoint(std::round(x * X_MAX),  // convert to DAC range
-                        std::round(y * Y_MAX),  // convert to DAC range
-                        isTransition ? 0 : r, isTransition ? 0 : g,
-                        isTransition ? 0 : b, isTransition ? 0 : i);
+        frame[frameLaxelIdx] = HeliosPoint(
+            std::round(x * HeliosDAC::X_MAX),  // convert to DAC range
+            std::round(y * HeliosDAC::Y_MAX),  // convert to DAC range
+            isTransition ? 0 : r, isTransition ? 0 : g, isTransition ? 0 : b,
+            isTransition ? 0 : i);
       }
     }
   }

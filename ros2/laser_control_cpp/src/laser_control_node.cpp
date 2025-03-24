@@ -1,3 +1,4 @@
+#include "laser_control_cpp/laser_dac/ether_dream.hpp"
 #include "laser_control_cpp/laser_dac/helios.hpp"
 #include "laser_control_cpp/laser_dac/laser_dac.hpp"
 #include "laser_control_interfaces/msg/device_state.hpp"
@@ -16,11 +17,14 @@ class LaserControlNode : public rclcpp::Node {
     /////////////
     // Parameters
     /////////////
-    declare_parameter<int>("dac_index", 0);
-    declare_parameter<int>("fps", 30);
-    declare_parameter<int>("pps", 30000);
+    declare_parameter<std::string>("laser_control_params.dac_type",
+                                   "helios");  // "helios" or "ether_dream"
+    declare_parameter<int>("laser_control_params.dac_index", 0);
+    declare_parameter<int>("laser_control_params.fps", 30);
+    declare_parameter<int>("laser_control_params.pps", 30000);
     // Note: float params become doubles under the hood
-    declare_parameter<double>("transition_duration_ms", 0.5);
+    declare_parameter<double>("laser_control_params.transition_duration_ms",
+                              0.5);
 
     /////////
     // Topics
@@ -78,8 +82,14 @@ class LaserControlNode : public rclcpp::Node {
     ////////////
     // DAC Setup
     ////////////
-    // TODO: Support Ether Dream DAC
-    dac_ = std::make_shared<HeliosDAC>();
+    auto dacType = get_parameter("laser_control_params.dac_type").as_string();
+    if (dacType == "helios") {
+      dac_ = std::make_shared<HeliosDAC>();
+    } else if (dacType == "ether_dream") {
+      dac_ = std::make_shared<EtherDreamDAC>();
+    } else {
+      throw std::runtime_error("Unknown dac_type: " + dacType);
+    }
   }
 
  private:
@@ -94,13 +104,16 @@ class LaserControlNode : public rclcpp::Node {
     connecting_ = true;
     publishState();
 
-    dac_->initialize();
-    dac_->connect(get_parameter("dac_index").as_int());
+    int numDacs{dac_->initialize()};
+    if (numDacs == 0) {
+      response->success = false;
+    } else {
+      dac_->connect(get_parameter("laser_control_params.dac_index").as_int());
+      response->success = true;
+    }
 
     connecting_ = false;
     publishState();
-
-    response->success = true;
   }
 
   void onCloseDevice(
@@ -169,9 +182,11 @@ class LaserControlNode : public rclcpp::Node {
           laser_control_interfaces::srv::SetPlaybackParams::Response>
           response) {
     std::vector<rclcpp::Parameter> newParams = {
-        rclcpp::Parameter("fps", static_cast<int>(request->fps)),
-        rclcpp::Parameter("pps", static_cast<int>(request->pps)),
-        rclcpp::Parameter("transition_duration_ms",
+        rclcpp::Parameter("laser_control_params.fps",
+                          static_cast<int>(request->fps)),
+        rclcpp::Parameter("laser_control_params.pps",
+                          static_cast<int>(request->pps)),
+        rclcpp::Parameter("laser_control_params.transition_duration_ms",
                           static_cast<double>(request->transition_duration_ms)),
     };
     set_parameters(newParams);
@@ -180,9 +195,11 @@ class LaserControlNode : public rclcpp::Node {
 
   void onPlay(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
               std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-    dac_->play(get_parameter("fps").as_int(), get_parameter("pps").as_int(),
+    dac_->play(get_parameter("laser_control_params.fps").as_int(),
+               get_parameter("laser_control_params.pps").as_int(),
                static_cast<float>(
-                   get_parameter("transition_duration_ms").as_double()));
+                   get_parameter("laser_control_params.transition_duration_ms")
+                       .as_double()));
     publishState();
     response->success = true;
   }

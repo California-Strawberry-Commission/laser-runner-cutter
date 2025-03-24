@@ -10,25 +10,28 @@
 
 #include "laser_control_cpp/laser_dac/laser_dac.hpp"
 
-struct HeliosPoint {
-  uint16_t x, y;
-  uint8_t r, g, b, i;
+struct EtherDreamPoint {
+  int16_t x, y;
+  uint16_t r, g, b, i, u1, u2;
 
-  HeliosPoint(uint16_t x = 0, uint16_t y = 0, uint8_t r = 0, uint8_t g = 0,
-              uint8_t b = 0, uint8_t i = 0)
-      : x(x), y(y), r(r), g(g), b(b), i(i) {}
+  EtherDreamPoint(int16_t x = 0, int16_t y = 0, uint16_t r = 0, uint16_t g = 0,
+                  uint16_t b = 0, uint16_t i = 0, uint16_t u1 = 0,
+                  uint16_t u2 = 0)
+      : x(x), y(y), r(r), g(g), b(b), i(i), u1(u1), u2(u2) {}
 };
 
-class HeliosDAC final : public LaserDAC {
+class EtherDreamDAC final : public LaserDAC {
  public:
-  // Helios DAC uses 12 bits (unsigned) for x and y
-  static constexpr int X_MAX = 4095;
-  static constexpr int Y_MAX = 4095;
-  // Helios DAC uses 8 bits (unsigned) for r, g, b, i
-  static constexpr int MAX_COLOR = 255;
+  // Ether Dream DAC uses 16 bits (signed) for x and y
+  static constexpr int16_t X_MIN = -32768;
+  static constexpr int16_t X_MAX = 32767;
+  static constexpr int16_t Y_MIN = -32768;
+  static constexpr int16_t Y_MAX = 32767;
+  // Ether Dream DAC uses 16 bits (unsigned) for r, g, b, i
+  static constexpr uint16_t MAX_COLOR = 65535;
 
-  HeliosDAC();
-  ~HeliosDAC() override;
+  EtherDreamDAC();
+  ~EtherDreamDAC() override;
 
   /**
    * Search for online DACs.
@@ -85,8 +88,7 @@ class HeliosDAC final : public LaserDAC {
 
   /**
    * Start playback of points.
-   * Helios max rate: 65535 pps
-   * Helios max points per frame (pps/fps): 4096
+   * Ether Dream max rate: 100K pps
    *
    * @param fps Target frames per second.
    * @param pps Target points per second. This should not exceed the capability
@@ -112,7 +114,9 @@ class HeliosDAC final : public LaserDAC {
 
  private:
   void* libHandle_{nullptr};
-  int dacIdx_{-1};
+  std::atomic<bool> dacConnected_{false};
+  unsigned long connectedDacId_{0};
+
   std::vector<std::pair<float, float>> points_;
   std::mutex pointsMutex_;
   std::tuple<float, float, float, float> color_;
@@ -121,19 +125,32 @@ class HeliosDAC final : public LaserDAC {
   std::thread checkConnectionThread_;
   std::thread playbackThread_;
 
-  std::vector<HeliosPoint> getFrame(int fps, int pps,
-                                    float transitionDurationMs);
-  int getNativeStatus();
+  std::string dacIdToHex(unsigned long dacId);
+  std::vector<EtherDreamPoint> getFrame(int fps, int pps,
+                                        float transitionDurationMs);
+  std::pair<int16_t, int16_t> denormalizePoint(float x, float y);
+  std::tuple<uint16_t, uint16_t, uint16_t, uint16_t> denormalizeColor(float r,
+                                                                      float g,
+                                                                      float b,
+                                                                      float i);
 
-  using LibOpenDevicesFunc = int (*)();
-  using LibCloseDevicesFunc = void (*)();
-  using LibGetStatusFunc = int (*)(int);
-  using LibWriteFrameFunc = void (*)(int, int, int, HeliosPoint*, int);
-  using LibStopFunc = void (*)(int);
+  using LibStartFunc = int (*)();
+  using LibDacCountFunc = int (*)();
+  using LibGetIdFunc = unsigned long (*)(int);
+  using LibConnectFunc = int (*)(unsigned long);
+  using LibIsConnectedFunc = int (*)(unsigned long);
+  using LibWaitForReadyFunc = int (*)(unsigned long);
+  using LibWriteFunc = int (*)(unsigned long, EtherDreamPoint*, int, int, int);
+  using LibStopFunc = int (*)(unsigned long);
+  using LibDisconnectFunc = void (*)(unsigned long);
 
-  LibOpenDevicesFunc libOpenDevices;
-  LibCloseDevicesFunc libCloseDevices;
-  LibGetStatusFunc libGetStatus;
-  LibWriteFrameFunc libWriteFrame;
+  LibStartFunc libStart;
+  LibDacCountFunc libDacCount;
+  LibGetIdFunc libGetId;
+  LibConnectFunc libConnect;
+  LibIsConnectedFunc libIsConnected;
+  LibWaitForReadyFunc libWaitForReady;
+  LibWriteFunc libWrite;
   LibStopFunc libStop;
+  LibDisconnectFunc libDisconnect;
 };
