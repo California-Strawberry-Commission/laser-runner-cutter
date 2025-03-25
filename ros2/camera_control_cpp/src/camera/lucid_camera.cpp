@@ -552,45 +552,20 @@ std::optional<std::pair<cv::Mat, cv::Mat>> LucidCamera::getDepthFrame() {
   const uint16_t* imageData{
       reinterpret_cast<const uint16_t*>(image->GetData())};
 
-  /*
-  cv::Mat xyzMm(height, width, CV_32FC3);
-  cv::Mat intensityImage(height, width, CV_16UC1);
-  for (unsigned int ir = 0; ir < height; ++ir) {
-    for (unsigned int ic = 0; ic < width; ++ic) {
-      // Get unsigned 16 bit values for X, Y, Z coordinates
-      ushort x_u16 = imageData[0];
-      ushort y_u16 = imageData[1];
-      ushort z_u16 = imageData[2];
-
-      // Convert 16-bit X, Y, Z to float values in mm
-      xyzMm.at<cv::Vec3f>(ir, ic)[0] =
-          (float)(x_u16 * xyzScale_ + std::get<0>(xyzOffset_));
-      xyzMm.at<cv::Vec3f>(ir, ic)[1] =
-          (float)(y_u16 * xyzScale_ + std::get<1>(xyzOffset_));
-      xyzMm.at<cv::Vec3f>(ir, ic)[2] =
-          (float)(z_u16 * xyzScale_ + std::get<2>(xyzOffset_));
-
-      intensityImage.at<ushort>(ir, ic) = imageData[3];
-
-      imageData += 4;
-    }
-  }
-  */
-
   // Create OpenCV matrix headers pointing to the raw data
   cv::Mat rawXYZ(height * width, 3, CV_16UC1, (void*)imageData,
                  sizeof(uint16_t) * 4);
   cv::Mat rawIntensity(height * width, 1, CV_16UC1, (void*)(imageData + 3),
                        sizeof(uint16_t) * 4);
 
-  // Convert 16-bit unsigned integer values to floating point and apply
-  // transformations
+  // Convert 16-bit unsigned integer values to floating point and apply scale
+  // and offsets to convert (x, y, z) to mm
   cv::Mat xyzFlat(height * width, 3, CV_32F);
-  rawXYZ.convertTo(xyzFlat, CV_32F, xyzScale_);
+  rawXYZ.convertTo(xyzFlat, CV_32F, xyzScale_);  // apply scale
   cv::add(xyzFlat,
           cv::Scalar(std::get<0>(xyzOffset_), std::get<1>(xyzOffset_),
                      std::get<2>(xyzOffset_)),
-          xyzFlat);
+          xyzFlat);  // apply offset
 
   // Copy intensity values
   cv::Mat intensityFlat(height * width, 1, CV_16UC1);
@@ -599,6 +574,13 @@ std::optional<std::pair<cv::Mat, cv::Mat>> LucidCamera::getDepthFrame() {
   // Reshape to desired dimensions
   cv::Mat xyzMm{xyzFlat.reshape(3, height)};
   cv::Mat intensityImage{intensityFlat.reshape(1, height)};
+
+  // In unsigned pixel formats (such as ABCY16), values below the confidence
+  // threshold will have their x, y, z, and intensity values set to 0xFFFF
+  // (denoting invalid). For these invalid pixels, set (x, y, z) to (-1, -1,
+  // -1).
+  cv::Mat mask{(intensityImage == 65535)};
+  xyzMm.setTo(cv::Scalar(-1.0, -1.0, -1.0), mask);
 
   depthDevice_->RequeueBuffer(image);
 
