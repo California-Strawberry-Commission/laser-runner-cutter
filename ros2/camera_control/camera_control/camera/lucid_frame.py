@@ -1,3 +1,4 @@
+from functools import cached_property
 from typing import Optional, Tuple
 
 import cv2
@@ -41,10 +42,6 @@ class LucidFrame(RgbdFrame):
         """
         self._color_frame = color_frame
         self._depth_frame_xyz = depth_frame_xyz
-        self._depth_frame = np.sqrt(np.sum(np.square(depth_frame_xyz), axis=-1)).astype(
-            np.uint16
-        )  # Represent the depth frame as the L2 norm, and convert to mono16
-
         self._timestamp_millis = timestamp_millis
         self._color_camera_intrinsic_matrix = color_camera_intrinsic_matrix
         self._color_camera_distortion_coeffs = color_camera_distortion_coeffs
@@ -66,9 +63,13 @@ class LucidFrame(RgbdFrame):
     def color_frame(self) -> np.ndarray:
         return self._color_frame
 
-    @property
+    @cached_property
     def depth_frame(self) -> np.ndarray:
-        return self._depth_frame
+        # Cache the depth frame property as it is expensive
+        # Represent the depth frame as the L2 norm, and convert to mono16
+        return np.sqrt(np.sum(np.square(self._depth_frame_xyz), axis=-1)).astype(
+            np.uint16
+        )
 
     @property
     def timestamp_millis(self) -> float:
