@@ -6,32 +6,22 @@
 #include <chrono>
 #include <cmath>
 
-HeliosDAC::HeliosDAC() {
-  libHandle_ = dlopen("libHeliosDacAPI.so", RTLD_LAZY);
-  if (!libHandle_) {
-    spdlog::error("Failed to load library: {}", dlerror());
-    exit(1);
-  }
+Helios::Helios() : heliosDac_(std::make_shared<HeliosDac>()) {}
 
-  libOpenDevices = (LibOpenDevicesFunc)dlsym(libHandle_, "OpenDevices");
-  libCloseDevices = (LibCloseDevicesFunc)dlsym(libHandle_, "CloseDevices");
-  libGetStatus = (LibGetStatusFunc)dlsym(libHandle_, "GetStatus");
-  libWriteFrame = (LibWriteFrameFunc)dlsym(libHandle_, "WriteFrame");
-  libStop = (LibStopFunc)dlsym(libHandle_, "Stop");
-}
+Helios::~Helios() { close(); }
 
-HeliosDAC::~HeliosDAC() {
-  close();
-  dlclose(libHandle_);
-}
-
-int HeliosDAC::initialize() {
-  int num_devices{libOpenDevices()};
+int Helios::initialize() {
+  int num_devices{heliosDac_->OpenDevices()};
+  initialized_ = true;
   spdlog::info("Found {} Helios DACs.", num_devices);
   return num_devices;
 }
 
-void HeliosDAC::connect(int dacIdx) {
+void Helios::connect(int dacIdx) {
+  if (!initialized_) {
+    return;
+  }
+
   dacIdx_ = dacIdx;
 
   auto checkConnectionFunc{[this]() {
@@ -40,7 +30,10 @@ void HeliosDAC::connect(int dacIdx) {
         spdlog::warn("DAC error {}. Attempting to reconnect.",
                      getNativeStatus());
         stop();
-        libCloseDevices();
+        if (initialized_) {
+          heliosDac_->CloseDevices();
+          initialized_ = false;
+        }
         initialize();
       }
       std::this_thread::sleep_for(std::chrono::seconds(5));
@@ -53,37 +46,37 @@ void HeliosDAC::connect(int dacIdx) {
   }
 }
 
-bool HeliosDAC::isConnected() const {
-  return dacIdx_ >= 0 && libGetStatus(dacIdx_) >= 0;
+bool Helios::isConnected() const {
+  return dacIdx_ >= 0 && getNativeStatus() >= 0;
 }
 
-bool HeliosDAC::isPlaying() const { return playing_; }
+bool Helios::isPlaying() const { return playing_; }
 
-void HeliosDAC::setColor(float r, float g, float b, float i) {
+void Helios::setColor(float r, float g, float b, float i) {
   color_ = {r, g, b, i};
 }
 
-void HeliosDAC::addPoint(float x, float y) {
+void Helios::addPoint(float x, float y) {
   if (x >= 0.0f && x <= 1.0f && y >= 0.0f && y <= 1.0f) {
     std::lock_guard<std::mutex> lock(pointsMutex_);
     points_.emplace_back(x, y);
   }
 }
 
-void HeliosDAC::removePoint() {
+void Helios::removePoint() {
   std::lock_guard<std::mutex> lock(pointsMutex_);
   if (!points_.empty()) {
     points_.pop_back();
   }
 }
 
-void HeliosDAC::clearPoints() {
+void Helios::clearPoints() {
   std::lock_guard<std::mutex> lock(pointsMutex_);
   points_.clear();
 }
 
-void HeliosDAC::play(int fps, int pps, float transitionDurationMs) {
-  if (playing_) {
+void Helios::play(int fps, int pps, float transitionDurationMs) {
+  if (!initialized_ || playing_) {
     return;
   }
 
@@ -103,15 +96,15 @@ void HeliosDAC::play(int fps, int pps, float transitionDurationMs) {
       }
 
       if (!frame.empty()) {
-        libWriteFrame(dacIdx_, frame.size() * fps, 0, frame.data(),
-                      frame.size());
+        heliosDac_->WriteFrame(dacIdx_, frame.size() * fps, 0, frame.data(),
+                               frame.size());
       }
     }
-    libStop(dacIdx_);
+    heliosDac_->Stop(dacIdx_);
   });
 }
 
-void HeliosDAC::stop() {
+void Helios::stop() {
   if (!playing_) {
     return;
   }
@@ -122,7 +115,7 @@ void HeliosDAC::stop() {
   }
 }
 
-void HeliosDAC::close() {
+void Helios::close() {
   stop();
 
   if (checkConnection_) {
@@ -132,12 +125,15 @@ void HeliosDAC::close() {
     }
   }
 
-  libCloseDevices();
+  if (initialized_) {
+    heliosDac_->CloseDevices();
+    initialized_ = false;
+  }
   dacIdx_ = -1;
 }
 
-std::vector<HeliosPoint> HeliosDAC::getFrame(int fps, int pps,
-                                             float transitionDurationMs) {
+std::vector<HeliosPoint> Helios::getFrame(int fps, int pps,
+                                          float transitionDurationMs) {
   // We'll use "laxel", or laser "pixel", to refer to each point that the laser
   // projector renders, which disambiguates it from "point", which refers to the
   // (x, y) coordinates we want to have rendered
@@ -162,16 +158,16 @@ std::vector<HeliosPoint> HeliosDAC::getFrame(int fps, int pps,
   // Extract color components from tuple and convert to DAC range
   float r_f, g_f, b_f, i_f;
   std::tie(r_f, g_f, b_f, i_f) = color_;
-  int r{static_cast<int>(std::round(r_f * HeliosDAC::MAX_COLOR))};
-  int g{static_cast<int>(std::round(g_f * HeliosDAC::MAX_COLOR))};
-  int b{static_cast<int>(std::round(b_f * HeliosDAC::MAX_COLOR))};
-  int i{static_cast<int>(std::round(i_f * HeliosDAC::MAX_COLOR))};
+  uint8_t r{static_cast<uint8_t>(std::round(r_f * Helios::MAX_COLOR))};
+  uint8_t g{static_cast<uint8_t>(std::round(g_f * Helios::MAX_COLOR))};
+  uint8_t b{static_cast<uint8_t>(std::round(b_f * Helios::MAX_COLOR))};
+  uint8_t i{static_cast<uint8_t>(std::round(i_f * Helios::MAX_COLOR))};
 
   if (numPoints == 0) {
     // Even if there are no points to render, we still to send over laxels so
     // that we don't underflow the DAC buffer
     for (int laxelIdx = 0; laxelIdx < laxelsPerFrame; ++laxelIdx) {
-      frame[laxelIdx] = HeliosPoint(0, 0, 0, 0, 0, 0);
+      frame[laxelIdx] = {0, 0, 0, 0, 0, 0};
     }
   } else {
     for (size_t pointIdx = 0; pointIdx < points_.size(); ++pointIdx) {
@@ -183,11 +179,15 @@ std::vector<HeliosPoint> HeliosDAC::getFrame(int fps, int pps,
         int frameLaxelIdx{static_cast<int>(pointIdx) * laxelsPerPoint +
                           laxelIdx};
 
-        frame[frameLaxelIdx] = HeliosPoint(
-            std::round(x * HeliosDAC::X_MAX),  // convert to DAC range
-            std::round(y * HeliosDAC::Y_MAX),  // convert to DAC range
-            isTransition ? 0 : r, isTransition ? 0 : g, isTransition ? 0 : b,
-            isTransition ? 0 : i);
+        frame[frameLaxelIdx] = {
+            static_cast<uint16_t>(
+                std::round(x * Helios::X_MAX)),  // convert to DAC range
+            static_cast<uint16_t>(
+                std::round(y * Helios::Y_MAX)),  // convert to DAC range
+            isTransition ? static_cast<uint8_t>(0) : r,
+            isTransition ? static_cast<uint8_t>(0) : g,
+            isTransition ? static_cast<uint8_t>(0) : b,
+            isTransition ? static_cast<uint8_t>(0) : i};
       }
     }
   }
@@ -195,9 +195,12 @@ std::vector<HeliosPoint> HeliosDAC::getFrame(int fps, int pps,
   return frame;
 }
 
-int HeliosDAC::getNativeStatus() {
+int Helios::getNativeStatus() const {
   // 1 means ready to receive frame
   // 0 means not ready to receive frame
   // Any negative status means error
-  return libGetStatus(dacIdx_);
+  if (!heliosDac_) {
+    return HELIOS_ERROR;
+  }
+  return heliosDac_->GetStatus(dacIdx_);
 }

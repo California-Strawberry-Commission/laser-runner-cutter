@@ -1,26 +1,15 @@
 #pragma once
 
-#include <dlfcn.h>
-
 #include <atomic>
 #include <mutex>
 #include <thread>
 #include <tuple>
 #include <vector>
 
+#include "etherdream.h"
 #include "laser_control_cpp/laser_dac/laser_dac.hpp"
 
-struct EtherDreamPoint {
-  int16_t x, y;
-  uint16_t r, g, b, i, u1, u2;
-
-  EtherDreamPoint(int16_t x = 0, int16_t y = 0, uint16_t r = 0, uint16_t g = 0,
-                  uint16_t b = 0, uint16_t i = 0, uint16_t u1 = 0,
-                  uint16_t u2 = 0)
-      : x(x), y(y), r(r), g(g), b(b), i(i), u1(u1), u2(u2) {}
-};
-
-class EtherDreamDAC final : public LaserDAC {
+class EtherDream final : public LaserDAC {
  public:
   // Ether Dream DAC uses 16 bits (signed) for x and y
   static constexpr int16_t X_MIN = -32768;
@@ -30,8 +19,8 @@ class EtherDreamDAC final : public LaserDAC {
   // Ether Dream DAC uses 16 bits (unsigned) for r, g, b, i
   static constexpr uint16_t MAX_COLOR = 65535;
 
-  EtherDreamDAC();
-  ~EtherDreamDAC() override;
+  EtherDream();
+  ~EtherDream() override;
 
   /**
    * Search for online DACs.
@@ -113,7 +102,6 @@ class EtherDreamDAC final : public LaserDAC {
   void close() override;
 
  private:
-  void* libHandle_{nullptr};
   std::atomic<bool> dacConnected_{false};
   unsigned long connectedDacId_{0};
 
@@ -125,32 +113,10 @@ class EtherDreamDAC final : public LaserDAC {
   std::thread checkConnectionThread_;
   std::thread playbackThread_;
 
-  std::string dacIdToHex(unsigned long dacId);
-  std::vector<EtherDreamPoint> getFrame(int fps, int pps,
-                                        float transitionDurationMs);
-  std::pair<int16_t, int16_t> denormalizePoint(float x, float y);
-  std::tuple<uint16_t, uint16_t, uint16_t, uint16_t> denormalizeColor(float r,
-                                                                      float g,
-                                                                      float b,
-                                                                      float i);
-
-  using LibStartFunc = int (*)();
-  using LibDacCountFunc = int (*)();
-  using LibGetIdFunc = unsigned long (*)(int);
-  using LibConnectFunc = int (*)(unsigned long);
-  using LibIsConnectedFunc = int (*)(unsigned long);
-  using LibWaitForReadyFunc = int (*)(unsigned long);
-  using LibWriteFunc = int (*)(unsigned long, EtherDreamPoint*, int, int, int);
-  using LibStopFunc = int (*)(unsigned long);
-  using LibDisconnectFunc = void (*)(unsigned long);
-
-  LibStartFunc libStart;
-  LibDacCountFunc libDacCount;
-  LibGetIdFunc libGetId;
-  LibConnectFunc libConnect;
-  LibIsConnectedFunc libIsConnected;
-  LibWaitForReadyFunc libWaitForReady;
-  LibWriteFunc libWrite;
-  LibStopFunc libStop;
-  LibDisconnectFunc libDisconnect;
+  std::vector<etherdream_point> getFrame(int fps, int pps,
+                                         float transitionDurationMs);
+  std::pair<int16_t, int16_t> denormalizePoint(float x, float y) const;
+  std::tuple<uint16_t, uint16_t, uint16_t, uint16_t> denormalizeColor(
+      float r, float g, float b, float i) const;
+  std::string dacIdToHex(unsigned long dacId) const;
 };

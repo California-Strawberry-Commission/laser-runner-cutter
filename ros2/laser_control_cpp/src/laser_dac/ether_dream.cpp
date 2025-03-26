@@ -7,49 +7,28 @@
 #include <cmath>
 #include <sstream>
 
-EtherDreamDAC::EtherDreamDAC() {
-  libHandle_ = dlopen("libEtherDream.so", RTLD_LAZY);
-  if (!libHandle_) {
-    spdlog::error("Failed to load library: {}", dlerror());
-    exit(1);
-  }
+EtherDream::EtherDream() {}
 
-  libStart = (LibStartFunc)dlsym(libHandle_, "etherdream_lib_start");
-  libDacCount = (LibDacCountFunc)dlsym(libHandle_, "etherdream_dac_count");
-  libGetId = (LibGetIdFunc)dlsym(libHandle_, "etherdream_get_id");
-  libConnect = (LibConnectFunc)dlsym(libHandle_, "etherdream_connect");
-  libIsConnected =
-      (LibIsConnectedFunc)dlsym(libHandle_, "etherdream_is_connected");
-  libWaitForReady =
-      (LibWaitForReadyFunc)dlsym(libHandle_, "etherdream_wait_for_ready");
-  libWrite = (LibWriteFunc)dlsym(libHandle_, "etherdream_write");
-  libStop = (LibStopFunc)dlsym(libHandle_, "etherdream_stop");
-  libDisconnect = (LibDisconnectFunc)dlsym(libHandle_, "etherdream_disconnect");
-}
+EtherDream::~EtherDream() { close(); }
 
-EtherDreamDAC::~EtherDreamDAC() {
-  close();
-  dlclose(libHandle_);
-}
-
-int EtherDreamDAC::initialize() {
+int EtherDream::initialize() {
   spdlog::info("Initializing Ether Dream DAC");
-  libStart();
+  etherdream_lib_start();
   spdlog::info("Finding available Ether Dream DACs...");
 
   // Ether Dream DACs broadcast once per second, so we need to wait for a bit
   // longer than that to ensure that we see broadcasts from all online DACs
   std::this_thread::sleep_for(std::chrono::milliseconds(1200));
 
-  int dacCount{libDacCount()};
+  int dacCount{etherdream_dac_count()};
   spdlog::info("Found {} Ether Dream DACs.", dacCount);
   return dacCount;
 }
 
-void EtherDreamDAC::connect(int dacIdx) {
+void EtherDream::connect(int dacIdx) {
   spdlog::info("Connecting to DAC...");
-  unsigned long dacId = libGetId(dacIdx);
-  if (libConnect(dacId) < 0) {
+  unsigned long dacId = etherdream_get_id(dacIdx);
+  if (etherdream_connect(dacId) < 0) {
     throw std::runtime_error("Could not connect to DAC [" + dacIdToHex(dacId) +
                              "]");
   }
@@ -59,7 +38,7 @@ void EtherDreamDAC::connect(int dacIdx) {
 
   auto checkConnectionFunc{[this]() {
     while (checkConnection_) {
-      if (libIsConnected(connectedDacId_) == 0) {
+      if (etherdream_is_connected(connectedDacId_) == 0) {
         spdlog::warn("DAC connection error. Attempting to reconnect.");
       }
       std::this_thread::sleep_for(std::chrono::seconds(5));
@@ -72,36 +51,36 @@ void EtherDreamDAC::connect(int dacIdx) {
   }
 }
 
-bool EtherDreamDAC::isConnected() const {
-  return dacConnected_ && libIsConnected(connectedDacId_) > 0;
+bool EtherDream::isConnected() const {
+  return dacConnected_ && etherdream_is_connected(connectedDacId_) > 0;
 }
 
-bool EtherDreamDAC::isPlaying() const { return playing_; }
+bool EtherDream::isPlaying() const { return playing_; }
 
-void EtherDreamDAC::setColor(float r, float g, float b, float i) {
+void EtherDream::setColor(float r, float g, float b, float i) {
   color_ = {r, g, b, i};
 }
 
-void EtherDreamDAC::addPoint(float x, float y) {
+void EtherDream::addPoint(float x, float y) {
   if (x >= 0.0f && x <= 1.0f && y >= 0.0f && y <= 1.0f) {
     std::lock_guard<std::mutex> lock(pointsMutex_);
     points_.emplace_back(x, y);
   }
 }
 
-void EtherDreamDAC::removePoint() {
+void EtherDream::removePoint() {
   std::lock_guard<std::mutex> lock(pointsMutex_);
   if (!points_.empty()) {
     points_.pop_back();
   }
 }
 
-void EtherDreamDAC::clearPoints() {
+void EtherDream::clearPoints() {
   std::lock_guard<std::mutex> lock(pointsMutex_);
   points_.clear();
 }
 
-void EtherDreamDAC::play(int fps, int pps, float transitionDurationMs) {
+void EtherDream::play(int fps, int pps, float transitionDurationMs) {
   if (playing_) {
     return;
   }
@@ -113,18 +92,18 @@ void EtherDreamDAC::play(int fps, int pps, float transitionDurationMs) {
 
   playbackThread_ = std::thread([this, fps, pps, transitionDurationMs]() {
     while (playing_) {
-      std::vector<EtherDreamPoint> frame{
+      std::vector<etherdream_point> frame{
           getFrame(fps, pps, transitionDurationMs)};
 
-      libWaitForReady(connectedDacId_);
-      libWrite(connectedDacId_, frame.data(), frame.size(), frame.size() * fps,
-               1);
+      etherdream_wait_for_ready(connectedDacId_);
+      etherdream_write(connectedDacId_, frame.data(), frame.size(),
+                       frame.size() * fps, 1);
     }
-    libStop(connectedDacId_);
+    etherdream_stop(connectedDacId_);
   });
 }
 
-void EtherDreamDAC::stop() {
+void EtherDream::stop() {
   if (!playing_) {
     return;
   }
@@ -135,7 +114,7 @@ void EtherDreamDAC::stop() {
   }
 }
 
-void EtherDreamDAC::close() {
+void EtherDream::close() {
   stop();
 
   if (checkConnection_) {
@@ -145,13 +124,13 @@ void EtherDreamDAC::close() {
     }
   }
 
-  libStop(connectedDacId_);
+  etherdream_stop(connectedDacId_);
   dacConnected_ = false;
-  libDisconnect(connectedDacId_);
+  etherdream_disconnect(connectedDacId_);
 }
 
-std::vector<EtherDreamPoint> EtherDreamDAC::getFrame(
-    int fps, int pps, float transitionDurationMs) {
+std::vector<etherdream_point> EtherDream::getFrame(int fps, int pps,
+                                                   float transitionDurationMs) {
   // We'll use "laxel", or laser "pixel", to refer to each point that the laser
   // projector renders, which disambiguates it from "point", which refers to the
   // (x, y) coordinates we want to have rendered
@@ -171,7 +150,7 @@ std::vector<EtherDreamPoint> EtherDreamDAC::getFrame(
                                       : laxelsPerPoint * numPoints};
 
   // Prepare frame
-  std::vector<EtherDreamPoint> frame(laxelsPerFrame);
+  std::vector<etherdream_point> frame(laxelsPerFrame);
 
   // Extract color components from tuple and convert to DAC range
   float r_f, g_f, b_f, i_f;
@@ -182,7 +161,7 @@ std::vector<EtherDreamPoint> EtherDreamDAC::getFrame(
     // Even if there are no points to render, we still to send over laxels so
     // that we don't underflow the DAC buffer
     for (int laxelIdx = 0; laxelIdx < laxelsPerFrame; ++laxelIdx) {
-      frame[laxelIdx] = EtherDreamPoint(0, 0, 0, 0, 0, 0, 0, 0);
+      frame[laxelIdx] = {0, 0, 0, 0, 0, 0, 0, 0};
     }
   } else {
     for (size_t pointIdx = 0; pointIdx < points_.size(); ++pointIdx) {
@@ -195,12 +174,15 @@ std::vector<EtherDreamPoint> EtherDreamDAC::getFrame(
                           laxelIdx};
 
         auto pointDenorm = denormalizePoint(x, y);
-        frame[frameLaxelIdx] =
-            EtherDreamPoint(pointDenorm.first, pointDenorm.second,
-                            isTransition ? 0 : std::get<0>(colorDenorm),
-                            isTransition ? 0 : std::get<1>(colorDenorm),
-                            isTransition ? 0 : std::get<2>(colorDenorm),
-                            isTransition ? 0 : std::get<3>(colorDenorm));
+        frame[frameLaxelIdx] = {
+            pointDenorm.first,
+            pointDenorm.second,
+            isTransition ? static_cast<uint16_t>(0) : std::get<0>(colorDenorm),
+            isTransition ? static_cast<uint16_t>(0) : std::get<1>(colorDenorm),
+            isTransition ? static_cast<uint16_t>(0) : std::get<2>(colorDenorm),
+            isTransition ? static_cast<uint16_t>(0) : std::get<3>(colorDenorm),
+            0,
+            0};
       }
     }
   }
@@ -208,25 +190,24 @@ std::vector<EtherDreamPoint> EtherDreamDAC::getFrame(
   return frame;
 }
 
-std::pair<int16_t, int16_t> EtherDreamDAC::denormalizePoint(float x, float y) {
-  int16_t xDenorm = static_cast<int16_t>(
-      std::round((EtherDreamDAC::X_MAX - EtherDreamDAC::X_MIN) * x +
-                 EtherDreamDAC::X_MIN));
-  int16_t yDenorm = static_cast<int16_t>(
-      std::round((EtherDreamDAC::Y_MAX - EtherDreamDAC::Y_MIN) * y +
-                 EtherDreamDAC::Y_MIN));
+std::pair<int16_t, int16_t> EtherDream::denormalizePoint(float x,
+                                                         float y) const {
+  int16_t xDenorm = static_cast<int16_t>(std::round(
+      (EtherDream::X_MAX - EtherDream::X_MIN) * x + EtherDream::X_MIN));
+  int16_t yDenorm = static_cast<int16_t>(std::round(
+      (EtherDream::Y_MAX - EtherDream::Y_MIN) * y + EtherDream::Y_MIN));
   return {xDenorm, yDenorm};
 }
 
-std::tuple<uint16_t, uint16_t, uint16_t, uint16_t>
-EtherDreamDAC::denormalizeColor(float r, float g, float b, float i) {
-  return {static_cast<uint16_t>(std::round(r * EtherDreamDAC::MAX_COLOR)),
-          static_cast<uint16_t>(std::round(g * EtherDreamDAC::MAX_COLOR)),
-          static_cast<uint16_t>(std::round(b * EtherDreamDAC::MAX_COLOR)),
-          static_cast<uint16_t>(std::round(i * EtherDreamDAC::MAX_COLOR))};
+std::tuple<uint16_t, uint16_t, uint16_t, uint16_t> EtherDream::denormalizeColor(
+    float r, float g, float b, float i) const {
+  return {static_cast<uint16_t>(std::round(r * EtherDream::MAX_COLOR)),
+          static_cast<uint16_t>(std::round(g * EtherDream::MAX_COLOR)),
+          static_cast<uint16_t>(std::round(b * EtherDream::MAX_COLOR)),
+          static_cast<uint16_t>(std::round(i * EtherDream::MAX_COLOR))};
 }
 
-std::string EtherDreamDAC::dacIdToHex(unsigned long dacId) {
+std::string EtherDream::dacIdToHex(unsigned long dacId) const {
   std::stringstream ss;
   ss << "0x" << std::hex << dacId;
   return ss.str();

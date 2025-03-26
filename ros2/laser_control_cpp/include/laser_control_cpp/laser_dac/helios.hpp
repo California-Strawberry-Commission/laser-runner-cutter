@@ -1,25 +1,15 @@
 #pragma once
 
-#include <dlfcn.h>
-
 #include <atomic>
 #include <mutex>
 #include <thread>
 #include <tuple>
 #include <vector>
 
+#include "HeliosDac.h"
 #include "laser_control_cpp/laser_dac/laser_dac.hpp"
 
-struct HeliosPoint {
-  uint16_t x, y;
-  uint8_t r, g, b, i;
-
-  HeliosPoint(uint16_t x = 0, uint16_t y = 0, uint8_t r = 0, uint8_t g = 0,
-              uint8_t b = 0, uint8_t i = 0)
-      : x(x), y(y), r(r), g(g), b(b), i(i) {}
-};
-
-class HeliosDAC final : public LaserDAC {
+class Helios final : public LaserDAC {
  public:
   // Helios DAC uses 12 bits (unsigned) for x and y
   static constexpr int X_MAX = 4095;
@@ -27,8 +17,8 @@ class HeliosDAC final : public LaserDAC {
   // Helios DAC uses 8 bits (unsigned) for r, g, b, i
   static constexpr int MAX_COLOR = 255;
 
-  HeliosDAC();
-  ~HeliosDAC() override;
+  Helios();
+  ~Helios() override;
 
   /**
    * Search for online DACs.
@@ -111,7 +101,8 @@ class HeliosDAC final : public LaserDAC {
   void close() override;
 
  private:
-  void* libHandle_{nullptr};
+  std::shared_ptr<HeliosDac> heliosDac_;
+  std::atomic<bool> initialized_{false};
   int dacIdx_{-1};
   std::vector<std::pair<float, float>> points_;
   std::mutex pointsMutex_;
@@ -123,17 +114,5 @@ class HeliosDAC final : public LaserDAC {
 
   std::vector<HeliosPoint> getFrame(int fps, int pps,
                                     float transitionDurationMs);
-  int getNativeStatus();
-
-  using LibOpenDevicesFunc = int (*)();
-  using LibCloseDevicesFunc = void (*)();
-  using LibGetStatusFunc = int (*)(int);
-  using LibWriteFrameFunc = void (*)(int, int, int, HeliosPoint*, int);
-  using LibStopFunc = void (*)(int);
-
-  LibOpenDevicesFunc libOpenDevices;
-  LibCloseDevicesFunc libCloseDevices;
-  LibGetStatusFunc libGetStatus;
-  LibWriteFrameFunc libWriteFrame;
-  LibStopFunc libStop;
+  int getNativeStatus() const;
 };

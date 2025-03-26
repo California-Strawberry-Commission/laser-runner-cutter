@@ -84,9 +84,9 @@ class LaserControlNode : public rclcpp::Node {
     ////////////
     auto dacType = get_parameter("laser_control_params.dac_type").as_string();
     if (dacType == "helios") {
-      dac_ = std::make_shared<HeliosDAC>();
+      dac_ = std::make_shared<Helios>();
     } else if (dacType == "ether_dream") {
-      dac_ = std::make_shared<EtherDreamDAC>();
+      dac_ = std::make_shared<EtherDream>();
     } else {
       throw std::runtime_error("Unknown dac_type: " + dacType);
     }

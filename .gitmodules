@@ -15,3 +15,9 @@
 [submodule "ros2/camera_control_cpp/third_party/bs_thread_pool"]
 	path = ros2/camera_control_cpp/third_party/bs_thread_pool
 	url = https://github.com/bshoshany/thread-pool.git
+[submodule "ros2/laser_control_cpp/third_party/helios_dac"]
+	path = ros2/laser_control_cpp/third_party/helios_dac
+	url = https://github.com/Grix/helios_dac.git
+[submodule "ros2/laser_control_cpp/third_party/ether-dream-sdk"]
+	path = ros2/laser_control_cpp/third_party/ether-dream-sdk
+	url = https://github.com/genkikondo/ether-dream-sdk.git

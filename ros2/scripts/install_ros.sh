@@ -26,3 +26,7 @@ sudo apt install -y ros-$ROS_DISTRO-desktop ros-dev-tools ros-$ROS_DISTRO-diagno
 # https://github.com/matplotlib/matplotlib/issues/26827#issuecomment-1726026699
 # Solves a potential import conflict between system matplotlib and env matplotlib
 sudo apt remove -y python3-matplotlib
+
+# libusb is required by some of our ROS packages
+# Note: Ubuntu 22.04 already has this installed
+sudo apt install -y libusb-1.0-0-dev
