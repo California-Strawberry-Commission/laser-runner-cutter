@@ -37,47 +37,65 @@ class LaserControlNode : public rclcpp::Node {
     ///////////
     // Services
     ///////////
+    serviceCallbackGroup_ =
+        create_callback_group(rclcpp::CallbackGroupType::Reentrant);
     startDeviceService_ = create_service<std_srvs::srv::Trigger>(
         "~/start_device",
         std::bind(&LaserControlNode::onStartDevice, this, std::placeholders::_1,
-                  std::placeholders::_2));
+                  std::placeholders::_2),
+        rmw_qos_profile_services_default, serviceCallbackGroup_);
     closeDeviceService_ = create_service<std_srvs::srv::Trigger>(
         "~/close_device",
         std::bind(&LaserControlNode::onCloseDevice, this, std::placeholders::_1,
-                  std::placeholders::_2));
+                  std::placeholders::_2),
+        rmw_qos_profile_services_default, serviceCallbackGroup_);
     setColorService_ = create_service<laser_control_interfaces::srv::SetColor>(
-        "~/set_color", std::bind(&LaserControlNode::onSetColor, this,
-                                 std::placeholders::_1, std::placeholders::_2));
+        "~/set_color",
+        std::bind(&LaserControlNode::onSetColor, this, std::placeholders::_1,
+                  std::placeholders::_2),
+        rmw_qos_profile_services_default, serviceCallbackGroup_);
     addPointService_ = create_service<laser_control_interfaces::srv::AddPoint>(
-        "~/add_point", std::bind(&LaserControlNode::onAddPoint, this,
-                                 std::placeholders::_1, std::placeholders::_2));
+        "~/add_point",
+        std::bind(&LaserControlNode::onAddPoint, this, std::placeholders::_1,
+                  std::placeholders::_2),
+        rmw_qos_profile_services_default, serviceCallbackGroup_);
     setPointsService_ =
         create_service<laser_control_interfaces::srv::SetPoints>(
             "~/set_points",
             std::bind(&LaserControlNode::onSetPoints, this,
-                      std::placeholders::_1, std::placeholders::_2));
+                      std::placeholders::_1, std::placeholders::_2),
+            rmw_qos_profile_services_default, serviceCallbackGroup_);
     removePointService_ = create_service<std_srvs::srv::Trigger>(
         "~/remove_point",
         std::bind(&LaserControlNode::onRemovePoint, this, std::placeholders::_1,
-                  std::placeholders::_2));
+                  std::placeholders::_2),
+        rmw_qos_profile_services_default, serviceCallbackGroup_);
     clearPointsService_ = create_service<std_srvs::srv::Trigger>(
         "~/clear_points",
         std::bind(&LaserControlNode::onClearPoints, this, std::placeholders::_1,
-                  std::placeholders::_2));
+                  std::placeholders::_2),
+        rmw_qos_profile_services_default, serviceCallbackGroup_);
     setPlaybackParamsService_ =
         create_service<laser_control_interfaces::srv::SetPlaybackParams>(
             "~/set_playback_params",
             std::bind(&LaserControlNode::onSetPlaybackParams, this,
-                      std::placeholders::_1, std::placeholders::_2));
+                      std::placeholders::_1, std::placeholders::_2),
+            rmw_qos_profile_services_default, serviceCallbackGroup_);
     playService_ = create_service<std_srvs::srv::Trigger>(
-        "~/play", std::bind(&LaserControlNode::onPlay, this,
-                            std::placeholders::_1, std::placeholders::_2));
+        "~/play",
+        std::bind(&LaserControlNode::onPlay, this, std::placeholders::_1,
+                  std::placeholders::_2),
+        rmw_qos_profile_services_default, serviceCallbackGroup_);
     stopService_ = create_service<std_srvs::srv::Trigger>(
-        "~/stop", std::bind(&LaserControlNode::onStop, this,
-                            std::placeholders::_1, std::placeholders::_2));
+        "~/stop",
+        std::bind(&LaserControlNode::onStop, this, std::placeholders::_1,
+                  std::placeholders::_2),
+        rmw_qos_profile_services_default, serviceCallbackGroup_);
     getStateService_ = create_service<laser_control_interfaces::srv::GetState>(
-        "~/get_state", std::bind(&LaserControlNode::onGetState, this,
-                                 std::placeholders::_1, std::placeholders::_2));
+        "~/get_state",
+        std::bind(&LaserControlNode::onGetState, this, std::placeholders::_1,
+                  std::placeholders::_2),
+        rmw_qos_profile_services_default, serviceCallbackGroup_);
 
     ////////////
     // DAC Setup
@@ -240,6 +258,7 @@ class LaserControlNode : public rclcpp::Node {
 
   rclcpp::Publisher<laser_control_interfaces::msg::State>::SharedPtr
       statePublisher_;
+  rclcpp::CallbackGroup::SharedPtr serviceCallbackGroup_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr startDeviceService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr closeDeviceService_;
   rclcpp::Service<laser_control_interfaces::srv::SetColor>::SharedPtr
