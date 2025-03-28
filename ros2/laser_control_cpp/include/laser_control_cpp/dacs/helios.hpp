@@ -6,21 +6,19 @@
 #include <tuple>
 #include <vector>
 
-#include "etherdream.h"
-#include "laser_control_cpp/laser_dac/laser_dac.hpp"
+#include "HeliosDac.h"
+#include "laser_control_cpp/dacs/dac.hpp"
 
-class EtherDream final : public LaserDAC {
+class Helios final : public DAC {
  public:
-  // Ether Dream DAC uses 16 bits (signed) for x and y
-  static constexpr int16_t X_MIN = -32768;
-  static constexpr int16_t X_MAX = 32767;
-  static constexpr int16_t Y_MIN = -32768;
-  static constexpr int16_t Y_MAX = 32767;
-  // Ether Dream DAC uses 16 bits (unsigned) for r, g, b, i
-  static constexpr uint16_t MAX_COLOR = 65535;
+  // Helios DAC uses 12 bits (unsigned) for x and y
+  static constexpr int X_MAX = 4095;
+  static constexpr int Y_MAX = 4095;
+  // Helios DAC uses 8 bits (unsigned) for r, g, b, i
+  static constexpr int MAX_COLOR = 255;
 
-  EtherDream();
-  ~EtherDream() override;
+  Helios();
+  ~Helios() override;
 
   /**
    * Search for online DACs.
@@ -77,7 +75,8 @@ class EtherDream final : public LaserDAC {
 
   /**
    * Start playback of points.
-   * Ether Dream max rate: 100K pps
+   * Helios max rate: 65535 pps
+   * Helios max points per frame (pps/fps): 4096
    *
    * @param fps Target frames per second.
    * @param pps Target points per second. This should not exceed the capability
@@ -102,9 +101,9 @@ class EtherDream final : public LaserDAC {
   void close() override;
 
  private:
-  std::atomic<bool> dacConnected_{false};
-  unsigned long connectedDacId_{0};
-
+  std::shared_ptr<HeliosDac> heliosDac_;
+  std::atomic<bool> initialized_{false};
+  int dacIdx_{-1};
   std::vector<std::pair<float, float>> points_;
   std::mutex pointsMutex_;
   std::tuple<float, float, float, float> color_;
@@ -113,10 +112,7 @@ class EtherDream final : public LaserDAC {
   std::thread checkConnectionThread_;
   std::thread playbackThread_;
 
-  std::vector<etherdream_point> getFrame(int fps, int pps,
-                                         float transitionDurationMs);
-  std::pair<int16_t, int16_t> denormalizePoint(float x, float y) const;
-  std::tuple<uint16_t, uint16_t, uint16_t, uint16_t> denormalizeColor(
-      float r, float g, float b, float i) const;
-  std::string dacIdToHex(unsigned long dacId) const;
+  std::vector<HeliosPoint> getFrame(int fps, int pps,
+                                    float transitionDurationMs);
+  int getNativeStatus() const;
 };

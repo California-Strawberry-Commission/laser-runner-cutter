@@ -1,6 +1,6 @@
-#include "laser_control_cpp/laser_dac/ether_dream.hpp"
-#include "laser_control_cpp/laser_dac/helios.hpp"
-#include "laser_control_cpp/laser_dac/laser_dac.hpp"
+#include "laser_control_cpp/dacs/dac.hpp"
+#include "laser_control_cpp/dacs/ether_dream.hpp"
+#include "laser_control_cpp/dacs/helios.hpp"
 #include "laser_control_interfaces/msg/device_state.hpp"
 #include "laser_control_interfaces/msg/state.hpp"
 #include "laser_control_interfaces/srv/add_point.hpp"
@@ -276,7 +276,7 @@ class LaserControlNode : public rclcpp::Node {
   rclcpp::Service<laser_control_interfaces::srv::GetState>::SharedPtr
       getStateService_;
 
-  std::shared_ptr<LaserDAC> dac_;
+  std::shared_ptr<DAC> dac_;
   bool connecting_{false};
 };
 

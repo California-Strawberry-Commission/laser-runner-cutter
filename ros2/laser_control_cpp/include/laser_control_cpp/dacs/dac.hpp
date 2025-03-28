@@ -1,8 +1,8 @@
 #pragma once
 
-class LaserDAC {
+class DAC {
  public:
-  virtual ~LaserDAC() = default;
+  virtual ~DAC() = default;
 
   /**
    * Search for online DACs.

@@ -1,4 +1,4 @@
-#include "laser_control_cpp/laser_dac/ether_dream.hpp"
+#include "laser_control_cpp/dacs/ether_dream.hpp"
 
 #include <spdlog/spdlog.h>
 

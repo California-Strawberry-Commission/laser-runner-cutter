@@ -1,4 +1,4 @@
-#include "laser_control_cpp/laser_dac/helios.hpp"
+#include "laser_control_cpp/dacs/helios.hpp"
 
 #include <spdlog/spdlog.h>
 
