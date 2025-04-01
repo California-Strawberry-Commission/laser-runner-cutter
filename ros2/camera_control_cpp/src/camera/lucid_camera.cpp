@@ -111,20 +111,20 @@ void LucidCamera::connectionThreadFn(double exposureUs, double gainDb) {
       // If we don't have a serial number of a device, attempt to find one among
       // connected devices. Otherwise, find the DeviceInfo with the desired
       // serial number.
-      if (!colorCameraSerialNumber_.has_value()) {
+      if (!colorCameraSerialNumber_) {
         colorDeviceInfo = findFirstDeviceWithModelPrefix(
             deviceInfos, LucidCamera::COLOR_CAMERA_MODEL_PREFIXES);
-        if (colorDeviceInfo.has_value()) {
+        if (colorDeviceInfo) {
           colorCameraSerialNumber_ = colorDeviceInfo.value().SerialNumber();
         }
       } else {
         colorDeviceInfo =
             findDeviceWithSerial(deviceInfos, colorCameraSerialNumber_.value());
       }
-      if (!depthCameraSerialNumber_.has_value()) {
+      if (!depthCameraSerialNumber_) {
         depthDeviceInfo = findFirstDeviceWithModelPrefix(
             deviceInfos, LucidCamera::DEPTH_CAMERA_MODEL_PREFIXES);
-        if (depthDeviceInfo.has_value()) {
+        if (depthDeviceInfo) {
           depthCameraSerialNumber_ = depthDeviceInfo.value().SerialNumber();
         }
       } else {
@@ -133,7 +133,7 @@ void LucidCamera::connectionThreadFn(double exposureUs, double gainDb) {
       }
 
       // If the devices are connected, set up and start streaming
-      if (colorDeviceInfo.has_value() && depthDeviceInfo.has_value()) {
+      if (colorDeviceInfo && depthDeviceInfo) {
         spdlog::info(
             "Device (color, model={}, serial={}, firmware={}) and device "
             "(depth, model={}, serial={}, firmware={}) found",
@@ -325,10 +325,10 @@ void LucidCamera::startStream(const Arena::DeviceInfo& colorDeviceInfo,
   ////////////////////////
   // Set exposure and gain
   ////////////////////////
-  if (exposureUs.has_value()) {
+  if (exposureUs) {
     setExposureUs(exposureUs.value());
   }
-  if (gainDb.has_value()) {
+  if (gainDb) {
     setGainDb(gainDb.value());
   }
 
@@ -486,7 +486,7 @@ void LucidCamera::acquisitionThreadFn(FrameCallback frameCallback) {
       std::optional<std::pair<cv::Mat, cv::Mat>> depthFrame{
           depthFrameFuture.get()};
 
-      if (!colorFrame.has_value() || !depthFrame.has_value()) {
+      if (!colorFrame || !depthFrame) {
         spdlog::error("No frame available. Signaling connection thread");
         cv_.notify_one();
         cv_.wait(lock);
@@ -561,11 +561,11 @@ std::optional<std::pair<cv::Mat, cv::Mat>> LucidCamera::getDepthFrame() {
   // Convert 16-bit unsigned integer values to floating point and apply scale
   // and offsets to convert (x, y, z) to mm
   cv::Mat xyzFlat(height * width, 3, CV_32F);
-  rawXYZ.convertTo(xyzFlat, CV_32F, xyzScale_);  // apply scale
-  cv::add(xyzFlat,
-          cv::Scalar(std::get<0>(xyzOffset_), std::get<1>(xyzOffset_),
-                     std::get<2>(xyzOffset_)),
-          xyzFlat);  // apply offset
+  // Apply scale
+  rawXYZ.convertTo(xyzFlat, CV_32F, xyzScale_);
+  // Apply offset
+  auto [xOffset, yOffset, zOffset]{xyzOffset_};
+  cv::add(xyzFlat, cv::Scalar(xOffset, yOffset, zOffset), xyzFlat);
 
   // Copy intensity values
   cv::Mat intensityFlat(height * width, 1, CV_16UC1);

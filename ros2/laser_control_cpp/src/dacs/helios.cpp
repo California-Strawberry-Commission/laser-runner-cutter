@@ -6,7 +6,7 @@
 #include <chrono>
 #include <cmath>
 
-Helios::Helios() : heliosDac_(std::make_shared<HeliosDac>()) {}
+Helios::Helios() : heliosDac_{std::make_shared<HeliosDac>()} {}
 
 Helios::~Helios() { close(); }
 
@@ -156,12 +156,11 @@ std::vector<HeliosPoint> Helios::getFrame(int fps, int pps,
   std::vector<HeliosPoint> frame(laxelsPerFrame);
 
   // Extract color components from tuple and convert to DAC range
-  float r_f, g_f, b_f, i_f;
-  std::tie(r_f, g_f, b_f, i_f) = color_;
-  uint8_t r{static_cast<uint8_t>(std::round(r_f * Helios::MAX_COLOR))};
-  uint8_t g{static_cast<uint8_t>(std::round(g_f * Helios::MAX_COLOR))};
-  uint8_t b{static_cast<uint8_t>(std::round(b_f * Helios::MAX_COLOR))};
-  uint8_t i{static_cast<uint8_t>(std::round(i_f * Helios::MAX_COLOR))};
+  auto [rNorm, gNorm, bNorm, iNorm]{color_};
+  uint8_t r{static_cast<uint8_t>(std::round(rNorm * Helios::MAX_COLOR))};
+  uint8_t g{static_cast<uint8_t>(std::round(gNorm * Helios::MAX_COLOR))};
+  uint8_t b{static_cast<uint8_t>(std::round(bNorm * Helios::MAX_COLOR))};
+  uint8_t i{static_cast<uint8_t>(std::round(iNorm * Helios::MAX_COLOR))};
 
   if (numPoints == 0) {
     // Even if there are no points to render, we still to send over laxels so

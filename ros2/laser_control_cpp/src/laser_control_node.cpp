@@ -22,14 +22,13 @@ class LaserControlNode : public rclcpp::Node {
     declare_parameter<int>("laser_control_params.dac_index", 0);
     declare_parameter<int>("laser_control_params.fps", 30);
     declare_parameter<int>("laser_control_params.pps", 30000);
-    // Note: float params become doubles under the hood
-    declare_parameter<double>("laser_control_params.transition_duration_ms",
-                              0.5);
+    declare_parameter<float>("laser_control_params.transition_duration_ms",
+                             0.5f);
 
     /////////
     // Topics
     /////////
-    rclcpp::QoS latchedQos(rclcpp::KeepLast(1));
+    rclcpp::QoS latchedQos{rclcpp::KeepLast(1)};
     latchedQos.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
     statePublisher_ = create_publisher<laser_control_interfaces::msg::State>(
         "~/state", latchedQos);
@@ -100,7 +99,7 @@ class LaserControlNode : public rclcpp::Node {
     ////////////
     // DAC Setup
     ////////////
-    auto dacType = get_parameter("laser_control_params.dac_type").as_string();
+    auto dacType{getParamDacType()};
     if (dacType == "helios") {
       dac_ = std::make_shared<Helios>();
     } else if (dacType == "ether_dream") {
@@ -126,7 +125,7 @@ class LaserControlNode : public rclcpp::Node {
     if (numDacs == 0) {
       response->success = false;
     } else {
-      dac_->connect(get_parameter("laser_control_params.dac_index").as_int());
+      dac_->connect(getParamDacIndex());
       response->success = true;
     }
 
@@ -199,13 +198,13 @@ class LaserControlNode : public rclcpp::Node {
       std::shared_ptr<
           laser_control_interfaces::srv::SetPlaybackParams::Response>
           response) {
-    std::vector<rclcpp::Parameter> newParams = {
-        rclcpp::Parameter("laser_control_params.fps",
-                          static_cast<int>(request->fps)),
-        rclcpp::Parameter("laser_control_params.pps",
-                          static_cast<int>(request->pps)),
-        rclcpp::Parameter("laser_control_params.transition_duration_ms",
-                          static_cast<double>(request->transition_duration_ms)),
+    std::vector<rclcpp::Parameter> newParams{
+        rclcpp::Parameter{"laser_control_params.fps",
+                          static_cast<int>(request->fps)},
+        rclcpp::Parameter{"laser_control_params.pps",
+                          static_cast<int>(request->pps)},
+        rclcpp::Parameter{"laser_control_params.transition_duration_ms",
+                          static_cast<double>(request->transition_duration_ms)},
     };
     set_parameters(newParams);
     response->success = true;
@@ -213,11 +212,7 @@ class LaserControlNode : public rclcpp::Node {
 
   void onPlay(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
               std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-    dac_->play(get_parameter("laser_control_params.fps").as_int(),
-               get_parameter("laser_control_params.pps").as_int(),
-               static_cast<float>(
-                   get_parameter("laser_control_params.transition_duration_ms")
-                       .as_double()));
+    dac_->play(getParamFps(), getParamPps(), getParamTransitionDurationMs());
     publishState();
     response->success = true;
   }
@@ -256,6 +251,33 @@ class LaserControlNode : public rclcpp::Node {
 
   void publishState() { statePublisher_->publish(*getState()); }
 
+#pragma region Param helpers
+
+  std::string getParamDacType() {
+    return get_parameter("laser_control_params.dac_type").as_string();
+  }
+
+  int getParamDacIndex() {
+    return static_cast<int>(
+        get_parameter("laser_control_params.dac_index").as_int());
+  }
+
+  int getParamFps() {
+    return static_cast<int>(get_parameter("laser_control_params.fps").as_int());
+  }
+
+  int getParamPps() {
+    return static_cast<int>(get_parameter("laser_control_params.pps").as_int());
+  }
+
+  float getParamTransitionDurationMs() {
+    return static_cast<float>(
+        get_parameter("laser_control_params.transition_duration_ms")
+            .as_double());
+  }
+
+#pragma endregion
+
   rclcpp::Publisher<laser_control_interfaces::msg::State>::SharedPtr
       statePublisher_;
   rclcpp::CallbackGroup::SharedPtr serviceCallbackGroup_;
@@ -284,7 +306,7 @@ int main(int argc, char* argv[]) {
   rclcpp::init(argc, argv);
   // MultiThreadedExecutor allows callbacks to run in parallel
   rclcpp::executors::MultiThreadedExecutor executor;
-  auto node = std::make_shared<LaserControlNode>();
+  auto node{std::make_shared<LaserControlNode>()};
   executor.add_node(node);
   executor.spin();
   rclcpp::shutdown();

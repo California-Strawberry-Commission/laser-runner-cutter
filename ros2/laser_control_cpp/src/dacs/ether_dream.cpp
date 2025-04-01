@@ -27,7 +27,7 @@ int EtherDream::initialize() {
 
 void EtherDream::connect(int dacIdx) {
   spdlog::info("Connecting to DAC...");
-  unsigned long dacId = etherdream_get_id(dacIdx);
+  unsigned long dacId{etherdream_get_id(dacIdx)};
   if (etherdream_connect(dacId) < 0) {
     throw std::runtime_error("Could not connect to DAC [" + dacIdToHex(dacId) +
                              "]");
@@ -153,9 +153,8 @@ std::vector<etherdream_point> EtherDream::getFrame(int fps, int pps,
   std::vector<etherdream_point> frame(laxelsPerFrame);
 
   // Extract color components from tuple and convert to DAC range
-  float r_f, g_f, b_f, i_f;
-  std::tie(r_f, g_f, b_f, i_f) = color_;
-  auto colorDenorm = denormalizeColor(r_f, g_f, b_f, i_f);
+  auto [rNorm, gNorm, bNorm, iNorm]{color_};
+  auto [r, g, b, i]{denormalizeColor(rNorm, gNorm, bNorm, iNorm)};
 
   if (numPoints == 0) {
     // Even if there are no points to render, we still to send over laxels so
@@ -174,15 +173,14 @@ std::vector<etherdream_point> EtherDream::getFrame(int fps, int pps,
                           laxelIdx};
 
         auto pointDenorm = denormalizePoint(x, y);
-        frame[frameLaxelIdx] = {
-            pointDenorm.first,
-            pointDenorm.second,
-            isTransition ? static_cast<uint16_t>(0) : std::get<0>(colorDenorm),
-            isTransition ? static_cast<uint16_t>(0) : std::get<1>(colorDenorm),
-            isTransition ? static_cast<uint16_t>(0) : std::get<2>(colorDenorm),
-            isTransition ? static_cast<uint16_t>(0) : std::get<3>(colorDenorm),
-            0,
-            0};
+        frame[frameLaxelIdx] = {pointDenorm.first,
+                                pointDenorm.second,
+                                isTransition ? static_cast<uint16_t>(0) : r,
+                                isTransition ? static_cast<uint16_t>(0) : g,
+                                isTransition ? static_cast<uint16_t>(0) : b,
+                                isTransition ? static_cast<uint16_t>(0) : i,
+                                0,
+                                0};
       }
     }
   }
@@ -192,10 +190,10 @@ std::vector<etherdream_point> EtherDream::getFrame(int fps, int pps,
 
 std::pair<int16_t, int16_t> EtherDream::denormalizePoint(float x,
                                                          float y) const {
-  int16_t xDenorm = static_cast<int16_t>(std::round(
-      (EtherDream::X_MAX - EtherDream::X_MIN) * x + EtherDream::X_MIN));
-  int16_t yDenorm = static_cast<int16_t>(std::round(
-      (EtherDream::Y_MAX - EtherDream::Y_MIN) * y + EtherDream::Y_MIN));
+  int16_t xDenorm{static_cast<int16_t>(std::round(
+      (EtherDream::X_MAX - EtherDream::X_MIN) * x + EtherDream::X_MIN))};
+  int16_t yDenorm{static_cast<int16_t>(std::round(
+      (EtherDream::Y_MAX - EtherDream::Y_MIN) * y + EtherDream::Y_MIN))};
   return {xDenorm, yDenorm};
 }
 

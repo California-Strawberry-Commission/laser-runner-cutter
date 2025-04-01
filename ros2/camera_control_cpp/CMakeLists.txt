@@ -100,8 +100,8 @@ target_link_libraries(yolov8_trt PUBLIC tensorrt_cpp_api ${OpenCV_LIBS})
 target_include_directories(yolov8_trt PUBLIC ${TENSORRT_CPP_API_DIR}/src)
 set(YOLOV8_TRT_INCLUDE_DIRS ${YOLOV8_TRT_DIR}/src)
 
-# Camera
-add_library(camera
+# camera
+add_library(camera SHARED
   src/camera/lucid_camera.cpp
   src/camera/lucid_frame.cpp
 )
@@ -111,8 +111,8 @@ target_include_directories(camera PUBLIC
 )
 target_link_libraries(camera PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS})
 
-# Detector
-add_library(detector
+# detector
+add_library(detector SHARED
   src/detector/circle_detector.cpp
   src/detector/laser_detector.cpp
 )
@@ -123,7 +123,7 @@ target_include_directories(detector PUBLIC
 )
 target_link_libraries(detector PRIVATE spdlog::spdlog ${OpenCV_LIBS} ${CUDA_LIBRARIES} ${TensorRT_LIBRARIES})
 
-# Node
+# Node executable
 add_executable(camera_control_node
   src/camera_control_node.cpp
 )
