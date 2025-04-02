@@ -73,7 +73,7 @@ class CameraControlNode : public rclcpp::Node {
         "~/debug_frame", rclcpp::SensorDataQoS());
     detectionsPublisher_ =
         create_publisher<camera_control_interfaces::msg::DetectionResult>(
-            "~/detections", 5);
+            "~/detections", rclcpp::SensorDataQoS());
     notificationsPublisher_ =
         create_publisher<rcl_interfaces::msg::Log>("/notifications", 1);
 

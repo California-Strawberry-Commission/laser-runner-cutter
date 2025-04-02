@@ -73,7 +73,9 @@ class CameraControlParams:
 camera_control_params = aioros2.params(CameraControlParams)
 state_topic = aioros2.topic("~/state", State, qos=aioros2.QOS_LATCHED)
 debug_frame_topic = aioros2.topic("~/debug_frame", Image, qos=qos_profile_sensor_data)
-detections_topic = aioros2.topic("~/detections", DetectionResult, qos=5)
+detections_topic = aioros2.topic(
+    "~/detections", DetectionResult, qos=qos_profile_sensor_data
+)
 notifications_topic = aioros2.topic("/notifications", Log, qos=1)
 
 
