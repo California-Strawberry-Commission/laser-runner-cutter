@@ -82,8 +82,6 @@ std::optional<std::shared_ptr<Track>> Tracker::getNextPendingTrack() {
 }
 
 void Tracker::processTrack(int trackId, Track::State newState) {
-  std::lock_guard<std::mutex> lock(tracksMutex_);
-
   auto trackOpt{getTrack(trackId)};
   if (!trackOpt) {
     return;
@@ -93,6 +91,8 @@ void Tracker::processTrack(int trackId, Track::State newState) {
   if (track->getState() == newState) {
     return;
   }
+
+  std::lock_guard<std::mutex> lock(tracksMutex_);
 
   // If the track is leaving the PENDING state, remove it from pendingTracks_
   if (track->getState() == Track::State::PENDING) {

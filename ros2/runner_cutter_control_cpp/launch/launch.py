@@ -13,8 +13,6 @@ from amiga_control import amiga_control_node
 from camera_control import camera_control_node
 from furrow_perceiver import furrow_perceiver_node
 from guidance_brain import guidance_brain_node
-from laser_control import laser_control_node
-from runner_cutter_control import runner_cutter_control_node
 
 
 def generate_launch_description():

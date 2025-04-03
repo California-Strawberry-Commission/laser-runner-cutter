@@ -400,9 +400,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
 #pragma region Task definitions
 
   void calibrationTask() {
-    // TODO: make task stoppable via taskStopSignal_
     publishNotification("Calibration started");
-    calibration_->calibrate();
+    calibration_->calibrate({5, 5}, taskStopSignal_);
     publishNotification("Calibration complete");
   }
 
@@ -441,7 +440,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
                       laserCoords.end());
 
     std::size_t numPointsAdded{
-        calibration_->addCalibrationPoints(laserCoords, true)};
+        calibration_->addCalibrationPoints(laserCoords, true, taskStopSignal_)};
 
     publishNotification(
         fmt::format("Added {} calibration point(s)", numPointsAdded));
@@ -593,13 +592,14 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
   void burnTarget(std::shared_ptr<Track> target,
                   std::pair<float, float> laserCoord) {
-    RCLCPP_INFO(get_logger(), "Burning track %d...", target->getId());
+    float burnTimeSecs{getParamBurnTimeSecs()};
     auto [r, g, b]{getParamBurnLaserColor()};
     laser_->setColor(r, g, b, 0.0f);
     laser_->setPoints(std::vector<std::pair<float, float>>{laserCoord});
+    RCLCPP_INFO(get_logger(), "Burning track %d for %f secs...",
+                target->getId(), burnTimeSecs);
     laser_->play();
-    std::this_thread::sleep_for(
-        std::chrono::duration<float>(getParamBurnTimeSecs()));
+    std::this_thread::sleep_for(std::chrono::duration<float>(burnTimeSecs));
     laser_->stop();
     tracker_->processTrack(target->getId(), Track::State::COMPLETED);
     RCLCPP_INFO(get_logger(), "Burn complete on track %d...", target->getId());
@@ -681,7 +681,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
       float pixelDistanceThreshold = 2.5f) {
     auto currentLaserCoord{initialLaserCoord};
 
-    while (true) {
+    while (!taskStopSignal_) {
       laser_->setPoints(
           std::vector<std::pair<float, float>>{currentLaserCoord});
       // Get detected camera pixel coord and camera-space position for laser
@@ -746,6 +746,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
       currentLaserCoord = newLaserCoord;
     }
+
+    return std::nullopt;
   }
 
   struct DetectLaserResult {
@@ -754,7 +756,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
   };
   std::optional<DetectLaserResult> detectLaser(int maxAttempts = 3) {
     int attempt{0};
-    while (attempt < maxAttempts) {
+    while (attempt < maxAttempts && !taskStopSignal_) {
       auto detectionResult{camera_->getDetection(
           camera_control_interfaces::msg::DetectionType::LASER, true)};
       auto instances{detectionResult->instances};

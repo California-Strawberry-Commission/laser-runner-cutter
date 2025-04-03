@@ -30,9 +30,13 @@ class Calibration {
    *
    * @param gridSize Number of points in the x and y directions to use as
    * calibration points.
+   * @param stopSignal Flag to enable the calibration process to be prematurely
+   * terminated when set to true.
    * @return whether calibration was successful or not.
    */
-  bool calibrate(std::pair<int, int> gridSize = {5, 5});
+  bool calibrate(std::pair<int, int> gridSize = {5, 5},
+                 std::optional<std::reference_wrapper<std::atomic<bool>>>
+                     stopSignal = std::nullopt);
 
   /**
    * Transform a 3D position in camera-space to a laser coord.
@@ -50,11 +54,15 @@ class Calibration {
    * @param laserCoords Laser coordinates to find point correspondences with.
    * @param updateTransform Whether to recalculate the camera-space position to
    * laser coord transform.
+   * @param stopSignal Flag to enable the calibration process to be prematurely
+   * terminated when set to true.
    * @return Number of point correspondences successfully added.
    */
   std::size_t addCalibrationPoints(
       const std::vector<std::pair<float, float>>& laserCoords,
-      bool updateTransform = false);
+      bool updateTransform = false,
+      std::optional<std::reference_wrapper<std::atomic<bool>>> stopSignal =
+          std::nullopt);
 
   /**
    * Add the point correspondence between laser coord and camera-space position

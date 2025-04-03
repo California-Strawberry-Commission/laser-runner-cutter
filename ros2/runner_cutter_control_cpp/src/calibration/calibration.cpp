@@ -41,7 +41,9 @@ void Calibration::reset() {
   isCalibrated_ = false;
 }
 
-bool Calibration::calibrate(std::pair<int, int> gridSize) {
+bool Calibration::calibrate(
+    std::pair<int, int> gridSize,
+    std::optional<std::reference_wrapper<std::atomic<bool>>> stopSignal) {
   reset();
 
   // Get color frame size
@@ -64,7 +66,7 @@ bool Calibration::calibrate(std::pair<int, int> gridSize) {
 
   // Get image correspondences
   spdlog::info("Getting image correspondences");
-  addCalibrationPoints(pendingLaserCoords);
+  addCalibrationPoints(pendingLaserCoords, false, stopSignal);
   spdlog::info("{} out of {} point correspondences found.",
                pointCorrespondences_.size(), pendingLaserCoords.size());
   if (pointCorrespondences_.size() < 3) {
@@ -103,7 +105,8 @@ std::pair<float, float> Calibration::cameraPositionToLaserCoord(
 
 std::size_t Calibration::addCalibrationPoints(
     const std::vector<std::pair<float, float>>& laserCoords,
-    bool updateTransform) {
+    bool updateTransform,
+    std::optional<std::reference_wrapper<std::atomic<bool>>> stopSignal) {
   if (laserCoords.empty()) {
     return 0;
   }
@@ -117,6 +120,10 @@ std::size_t Calibration::addCalibrationPoints(
     LaserDetectionContext context{laser_, camera_};
     laser_->play();
     for (const auto& laserCoord : laserCoords) {
+      if (stopSignal && stopSignal->get()) {
+        return 0;
+      }
+
       laser_->setPoints({laserCoord});
       auto [r, g, b]{laserColor_};
       laser_->setColor(r, g, b, 0.0f);
