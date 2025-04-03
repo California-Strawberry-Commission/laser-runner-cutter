@@ -1,0 +1,43 @@
+control0:
+  ros__parameters:
+    runner_cutter_control_params:
+      laser_control_node_name: "laser0"
+      camera_control_node_name: "camera0"
+      tracking_laser_color: [0.15, 0.0, 0.0]
+      burn_laser_color: [0.15, 0.0, 0.0]
+      burn_time_secs: 1.0
+      enable_aiming: True
+      target_attempts: 3
+      auto_disarm_secs: 5.0
+camera0:
+  ros__parameters:
+    camera_control_params:
+      camera_type: "lucid"
+      camera_index: 0
+      exposure_us: 20000.0
+      gain_db: 1.0
+      debug_video_fps: 15.0
+laser0:
+  ros__parameters:
+    laser_control_params:
+      dac_type: "helios"
+      dac_index: 0
+      # Since we only render one point at a time, we want fps equal to pps and set as high as possible
+      # in order to minimize buffer size and thus latency.
+      fps: 1000
+      pps: 1000
+      transition_duration_ms: 0.5
+furrow_perceiver_forward:
+  ros__parameters:
+    # Since RealSense ROS nodes are not using aioros2, we use a stub node def to represent the
+    # dependency. We set the name of the dependent node here so that the topic names are resolved
+    # properly.
+    realsense_node:
+      name: cam_forward
+furrow_perceiver_backward:
+  ros__parameters:
+    # Since RealSense ROS nodes are not using aioros2, we use a stub node def to represent the
+    # dependency. We set the name of the dependent node here so that the topic names are resolved
+    # properly.
+    realsense_node:
+      name: cam_backward
