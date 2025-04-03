@@ -107,6 +107,9 @@ class LaserControlNode : public rclcpp::Node {
     } else {
       throw std::runtime_error("Unknown dac_type: " + dacType);
     }
+
+    // Publish initial state
+    publishState();
   }
 
  private:
