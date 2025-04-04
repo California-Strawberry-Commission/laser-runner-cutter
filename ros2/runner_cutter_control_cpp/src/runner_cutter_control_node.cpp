@@ -273,10 +273,10 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
 #pragma region State and notifs publishing
 
-  runner_cutter_control_interfaces::msg::State::SharedPtr getState() {
+  runner_cutter_control_interfaces::msg::State::UniquePtr getStateMsg() {
     std::lock_guard<std::mutex> lock(taskMutex_);
 
-    auto msg{std::make_shared<runner_cutter_control_interfaces::msg::State>()};
+    auto msg{std::make_unique<runner_cutter_control_interfaces::msg::State>()};
     msg->calibrated = calibration_->isCalibrated();
     msg->state = taskRunning_ ? taskName_ : "idle";
     auto [minX, minY, width, height]{calibration_->getNormalizedLaserBounds()};
@@ -289,8 +289,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
     return msg;
   }
 
-  runner_cutter_control_interfaces::msg::Tracks::SharedPtr getTracksMsg() {
-    auto msg{std::make_shared<runner_cutter_control_interfaces::msg::Tracks>()};
+  runner_cutter_control_interfaces::msg::Tracks::UniquePtr getTracksMsg() {
+    auto msg{std::make_unique<runner_cutter_control_interfaces::msg::Tracks>()};
     auto [frameWidth, frameHeight]{calibration_->getCameraFrameSize()};
     for (const auto& [id, track] : tracker_->getTracks()) {
       runner_cutter_control_interfaces::msg::Track trackMsg;
@@ -328,7 +328,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
     return msg;
   }
 
-  void publishState() { statePublisher_->publish(*getState()); }
+  void publishState() { statePublisher_->publish(std::move(getStateMsg())); }
 
   void publishNotification(
       const std::string& msg,
@@ -373,10 +373,10 @@ class RunnerCutterControlNode : public rclcpp::Node {
     logMsg.stamp.nanosec = nanosec;
     logMsg.level = logMsgLevel;
     logMsg.msg = msg;
-    notificationsPublisher_->publish(logMsg);
+    notificationsPublisher_->publish(std::move(logMsg));
   }
 
-  void publishTracks() { tracksPublisher_->publish(*getTracksMsg()); }
+  void publishTracks() { tracksPublisher_->publish(std::move(getTracksMsg())); }
 
 #pragma endregion
 
@@ -559,7 +559,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
           runner_cutter_control_interfaces::srv::GetState::Request>,
       std::shared_ptr<runner_cutter_control_interfaces::srv::GetState::Response>
           response) {
-    response->state = *getState();
+    response->state = std::move(*getStateMsg());
   }
 
 #pragma endregion

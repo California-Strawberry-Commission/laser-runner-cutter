@@ -167,13 +167,13 @@ class LaserControlNode : public rclcpp::Node {
     }
   }
 
-  laser_control_interfaces::msg::State::SharedPtr getState() {
-    auto msg{std::make_shared<laser_control_interfaces::msg::State>()};
+  laser_control_interfaces::msg::State::UniquePtr getStateMsg() {
+    auto msg{std::make_unique<laser_control_interfaces::msg::State>()};
     msg->device_state = getDeviceState();
     return msg;
   }
 
-  void publishState() { statePublisher_->publish(*getState()); }
+  void publishState() { statePublisher_->publish(std::move(getStateMsg())); }
 
 #pragma endregion
 
@@ -305,7 +305,7 @@ class LaserControlNode : public rclcpp::Node {
       const std::shared_ptr<laser_control_interfaces::srv::GetState::Request>,
       std::shared_ptr<laser_control_interfaces::srv::GetState::Response>
           response) {
-    response->state = *getState();
+    response->state = std::move(*getStateMsg());
   }
 
 #pragma endregion
