@@ -2,6 +2,7 @@
 #include "laser_control_cpp/dacs/ether_dream.hpp"
 #include "laser_control_cpp/dacs/helios.hpp"
 #include "laser_control_interfaces/msg/device_state.hpp"
+#include "laser_control_interfaces/msg/path.hpp"
 #include "laser_control_interfaces/msg/state.hpp"
 #include "laser_control_interfaces/srv/add_point.hpp"
 #include "laser_control_interfaces/srv/get_state.hpp"
@@ -25,13 +26,25 @@ class LaserControlNode : public rclcpp::Node {
     declare_parameter<float>("laser_control_params.transition_duration_ms",
                              0.5f);
 
-    /////////
-    // Topics
-    /////////
+    /////////////
+    // Publishers
+    /////////////
     rclcpp::QoS latchedQos{rclcpp::KeepLast(1)};
     latchedQos.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
     statePublisher_ = create_publisher<laser_control_interfaces::msg::State>(
         "~/state", latchedQos);
+
+    //////////////
+    // Subscribers
+    //////////////
+    rclcpp::SubscriptionOptions options;
+    subscriberCallbackGroup_ =
+        create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+    options.callback_group = subscriberCallbackGroup_;
+    pathSubscriber_ = create_subscription<laser_control_interfaces::msg::Path>(
+        "~/path", 1,
+        std::bind(&LaserControlNode::onPath, this, std::placeholders::_1),
+        options);
 
     ///////////
     // Services
@@ -113,6 +126,67 @@ class LaserControlNode : public rclcpp::Node {
   }
 
  private:
+#pragma region Param helpers
+
+  std::string getParamDacType() {
+    return get_parameter("laser_control_params.dac_type").as_string();
+  }
+
+  int getParamDacIndex() {
+    return static_cast<int>(
+        get_parameter("laser_control_params.dac_index").as_int());
+  }
+
+  int getParamFps() {
+    return static_cast<int>(get_parameter("laser_control_params.fps").as_int());
+  }
+
+  int getParamPps() {
+    return static_cast<int>(get_parameter("laser_control_params.pps").as_int());
+  }
+
+  float getParamTransitionDurationMs() {
+    return static_cast<float>(
+        get_parameter("laser_control_params.transition_duration_ms")
+            .as_double());
+  }
+
+#pragma endregion
+
+#pragma region State publishing
+
+  uint8_t getDeviceState() {
+    if (connecting_) {
+      return laser_control_interfaces::msg::DeviceState::CONNECTING;
+    } else if (!dac_->isConnected()) {
+      return laser_control_interfaces::msg::DeviceState::DISCONNECTED;
+    } else if (dac_->isPlaying()) {
+      return laser_control_interfaces::msg::DeviceState::PLAYING;
+    } else {
+      return laser_control_interfaces::msg::DeviceState::STOPPED;
+    }
+  }
+
+  laser_control_interfaces::msg::State::SharedPtr getState() {
+    auto msg{std::make_shared<laser_control_interfaces::msg::State>()};
+    msg->device_state = getDeviceState();
+    return msg;
+  }
+
+  void publishState() { statePublisher_->publish(*getState()); }
+
+#pragma endregion
+
+#pragma region Callbacks
+
+  void onPath(const laser_control_interfaces::msg::Path::SharedPtr msg) {
+    // TODO: Implement proper pathing. For now, just set the end point.
+    dac_->clearPoints();
+    if (msg->laser_on) {
+      dac_->addPoint(msg->end.x, msg->end.y);
+    }
+  }
+
   void onStartDevice(
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
@@ -234,55 +308,13 @@ class LaserControlNode : public rclcpp::Node {
     response->state = *getState();
   }
 
-  uint8_t getDeviceState() {
-    if (connecting_) {
-      return laser_control_interfaces::msg::DeviceState::CONNECTING;
-    } else if (!dac_->isConnected()) {
-      return laser_control_interfaces::msg::DeviceState::DISCONNECTED;
-    } else if (dac_->isPlaying()) {
-      return laser_control_interfaces::msg::DeviceState::PLAYING;
-    } else {
-      return laser_control_interfaces::msg::DeviceState::STOPPED;
-    }
-  }
-
-  laser_control_interfaces::msg::State::SharedPtr getState() {
-    auto msg{std::make_shared<laser_control_interfaces::msg::State>()};
-    msg->device_state = getDeviceState();
-    return msg;
-  }
-
-  void publishState() { statePublisher_->publish(*getState()); }
-
-#pragma region Param helpers
-
-  std::string getParamDacType() {
-    return get_parameter("laser_control_params.dac_type").as_string();
-  }
-
-  int getParamDacIndex() {
-    return static_cast<int>(
-        get_parameter("laser_control_params.dac_index").as_int());
-  }
-
-  int getParamFps() {
-    return static_cast<int>(get_parameter("laser_control_params.fps").as_int());
-  }
-
-  int getParamPps() {
-    return static_cast<int>(get_parameter("laser_control_params.pps").as_int());
-  }
-
-  float getParamTransitionDurationMs() {
-    return static_cast<float>(
-        get_parameter("laser_control_params.transition_duration_ms")
-            .as_double());
-  }
-
 #pragma endregion
 
   rclcpp::Publisher<laser_control_interfaces::msg::State>::SharedPtr
       statePublisher_;
+  rclcpp::CallbackGroup::SharedPtr subscriberCallbackGroup_;
+  rclcpp::Subscription<laser_control_interfaces::msg::Path>::SharedPtr
+      pathSubscriber_;
   rclcpp::CallbackGroup::SharedPtr serviceCallbackGroup_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr startDeviceService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr closeDeviceService_;

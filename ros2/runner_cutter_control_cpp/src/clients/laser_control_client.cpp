@@ -7,6 +7,9 @@ LaserControlClient::LaserControlClient(rclcpp::Node& callerNode,
                                        int timeoutSecs)
     : node_{callerNode}, timeoutSecs_{timeoutSecs} {
   std::string servicePrefix{"/" + clientNodeName};
+  pathPublisher_ =
+      callerNode.create_publisher<laser_control_interfaces::msg::Path>(
+          servicePrefix + "/path", 1);
   clientCallbackGroup_ =
       callerNode.create_callback_group(rclcpp::CallbackGroupType::Reentrant);
   startDeviceClient_ = callerNode.create_client<std_srvs::srv::Trigger>(
@@ -19,20 +22,6 @@ LaserControlClient::LaserControlClient(rclcpp::Node& callerNode,
       callerNode.create_client<laser_control_interfaces::srv::SetColor>(
           servicePrefix + "/set_color", rmw_qos_profile_services_default,
           clientCallbackGroup_);
-  addPointClient_ =
-      callerNode.create_client<laser_control_interfaces::srv::AddPoint>(
-          servicePrefix + "/add_point", rmw_qos_profile_services_default,
-          clientCallbackGroup_);
-  setPointsClient_ =
-      callerNode.create_client<laser_control_interfaces::srv::SetPoints>(
-          servicePrefix + "/set_points", rmw_qos_profile_services_default,
-          clientCallbackGroup_);
-  removePointClient_ = callerNode.create_client<std_srvs::srv::Trigger>(
-      servicePrefix + "/remove_point", rmw_qos_profile_services_default,
-      clientCallbackGroup_);
-  clearPointsClient_ = callerNode.create_client<std_srvs::srv::Trigger>(
-      servicePrefix + "/clear_points", rmw_qos_profile_services_default,
-      clientCallbackGroup_);
   setPlaybackParamsClient_ =
       callerNode
           .create_client<laser_control_interfaces::srv::SetPlaybackParams>(
@@ -94,67 +83,25 @@ bool LaserControlClient::setColor(float r, float g, float b, float i) {
   return result->success;
 }
 
-bool LaserControlClient::addPoint(std::pair<float, float> point) {
-  auto request{
-      std::make_shared<laser_control_interfaces::srv::AddPoint::Request>()};
-  request->point.x = point.first;
-  request->point.y = point.second;
-  auto future{addPointClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
+bool LaserControlClient::setPoint(float x, float y) {
+  auto msg{laser_control_interfaces::msg::Path()};
+  msg.start.x = x;
+  msg.start.y = y;
+  msg.end.x = x;
+  msg.end.y = y;
+  msg.duration_ms = 0.0;
+  msg.laser_on = true;
+  pathPublisher_->publish(std::move(msg));
 
-  auto result{future.get()};
-  return result->success;
+  return true;
 }
 
-bool LaserControlClient::setPoints(
-    const std::vector<std::pair<float, float>>& points) {
-  auto request{
-      std::make_shared<laser_control_interfaces::srv::SetPoints::Request>()};
-  for (const auto& point : points) {
-    common_interfaces::msg::Vector2 pointMsg;
-    pointMsg.x = point.first;
-    pointMsg.y = point.second;
-    request->points.push_back(pointMsg);
-  }
-  auto future{setPointsClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
+bool LaserControlClient::clearPoint() {
+  auto msg{laser_control_interfaces::msg::Path()};
+  msg.laser_on = false;
+  pathPublisher_->publish(std::move(msg));
 
-  auto result{future.get()};
-  return result->success;
-}
-
-bool LaserControlClient::removePoint() {
-  auto request{std::make_shared<std_srvs::srv::Trigger::Request>()};
-  auto future{removePointClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
-
-  auto result{future.get()};
-  return result->success;
-}
-
-bool LaserControlClient::clearPoints() {
-  auto request{std::make_shared<std_srvs::srv::Trigger::Request>()};
-  auto future{clearPointsClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
-
-  auto result{future.get()};
-  return result->success;
+  return true;
 }
 
 bool LaserControlClient::setPlaybackParams(int fps, int pps,

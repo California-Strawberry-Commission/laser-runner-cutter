@@ -6,12 +6,10 @@
 #include <chrono>
 #include <cmath>
 
-Helios::Helios() : heliosDac_{std::make_shared<HeliosDac>()} {}
-
 Helios::~Helios() { close(); }
 
 int Helios::initialize() {
-  int num_devices{heliosDac_->OpenDevices()};
+  int num_devices{heliosDac_.OpenDevices()};
   initialized_ = true;
   spdlog::info("Found {} Helios DACs.", num_devices);
   return num_devices;
@@ -31,7 +29,7 @@ void Helios::connect(int dacIdx) {
                      getNativeStatus());
         stop();
         if (initialized_) {
-          heliosDac_->CloseDevices();
+          heliosDac_.CloseDevices();
           initialized_ = false;
         }
         initialize();
@@ -96,11 +94,11 @@ void Helios::play(int fps, int pps, float transitionDurationMs) {
       }
 
       if (!frame.empty()) {
-        heliosDac_->WriteFrame(dacIdx_, frame.size() * fps, 0, frame.data(),
-                               frame.size());
+        heliosDac_.WriteFrame(dacIdx_, frame.size() * fps, 0, frame.data(),
+                              frame.size());
       }
     }
-    heliosDac_->Stop(dacIdx_);
+    heliosDac_.Stop(dacIdx_);
   });
 }
 
@@ -126,7 +124,7 @@ void Helios::close() {
   }
 
   if (initialized_) {
-    heliosDac_->CloseDevices();
+    heliosDac_.CloseDevices();
     initialized_ = false;
   }
   dacIdx_ = -1;
@@ -198,8 +196,5 @@ int Helios::getNativeStatus() const {
   // 1 means ready to receive frame
   // 0 means not ready to receive frame
   // Any negative status means error
-  if (!heliosDac_) {
-    return HELIOS_ERROR;
-  }
-  return heliosDac_->GetStatus(dacIdx_);
+  return const_cast<HeliosDac&>(heliosDac_).GetStatus(dacIdx_);
 }

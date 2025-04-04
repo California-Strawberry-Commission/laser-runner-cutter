@@ -19,7 +19,6 @@ class EtherDream final : public DAC {
   // Ether Dream DAC uses 16 bits (unsigned) for r, g, b, i
   static constexpr uint16_t MAX_COLOR = 65535;
 
-  EtherDream();
   ~EtherDream() override;
 
   /**
@@ -102,9 +101,15 @@ class EtherDream final : public DAC {
   void close() override;
 
  private:
+  std::vector<etherdream_point> getFrame(int fps, int pps,
+                                         float transitionDurationMs);
+  std::pair<int16_t, int16_t> denormalizePoint(float x, float y) const;
+  std::tuple<uint16_t, uint16_t, uint16_t, uint16_t> denormalizeColor(
+      float r, float g, float b, float i) const;
+  std::string dacIdToHex(unsigned long dacId) const;
+
   std::atomic<bool> dacConnected_{false};
   unsigned long connectedDacId_{0};
-
   std::vector<std::pair<float, float>> points_;
   std::mutex pointsMutex_;
   std::tuple<float, float, float, float> color_;
@@ -112,11 +117,4 @@ class EtherDream final : public DAC {
   std::atomic<bool> checkConnection_{false};
   std::thread checkConnectionThread_;
   std::thread playbackThread_;
-
-  std::vector<etherdream_point> getFrame(int fps, int pps,
-                                         float transitionDurationMs);
-  std::pair<int16_t, int16_t> denormalizePoint(float x, float y) const;
-  std::tuple<uint16_t, uint16_t, uint16_t, uint16_t> denormalizeColor(
-      float r, float g, float b, float i) const;
-  std::string dacIdToHex(unsigned long dacId) const;
 };

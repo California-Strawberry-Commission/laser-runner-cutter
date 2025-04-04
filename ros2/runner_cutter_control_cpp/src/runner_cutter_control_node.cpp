@@ -217,6 +217,171 @@ class RunnerCutterControlNode : public rclcpp::Node {
   ~RunnerCutterControlNode() { stopTask(); }
 
  private:
+#pragma region Param helpers
+
+  std::string getParamLaserControlNodeName() {
+    return get_parameter("runner_cutter_control_params.laser_control_node_name")
+        .as_string();
+  }
+
+  std::string getParamCameraControlNodeName() {
+    return get_parameter(
+               "runner_cutter_control_params.camera_control_node_name")
+        .as_string();
+  }
+
+  std::tuple<float, float, float> getParamTrackingLaserColor() {
+    auto param{
+        get_parameter("runner_cutter_control_params.tracking_laser_color")
+            .as_double_array()};
+    return {param[0], param[1], param[2]};
+  }
+
+  std::tuple<float, float, float> getParamBurnLaserColor() {
+    auto param{get_parameter("runner_cutter_control_params.burn_laser_color")
+                   .as_double_array()};
+    return {param[0], param[1], param[2]};
+  }
+
+  float getParamBurnTimeSecs() {
+    return static_cast<float>(
+        get_parameter("runner_cutter_control_params.burn_time_secs")
+            .as_double());
+  }
+
+  bool getParamEnableAiming() {
+    return get_parameter("runner_cutter_control_params.enable_aiming")
+        .as_bool();
+  }
+
+  int getParamTargetAttempts() {
+    return static_cast<int>(
+        get_parameter("runner_cutter_control_params.target_attempts").as_int());
+  }
+
+  float getParamAutoDisarmSecs() {
+    return static_cast<float>(
+        get_parameter("runner_cutter_control_params.auto_disarm_secs")
+            .as_double());
+  }
+
+  std::string getParamSaveDir() {
+    return get_parameter("runner_cutter_control_params.save_dir").as_string();
+  }
+
+#pragma endregion
+
+#pragma region State and notifs publishing
+
+  runner_cutter_control_interfaces::msg::State::SharedPtr getState() {
+    std::lock_guard<std::mutex> lock(taskMutex_);
+
+    auto msg{std::make_shared<runner_cutter_control_interfaces::msg::State>()};
+    msg->calibrated = calibration_->isCalibrated();
+    msg->state = taskRunning_ ? taskName_ : "idle";
+    auto [minX, minY, width, height]{calibration_->getNormalizedLaserBounds()};
+    common_interfaces::msg::Vector4 normalizedLaserBoundsMsg;
+    normalizedLaserBoundsMsg.w = minX;
+    normalizedLaserBoundsMsg.x = minY;
+    normalizedLaserBoundsMsg.y = width;
+    normalizedLaserBoundsMsg.z = height;
+    msg->normalized_laser_bounds = normalizedLaserBoundsMsg;
+    return msg;
+  }
+
+  runner_cutter_control_interfaces::msg::Tracks::SharedPtr getTracksMsg() {
+    auto msg{std::make_shared<runner_cutter_control_interfaces::msg::Tracks>()};
+    auto [frameWidth, frameHeight]{calibration_->getCameraFrameSize()};
+    for (const auto& [id, track] : tracker_->getTracks()) {
+      runner_cutter_control_interfaces::msg::Track trackMsg;
+      trackMsg.id = track->getId();
+      common_interfaces::msg::Vector2 normalizedPixelCoordMsg;
+      normalizedPixelCoordMsg.x =
+          frameWidth > 0 ? static_cast<float>(track->getPixel().first) /
+                               static_cast<float>(frameWidth)
+                         : -1.0f;
+      normalizedPixelCoordMsg.y =
+          frameHeight > 0 ? static_cast<float>(track->getPixel().second) /
+                                static_cast<float>(frameHeight)
+                          : -1.0f;
+      trackMsg.normalized_pixel_coord = normalizedPixelCoordMsg;
+      switch (track->getState()) {
+        case Track::State::PENDING:
+          trackMsg.state =
+              runner_cutter_control_interfaces::msg::TrackState::PENDING;
+          break;
+        case Track::State::ACTIVE:
+          trackMsg.state =
+              runner_cutter_control_interfaces::msg::TrackState::ACTIVE;
+          break;
+        case Track::State::COMPLETED:
+          trackMsg.state =
+              runner_cutter_control_interfaces::msg::TrackState::COMPLETED;
+          break;
+        case Track::State::FAILED:
+          trackMsg.state =
+              runner_cutter_control_interfaces::msg::TrackState::FAILED;
+          break;
+      }
+      msg->tracks.push_back(trackMsg);
+    }
+    return msg;
+  }
+
+  void publishState() { statePublisher_->publish(*getState()); }
+
+  void publishNotification(
+      const std::string& msg,
+      rclcpp::Logger::Level level = rclcpp::Logger::Level::Info) {
+    uint8_t logMsgLevel = 0;
+    switch (level) {
+      case rclcpp::Logger::Level::Debug:
+        RCLCPP_DEBUG(get_logger(), msg.c_str());
+        logMsgLevel = rcl_interfaces::msg::Log::DEBUG;
+        break;
+      case rclcpp::Logger::Level::Info:
+        RCLCPP_INFO(get_logger(), msg.c_str());
+        logMsgLevel = rcl_interfaces::msg::Log::INFO;
+        break;
+      case rclcpp::Logger::Level::Warn:
+        RCLCPP_WARN(get_logger(), msg.c_str());
+        logMsgLevel = rcl_interfaces::msg::Log::WARN;
+        break;
+      case rclcpp::Logger::Level::Error:
+        RCLCPP_ERROR(get_logger(), msg.c_str());
+        logMsgLevel = rcl_interfaces::msg::Log::ERROR;
+        break;
+      case rclcpp::Logger::Level::Fatal:
+        RCLCPP_FATAL(get_logger(), msg.c_str());
+        logMsgLevel = rcl_interfaces::msg::Log::FATAL;
+        break;
+      default:
+        RCLCPP_ERROR(get_logger(), "Unknown log level: %s", msg.c_str());
+        return;
+    }
+
+    // Get current time in milliseconds
+    double timestampMillis{
+        static_cast<double>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::system_clock::now().time_since_epoch())
+                .count()) /
+        1000.0};
+    auto [sec, nanosec]{millisecondsToRosTime(timestampMillis)};
+    auto logMsg{rcl_interfaces::msg::Log()};
+    logMsg.stamp.sec = sec;
+    logMsg.stamp.nanosec = nanosec;
+    logMsg.level = logMsgLevel;
+    logMsg.msg = msg;
+    notificationsPublisher_->publish(logMsg);
+  }
+
+  void publishTracks() { tracksPublisher_->publish(*getTracksMsg()); }
+
+#pragma endregion
+
+#pragma region Callbacks
+
   void onDetection(
       const camera_control_interfaces::msg::DetectionResult::SharedPtr msg) {
     if (msg->detection_type ==
@@ -396,6 +561,87 @@ class RunnerCutterControlNode : public rclcpp::Node {
           response) {
     response->state = *getState();
   }
+
+#pragma endregion
+
+#pragma region Task management
+
+  void resetToIdle() {
+    laser_->clearPoint();
+    laser_->stop();
+    camera_->stopAllDetections();
+    tracker_->clear();
+    lastDetectedTrackIds_.clear();
+  }
+
+  template <typename Function, typename... Args>
+  bool startTask(const std::string& taskName, Function&& func, Args&&... args) {
+    std::unique_lock<std::mutex> lock(taskMutex_);
+
+    // If a task is already running, don't start another task
+    if (taskRunning_) {
+      return false;
+    }
+
+    // If the task is done, but the thread has not been joined yet, do it now
+    if (taskThread_.joinable()) {
+      lock.unlock();  // unlock before joining to prevent deadlock
+      taskThread_.join();
+      lock.lock();
+    }
+
+    taskStopSignal_ = false;
+    taskName_ = taskName;
+    taskRunning_ = true;
+
+    // Store arguments in a tuple for C++17 compatibility
+    auto taskArgs{std::make_tuple(std::forward<Args>(args)...)};
+
+    taskThread_ =
+        std::thread([this, func = std::forward<Function>(func), taskArgs]() {
+          try {
+            resetToIdle();
+            publishState();
+            std::apply(
+                [this, &func](auto&&... unpackedArgs) {
+                  std::invoke(
+                      func, this,
+                      std::forward<decltype(unpackedArgs)>(unpackedArgs)...);
+                },
+                taskArgs);
+          } catch (const std::exception& e) {
+            RCLCPP_ERROR(get_logger(), "Task exception: %s", e.what());
+          }
+
+          resetToIdle();
+
+          {
+            std::lock_guard<std::mutex> lock(taskMutex_);
+            taskRunning_ = false;
+          }
+
+          publishState();
+        });
+
+    return true;
+  }
+
+  bool stopTask() {
+    std::unique_lock<std::mutex> lock(taskMutex_);
+
+    if (!taskThread_.joinable()) {
+      return false;
+    }
+
+    taskStopSignal_ = true;
+    pendingTracksChangedEvent_.set();
+    lock.unlock();  // unlock before joining to prevent deadlock
+    taskThread_.join();
+    lock.lock();
+    return true;
+  }
+
+#pragma endregion
 
 #pragma region Task definitions
 
@@ -593,22 +839,24 @@ class RunnerCutterControlNode : public rclcpp::Node {
   void burnTarget(std::shared_ptr<Track> target,
                   std::pair<float, float> laserCoord) {
     float burnTimeSecs{getParamBurnTimeSecs()};
+    laser_->clearPoint();
     auto [r, g, b]{getParamBurnLaserColor()};
     laser_->setColor(r, g, b, 0.0f);
-    laser_->setPoints(std::vector<std::pair<float, float>>{laserCoord});
+    laser_->play();
     RCLCPP_INFO(get_logger(), "Burning track %d for %f secs...",
                 target->getId(), burnTimeSecs);
-    laser_->play();
+    laser_->setPoint(laserCoord.first, laserCoord.second);
     std::this_thread::sleep_for(std::chrono::duration<float>(burnTimeSecs));
+    laser_->clearPoint();
     laser_->stop();
     tracker_->processTrack(target->getId(), Track::State::COMPLETED);
     RCLCPP_INFO(get_logger(), "Burn complete on track %d...", target->getId());
   }
 
   void circleFollowerTask(float laserIntervalSecs = 0.5f) {
-    // We use set_color() instead of play()/stop() as it is faster to
-    // temporarily turn on/off the laser
-    laser_->setColor(0.0f, 0.0f, 0.0f, 0.0f);
+    laser_->clearPoint();
+    auto [r, g, b]{getParamTrackingLaserColor()};
+    laser_->setColor(r, g, b, 0.0f);
     laser_->play();
     camera_->startDetection(
         camera_control_interfaces::msg::DetectionType::CIRCLE);
@@ -627,12 +875,14 @@ class RunnerCutterControlNode : public rclcpp::Node {
       // TODO: use predicted position
       auto laserCoord{
           calibration_->cameraPositionToLaserCoord(track->getPosition())};
-      laser_->setPoints(std::vector<std::pair<float, float>>{laserCoord});
-      auto [r, g, b]{getParamTrackingLaserColor()};
-      laser_->setColor(r, g, b, 0.0f);
+      laser_->setPoint(laserCoord.first, laserCoord.second);
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
-      laser_->setColor(0.0f, 0.0f, 0.0f, 0.0f);
+      laser_->clearPoint();
     }
+
+    laser_->clearPoint();
+    laser_->stop();
+    camera_->stopAllDetections();
   }
 
   /**
@@ -654,11 +904,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
         calibration_->cameraPositionToLaserCoord(targetCameraPosition)};
     auto [r, g, b]{getParamTrackingLaserColor()};
     laser_->setColor(r, g, b, 0.0f);
-    laser_->setPoints(std::vector<std::pair<float, float>>{initialLaserCoord});
-    laser_->play();
     auto correctedLaserCoord{
         correctLaser(initialLaserCoord, targetCameraPixel)};
-    laser_->stop();
     return correctedLaserCoord;
   }
 
@@ -682,8 +929,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
     auto currentLaserCoord{initialLaserCoord};
 
     while (!taskStopSignal_) {
-      laser_->setPoints(
-          std::vector<std::pair<float, float>>{currentLaserCoord});
+      laser_->setPoint(currentLaserCoord.first, currentLaserCoord.second);
       // Get detected camera pixel coord and camera-space position for laser
       auto detectResultOpt{detectLaser()};
       if (!detectResultOpt) {
@@ -779,248 +1025,6 @@ class RunnerCutterControlNode : public rclcpp::Node {
     }
 
     return std::nullopt;
-  }
-
-#pragma endregion
-
-#pragma region State and notifs publishing
-
-  runner_cutter_control_interfaces::msg::State::SharedPtr getState() {
-    std::lock_guard<std::mutex> lock(taskMutex_);
-
-    auto msg{std::make_shared<runner_cutter_control_interfaces::msg::State>()};
-    msg->calibrated = calibration_->isCalibrated();
-    msg->state = taskRunning_ ? taskName_ : "idle";
-    auto [minX, minY, width, height]{calibration_->getNormalizedLaserBounds()};
-    common_interfaces::msg::Vector4 normalizedLaserBoundsMsg;
-    normalizedLaserBoundsMsg.w = minX;
-    normalizedLaserBoundsMsg.x = minY;
-    normalizedLaserBoundsMsg.y = width;
-    normalizedLaserBoundsMsg.z = height;
-    msg->normalized_laser_bounds = normalizedLaserBoundsMsg;
-    return msg;
-  }
-
-  runner_cutter_control_interfaces::msg::Tracks::SharedPtr getTracksMsg() {
-    auto msg{std::make_shared<runner_cutter_control_interfaces::msg::Tracks>()};
-    auto [frameWidth, frameHeight]{calibration_->getCameraFrameSize()};
-    for (const auto& [id, track] : tracker_->getTracks()) {
-      runner_cutter_control_interfaces::msg::Track trackMsg;
-      trackMsg.id = track->getId();
-      common_interfaces::msg::Vector2 normalizedPixelCoordMsg;
-      normalizedPixelCoordMsg.x =
-          frameWidth > 0 ? static_cast<float>(track->getPixel().first) /
-                               static_cast<float>(frameWidth)
-                         : -1.0f;
-      normalizedPixelCoordMsg.y =
-          frameHeight > 0 ? static_cast<float>(track->getPixel().second) /
-                                static_cast<float>(frameHeight)
-                          : -1.0f;
-      trackMsg.normalized_pixel_coord = normalizedPixelCoordMsg;
-      switch (track->getState()) {
-        case Track::State::PENDING:
-          trackMsg.state =
-              runner_cutter_control_interfaces::msg::TrackState::PENDING;
-          break;
-        case Track::State::ACTIVE:
-          trackMsg.state =
-              runner_cutter_control_interfaces::msg::TrackState::ACTIVE;
-          break;
-        case Track::State::COMPLETED:
-          trackMsg.state =
-              runner_cutter_control_interfaces::msg::TrackState::COMPLETED;
-          break;
-        case Track::State::FAILED:
-          trackMsg.state =
-              runner_cutter_control_interfaces::msg::TrackState::FAILED;
-          break;
-      }
-      msg->tracks.push_back(trackMsg);
-    }
-    return msg;
-  }
-
-  void publishState() { statePublisher_->publish(*getState()); }
-
-  void publishNotification(
-      const std::string& msg,
-      rclcpp::Logger::Level level = rclcpp::Logger::Level::Info) {
-    uint8_t logMsgLevel = 0;
-    switch (level) {
-      case rclcpp::Logger::Level::Debug:
-        RCLCPP_DEBUG(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::DEBUG;
-        break;
-      case rclcpp::Logger::Level::Info:
-        RCLCPP_INFO(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::INFO;
-        break;
-      case rclcpp::Logger::Level::Warn:
-        RCLCPP_WARN(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::WARN;
-        break;
-      case rclcpp::Logger::Level::Error:
-        RCLCPP_ERROR(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::ERROR;
-        break;
-      case rclcpp::Logger::Level::Fatal:
-        RCLCPP_FATAL(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::FATAL;
-        break;
-      default:
-        RCLCPP_ERROR(get_logger(), "Unknown log level: %s", msg.c_str());
-        return;
-    }
-
-    // Get current time in milliseconds
-    double timestampMillis{
-        static_cast<double>(
-            std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::system_clock::now().time_since_epoch())
-                .count()) /
-        1000.0};
-    auto [sec, nanosec]{millisecondsToRosTime(timestampMillis)};
-    auto logMsg{rcl_interfaces::msg::Log()};
-    logMsg.stamp.sec = sec;
-    logMsg.stamp.nanosec = nanosec;
-    logMsg.level = logMsgLevel;
-    logMsg.msg = msg;
-    notificationsPublisher_->publish(logMsg);
-  }
-
-  void publishTracks() { tracksPublisher_->publish(*getTracksMsg()); }
-
-#pragma endregion
-
-#pragma region Task management
-
-  void resetToIdle() {
-    laser_->stop();
-    laser_->clearPoints();
-    camera_->stopAllDetections();
-    tracker_->clear();
-    lastDetectedTrackIds_.clear();
-  }
-
-  template <typename Function, typename... Args>
-  bool startTask(const std::string& taskName, Function&& func, Args&&... args) {
-    std::unique_lock<std::mutex> lock(taskMutex_);
-
-    // If a task is already running, don't start another task
-    if (taskRunning_) {
-      return false;
-    }
-
-    // If the task is done, but the thread has not been joined yet, do it now
-    if (taskThread_.joinable()) {
-      lock.unlock();  // unlock before joining to prevent deadlock
-      taskThread_.join();
-      lock.lock();
-    }
-
-    taskStopSignal_ = false;
-    taskName_ = taskName;
-    taskRunning_ = true;
-
-    // Store arguments in a tuple for C++17 compatibility
-    auto taskArgs{std::make_tuple(std::forward<Args>(args)...)};
-
-    taskThread_ =
-        std::thread([this, func = std::forward<Function>(func), taskArgs]() {
-          try {
-            resetToIdle();
-            publishState();
-            std::apply(
-                [this, &func](auto&&... unpackedArgs) {
-                  std::invoke(
-                      func, this,
-                      std::forward<decltype(unpackedArgs)>(unpackedArgs)...);
-                },
-                taskArgs);
-          } catch (const std::exception& e) {
-            RCLCPP_ERROR(get_logger(), "Task exception: %s", e.what());
-          }
-
-          resetToIdle();
-
-          {
-            std::lock_guard<std::mutex> lock(taskMutex_);
-            taskRunning_ = false;
-          }
-
-          publishState();
-        });
-
-    return true;
-  }
-
-  bool stopTask() {
-    std::unique_lock<std::mutex> lock(taskMutex_);
-
-    if (!taskThread_.joinable()) {
-      return false;
-    }
-
-    taskStopSignal_ = true;
-    pendingTracksChangedEvent_.set();
-    lock.unlock();  // unlock before joining to prevent deadlock
-    taskThread_.join();
-    lock.lock();
-    return true;
-  }
-
-#pragma endregion
-
-#pragma region Param helpers
-
-  std::string getParamLaserControlNodeName() {
-    return get_parameter("runner_cutter_control_params.laser_control_node_name")
-        .as_string();
-  }
-
-  std::string getParamCameraControlNodeName() {
-    return get_parameter(
-               "runner_cutter_control_params.camera_control_node_name")
-        .as_string();
-  }
-
-  std::tuple<float, float, float> getParamTrackingLaserColor() {
-    auto param{
-        get_parameter("runner_cutter_control_params.tracking_laser_color")
-            .as_double_array()};
-    return {param[0], param[1], param[2]};
-  }
-
-  std::tuple<float, float, float> getParamBurnLaserColor() {
-    auto param{get_parameter("runner_cutter_control_params.burn_laser_color")
-                   .as_double_array()};
-    return {param[0], param[1], param[2]};
-  }
-
-  float getParamBurnTimeSecs() {
-    return static_cast<float>(
-        get_parameter("runner_cutter_control_params.burn_time_secs")
-            .as_double());
-  }
-
-  bool getParamEnableAiming() {
-    return get_parameter("runner_cutter_control_params.enable_aiming")
-        .as_bool();
-  }
-
-  int getParamTargetAttempts() {
-    return static_cast<int>(
-        get_parameter("runner_cutter_control_params.target_attempts").as_int());
-  }
-
-  float getParamAutoDisarmSecs() {
-    return static_cast<float>(
-        get_parameter("runner_cutter_control_params.auto_disarm_secs")
-            .as_double());
-  }
-
-  std::string getParamSaveDir() {
-    return get_parameter("runner_cutter_control_params.save_dir").as_string();
   }
 
 #pragma endregion

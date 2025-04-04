@@ -35,7 +35,7 @@ add_library(helios_dac_sdk SHARED
 target_include_directories(helios_dac_sdk PUBLIC
   ${HELIOS_DAC_SDK_DIR}
 )
-target_link_libraries(helios_dac_sdk PRIVATE ${LIBUSB_LIBRARIES})
+target_link_libraries(helios_dac_sdk PUBLIC ${LIBUSB_LIBRARIES})
 target_compile_options(helios_dac_sdk PRIVATE -fpermissive -Wno-write-strings -Wno-pedantic -Wno-unused-variable -Wno-address)
 
 # Add Ether Dream SDK
@@ -56,7 +56,7 @@ target_include_directories(dacs PUBLIC
   ${HELIOS_DAC_SDK_DIR}
   ${ETHER_DREAM_SDK_DIR}
 )
-target_link_libraries(dacs PRIVATE helios_dac_sdk ether_dream_sdk spdlog::spdlog)
+target_link_libraries(dacs PUBLIC helios_dac_sdk ether_dream_sdk spdlog::spdlog)
 
 # Node executable
 add_executable(laser_control_node

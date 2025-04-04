@@ -7,8 +7,6 @@
 #include <cmath>
 #include <sstream>
 
-EtherDream::EtherDream() {}
-
 EtherDream::~EtherDream() { close(); }
 
 int EtherDream::initialize() {

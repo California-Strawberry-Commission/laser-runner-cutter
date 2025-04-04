@@ -17,7 +17,6 @@ class Helios final : public DAC {
   // Helios DAC uses 8 bits (unsigned) for r, g, b, i
   static constexpr int MAX_COLOR = 255;
 
-  Helios();
   ~Helios() override;
 
   /**
@@ -101,7 +100,11 @@ class Helios final : public DAC {
   void close() override;
 
  private:
-  std::shared_ptr<HeliosDac> heliosDac_;
+  std::vector<HeliosPoint> getFrame(int fps, int pps,
+                                    float transitionDurationMs);
+  int getNativeStatus() const;
+
+  HeliosDac heliosDac_{};
   std::atomic<bool> initialized_{false};
   int dacIdx_{-1};
   std::vector<std::pair<float, float>> points_;
@@ -111,8 +114,4 @@ class Helios final : public DAC {
   std::atomic<bool> checkConnection_{false};
   std::thread checkConnectionThread_;
   std::thread playbackThread_;
-
-  std::vector<HeliosPoint> getFrame(int fps, int pps,
-                                    float transitionDurationMs);
-  int getNativeStatus() const;
 };

@@ -26,6 +26,7 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DeviceState.msg"
+  "msg/Path.msg"
   "msg/State.msg"
   "srv/AddPoint.srv"
   "srv/GetState.srv"

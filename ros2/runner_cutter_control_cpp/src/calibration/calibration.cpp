@@ -11,8 +11,8 @@
 Calibration::Calibration(std::shared_ptr<LaserControlClient> laser,
                          std::shared_ptr<CameraControlClient> camera,
                          std::tuple<float, float, float> laserColor)
-    : laser_{laser},
-      camera_{camera},
+    : laser_{std::move(laser)},
+      camera_{std::move(camera)},
       laserColor_{laserColor},
       pointCorrespondences_{} {}
 
@@ -112,21 +112,19 @@ std::size_t Calibration::addCalibrationPoints(
   }
 
   std::size_t numPointCorrespondencesAdded{0};
-  laser_->clearPoints();
-  laser_->setColor(0.0f, 0.0f, 0.0f, 0.0f);
+  auto [r, g, b]{laserColor_};
+  laser_->setColor(r, g, b, 0.0f);
+  laser_->clearPoint();
 
   {
     // Prepare laser and camera for laser detection
     LaserDetectionContext context{laser_, camera_};
-    laser_->play();
     for (const auto& laserCoord : laserCoords) {
       if (stopSignal && stopSignal->get()) {
         return 0;
       }
 
-      laser_->setPoints({laserCoord});
-      auto [r, g, b]{laserColor_};
-      laser_->setColor(r, g, b, 0.0f);
+      laser_->setPoint(laserCoord.first, laserCoord.second);
 
       auto resultOpt{findPointCorrespondence(laserCoord)};
       if (!resultOpt) {
@@ -137,9 +135,7 @@ std::size_t Calibration::addCalibrationPoints(
       addPointCorrespondence(laserCoord, cameraPixelCoord, cameraPosition);
       ++numPointCorrespondencesAdded;
 
-      // We use setColor() instead of stop() as it is faster to temporarily turn
-      // off the laser
-      laser_->setColor(0.0f, 0.0f, 0.0f, 0.0f);
+      laser_->clearPoint();
     }
   }
 

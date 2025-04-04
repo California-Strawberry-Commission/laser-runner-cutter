@@ -114,6 +114,6 @@ class Calibration {
   std::shared_ptr<CameraControlClient> camera_;
   std::tuple<float, float, float> laserColor_{0.0f, 0.0f, 0.0f};
   std::pair<int, int> cameraFrameSize_{0, 0};
-  PointCorrespondences pointCorrespondences_;
+  PointCorrespondences pointCorrespondences_{};
   bool isCalibrated_{false};
 };
