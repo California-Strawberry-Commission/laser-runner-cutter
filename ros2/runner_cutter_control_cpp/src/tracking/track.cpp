@@ -1,8 +1,12 @@
 #include "runner_cutter_control_cpp/tracking/track.hpp"
 
 Track::Track(int id, std::pair<int, int> pixel,
-             std::tuple<float, float, float> position, Track::State state)
-    : id_{id}, pixel_{pixel}, position_{position} {
+             std::tuple<float, float, float> position, Track::State state,
+             std::unique_ptr<Predictor> predictor)
+    : id_{id},
+      pixel_{pixel},
+      position_{position},
+      predictor_(predictor ? std::move(predictor) : nullptr) {
   stateCount_ = {{Track::State::PENDING, 0},
                  {Track::State::ACTIVE, 0},
                  {Track::State::COMPLETED, 0},

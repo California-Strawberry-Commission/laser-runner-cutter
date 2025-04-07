@@ -124,11 +124,11 @@ class RunnerCutterControlNode : public rclcpp::Node {
         create_publisher<rcl_interfaces::msg::Log>("/notifications", 1);
     tracksPublisher_ =
         create_publisher<runner_cutter_control_interfaces::msg::Tracks>(
-            "~/tracks", 5);
+            "~/tracks", 1);
 
-    /////////////
+    //////////////
     // Subscribers
-    /////////////
+    //////////////
     auto cameraDetectionsTopicName{
         fmt::format("/{}/detections", getParamCameraControlNodeName())};
     rclcpp::SubscriptionOptions options;
@@ -411,7 +411,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
         try {
           track =
               tracker_->addTrack(instance.track_id, pixel, position,
-                                 msg->timestamp * 1000, instance.confidence);
+                                 msg->timestamp * 1000.0, instance.confidence);
         } catch (const std::exception& e) {
           continue;
         }
@@ -870,11 +870,21 @@ class RunnerCutterControlNode : public rclcpp::Node {
         continue;
       }
 
-      // Fire tracking laser at target using predicted future position
       auto track{trackOpt.value()};
-      // TODO: use predicted position
+
+      // Fire tracking laser at target using predicted future position
+      // TODO: Determine actual latency
+      double estimatedCameraLatencyMs{100.0};
+      double timestampMillis{
+          std::chrono::duration<double, std::milli>(
+              std::chrono::high_resolution_clock::now().time_since_epoch())
+              .count()};
+      auto predictedPosition{track->getPredictor().predict(
+          timestampMillis + estimatedCameraLatencyMs)};
       auto laserCoord{
-          calibration_->cameraPositionToLaserCoord(track->getPosition())};
+          calibration_->cameraPositionToLaserCoord(predictedPosition)};
+      track->getPredictor().reset();
+
       laser_->setPoint(laserCoord.first, laserCoord.second);
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
       laser_->clearPoint();

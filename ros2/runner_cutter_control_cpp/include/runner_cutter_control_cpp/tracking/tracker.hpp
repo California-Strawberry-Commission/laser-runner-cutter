@@ -58,7 +58,7 @@ class Tracker {
    */
   std::shared_ptr<Track> addTrack(int trackId, std::pair<int, int> pixel,
                                   std::tuple<float, float, float> position,
-                                  float timestampMs, float confidence = 1.0f);
+                                  double timestampMs, float confidence = 1.0f);
 
   /**
    * Get the next pending track.

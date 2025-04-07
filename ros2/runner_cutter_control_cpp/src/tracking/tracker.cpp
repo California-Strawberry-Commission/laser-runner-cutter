@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <stdexcept>
 
+#include "runner_cutter_control_cpp/prediction/kalman_filter_predictor.hpp"
+
 Tracker::Tracker() {}
 
 bool Tracker::hasTrackWithState(Track::State state) const {
@@ -41,7 +43,7 @@ std::unordered_map<int, std::shared_ptr<Track>> Tracker::getTracks() const {
 
 std::shared_ptr<Track> Tracker::addTrack(
     int trackId, std::pair<int, int> pixel,
-    std::tuple<float, float, float> position, float timestampMs,
+    std::tuple<float, float, float> position, double timestampMs,
     float confidence) {
   if (trackId <= 0) {
     throw std::invalid_argument("Track ID must be positive");
@@ -56,14 +58,15 @@ std::shared_ptr<Track> Tracker::addTrack(
     track->setPosition(position);
   } else {
     // Create a new track and set as PENDING
-    track = std::make_shared<Track>(trackId, pixel, position,
-                                    Track::State::PENDING);
+    track =
+        std::make_shared<Track>(trackId, pixel, position, Track::State::PENDING,
+                                std::make_unique<KalmanFilterPredictor>());
     tracks_[trackId] = track;
     pendingTracks_.push_back(track);
   }
 
   // Update predictor for the track
-  // track->getPredictor().add(position, timestampMs, confidence);
+  track->getPredictor().add(position, timestampMs, confidence);
 
   return track;
 }

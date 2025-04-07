@@ -29,6 +29,33 @@ find_package(fmt REQUIRED)
 
 include_directories(include)
 
+# Add matplotlib-cpp
+set(MATPLOTLIB_DIR third_party/matplotlib-cpp)
+add_library(matplotlib_cpp INTERFACE)
+target_compile_features(matplotlib_cpp INTERFACE
+  cxx_std_11
+)
+find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+target_link_libraries(matplotlib_cpp INTERFACE
+  Python3::Python
+  Python3::Module
+)
+target_include_directories(matplotlib_cpp INTERFACE
+  ${MATPLOTLIB_DIR}
+  ${Python3_INCLUDE_DIRS}
+)
+find_package(Python3 COMPONENTS NumPy)
+if(Python3_NumPy_FOUND)
+  target_link_libraries(matplotlib_cpp INTERFACE
+    Python3::NumPy
+  )
+  target_include_directories(matplotlib_cpp INTERFACE
+    ${Python3_NumPy_INCLUDE_DIRS}
+  )
+else()
+  target_compile_definitions(matplotlib_cpp INTERFACE WITHOUT_NUMPY)
+endif()
+
 # clients
 add_library(clients SHARED
   src/clients/laser_control_client.cpp
@@ -49,17 +76,24 @@ add_library(calibration SHARED
 )
 target_link_libraries(calibration PUBLIC Eigen3::Eigen clients)
 
+# prediction
+add_library(prediction SHARED
+  src/prediction/kalman_filter_predictor.cpp
+)
+target_link_libraries(prediction PUBLIC Eigen3::Eigen)
+
 # tracking
 add_library(tracking SHARED
   src/tracking/track.cpp
   src/tracking/tracker.cpp
 )
+target_link_libraries(tracking PUBLIC prediction)
 
 # Node executable
 add_executable(runner_cutter_control_node
   src/runner_cutter_control_node.cpp
 )
-target_link_libraries(runner_cutter_control_node PRIVATE clients calibration tracking fmt::fmt)
+target_link_libraries(runner_cutter_control_node PRIVATE fmt::fmt clients calibration tracking prediction)
 ament_target_dependencies(runner_cutter_control_node PUBLIC
   rclcpp
   std_msgs
@@ -74,6 +108,11 @@ add_executable(test_calibration
   src/tools/test_calibration.cpp
 )
 target_link_libraries(test_calibration PRIVATE calibration)
+
+add_executable(test_predictor
+  src/tools/test_predictor.cpp
+)
+target_link_libraries(test_predictor PRIVATE prediction matplotlib_cpp)
 
 #############
 ## Install ##
