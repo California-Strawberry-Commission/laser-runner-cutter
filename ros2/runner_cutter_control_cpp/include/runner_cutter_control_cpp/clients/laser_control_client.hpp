@@ -12,8 +12,9 @@
 
 class LaserControlClient {
  public:
-  LaserControlClient(rclcpp::Node& callerNode,
-                     const std::string& clientNodeName, int timeoutSecs = 3);
+  explicit LaserControlClient(rclcpp::Node& callerNode,
+                              const std::string& clientNodeName,
+                              int timeoutSecs = 3);
 
   bool startDevice();
   bool closeDevice();

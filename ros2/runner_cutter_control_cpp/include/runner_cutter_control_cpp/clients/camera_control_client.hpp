@@ -22,8 +22,9 @@
 
 class CameraControlClient {
  public:
-  CameraControlClient(rclcpp::Node& callerNode,
-                      const std::string& clientNodeName, int timeoutSecs = 3);
+  explicit CameraControlClient(rclcpp::Node& callerNode,
+                               const std::string& clientNodeName,
+                               int timeoutSecs = 3);
 
   bool startDevice(uint8_t captureMode);
   bool closeDevice();

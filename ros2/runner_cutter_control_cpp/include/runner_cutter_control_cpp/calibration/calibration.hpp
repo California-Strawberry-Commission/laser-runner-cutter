@@ -9,9 +9,9 @@
 
 class Calibration {
  public:
-  Calibration(std::shared_ptr<LaserControlClient> laser,
-              std::shared_ptr<CameraControlClient> camera,
-              std::tuple<float, float, float> laserColor);
+  explicit Calibration(std::shared_ptr<LaserControlClient> laser,
+                       std::shared_ptr<CameraControlClient> camera,
+                       std::tuple<float, float, float> laserColor);
 
   std::pair<int, int> getCameraFrameSize() const;
   std::tuple<int, int, int, int> getLaserBounds() const;
