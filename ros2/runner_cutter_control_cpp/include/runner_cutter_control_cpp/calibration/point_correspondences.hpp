@@ -23,7 +23,7 @@ class PointCorrespondences {
    * @return Transform matrix that converts a 3D position in camera-space to
    * laser coordinates.
    */
-  Eigen::MatrixXf getCameraToLaserTransform() const;
+  Eigen::MatrixXd getCameraToLaserTransform() const;
 
   /**
    * The rect (min x, min y, width, height) representing the reach of the laser,
@@ -41,7 +41,7 @@ class PointCorrespondences {
   std::vector<std::pair<float, float>> laserCoords_;
   std::vector<std::pair<int, int>> cameraPixelCoords_;
   std::vector<std::tuple<float, float, float>> cameraPositions_;
-  Eigen::MatrixXf cameraToLaserTransform_;
+  Eigen::MatrixXd cameraToLaserTransform_;
   std::tuple<int, int, int, int> laserBounds_{0, 0, 0, 0};
 
   void updateLaserBounds();

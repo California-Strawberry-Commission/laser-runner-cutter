@@ -4,7 +4,7 @@
 #include <unsupported/Eigen/NonLinearOptimization>
 
 PointCorrespondences::PointCorrespondences()
-    : cameraToLaserTransform_{Eigen::MatrixXf::Zero(4, 3)} {}
+    : cameraToLaserTransform_{Eigen::MatrixXd::Zero(4, 3)} {}
 
 std::size_t PointCorrespondences::size() const { return laserCoords_.size(); }
 
@@ -21,7 +21,7 @@ void PointCorrespondences::clear() {
   laserCoords_.clear();
   cameraPixelCoords_.clear();
   cameraPositions_.clear();
-  cameraToLaserTransform_ = Eigen::MatrixXf::Zero(4, 3);
+  cameraToLaserTransform_ = Eigen::MatrixXd::Zero(4, 3);
   updateLaserBounds();
 }
 
@@ -32,7 +32,7 @@ void PointCorrespondences::updateTransformLinearLeastSquares() {
   }
 
   // Homogeneous camera positions
-  Eigen::MatrixXf cameraMat{cameraPositions_.size(), 4};
+  Eigen::MatrixXd cameraMat{cameraPositions_.size(), 4};
   for (size_t i = 0; i < cameraPositions_.size(); ++i) {
     auto [x, y, z]{cameraPositions_[i]};
     cameraMat(i, 0) = x;
@@ -42,7 +42,7 @@ void PointCorrespondences::updateTransformLinearLeastSquares() {
   }
 
   // Homogeneous laser coords
-  Eigen::MatrixXf laserMat{laserCoords_.size(), 3};
+  Eigen::MatrixXd laserMat{laserCoords_.size(), 3};
   for (size_t i = 0; i < laserCoords_.size(); ++i) {
     laserMat(i, 0) = laserCoords_[i].first;
     laserMat(i, 1) = laserCoords_[i].second;
@@ -59,25 +59,25 @@ struct TransformResidual {
     ValuesAtCompileTime = Eigen::Dynamic
   };
 
-  typedef float Scalar;
+  typedef double Scalar;
   typedef Eigen::Matrix<Scalar, InputsAtCompileTime, 1> InputType;
   typedef Eigen::Matrix<Scalar, ValuesAtCompileTime, 1> ValueType;
   typedef Eigen::Matrix<Scalar, ValuesAtCompileTime, InputsAtCompileTime>
       JacobianType;
 
-  TransformResidual(const Eigen::MatrixXf& cameraPositions,
-                    const Eigen::MatrixXf& laserCoords)
+  TransformResidual(const Eigen::MatrixXd& cameraPositions,
+                    const Eigen::MatrixXd& laserCoords)
       : cameraPositions{cameraPositions}, laserCoords{laserCoords} {}
 
   // Calculate residuals
-  int operator()(const Eigen::VectorXf& params,
-                 Eigen::VectorXf& residuals) const {
+  int operator()(const Eigen::VectorXd& params,
+                 Eigen::VectorXd& residuals) const {
     // params is the flattened transform matrix, so reshape back to 4x3
-    Eigen::Map<const Eigen::MatrixXf> transform{params.data(), 4, 3};
+    Eigen::Map<const Eigen::MatrixXd> transform{params.data(), 4, 3};
 
-    Eigen::MatrixXf transformed{cameraPositions * transform};
+    Eigen::MatrixXd transformed{cameraPositions * transform};
     // Normalize by the third (homogeneous) coordinate to get (x, y) coordinates
-    Eigen::MatrixXf homogeneousTransformed{transformed.array().colwise() /
+    Eigen::MatrixXd homogeneousTransformed{transformed.array().colwise() /
                                            transformed.col(2).array()};
 
     // Compute the residuals as the difference between transformed coords and
@@ -93,27 +93,27 @@ struct TransformResidual {
   }
 
   // Compute the Jacobian of the errors
-  int df(const Eigen::VectorXf& params, Eigen::MatrixXf& jacobian) const {
+  int df(const Eigen::VectorXd& params, Eigen::MatrixXd& jacobian) const {
     // The Jacobian is computed by differentiating the residual function.
     // Each row in the Jacobian corresponds to the partial derivative of one
     // residual with respect to each parameter. In this case, the rows are
     // interleaved x-residuals and y-residuals for each point correspondence.
 
-    float epsilon{1e-5};
+    double epsilon{1e-5};
     for (int i = 0; i < params.size(); i++) {
-      Eigen::VectorXf xPlus{params};
+      Eigen::VectorXd xPlus{params};
       xPlus(i) += epsilon;
-      Eigen::VectorXf xMinus{params};
+      Eigen::VectorXd xMinus{params};
       xMinus(i) -= epsilon;
 
-      Eigen::VectorXf fvecPlus{values()};
+      Eigen::VectorXd fvecPlus{values()};
       operator()(xPlus, fvecPlus);
 
-      Eigen::VectorXf fvecMinus{values()};
+      Eigen::VectorXd fvecMinus{values()};
       operator()(xMinus, fvecMinus);
 
-      Eigen::VectorXf fvecDiff{values()};
-      fvecDiff = (fvecPlus - fvecMinus) / (2.0f * epsilon);
+      Eigen::VectorXd fvecDiff{values()};
+      fvecDiff = (fvecPlus - fvecMinus) / (2.0 * epsilon);
 
       jacobian.block(0, i, values(), 1) = fvecDiff;
     }
@@ -131,8 +131,8 @@ struct TransformResidual {
     return 12;
   }
 
-  const Eigen::MatrixXf& cameraPositions;
-  const Eigen::MatrixXf& laserCoords;
+  const Eigen::MatrixXd& cameraPositions;
+  const Eigen::MatrixXd& laserCoords;
 };
 
 void PointCorrespondences::updateTransformNonlinearLeastSquares() {
@@ -142,7 +142,7 @@ void PointCorrespondences::updateTransformNonlinearLeastSquares() {
   }
 
   // Homogeneous camera positions
-  Eigen::MatrixXf cameraMat{cameraPositions_.size(), 4};
+  Eigen::MatrixXd cameraMat{cameraPositions_.size(), 4};
   for (size_t i = 0; i < cameraPositions_.size(); ++i) {
     auto [x, y, z]{cameraPositions_[i]};
     cameraMat(i, 0) = x;
@@ -152,7 +152,7 @@ void PointCorrespondences::updateTransformNonlinearLeastSquares() {
   }
 
   // Homogeneous laser coords
-  Eigen::MatrixXf laserMat{laserCoords_.size(), 3};
+  Eigen::MatrixXd laserMat{laserCoords_.size(), 3};
   for (size_t i = 0; i < laserCoords_.size(); ++i) {
     laserMat(i, 0) = laserCoords_[i].first;
     laserMat(i, 1) = laserCoords_[i].second;
@@ -162,12 +162,12 @@ void PointCorrespondences::updateTransformNonlinearLeastSquares() {
   // We are attempting to estimate 12 parameters (the 4x3
   // cameraToLaserTransform_ matrix). Use cameraToLaserTransform_ as the initial
   // guess
-  Eigen::VectorXf params{Eigen::Map<Eigen::VectorXf>{
+  Eigen::VectorXd params{Eigen::Map<Eigen::VectorXd>{
       cameraToLaserTransform_.data(), cameraToLaserTransform_.size()}};
 
   // Define the Levenberg-Marquardt solver
   TransformResidual functor{cameraMat, laserMat};
-  Eigen::LevenbergMarquardt<TransformResidual, float> levenbergMarquardt{
+  Eigen::LevenbergMarquardt<TransformResidual, double> levenbergMarquardt{
       functor};
 
   // Solve the problem
@@ -175,12 +175,12 @@ void PointCorrespondences::updateTransformNonlinearLeastSquares() {
 
   // Update the cameraToLaserTransform matrix
   cameraToLaserTransform_ =
-      Eigen::Map<const Eigen::MatrixXf>{params.data(), 4, 3};
+      Eigen::Map<const Eigen::MatrixXd>{params.data(), 4, 3};
 }
 
 float PointCorrespondences::getReprojectionError() const {
   // Homogeneous camera positions
-  Eigen::MatrixXf cameraMat{cameraPositions_.size(), 4};
+  Eigen::MatrixXd cameraMat{cameraPositions_.size(), 4};
   for (size_t i = 0; i < cameraPositions_.size(); ++i) {
     auto [x, y, z]{cameraPositions_[i]};
     cameraMat(i, 0) = x;
@@ -189,21 +189,23 @@ float PointCorrespondences::getReprojectionError() const {
     cameraMat(i, 3) = 1.0;
   }
 
-  Eigen::MatrixXf transformed{cameraMat * cameraToLaserTransform_};
+  Eigen::MatrixXd transformed{cameraMat * cameraToLaserTransform_};
   // Normalize by the third (homogeneous) coordinate to get (x, y) coordinates
-  Eigen::MatrixXf homogeneousTransformed{transformed.array().colwise() /
+  Eigen::MatrixXd homogeneousTransformed{transformed.array().colwise() /
                                          transformed.col(2).array()};
 
-  float error{0.0};
+  float error{0.0f};
   for (int i = 0; i < homogeneousTransformed.rows(); ++i) {
-    float dx{homogeneousTransformed(i, 0) - laserCoords_[i].first};
-    float dy{homogeneousTransformed(i, 1) - laserCoords_[i].second};
+    float dx{static_cast<float>(homogeneousTransformed(i, 0)) -
+             laserCoords_[i].first};
+    float dy{static_cast<float>(homogeneousTransformed(i, 1)) -
+             laserCoords_[i].second};
     error += std::sqrt(dx * dx + dy * dy);
   }
   return error / laserCoords_.size();
 }
 
-Eigen::MatrixXf PointCorrespondences::getCameraToLaserTransform() const {
+Eigen::MatrixXd PointCorrespondences::getCameraToLaserTransform() const {
   return cameraToLaserTransform_;
 }
 
@@ -254,6 +256,12 @@ void PointCorrespondences::deserialize(std::istream& is) {
   cameraPositions_.resize(cameraPositionsSize);
   is.read(reinterpret_cast<char*>(cameraPositions_.data()),
           cameraPositionsSize * sizeof(cameraPositions_[0]));
+
+  updateLaserBounds();
+  // Use linear least squares for an initial estimate, then refine using
+  // nonlinear least squares
+  updateTransformLinearLeastSquares();
+  updateTransformNonlinearLeastSquares();
 }
 
 void PointCorrespondences::updateLaserBounds() {

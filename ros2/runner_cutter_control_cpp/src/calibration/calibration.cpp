@@ -86,10 +86,10 @@ bool Calibration::calibrate(
 
 std::pair<float, float> Calibration::cameraPositionToLaserCoord(
     std::tuple<float, float, float> cameraPosition) {
-  Eigen::Vector4f homogeneousCameraPosition{std::get<0>(cameraPosition),
+  Eigen::Vector4d homogeneousCameraPosition{std::get<0>(cameraPosition),
                                             std::get<1>(cameraPosition),
-                                            std::get<2>(cameraPosition), 1.0f};
-  Eigen::Vector3f transformed{
+                                            std::get<2>(cameraPosition), 1.0};
+  Eigen::Vector3d transformed{
       homogeneousCameraPosition.transpose() *
       pointCorrespondences_.getCameraToLaserTransform()};
 
@@ -99,7 +99,7 @@ std::pair<float, float> Calibration::cameraPositionToLaserCoord(
 
   // Normalize by the third (homogeneous) coordinate to get (x, y)
   // coordinates
-  Eigen::Vector3f homogeneousTransformed{transformed / transformed[2]};
+  Eigen::Vector3d homogeneousTransformed{transformed / transformed[2]};
   return {homogeneousTransformed[0], homogeneousTransformed[1]};
 }
 
@@ -174,14 +174,28 @@ bool Calibration::save(const std::string& filePath) {
   }
 
   std::filesystem::create_directories(dirPath);
-  std::ofstream ofs{filePath, std::ios::binary};
-  if (!ofs) {
-    spdlog::error("Failed to open file for saving calibration.");
+
+  try {
+    std::ofstream ofs{filePath, std::ios::binary};
+    if (!ofs) {
+      spdlog::error("Failed to open file for saving calibration.");
+      return false;
+    }
+
+    // Save the camera frame size
+    ofs.write(reinterpret_cast<const char*>(&cameraFrameSize_.first),
+              sizeof(cameraFrameSize_.first));
+    ofs.write(reinterpret_cast<const char*>(&cameraFrameSize_.second),
+              sizeof(cameraFrameSize_.second));
+
+    // Save the point correspondences
+    pointCorrespondences_.serialize(ofs);
+
+    ofs.close();
+  } catch (const std::exception& e) {
+    spdlog::error("Failed to save calibration: {}", e.what());
     return false;
   }
-
-  pointCorrespondences_.serialize(ofs);
-  ofs.close();
 
   spdlog::info("Calibration saved to {}", filePath);
   return true;
@@ -193,15 +207,30 @@ bool Calibration::load(const std::string& filePath) {
     return false;
   }
 
-  std::ifstream ifs{filePath, std::ios::binary};
-  if (!ifs) {
-    spdlog::error("Could not load calibration file {}.", filePath);
+  try {
+    std::ifstream ifs{filePath, std::ios::binary};
+    if (!ifs) {
+      spdlog::error("Could not load calibration file {}.", filePath);
+      return false;
+    }
+
+    // Load the camera frame size
+    int cameraFrameWidth, cameraFrameHeight;
+    ifs.read(reinterpret_cast<char*>(&cameraFrameWidth),
+             sizeof(cameraFrameWidth));
+    ifs.read(reinterpret_cast<char*>(&cameraFrameHeight),
+             sizeof(cameraFrameHeight));
+    cameraFrameSize_ = {cameraFrameWidth, cameraFrameHeight};
+
+    // Load the point correspondences
+    pointCorrespondences_.deserialize(ifs);
+
+    ifs.close();
+  } catch (const std::exception& e) {
+    spdlog::error("Failed to load calibration file: {}", e.what());
     return false;
   }
 
-  pointCorrespondences_.deserialize(ifs);
-  pointCorrespondences_.updateTransformLinearLeastSquares();
-  pointCorrespondences_.updateTransformNonlinearLeastSquares();
   isCalibrated_ = true;
   spdlog::info("Successfully loaded calibration file {}", filePath);
   return true;
