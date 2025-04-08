@@ -61,7 +61,7 @@ function successOutputMapper(res: any): boolean {
 
 export default function useCameraNode(nodeName: string) {
   const node = useROSNode(nodeName);
-  const state = node.useTopic(
+  const state = node.useSubscription(
     "~/state",
     "camera_control_interfaces/State",
     {

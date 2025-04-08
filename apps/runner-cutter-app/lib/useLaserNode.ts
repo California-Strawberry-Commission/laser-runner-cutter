@@ -28,7 +28,7 @@ function successOutputMapper(res: any): boolean {
 
 export default function useLaserNode(nodeName: string) {
   const node = useROSNode(nodeName);
-  const state = node.useTopic(
+  const state = node.useSubscription(
     "~/state",
     "laser_control_interfaces/State",
     {
@@ -51,9 +51,9 @@ export default function useLaserNode(nodeName: string) {
     successOutputMapper
   );
 
-  const addPoint = node.useService(
-    "~/add_point",
-    "laser_control_interfaces/AddPoint",
+  const path = node.usePublisher(
+    "~/path",
+    "laser_control_interfaces/Path",
     useCallback(
       (x: number, y: number) => ({
         point: {
@@ -62,15 +62,33 @@ export default function useLaserNode(nodeName: string) {
         },
       }),
       []
-    ),
-    successOutputMapper
+    )
   );
 
-  const clearPoints = node.useService(
-    "~/clear_points",
-    "std_srvs/Trigger",
-    triggerInputMapper,
-    successOutputMapper
+  const setPoint = node.usePublisher(
+    "~/path",
+    "laser_control_interfaces/Path",
+    useCallback(
+      (x: number, y: number) => ({
+        end: {
+          x: x,
+          y: y,
+        },
+        laser_on: true,
+      }),
+      []
+    )
+  );
+
+  const clearPoints = node.usePublisher(
+    "~/path",
+    "laser_control_interfaces/Path",
+    useCallback(
+      () => ({
+        laser_on: false,
+      }),
+      []
+    )
   );
 
   const play = node.useService(
@@ -107,7 +125,7 @@ export default function useLaserNode(nodeName: string) {
     state,
     startDevice,
     closeDevice,
-    addPoint,
+    setPoint,
     clearPoints,
     play,
     stop,

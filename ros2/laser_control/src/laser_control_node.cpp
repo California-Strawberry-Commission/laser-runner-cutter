@@ -66,27 +66,6 @@ class LaserControlNode : public rclcpp::Node {
         std::bind(&LaserControlNode::onSetColor, this, std::placeholders::_1,
                   std::placeholders::_2),
         rmw_qos_profile_services_default, serviceCallbackGroup_);
-    addPointService_ = create_service<laser_control_interfaces::srv::AddPoint>(
-        "~/add_point",
-        std::bind(&LaserControlNode::onAddPoint, this, std::placeholders::_1,
-                  std::placeholders::_2),
-        rmw_qos_profile_services_default, serviceCallbackGroup_);
-    setPointsService_ =
-        create_service<laser_control_interfaces::srv::SetPoints>(
-            "~/set_points",
-            std::bind(&LaserControlNode::onSetPoints, this,
-                      std::placeholders::_1, std::placeholders::_2),
-            rmw_qos_profile_services_default, serviceCallbackGroup_);
-    removePointService_ = create_service<std_srvs::srv::Trigger>(
-        "~/remove_point",
-        std::bind(&LaserControlNode::onRemovePoint, this, std::placeholders::_1,
-                  std::placeholders::_2),
-        rmw_qos_profile_services_default, serviceCallbackGroup_);
-    clearPointsService_ = create_service<std_srvs::srv::Trigger>(
-        "~/clear_points",
-        std::bind(&LaserControlNode::onClearPoints, this, std::placeholders::_1,
-                  std::placeholders::_2),
-        rmw_qos_profile_services_default, serviceCallbackGroup_);
     setPlaybackParamsService_ =
         create_service<laser_control_interfaces::srv::SetPlaybackParams>(
             "~/set_playback_params",
@@ -233,41 +212,6 @@ class LaserControlNode : public rclcpp::Node {
     response->success = true;
   }
 
-  void onAddPoint(
-      const std::shared_ptr<laser_control_interfaces::srv::AddPoint::Request>
-          request,
-      std::shared_ptr<laser_control_interfaces::srv::AddPoint::Response>
-          response) {
-    dac_->addPoint(request->point.x, request->point.y);
-    response->success = true;
-  }
-
-  void onSetPoints(
-      const std::shared_ptr<laser_control_interfaces::srv::SetPoints::Request>
-          request,
-      std::shared_ptr<laser_control_interfaces::srv::SetPoints::Response>
-          response) {
-    dac_->clearPoints();
-    for (const auto& point : request->points) {
-      dac_->addPoint(point.x, point.y);
-    }
-    response->success = true;
-  }
-
-  void onRemovePoint(
-      const std::shared_ptr<std_srvs::srv::Trigger::Request>,
-      std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-    dac_->removePoint();
-    response->success = true;
-  }
-
-  void onClearPoints(
-      const std::shared_ptr<std_srvs::srv::Trigger::Request>,
-      std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-    dac_->clearPoints();
-    response->success = true;
-  }
-
   void onSetPlaybackParams(
       const std::shared_ptr<
           laser_control_interfaces::srv::SetPlaybackParams::Request>
@@ -320,12 +264,6 @@ class LaserControlNode : public rclcpp::Node {
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr closeDeviceService_;
   rclcpp::Service<laser_control_interfaces::srv::SetColor>::SharedPtr
       setColorService_;
-  rclcpp::Service<laser_control_interfaces::srv::AddPoint>::SharedPtr
-      addPointService_;
-  rclcpp::Service<laser_control_interfaces::srv::SetPoints>::SharedPtr
-      setPointsService_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr removePointService_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr clearPointsService_;
   rclcpp::Service<laser_control_interfaces::srv::SetPlaybackParams>::SharedPtr
       setPlaybackParamsService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr playService_;

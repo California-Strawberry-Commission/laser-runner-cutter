@@ -28,11 +28,9 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DeviceState.msg"
   "msg/Path.msg"
   "msg/State.msg"
-  "srv/AddPoint.srv"
   "srv/GetState.srv"
   "srv/SetColor.srv"
   "srv/SetPlaybackParams.srv"
-  "srv/SetPoints.srv"
   DEPENDENCIES common_interfaces
 )
 

@@ -59,7 +59,7 @@ function successOutputMapper(res: any): boolean {
 
 export default function useControlNode(nodeName: string) {
   const node = useROSNode(nodeName);
-  const state = node.useTopic(
+  const state = node.useSubscription(
     "~/state",
     "runner_cutter_control_interfaces/State",
     {
@@ -70,7 +70,7 @@ export default function useControlNode(nodeName: string) {
     convertStateMessage
   );
 
-  const tracks = node.useTopic(
+  const tracks = node.useSubscription(
     "~/tracks",
     "runner_cutter_control_interfaces/Tracks",
     [],

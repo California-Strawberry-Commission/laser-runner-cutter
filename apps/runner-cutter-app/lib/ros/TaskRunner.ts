@@ -1,14 +1,12 @@
 export default class TaskRunner {
   private taskFunction: () => any;
   private intervalMs: number;
-  private cancelExecution: boolean;
-  private isRunning: boolean;
+  private cancelExecution: boolean = false;
+  private isRunning: boolean = false;
 
   constructor(taskFunction: () => any, intervalMs: number) {
     this.taskFunction = taskFunction;
     this.intervalMs = intervalMs;
-    this.cancelExecution = false;
-    this.isRunning = false;
   }
 
   public async start(): Promise<void> {

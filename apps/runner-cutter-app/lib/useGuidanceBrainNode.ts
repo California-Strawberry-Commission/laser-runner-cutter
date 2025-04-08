@@ -3,17 +3,21 @@ import useROSNode, { mappers } from "@/lib/ros/useROSNode";
 export default function useGuidanceBrainNode(nodeName: string) {
   const node = useROSNode(nodeName);
 
-  const state = node.useTopic("~/state", "guidance_brain_interfaces/State", {
-    guidance_active: false,
-    amiga_connected: false,
+  const state = node.useSubscription(
+    "~/state",
+    "guidance_brain_interfaces/State",
+    {
+      guidance_active: false,
+      amiga_connected: false,
 
-    speed: 0,
-    follower_pid: { p: 0, i: 0, d: 0 },
+      speed: 0,
+      follower_pid: { p: 0, i: 0, d: 0 },
 
-    perceiver_valid: false,
-    error: 0,
-    command: 0,
-  });
+      perceiver_valid: false,
+      error: 0,
+      command: 0,
+    }
+  );
 
   /* Example of unmapped service
   const doService = node.useService<{data: boolean}, {success: boolean}>(

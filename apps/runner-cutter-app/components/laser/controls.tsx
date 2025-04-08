@@ -118,7 +118,7 @@ export default function Controls() {
               />
               <Button
                 disabled={disableButtons}
-                onClick={() => laserNode.addPoint(Number(x), Number(y))}
+                onClick={() => laserNode.setPoint(Number(x), Number(y))}
               >
                 Add Point
               </Button>

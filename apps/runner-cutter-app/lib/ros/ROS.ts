@@ -17,11 +17,17 @@ export default class ROS {
   private url: string | null;
   private ros: ROSLIB.Ros;
   private reconnectIntervalMs: number;
-  private reconnectRunner: TaskRunner | null;
-  private nodes: string[];
+  private reconnectRunner: TaskRunner | null = null;
+  private nodes: string[] = [];
   private nodeMonitorIntervalMs: number;
-  private nodeMonitorRunner: TaskRunner | null;
-  private nodeListeners: ((nodeName: string, connected: boolean) => void)[];
+  private nodeMonitorRunner: TaskRunner | null = null;
+  private nodeListeners: ((nodeName: string, connected: boolean) => void)[] =
+    [];
+  private serviceCache: Map<
+    string,
+    ROSLIB.Service<ROSLIB.ServiceRequest, ROSLIB.ServiceResponse>
+  > = new Map();
+  private topicCache: Map<string, ROSLIB.Topic<ROSLIB.Message>> = new Map();
 
   constructor(
     url: string | null,
@@ -30,7 +36,7 @@ export default class ROS {
   ) {
     this.url = url;
     this.reconnectIntervalMs = reconnectIntervalMs;
-    this.reconnectRunner = null;
+    this.nodeMonitorIntervalMs = nodeMonitorIntervalMs;
 
     this.ros = new ROSLIB.Ros(url ? { url } : {});
     this.ros.on("connection", () => {
@@ -45,11 +51,6 @@ export default class ROS {
       console.log("[ROS] Error connecting");
       this.onRosDisconnected();
     });
-
-    this.nodes = [];
-    this.nodeListeners = [];
-    this.nodeMonitorIntervalMs = nodeMonitorIntervalMs;
-    this.nodeMonitorRunner = null;
   }
 
   isConnected(): boolean {
@@ -96,7 +97,12 @@ export default class ROS {
     values: any,
     timeoutMs: number = 0
   ): Promise<any> {
-    const client = new ROSLIB.Service({ ros: this.ros, name, serviceType });
+    let client = this.serviceCache.get(name);
+    if (!client) {
+      client = new ROSLIB.Service({ ros: this.ros, name, serviceType });
+      this.serviceCache.set(name, client);
+    }
+
     const request = new ROSLIB.ServiceRequest(values);
     return new Promise<any>((resolve, reject) => {
       let timeoutId: any;
@@ -126,9 +132,27 @@ export default class ROS {
     messageType: string,
     callback: (message: any) => void
   ): ROSLIB.Topic<ROSLIB.Message> {
-    const listener = new ROSLIB.Topic({ ros: this.ros, name, messageType });
-    listener.subscribe(callback);
-    return listener;
+    let topic = this.topicCache.get(name);
+    if (!topic) {
+      topic = new ROSLIB.Topic({ ros: this.ros, name, messageType });
+      this.topicCache.set(name, topic);
+    }
+    topic.subscribe(callback);
+    return topic;
+  }
+
+  publish(
+    name: string,
+    messageType: string,
+    message: ROSLIB.Message
+  ): ROSLIB.Topic<ROSLIB.Message> {
+    let topic = this.topicCache.get(name);
+    if (!topic) {
+      topic = new ROSLIB.Topic({ ros: this.ros, name, messageType });
+      this.topicCache.set(name, topic);
+    }
+    topic.publish(message);
+    return topic;
   }
 
   private async getNodesInternal(): Promise<string[]> {
