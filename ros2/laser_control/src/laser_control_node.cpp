@@ -4,11 +4,9 @@
 #include "laser_control_interfaces/msg/device_state.hpp"
 #include "laser_control_interfaces/msg/path.hpp"
 #include "laser_control_interfaces/msg/state.hpp"
-#include "laser_control_interfaces/srv/add_point.hpp"
 #include "laser_control_interfaces/srv/get_state.hpp"
 #include "laser_control_interfaces/srv/set_color.hpp"
 #include "laser_control_interfaces/srv/set_playback_params.hpp"
-#include "laser_control_interfaces/srv/set_points.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
