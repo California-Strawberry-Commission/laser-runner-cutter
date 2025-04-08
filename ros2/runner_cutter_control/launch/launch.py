@@ -5,15 +5,14 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
 
 from aioros2.launch import launch
 from amiga_control import amiga_control_node
 from camera_control import camera_control_node
 from furrow_perceiver import furrow_perceiver_node
 from guidance_brain import guidance_brain_node
-from laser_control import laser_control_node
-from runner_cutter_control import runner_cutter_control_node
 
 
 def generate_launch_description():
@@ -150,8 +149,9 @@ def generate_launch_description():
         condition=IfCondition(launch_cutter_nodes),
     )
 
-    laser_control_launch_node = launch(
-        laser_control_node,
+    laser_control_launch_node = Node(
+        package="laser_control",
+        executable="laser_control_node",
         name="laser0",
         parameters=[parameters_file],
         respawn=True,
@@ -161,8 +161,9 @@ def generate_launch_description():
         condition=IfCondition(launch_cutter_nodes),
     )
 
-    runner_cutter_control_launch_node = launch(
-        runner_cutter_control_node,
+    runner_cutter_control_launch_node = Node(
+        package="runner_cutter_control",
+        executable="runner_cutter_control_node",
         name="control0",
         parameters=[parameters_file],
         respawn=True,
@@ -171,10 +172,6 @@ def generate_launch_description():
         emulate_tty=True,
         condition=IfCondition(launch_cutter_nodes),
     )
-
-    # Link node dependencies
-    runner_cutter_control_launch_node.camera_node = camera_control_launch_node
-    runner_cutter_control_launch_node.laser_node = laser_control_launch_node
 
     # endregion
 
@@ -188,8 +185,8 @@ def generate_launch_description():
             furrow_perceiver_backward_launch_node,
             amiga_launch_node,
             guidance_brain_launch_node,
-            camera_control_launch_node,
             laser_control_launch_node,
+            camera_control_launch_node,
             runner_cutter_control_launch_node,
         ]
     )  # type: ignore

@@ -15,12 +15,12 @@
 [submodule "ros2/camera_control_cpp/third_party/bs_thread_pool"]
 	path = ros2/camera_control_cpp/third_party/bs_thread_pool
 	url = https://github.com/bshoshany/thread-pool.git
-[submodule "ros2/laser_control_cpp/third_party/helios_dac"]
-	path = ros2/laser_control_cpp/third_party/helios_dac
+[submodule "ros2/laser_control/third_party/helios_dac"]
+	path = ros2/laser_control/third_party/helios_dac
 	url = https://github.com/Grix/helios_dac.git
-[submodule "ros2/laser_control_cpp/third_party/ether-dream-sdk"]
-	path = ros2/laser_control_cpp/third_party/ether-dream-sdk
+[submodule "ros2/laser_control/third_party/ether-dream-sdk"]
+	path = ros2/laser_control/third_party/ether-dream-sdk
 	url = https://github.com/genkikondo/ether-dream-sdk.git
-[submodule "ros2/runner_cutter_control_cpp/third_party/matplotlib-cpp"]
-	path = ros2/runner_cutter_control_cpp/third_party/matplotlib-cpp
+[submodule "ros2/runner_cutter_control/third_party/matplotlib-cpp"]
+	path = ros2/runner_cutter_control/third_party/matplotlib-cpp
 	url = https://github.com/lava/matplotlib-cpp.git
