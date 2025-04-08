@@ -6,6 +6,10 @@
 
 #include "camera_control_interfaces/msg/detection_result.hpp"
 #include "camera_control_interfaces/msg/detection_type.hpp"
+#include "camera_control_interfaces/msg/device_state.hpp"
+#include "camera_control_interfaces/msg/state.hpp"
+#include "laser_control_interfaces/msg/device_state.hpp"
+#include "laser_control_interfaces/msg/state.hpp"
 #include "rcl_interfaces/msg/log.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "runner_cutter_control/calibration/calibration.hpp"
@@ -129,12 +133,29 @@ class RunnerCutterControlNode : public rclcpp::Node {
     //////////////
     // Subscribers
     //////////////
-    auto cameraDetectionsTopicName{
-        fmt::format("/{}/detections", getParamCameraControlNodeName())};
+
     rclcpp::SubscriptionOptions options;
     subscriberCallbackGroup_ =
         create_callback_group(rclcpp::CallbackGroupType::Reentrant);
     options.callback_group = subscriberCallbackGroup_;
+    auto laserStateTopicName{
+        fmt::format("/{}/state", getParamLaserControlNodeName())};
+    laserStateSubscriber_ =
+        create_subscription<laser_control_interfaces::msg::State>(
+            laserStateTopicName, latchedQos,
+            std::bind(&RunnerCutterControlNode::onLaserState, this,
+                      std::placeholders::_1),
+            options);
+    auto cameraStateTopicName{
+        fmt::format("/{}/state", getParamCameraControlNodeName())};
+    cameraStateSubscriber_ =
+        create_subscription<camera_control_interfaces::msg::State>(
+            cameraStateTopicName, latchedQos,
+            std::bind(&RunnerCutterControlNode::onCameraState, this,
+                      std::placeholders::_1),
+            options);
+    auto cameraDetectionsTopicName{
+        fmt::format("/{}/detections", getParamCameraControlNodeName())};
     detectionsSubscriber_ =
         create_subscription<camera_control_interfaces::msg::DetectionResult>(
             cameraDetectionsTopicName, rclcpp::SensorDataQoS(),
@@ -381,6 +402,33 @@ class RunnerCutterControlNode : public rclcpp::Node {
 #pragma endregion
 
 #pragma region Callbacks
+
+  void onLaserState(const laser_control_interfaces::msg::State::SharedPtr msg) {
+    // Failsafe - stop current task if laser is disconnected
+    if (msg->device_state ==
+            laser_control_interfaces::msg::DeviceState::DISCONNECTED ||
+        msg->device_state ==
+            laser_control_interfaces::msg::DeviceState::CONNECTING) {
+      bool res{stopTask()};
+      if (res) {
+        publishNotification("Laser disconnected. Task stopped");
+      }
+    }
+  }
+
+  void onCameraState(
+      const camera_control_interfaces::msg::State::SharedPtr msg) {
+    // Failsafe - stop current task if camera is disconnected
+    if (msg->device_state ==
+            camera_control_interfaces::msg::DeviceState::DISCONNECTED ||
+        msg->device_state ==
+            camera_control_interfaces::msg::DeviceState::CONNECTING) {
+      bool res{stopTask()};
+      if (res) {
+        publishNotification("Camera disconnected. Task stopped");
+      }
+    }
+  }
 
   void onDetection(
       const camera_control_interfaces::msg::DetectionResult::SharedPtr msg) {
@@ -1046,6 +1094,10 @@ class RunnerCutterControlNode : public rclcpp::Node {
   rclcpp::Publisher<runner_cutter_control_interfaces::msg::Tracks>::SharedPtr
       tracksPublisher_;
   rclcpp::CallbackGroup::SharedPtr subscriberCallbackGroup_;
+  rclcpp::Subscription<laser_control_interfaces::msg::State>::SharedPtr
+      laserStateSubscriber_;
+  rclcpp::Subscription<camera_control_interfaces::msg::State>::SharedPtr
+      cameraStateSubscriber_;
   rclcpp::Subscription<camera_control_interfaces::msg::DetectionResult>::
       SharedPtr detectionsSubscriber_;
   rclcpp::CallbackGroup::SharedPtr serviceCallbackGroup_;
