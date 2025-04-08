@@ -6,15 +6,6 @@
 	path = ros2/web_video_server
 	url = https://github.com/RobotWebTools/web_video_server.git
 	branch = ros2
-[submodule "ros2/camera_control_cpp/third_party/tensorrt-cpp-api"]
-	path = ros2/camera_control_cpp/third_party/tensorrt-cpp-api
-	url = https://github.com/cyrusbehr/tensorrt-cpp-api.git
-[submodule "ros2/camera_control_cpp/third_party/YOLOv8-TensorRT-CPP"]
-	path = ros2/camera_control_cpp/third_party/YOLOv8-TensorRT-CPP
-	url = https://github.com/cyrusbehr/YOLOv8-TensorRT-CPP.git
-[submodule "ros2/camera_control_cpp/third_party/bs_thread_pool"]
-	path = ros2/camera_control_cpp/third_party/bs_thread_pool
-	url = https://github.com/bshoshany/thread-pool.git
 [submodule "ros2/laser_control/third_party/helios_dac"]
 	path = ros2/laser_control/third_party/helios_dac
 	url = https://github.com/Grix/helios_dac.git
