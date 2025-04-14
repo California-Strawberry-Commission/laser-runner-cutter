@@ -4,6 +4,8 @@ ROS2 node and client for capturing camera frames and running runner and laser de
 
 ## Models
 
-ML models in the `models/` directory are stored in Git LFS, and can be pulled via `git lfs pull`. The `.pt` file is the trained YOLOv8 model. The TensorRT engine files (`.engine` extension) were built using:
+ML models in the `models/` directory are stored in Git LFS, and can be pulled via `git lfs pull`. The `.pt` file is the trained YOLOv8 model. TensorRT engine files (`.engine` extension) can be built using:
 
-        $ yolo export model=camera_control/models/RunnerSegYoloV8l.pt format=engine imgsz=768,1024 half=True simplify=True device=0
+    $ ./scripts/build_tensorrt_models.sh
+
+The TensorRT engine files will be created in the `models/` directory.

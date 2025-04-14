@@ -27,7 +27,10 @@ if [ ! -f "$installed_file" ]; then
     bash ./install_realsense_ros.sh
     bash ./install_requirements.sh
 
-    echo "Building!"
+    echo "Building..."
+    # Build TensorRT models
+    bash ../camera_control/scripts/build_tensorrt_models.sh
+    # Build ROS2 nodes
     bash ./build.sh
 
     touch "$installed_file"

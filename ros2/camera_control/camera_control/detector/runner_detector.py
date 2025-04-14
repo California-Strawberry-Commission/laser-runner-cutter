@@ -2,7 +2,6 @@ import asyncio
 import functools
 import logging
 import os
-import platform
 from typing import List, Optional, Tuple
 
 import cv2
@@ -18,12 +17,7 @@ class RunnerDetector:
             get_package_share_directory("camera_control"),
             "models",
         )
-        tensorrt_dir = os.path.join(
-            models_dir,
-            "tensorrt",
-            platform.machine(),
-        )
-        model_weights_path = os.path.join(tensorrt_dir, "RunnerSegYoloV8l.engine")
+        model_weights_path = os.path.join(models_dir, "RunnerSegYoloV8l.engine")
         self._input_image_size = (1024, 768)
         self._model = Yolo(
             weights_file=model_weights_path,
