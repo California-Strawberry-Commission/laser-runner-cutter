@@ -7,6 +7,14 @@
   <maintainer email="45153623+DominicChm@users.noreply.github.com">ros</maintainer>
   <license>TODO: License declaration</license>
 
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>common_interfaces</exec_depend>
+  <exec_depend>guidance_brain_interfaces</exec_depend>
+  <exec_depend>amiga_control</exec_depend>
+  <exec_depend>furrow_perceiver</exec_depend>
+
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>

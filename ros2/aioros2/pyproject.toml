@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "aioros2"
 version = "0.0.0"
 dependencies = [
+  "asttokens",
   "varname",
   "pure-eval",
 ]
