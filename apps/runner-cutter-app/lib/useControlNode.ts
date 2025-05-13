@@ -110,12 +110,19 @@ export default function useControlNode(nodeName: string) {
     successOutputMapper
   );
 
-  const manualTargetAimLaser = node.useService(
-    "~/manual_target_aim_laser",
-    "runner_cutter_control_interfaces/ManualTargetAimLaser",
+  const manualTargetLaser = node.useService(
+    "~/manual_target_laser",
+    "runner_cutter_control_interfaces/ManualTargetLaser",
     useCallback(
-      (normalizedX: number, normalizedY: number) => ({
+      (
+        normalizedX: number,
+        normalizedY: number,
+        aim: boolean,
+        burn: boolean
+      ) => ({
         normalized_pixel_coord: { x: normalizedX, y: normalizedY },
+        aim,
+        burn,
       }),
       []
     ),
@@ -151,7 +158,7 @@ export default function useControlNode(nodeName: string) {
     saveCalibration,
     loadCalibration,
     addCalibrationPoint,
-    manualTargetAimLaser,
+    manualTargetLaser,
     startRunnerCutter,
     startCircleFollower,
     stop,

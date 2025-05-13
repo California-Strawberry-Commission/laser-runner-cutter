@@ -78,7 +78,7 @@ export default function Controls() {
         return;
       }
 
-      controlNode.manualTargetAimLaser(normalizedX, normalizedY);
+      controlNode.manualTargetLaser(normalizedX, normalizedY, true, false);
     },
     [controlNode]
   );

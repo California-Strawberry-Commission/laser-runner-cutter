@@ -60,7 +60,7 @@ export default function Controls() {
       }
 
       if (manualMode) {
-        controlNode.manualTargetAimLaser(normalizedX, normalizedY);
+        controlNode.manualTargetLaser(normalizedX, normalizedY, true, true);
       } else {
         controlNode.addCalibrationPoint(normalizedX, normalizedY);
       }

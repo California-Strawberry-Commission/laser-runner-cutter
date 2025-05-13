@@ -23,7 +23,7 @@
 #include "runner_cutter_control_interfaces/msg/tracks.hpp"
 #include "runner_cutter_control_interfaces/srv/add_calibration_points.hpp"
 #include "runner_cutter_control_interfaces/srv/get_state.hpp"
-#include "runner_cutter_control_interfaces/srv/manual_target_aim_laser.hpp"
+#include "runner_cutter_control_interfaces/srv/manual_target_laser.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
 /**
@@ -191,10 +191,10 @@ class RunnerCutterControlNode : public rclcpp::Node {
         std::bind(&RunnerCutterControlNode::onAddCalibrationPoints, this,
                   std::placeholders::_1, std::placeholders::_2),
         rmw_qos_profile_services_default, serviceCallbackGroup_);
-    manualTargetAimLaserService_ = create_service<
-        runner_cutter_control_interfaces::srv::ManualTargetAimLaser>(
-        "~/manual_target_aim_laser",
-        std::bind(&RunnerCutterControlNode::onManualTargetAimLaser, this,
+    manualTargetLaserService_ = create_service<
+        runner_cutter_control_interfaces::srv::ManualTargetLaser>(
+        "~/manual_target_laser",
+        std::bind(&RunnerCutterControlNode::onManualTargetLaser, this,
                   std::placeholders::_1, std::placeholders::_2),
         rmw_qos_profile_services_default, serviceCallbackGroup_);
     startRunnerCutterService_ = create_service<std_srvs::srv::Trigger>(
@@ -564,18 +564,18 @@ class RunnerCutterControlNode : public rclcpp::Node {
     response->success = res;
   }
 
-  void onManualTargetAimLaser(
+  void onManualTargetLaser(
       const std::shared_ptr<
-          runner_cutter_control_interfaces::srv::ManualTargetAimLaser::Request>
+          runner_cutter_control_interfaces::srv::ManualTargetLaser::Request>
           request,
       std::shared_ptr<
-          runner_cutter_control_interfaces::srv::ManualTargetAimLaser::Response>
+          runner_cutter_control_interfaces::srv::ManualTargetLaser::Response>
           response) {
     std::pair<float, float> normalizedPixelCoord{
         request->normalized_pixel_coord.x, request->normalized_pixel_coord.y};
-    bool res{startTask("manual_target_aim_laser",
-                       &RunnerCutterControlNode::manualTargetAimLaserTask,
-                       normalizedPixelCoord)};
+    bool res{startTask("manual_target_laser",
+                       &RunnerCutterControlNode::manualTargetLaserTask,
+                       normalizedPixelCoord, request->aim, request->burn)};
     response->success = res;
   }
 
@@ -740,7 +740,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
         fmt::format("Added {} calibration point(s)", numPointsAdded));
   }
 
-  void manualTargetAimLaserTask(std::pair<float, float> normalizedPixelCoord) {
+  void manualTargetLaserTask(std::pair<float, float> normalizedPixelCoord,
+                             bool shouldAim, bool shouldBurn) {
     // Find the 3D position wrt the camera
     std::vector<std::pair<float, float>> normalizedPixelCoords{
         normalizedPixelCoord};
@@ -756,11 +757,24 @@ class RunnerCutterControlNode : public rclcpp::Node {
         static_cast<int>(std::round(normalizedPixelCoord.first * frameWidth)),
         static_cast<int>(
             std::round(normalizedPixelCoord.second * frameHeight))};
-    auto aimResult{aim(targetPosition, targetPixel)};
-    if (aimResult) {
+
+    // Aim
+    std::pair<float, float> laserCoord;
+    if (shouldAim) {
+      auto laserCoordOpt{aim(targetPosition, targetPixel)};
+      if (!laserCoordOpt) {
+        RCLCPP_INFO(get_logger(), "Failed to aim laser");
+        return;
+      }
       RCLCPP_INFO(get_logger(), "Aim laser successful");
+      laserCoord = laserCoordOpt.value();
     } else {
-      RCLCPP_INFO(get_logger(), "Failed to aim laser");
+      laserCoord = calibration_->cameraPositionToLaserCoord(targetPosition);
+    }
+
+    // Burn
+    if (shouldBurn) {
+      burnTarget(-1, laserCoord);
     }
   }
 
@@ -836,7 +850,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
       }
 
       // Burn
-      burnTarget(target, laserCoord);
+      burnTarget(target->getId(), laserCoord);
 
       if (!enableDetectionDuringBurn) {
         camera_->startDetection(detectionType);
@@ -884,21 +898,20 @@ class RunnerCutterControlNode : public rclcpp::Node {
     return std::nullopt;
   }
 
-  void burnTarget(std::shared_ptr<Track> target,
-                  std::pair<float, float> laserCoord) {
+  void burnTarget(int targetTrackId, std::pair<float, float> laserCoord) {
     float burnTimeSecs{getParamBurnTimeSecs()};
     laser_->clearPoint();
     auto [r, g, b]{getParamBurnLaserColor()};
     laser_->setColor(r, g, b, 0.0f);
     laser_->play();
-    RCLCPP_INFO(get_logger(), "Burning track %d for %f secs...",
-                target->getId(), burnTimeSecs);
+    RCLCPP_INFO(get_logger(), "Burning track %d for %f secs...", targetTrackId,
+                burnTimeSecs);
     laser_->setPoint(laserCoord.first, laserCoord.second);
     std::this_thread::sleep_for(std::chrono::duration<float>(burnTimeSecs));
     laser_->clearPoint();
     laser_->stop();
-    tracker_->processTrack(target->getId(), Track::State::COMPLETED);
-    RCLCPP_INFO(get_logger(), "Burn complete on track %d...", target->getId());
+    tracker_->processTrack(targetTrackId, Track::State::COMPLETED);
+    RCLCPP_INFO(get_logger(), "Burn complete on track %d...", targetTrackId);
   }
 
   void circleFollowerTask(float laserIntervalSecs = 0.5f) {
@@ -1106,8 +1119,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr loadCalibrationService_;
   rclcpp::Service<runner_cutter_control_interfaces::srv::AddCalibrationPoints>::
       SharedPtr addCalibrationPointsService_;
-  rclcpp::Service<runner_cutter_control_interfaces::srv::ManualTargetAimLaser>::
-      SharedPtr manualTargetAimLaserService_;
+  rclcpp::Service<runner_cutter_control_interfaces::srv::ManualTargetLaser>::
+      SharedPtr manualTargetLaserService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr startRunnerCutterService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr
       startCircleFollowerService_;

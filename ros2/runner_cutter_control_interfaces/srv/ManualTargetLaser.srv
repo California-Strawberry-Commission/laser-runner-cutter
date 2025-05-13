@@ -1,3 +1,5 @@
 common_interfaces/Vector2 normalized_pixel_coord
+bool aim
+bool burn
 ---
 bool success

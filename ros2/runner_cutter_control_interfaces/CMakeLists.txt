@@ -31,7 +31,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/TrackState.msg"
   "srv/AddCalibrationPoints.srv"
   "srv/GetState.srv"
-  "srv/ManualTargetAimLaser.srv"
+  "srv/ManualTargetLaser.srv"
   DEPENDENCIES common_interfaces
 )
 
