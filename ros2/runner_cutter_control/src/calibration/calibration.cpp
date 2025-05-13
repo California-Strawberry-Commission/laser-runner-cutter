@@ -125,6 +125,8 @@ std::size_t Calibration::addCalibrationPoints(
       }
 
       laser_->setPoint(laserCoord.first, laserCoord.second);
+      // Give sufficient time for galvo to settle
+      std::this_thread::sleep_for(std::chrono::duration<float>(0.1f));
 
       auto resultOpt{findPointCorrespondence(laserCoord)};
       if (!resultOpt) {

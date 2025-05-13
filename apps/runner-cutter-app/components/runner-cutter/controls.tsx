@@ -9,9 +9,11 @@ import DeviceCard, {
 } from "@/components/runner-cutter/device-card";
 import NodesCarousel from "@/components/runner-cutter/nodes-carousel";
 import RunnerCutterCard, {
+  RunnerCutterMode,
   RunnerCutterState,
 } from "@/components/runner-cutter/runner-cutter-card";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogClose,
@@ -32,8 +34,7 @@ import useLaserNode, {
   DeviceState as LaserDeviceState,
 } from "@/lib/useLaserNode";
 import useLifecycleManagerNode from "@/lib/useLifecycleManagerNode";
-import { useCallback, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useCallback, useMemo, useState } from "react";
 
 const LIFECYCLE_MANAGER_NODE_NAME = "/lifecycle_manager";
 const CAMERA_NODE_NAME = "/camera0";
@@ -50,15 +51,21 @@ export default function Controls() {
   const laserNode = useLaserNode(LASER_NODE_NAME);
   const controlNode = useControlNode(CONTROL_NODE_NAME);
 
+  const [manualMode, setManualMode] = useState<boolean>(false);
+
   const onImageClick = useCallback(
     (normalizedX: number, normalizedY: number) => {
       if (controlNode.state.state !== "idle") {
         return;
       }
 
-      controlNode.addCalibrationPoint(normalizedX, normalizedY);
+      if (manualMode) {
+        controlNode.manualTargetAimLaser(normalizedX, normalizedY);
+      } else {
+        controlNode.addCalibrationPoint(normalizedX, normalizedY);
+      }
     },
-    [controlNode]
+    [controlNode, manualMode]
   );
 
   const nodeInfos = useMemo(() => {
@@ -188,16 +195,18 @@ export default function Controls() {
         cameraNode.state.enabledDetectionTypes.includes(DetectionType.RUNNER)
       ) {
         runnerCutterState = RunnerCutterState.TRACKING;
+      } else if (manualMode) {
+        runnerCutterState = RunnerCutterState.ARMED_MANUAL;
       } else {
         runnerCutterState = RunnerCutterState.IDLE;
       }
     } else if (controlNode.state.state === "runner_cutter") {
-      runnerCutterState = RunnerCutterState.ARMED;
+      runnerCutterState = RunnerCutterState.ARMED_AUTO;
     }
   }
 
   let framePreviewOverlaySubtext;
-  if (runnerCutterState === RunnerCutterState.ARMED) {
+  if (runnerCutterState === RunnerCutterState.ARMED_AUTO) {
     const trackStateCounts = {
       [TrackState.PENDING]: 0,
       [TrackState.ACTIVE]: 0,
@@ -247,12 +256,36 @@ export default function Controls() {
           />
           <RunnerCutterCard
             runnerCutterState={runnerCutterState}
-            onTrackClick={() => cameraNode.startDetection(DetectionType.RUNNER)}
-            onTrackStopClick={() =>
-              cameraNode.stopDetection(DetectionType.RUNNER)
-            }
-            onArmClick={() => controlNode.startRunnerCutter()}
-            onArmStopClick={() => controlNode.stop()}
+            onStartClick={(mode: RunnerCutterMode) => {
+              switch (mode) {
+                case RunnerCutterMode.TRACKING_ONLY:
+                  cameraNode.startDetection(DetectionType.RUNNER);
+                  break;
+                case RunnerCutterMode.AUTO:
+                  controlNode.startRunnerCutter();
+                  break;
+                case RunnerCutterMode.MANUAL:
+                  setManualMode(true);
+                  break;
+                default:
+                  break;
+              }
+            }}
+            onStopClick={() => {
+              switch (runnerCutterState) {
+                case RunnerCutterState.TRACKING:
+                  cameraNode.stopDetection(DetectionType.RUNNER);
+                  break;
+                case RunnerCutterState.ARMED_AUTO:
+                  controlNode.stop();
+                  break;
+                case RunnerCutterState.ARMED_MANUAL:
+                  setManualMode(false);
+                  break;
+                default:
+                  break;
+              }
+            }}
           />
         </CardContent>
       </Card>
