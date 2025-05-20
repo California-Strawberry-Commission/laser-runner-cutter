@@ -4,6 +4,7 @@ import { Track, TrackState } from "@/lib/useControlNode";
 import useVideoServerStreamUrl from "@/lib/useVideoServerStreamUrl";
 import { cn } from "@/lib/utils";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 
 function getImageSizeAndOffset(imgElement: HTMLImageElement) {
   const rect = imgElement.getBoundingClientRect();
@@ -45,6 +46,7 @@ export default function FramePreviewWithOverlay({
   overlaySubtext,
   overlayNormalizedRect,
   overlayTracks,
+  showRotateButton = false,
   className,
 }: {
   topicName?: string;
@@ -61,6 +63,7 @@ export default function FramePreviewWithOverlay({
     height: number;
   };
   overlayTracks?: Track[];
+  showRotateButton?: boolean;
   className?: string;
 }) {
   const imgRef = useRef<HTMLImageElement>(null);
@@ -71,6 +74,7 @@ export default function FramePreviewWithOverlay({
     top: 0,
     left: 0,
   });
+  const [rotate180, setRotate180] = useState(false);
 
   const streamUrl = useVideoServerStreamUrl(topicName, quality, enableStream);
 
@@ -93,8 +97,12 @@ export default function FramePreviewWithOverlay({
       const clickY = e.clientY - rect.top - offsetY;
 
       // Normalize the coordinates
-      const normalizedX = clickX / renderedWidth;
-      const normalizedY = clickY / renderedHeight;
+      let normalizedX = clickX / renderedWidth;
+      let normalizedY = clickY / renderedHeight;
+      if (rotate180) {
+        normalizedX = 1 - normalizedX;
+        normalizedY = 1 - normalizedY;
+      }
 
       // Only call the callback if the click was within the image bounds
       if (
@@ -107,7 +115,7 @@ export default function FramePreviewWithOverlay({
         onImageClick(normalizedX, normalizedY);
       }
     },
-    [streamUrl, onImageClick]
+    [streamUrl, rotate180, onImageClick]
   );
 
   // Update canvas position and size to exactly match the rendered image
@@ -149,9 +157,15 @@ export default function FramePreviewWithOverlay({
       ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
 
       // Clear the specified rectangle
+      const rectX = rotate180
+        ? 1 - overlayNormalizedRect.x - overlayNormalizedRect.width
+        : overlayNormalizedRect.x;
+      const rectY = rotate180
+        ? 1 - overlayNormalizedRect.y - overlayNormalizedRect.height
+        : overlayNormalizedRect.y;
       ctx.clearRect(
-        overlayNormalizedRect.x * canvasElement.width,
-        overlayNormalizedRect.y * canvasElement.height,
+        rectX * canvasElement.width,
+        rectY * canvasElement.height,
         overlayNormalizedRect.width * canvasElement.width,
         overlayNormalizedRect.height * canvasElement.height
       );
@@ -187,6 +201,7 @@ export default function FramePreviewWithOverlay({
       });
     }
   }, [
+    rotate180,
     setCanvasStyle,
     overlayText,
     overlaySubtext,
@@ -221,19 +236,20 @@ export default function FramePreviewWithOverlay({
         ref={imgRef}
         src={streamUrl || undefined}
         alt="Camera Stream"
-        className="w-full h-full object-contain bg-black"
+        className={cn(
+          "w-full h-full object-contain bg-black",
+          rotate180 ? "rotate-180" : null
+        )}
         onClick={handleImageClick}
       />
       {renderOverlay && (
         <canvas
           ref={canvasRef}
           style={{
-            position: "absolute",
             top: `${canvasStyle.top}px`,
             left: `${canvasStyle.left}px`,
             width: `${canvasStyle.width}px`,
             height: `${canvasStyle.height}px`,
-            pointerEvents: "none",
           }}
           className="absolute inset-0 pointer-events-none"
         />
@@ -242,6 +258,17 @@ export default function FramePreviewWithOverlay({
         <div className="absolute inset-0 flex items-center justify-center text-white">
           <span className="text-white text-lg">Stream unavailable</span>
         </div>
+      )}
+      {showRotateButton && enableStream && (
+        <Button
+          className="absolute bottom-4 right-4"
+          variant="secondary"
+          onClick={() => {
+            setRotate180(!rotate180);
+          }}
+        >
+          Rotate
+        </Button>
       )}
     </div>
   );

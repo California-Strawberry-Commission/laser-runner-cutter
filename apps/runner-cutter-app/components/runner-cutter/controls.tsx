@@ -300,6 +300,7 @@ export default function Controls() {
         overlayText={`State: ${controlNode.state.state}`}
         overlaySubtext={framePreviewOverlaySubtext}
         overlayNormalizedRect={controlNode.state.normalizedLaserBounds}
+        showRotateButton
       />
     </div>
   );

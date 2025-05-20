@@ -122,6 +122,7 @@ export default function Controls() {
           cameraNode.state.deviceState === CameraDeviceState.STREAMING
         }
         onImageClick={onImageClick}
+        showRotateButton
       />
     </div>
   );
