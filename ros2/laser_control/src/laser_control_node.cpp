@@ -157,10 +157,14 @@ class LaserControlNode : public rclcpp::Node {
 #pragma region Callbacks
 
   void onPath(const laser_control_interfaces::msg::Path::SharedPtr msg) {
-    // TODO: Implement proper pathing. For now, just set the end point.
-    dac_->clearPoints();
+    dac_->clearPaths();
     if (msg->laser_on) {
-      dac_->addPoint(msg->end.x, msg->end.y);
+      Path::Point start{static_cast<float>(msg->start.x),
+                        static_cast<float>(msg->start.y)};
+      Path::Point end{static_cast<float>(msg->end.x),
+                      static_cast<float>(msg->end.y)};
+      Path path{start, end, msg->duration_ms};
+      dac_->addPath(path);
     }
   }
 

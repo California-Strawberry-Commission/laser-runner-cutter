@@ -1,5 +1,7 @@
 #pragma once
 
+#include "laser_control/dacs/path.hpp"
+
 class DAC {
  public:
   virtual ~DAC() = default;
@@ -39,23 +41,21 @@ class DAC {
   virtual void setColor(float r, float g, float b, float i) = 0;
 
   /**
-   * Add a point to be rendered by the DAC. (0, 0) corresponds to bottom left.
-   * The point will be ignored if it lies outside the bounds.
+   * Add a path to be rendered by the DAC.
    *
-   * @param x x coordinate, normalized to [0, 1].
-   * @param y y coordinate, normalized to [0, 1].
+   * @param path The path to render.
    */
-  virtual void addPoint(float x, float y) = 0;
+  virtual void addPath(const Path& path) = 0;
 
   /**
-   * Remove the last added point.
+   * Remove the last added path.
    */
-  virtual void removePoint() = 0;
+  virtual void removePath() = 0;
 
   /**
-   * Remove all points.
+   * Remove all paths.
    */
-  virtual void clearPoints() = 0;
+  virtual void clearPaths() = 0;
 
   /**
    * Start playback of points.

@@ -11,6 +11,7 @@ import useLaserNode, {
   DeviceState as LaserDeviceState,
 } from "@/lib/useLaserNode";
 import { useState } from "react";
+import { InputWithLabel } from "@/components/ui/input-with-label";
 
 function hexToRgb(hexColor: string) {
   hexColor = hexColor.replace("#", "");
@@ -29,8 +30,11 @@ export default function Controls() {
   const [nodeName, setNodeName] = useState<string>("/laser0");
   const laserNode = useLaserNode(nodeName);
   const [laserColor, setLaserColor] = useState<string>("#ff0000");
-  const [x, setX] = useState<string>("0");
-  const [y, setY] = useState<string>("0");
+  const [startX, setStartX] = useState<string>("0.0");
+  const [startY, setStartY] = useState<string>("0.0");
+  const [endX, setEndX] = useState<string>("1.0");
+  const [endY, setEndY] = useState<string>("1.0");
+  const [durationMs, setDurationMs] = useState<string>("1000");
 
   let laserDeviceState = DeviceState.UNAVAILABLE;
   if (laserNode.connected) {
@@ -86,47 +90,98 @@ export default function Controls() {
         <Card>
           <CardContent className="p-4 flex flex-col items-center gap-4">
             <div className="flex flex-row gap-4 items-center">
-              <Input
-                className="flex-none w-20"
+              <InputWithLabel
+                className="flex-none w-16"
                 type="number"
-                id="x"
-                name="x"
-                placeholder="x"
+                id="startX"
+                name="startX"
+                label="Start X"
                 step={0.1}
-                value={x}
+                value={startX}
                 onChange={(str) => {
                   const value = Number(str);
                   if (!isNaN(value)) {
-                    setX(str);
+                    setStartX(str);
                   }
                 }}
               />
-              <Input
-                className="flex-none w-20"
+              <InputWithLabel
+                className="flex-none w-16"
                 type="number"
-                id="y"
-                name="y"
-                placeholder="y"
+                id="startY"
+                name="startY"
+                label="Start Y"
                 step={0.1}
-                value={y}
+                value={startY}
                 onChange={(str) => {
                   const value = Number(str);
                   if (!isNaN(value)) {
-                    setY(str);
+                    setStartY(str);
+                  }
+                }}
+              />
+              <InputWithLabel
+                className="flex-none w-16"
+                type="number"
+                id="endX"
+                name="endX"
+                label="End X"
+                step={0.1}
+                value={endX}
+                onChange={(str) => {
+                  const value = Number(str);
+                  if (!isNaN(value)) {
+                    setEndX(str);
+                  }
+                }}
+              />
+              <InputWithLabel
+                className="flex-none w-16"
+                type="number"
+                id="endY"
+                name="endY"
+                label="End Y"
+                step={0.1}
+                value={endY}
+                onChange={(str) => {
+                  const value = Number(str);
+                  if (!isNaN(value)) {
+                    setEndY(str);
+                  }
+                }}
+              />
+              <InputWithLabel
+                className="flex-none w-20"
+                type="number"
+                id="durationMs"
+                name="durationMs"
+                label="Duration (ms)"
+                step={0.1}
+                value={durationMs}
+                onChange={(str) => {
+                  const value = Number(str);
+                  if (!isNaN(value)) {
+                    setDurationMs(str);
                   }
                 }}
               />
               <Button
                 disabled={disableButtons}
-                onClick={() => laserNode.setPoint(Number(x), Number(y))}
+                onClick={() =>
+                  laserNode.setPath(
+                    { x: Number(startX), y: Number(startY) },
+                    { x: Number(endX), y: Number(endY) },
+                    Number(durationMs)
+                  )
+                }
               >
-                Add Point
+                Set Path
               </Button>
               <Button
                 disabled={disableButtons}
-                onClick={() => laserNode.clearPoints()}
+                onClick={() => laserNode.clearPath()}
               >
-                Clear Points
+                Clear Path
               </Button>
             </div>
             <div className="flex flex-row items-center gap-4">

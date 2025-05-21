@@ -51,36 +51,25 @@ export default function useLaserNode(nodeName: string) {
     successOutputMapper
   );
 
-  const path = node.usePublisher(
+  const setPath = node.usePublisher(
     "~/path",
     "laser_control_interfaces/Path",
     useCallback(
-      (x: number, y: number) => ({
-        point: {
-          x: x,
-          y: y,
-        },
-      }),
-      []
-    )
-  );
-
-  const setPoint = node.usePublisher(
-    "~/path",
-    "laser_control_interfaces/Path",
-    useCallback(
-      (x: number, y: number) => ({
-        end: {
-          x: x,
-          y: y,
-        },
+      (
+        start: { x: number; y: number },
+        end: { x: number; y: number },
+        durationMs: number
+      ) => ({
+        start,
+        end,
+        duration_ms: durationMs,
         laser_on: true,
       }),
       []
     )
   );
 
-  const clearPoints = node.usePublisher(
+  const clearPath = node.usePublisher(
     "~/path",
     "laser_control_interfaces/Path",
     useCallback(
@@ -125,8 +114,8 @@ export default function useLaserNode(nodeName: string) {
     state,
     startDevice,
     closeDevice,
-    setPoint,
-    clearPoints,
+    setPath,
+    clearPath,
     play,
     stop,
     setColor,

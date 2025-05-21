@@ -59,23 +59,21 @@ void EtherDream::setColor(float r, float g, float b, float i) {
   color_ = {r, g, b, i};
 }
 
-void EtherDream::addPoint(float x, float y) {
-  if (x >= 0.0f && x <= 1.0f && y >= 0.0f && y <= 1.0f) {
-    std::lock_guard<std::mutex> lock(pointsMutex_);
-    points_.emplace_back(x, y);
+void EtherDream::addPath(const Path& path) {
+  std::lock_guard<std::mutex> lock(pathsMutex_);
+  paths_.emplace_back(path);
+}
+
+void EtherDream::removePath() {
+  std::lock_guard<std::mutex> lock(pathsMutex_);
+  if (!paths_.empty()) {
+    paths_.pop_back();
   }
 }
 
-void EtherDream::removePoint() {
-  std::lock_guard<std::mutex> lock(pointsMutex_);
-  if (!points_.empty()) {
-    points_.pop_back();
-  }
-}
-
-void EtherDream::clearPoints() {
-  std::lock_guard<std::mutex> lock(pointsMutex_);
-  points_.clear();
+void EtherDream::clearPaths() {
+  std::lock_guard<std::mutex> lock(pathsMutex_);
+  paths_.clear();
 }
 
 void EtherDream::play(int fps, int pps, float transitionDurationMs) {
@@ -133,7 +131,7 @@ std::vector<etherdream_point> EtherDream::getFrame(int fps, int pps,
   // projector renders, which disambiguates it from "point", which refers to the
   // (x, y) coordinates we want to have rendered
 
-  std::lock_guard<std::mutex> lock(pointsMutex_);
+  std::lock_guard<std::mutex> lock(pathsMutex_);
 
   // Calculate how many laxels of transition we need to add per point
   int laxelsPerTransition{
@@ -141,7 +139,7 @@ std::vector<etherdream_point> EtherDream::getFrame(int fps, int pps,
 
   // Calculate how many laxels we render each point
   float ppf{static_cast<float>(pps) / fps};
-  int numPoints{static_cast<int>(points_.size())};
+  int numPoints{static_cast<int>(paths_.size())};
   int laxelsPerPoint{static_cast<int>(
       (numPoints == 0) ? std::round(ppf) : std::round(ppf / numPoints))};
   int laxelsPerFrame{(numPoints == 0) ? laxelsPerPoint
@@ -161,8 +159,13 @@ std::vector<etherdream_point> EtherDream::getFrame(int fps, int pps,
       frame[laxelIdx] = {0, 0, 0, 0, 0, 0, 0, 0};
     }
   } else {
-    for (size_t pointIdx = 0; pointIdx < points_.size(); ++pointIdx) {
-      auto [x, y]{points_[pointIdx]};
+    for (size_t pointIdx = 0; pointIdx < paths_.size(); ++pointIdx) {
+      auto& path{paths_[pointIdx]};
+      if (!path.isRunning()) {
+        path.start();
+      }
+      auto point{path.getCurrentPoint()};
+
       for (int laxelIdx = 0; laxelIdx < laxelsPerPoint; ++laxelIdx) {
         // Pad BEFORE the "on" laxel so that the galvo settles first, and only
         // if there is more than one point
@@ -170,7 +173,7 @@ std::vector<etherdream_point> EtherDream::getFrame(int fps, int pps,
         int frameLaxelIdx{static_cast<int>(pointIdx) * laxelsPerPoint +
                           laxelIdx};
 
-        auto pointDenorm = denormalizePoint(x, y);
+        auto pointDenorm = denormalizePoint(point.x, point.y);
         frame[frameLaxelIdx] = {pointDenorm.first,
                                 pointDenorm.second,
                                 isTransition ? static_cast<uint16_t>(0) : r,

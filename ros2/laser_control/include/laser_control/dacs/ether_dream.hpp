@@ -56,23 +56,21 @@ class EtherDream final : public DAC {
   void setColor(float r, float g, float b, float i) override;
 
   /**
-   * Add a point to be rendered by the DAC. (0, 0) corresponds to bottom left.
-   * The point will be ignored if it lies outside the bounds.
+   * Add a path to be rendered by the DAC.
    *
-   * @param x x coordinate, normalized to [0, 1].
-   * @param y y coordinate, normalized to [0, 1].
+   * @param path The path to render.
    */
-  void addPoint(float x, float y) override;
+  void addPath(const Path& path) override;
 
   /**
-   * Remove the last added point.
+   * Remove the last added path.
    */
-  void removePoint() override;
+  void removePath() override;
 
   /**
-   * Remove all points.
+   * Remove all paths.
    */
-  void clearPoints() override;
+  void clearPaths() override;
 
   /**
    * Start playback of points.
@@ -110,8 +108,8 @@ class EtherDream final : public DAC {
 
   std::atomic<bool> dacConnected_{false};
   unsigned long connectedDacId_{0};
-  std::vector<std::pair<float, float>> points_;
-  std::mutex pointsMutex_;
+  std::vector<Path> paths_;
+  std::mutex pathsMutex_;
   std::tuple<float, float, float, float> color_;
   std::atomic<bool> playing_{false};
   std::atomic<bool> checkConnection_{false};
