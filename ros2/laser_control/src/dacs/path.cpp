@@ -23,6 +23,10 @@ Path::Point Path::getCurrentPoint() const {
     return start_;
   }
 
+  if (durationMs_ <= 0.0f) {
+    return end_;
+  }
+
   auto now{std::chrono::steady_clock::now()};
   float elapsedMs{
       std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(
