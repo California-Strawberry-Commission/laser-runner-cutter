@@ -16,8 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
-import { useCallback, useState } from "react";
+import { cn, enumToLabel } from "@/lib/utils";
+import { useState } from "react";
 
 export enum RunnerCutterState {
   UNAVAILABLE,
@@ -31,13 +31,6 @@ export enum RunnerCutterMode {
   TRACKING_ONLY,
   AUTO,
   MANUAL,
-}
-
-function enumToLabel(value: string): string {
-  return value
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(" ");
 }
 
 export default function RunnerCutterCard({

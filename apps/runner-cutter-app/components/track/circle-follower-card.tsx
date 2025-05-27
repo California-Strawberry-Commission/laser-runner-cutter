@@ -6,7 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cn, enumToLabel } from "@/lib/utils";
 
 export enum CircleFollowerState {
   UNAVAILABLE,
@@ -82,15 +82,12 @@ export default function CircleFollowerCard({
       break;
   }
 
-  let stateStr = CircleFollowerState[circleFollowerState];
-  stateStr = stateStr.charAt(0).toUpperCase() + stateStr.slice(1).toLowerCase();
-
   return (
     <Card className={cn(cardColor, className)}>
       <CardHeader className="p-4">
         <CardTitle className="text-lg">Circle Follower</CardTitle>
         <CardDescription className="text-foreground">
-          {stateStr}
+          {enumToLabel(CircleFollowerState[circleFollowerState])}
         </CardDescription>
       </CardHeader>
       <CardContent className="p-4 pt-0 flex flex-row gap-4">

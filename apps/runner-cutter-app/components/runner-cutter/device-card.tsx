@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/card";
 import { DeviceState as LaserDeviceState } from "@/lib/useLaserNode";
 import { DeviceState as CameraDeviceState } from "@/lib/useCameraNode";
-import { cn } from "@/lib/utils";
+import { cn, enumToLabel } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 
 export enum DeviceState {
@@ -117,15 +117,12 @@ export default function DeviceCard({
       break;
   }
 
-  let stateStr = DeviceState[deviceState];
-  stateStr = stateStr.charAt(0).toUpperCase() + stateStr.slice(1).toLowerCase();
-
   return (
     <Card className={cn(cardColor, className)}>
       <CardHeader className="p-4">
         <CardTitle className="text-lg">{deviceName}</CardTitle>
         <CardDescription className="text-foreground">
-          {stateStr}
+          {enumToLabel(DeviceState[deviceState])}
         </CardDescription>
       </CardHeader>
       <CardContent className="p-4 pt-0">{button}</CardContent>

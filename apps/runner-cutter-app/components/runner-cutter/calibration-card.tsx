@@ -6,7 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cn, enumToLabel } from "@/lib/utils";
 
 export enum CalibrationState {
   UNAVAILABLE,
@@ -65,15 +65,12 @@ export default function CalibrationCard({
       break;
   }
 
-  let stateStr = CalibrationState[calibrationState];
-  stateStr = stateStr.charAt(0).toUpperCase() + stateStr.slice(1).toLowerCase();
-
   return (
     <Card className={cn(cardColor, className)}>
       <CardHeader className="p-4">
         <CardTitle className="text-lg">Calibration</CardTitle>
         <CardDescription className="text-foreground">
-          {stateStr}
+          {enumToLabel(CalibrationState[calibrationState])}
         </CardDescription>
       </CardHeader>
       <CardContent className="p-4 pt-0 flex flex-row gap-4">

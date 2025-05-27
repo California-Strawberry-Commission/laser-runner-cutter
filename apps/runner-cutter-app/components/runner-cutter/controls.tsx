@@ -34,6 +34,7 @@ import useCameraNode, {
 import useControlNode, { TrackState } from "@/lib/useControlNode";
 import useLaserNode from "@/lib/useLaserNode";
 import useLifecycleManagerNode from "@/lib/useLifecycleManagerNode";
+import { enumToLabel } from "@/lib/utils";
 import { useCallback, useMemo, useState } from "react";
 
 const LIFECYCLE_MANAGER_NODE_NAME = "/lifecycle_manager";
@@ -173,6 +174,15 @@ export default function Controls() {
     }
   }
 
+  let stateStr = enumToLabel(controlNode.state.state);
+  if (
+    runnerCutterState !== RunnerCutterState.UNAVAILABLE &&
+    runnerCutterState !== RunnerCutterState.IDLE
+  ) {
+    stateStr = enumToLabel(RunnerCutterState[runnerCutterState]);
+  }
+  const framePreviewOverlayText = `State: ${stateStr}`;
+
   let framePreviewOverlaySubtext;
   if (runnerCutterState === RunnerCutterState.ARMED_AUTO) {
     const trackStateCounts = {
@@ -187,6 +197,10 @@ export default function Controls() {
     }, Active: ${trackStateCounts[TrackState.ACTIVE]}, Completed: ${
       trackStateCounts[TrackState.COMPLETED]
     }, Failed: ${trackStateCounts[TrackState.FAILED]}`;
+  } else if (runnerCutterState === RunnerCutterState.IDLE) {
+    framePreviewOverlaySubtext = "Click image to add a calibration point";
+  } else if (runnerCutterState === RunnerCutterState.ARMED_MANUAL) {
+    framePreviewOverlaySubtext = "Click image to burn that point";
   }
 
   return (
@@ -265,7 +279,7 @@ export default function Controls() {
         }
         onImageClick={onImageClick}
         enableOverlay
-        overlayText={`State: ${controlNode.state.state}`}
+        overlayText={framePreviewOverlayText}
         overlaySubtext={framePreviewOverlaySubtext}
         overlayNormalizedRect={controlNode.state.normalizedLaserBounds}
         showRotateButton
