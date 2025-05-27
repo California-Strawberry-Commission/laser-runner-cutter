@@ -1,6 +1,7 @@
+import expandTopicOrServiceName from "@/lib/ros/expandTopicName";
+import ROS from "@/lib/ros/ROS";
 import useROS from "@/lib/ros/useROS";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import expandTopicOrServiceName from "@/lib/ros/expandTopicName";
 
 type InMapper = (...a: any) => any;
 type OutMapper = (res: any) => any;
@@ -31,9 +32,10 @@ export const mappers = {
  * Creates a topic subscription with optional mapper, using either inferred or explicit types.
  * @param nodeName
  * @param ros
+ * @param nodeConnected
  * @returns
  */
-function useSubscription(nodeName: string, ros: any) {
+function useSubscription(nodeName: string, ros: ROS, nodeConnected: boolean) {
   return function useForLint<T>(
     path: string,
     idl: string,
@@ -43,13 +45,30 @@ function useSubscription(nodeName: string, ros: any) {
     const [val, setVal] = useState(initial);
 
     useEffect(() => {
+      // Note: roslibjs does not always resubscribe automatically after a WebSocket reconnection.
+      // This affects latched topics because latched messages are only sent on new subscriptions,
+      // not reconections. Thus, we need to trigger a new subscription when the node reconnects.
+      if (!nodeConnected) {
+        return;
+      }
+
+      // Subscribe to the topic only when the node is connected, so that we create a new
+      // subscription when the node reconnects
       const topicName = expandTopicOrServiceName(path, nodeName);
 
-      const sub = ros.subscribe(topicName, idl, (v: T) =>
-        setVal(typeof mapper === "function" ? mapper(v) : v)
-      );
-      return () => sub.unsubscribe();
-    }, [nodeName, ros, path, idl, mapper]);
+      const callback = (msg: ROSLIB.Message) => {
+        const val = typeof mapper === "function" ? mapper(msg) : msg;
+        setVal(val);
+      };
+      const sub = ros.subscribe(topicName, idl, callback);
+
+      return () => {
+        // roslibjs does not clear the listeners when calling unsubscribe() without the callback.
+        // Thus, make sure to unsubscribe the specific callback so that we do not end up with
+        // multiple registrations of the same callback.
+        sub.unsubscribe(callback);
+      };
+    }, [nodeName, ros, path, idl, mapper, nodeConnected]);
 
     return val;
   };
@@ -61,7 +80,7 @@ function useSubscription(nodeName: string, ros: any) {
  * @param ros
  * @returns
  */
-function usePublisher(nodeName: string, ros: any) {
+function usePublisher(nodeName: string, ros: ROS) {
   type MappableFn<IN_T> = (
     ...a: IN_T extends InMapper ? Parameters<IN_T> : [IN_T]
   ) => void;
@@ -93,7 +112,7 @@ function usePublisher(nodeName: string, ros: any) {
  * @param ros
  * @returns
  */
-function useService(nodeName: string, ros: any) {
+function useService(nodeName: string, ros: ROS) {
   type MappableFn<IN_T, OUT_T> = (
     ...a: IN_T extends InMapper ? Parameters<IN_T> : [IN_T]
   ) => Promise<OUT_T extends OutMapper ? ReturnType<OUT_T> : OUT_T>;
@@ -144,7 +163,11 @@ export default function useROSNode(nodeName: string) {
   }, [ros, nodeName, setNodeConnected]);
 
   const useServiceFn = useService(nodeName, ros);
-  const useSubscriptionFn = useSubscription(nodeName, ros);
+  const useSubscriptionFn = useSubscription(
+    nodeName,
+    ros,
+    rosConnected && nodeConnected
+  );
   const usePublisherFn = usePublisher(nodeName, ros);
 
   return useMemo(() => {

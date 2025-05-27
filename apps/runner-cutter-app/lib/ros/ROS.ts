@@ -130,7 +130,7 @@ export default class ROS {
   subscribe(
     name: string,
     messageType: string,
-    callback: (message: any) => void
+    callback: (message: ROSLIB.Message) => void
   ): ROSLIB.Topic<ROSLIB.Message> {
     let topic = this.topicCache.get(name);
     if (!topic) {
