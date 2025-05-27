@@ -2,23 +2,13 @@
 
 import DeviceCard, {
   DeviceState,
+  convertCameraNodeDeviceState,
 } from "@/components/runner-cutter/device-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InputWithLabel } from "@/components/ui/input-with-label";
-import useCameraNode, {
-  DeviceState as CameraDeviceState,
-  CaptureMode,
-} from "@/lib/useCameraNode";
+import useCameraNode, { CaptureMode } from "@/lib/useCameraNode";
 import { useEffect, useRef, useState } from "react";
-
-function uint8ArrayToBase64(byteArray: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < byteArray.length; i++) {
-    binary += String.fromCharCode(byteArray[i]);
-  }
-  return btoa(binary);
-}
 
 export default function Controls() {
   // TODO: add ability to select node name
@@ -30,23 +20,7 @@ export default function Controls() {
 
   const imgRef = useRef<HTMLImageElement>(null);
 
-  let cameraDeviceState = DeviceState.UNAVAILABLE;
-  if (cameraNode.connected) {
-    switch (cameraNode.state.deviceState) {
-      case CameraDeviceState.DISCONNECTED:
-        cameraDeviceState = DeviceState.DISCONNECTED;
-        break;
-      case CameraDeviceState.CONNECTING:
-        cameraDeviceState = DeviceState.CONNECTING;
-        break;
-      case CameraDeviceState.STREAMING:
-        cameraDeviceState = DeviceState.CONNECTED;
-        break;
-      default:
-        break;
-    }
-  }
-
+  const cameraDeviceState = convertCameraNodeDeviceState(cameraNode);
   const disableButtons = cameraDeviceState !== DeviceState.CONNECTED;
 
   // Sync text inputs to node state

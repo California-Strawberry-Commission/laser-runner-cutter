@@ -3,15 +3,15 @@
 import ColorPicker from "@/components/laser/color-picker";
 import DeviceCard, {
   DeviceState,
+  convertLaserNodeDeviceState,
 } from "@/components/runner-cutter/device-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { InputWithLabel } from "@/components/ui/input-with-label";
 import useLaserNode, {
   DeviceState as LaserDeviceState,
 } from "@/lib/useLaserNode";
 import { useState } from "react";
-import { InputWithLabel } from "@/components/ui/input-with-label";
 
 function hexToRgb(hexColor: string) {
   hexColor = hexColor.replace("#", "");
@@ -36,24 +36,7 @@ export default function Controls() {
   const [endY, setEndY] = useState<string>("1.0");
   const [durationMs, setDurationMs] = useState<string>("1000");
 
-  let laserDeviceState = DeviceState.UNAVAILABLE;
-  if (laserNode.connected) {
-    switch (laserNode.state.deviceState) {
-      case LaserDeviceState.DISCONNECTED:
-        laserDeviceState = DeviceState.DISCONNECTED;
-        break;
-      case LaserDeviceState.CONNECTING:
-        laserDeviceState = DeviceState.CONNECTING;
-        break;
-      case LaserDeviceState.PLAYING:
-      case LaserDeviceState.STOPPED:
-        laserDeviceState = DeviceState.CONNECTED;
-        break;
-      default:
-        break;
-    }
-  }
-
+  const laserDeviceState = convertLaserNodeDeviceState(laserNode);
   const disableButtons = laserDeviceState !== DeviceState.CONNECTED;
 
   let playbackButton = null;

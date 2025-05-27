@@ -3,6 +3,7 @@
 import FramePreviewWithOverlay from "@/components/camera/frame-preview-with-overlay";
 import DeviceCard, {
   DeviceState,
+  convertCameraNodeDeviceState,
 } from "@/components/runner-cutter/device-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,23 +23,7 @@ export default function Controls() {
   const [saveDir, setSaveDir] = useState<string>("");
   const [intervalSecs, setIntervalSecs] = useState<string>("5");
 
-  let cameraDeviceState = DeviceState.UNAVAILABLE;
-  if (cameraNode.connected) {
-    switch (cameraNode.state.deviceState) {
-      case CameraDeviceState.DISCONNECTED:
-        cameraDeviceState = DeviceState.DISCONNECTED;
-        break;
-      case CameraDeviceState.CONNECTING:
-        cameraDeviceState = DeviceState.CONNECTING;
-        break;
-      case CameraDeviceState.STREAMING:
-        cameraDeviceState = DeviceState.CONNECTED;
-        break;
-      default:
-        break;
-    }
-  }
-
+  const cameraDeviceState = convertCameraNodeDeviceState(cameraNode);
   const disableButtons = cameraDeviceState !== DeviceState.CONNECTED;
 
   // Sync text inputs to node state

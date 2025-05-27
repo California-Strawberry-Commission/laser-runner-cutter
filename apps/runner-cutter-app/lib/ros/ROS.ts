@@ -32,7 +32,7 @@ export default class ROS {
   constructor(
     url: string | null,
     reconnectIntervalMs: number = 5000,
-    nodeMonitorIntervalMs: number = 1000
+    nodeMonitorIntervalMs: number = 5000
   ) {
     this.url = url;
     this.reconnectIntervalMs = reconnectIntervalMs;
@@ -160,7 +160,7 @@ export default class ROS {
       "/rosapi/nodes",
       "rosapi/Nodes",
       {},
-      1000
+      this.nodeMonitorIntervalMs
     );
     return result.nodes;
   }

@@ -5,6 +5,7 @@ export enum DeviceState {
   DISCONNECTED,
   CONNECTING,
   STREAMING,
+  DISCONNECTING,
 }
 
 export enum CaptureMode {

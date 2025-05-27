@@ -6,6 +6,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DeviceState as LaserDeviceState } from "@/lib/useLaserNode";
+import { DeviceState as CameraDeviceState } from "@/lib/useCameraNode";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 
@@ -13,7 +15,55 @@ export enum DeviceState {
   DISCONNECTED,
   CONNECTING,
   CONNECTED,
+  DISCONNECTING,
   UNAVAILABLE,
+}
+
+export function convertLaserNodeDeviceState(laserNode: any): DeviceState {
+  let deviceState = DeviceState.UNAVAILABLE;
+  if (laserNode.connected) {
+    switch (laserNode.state.deviceState) {
+      case LaserDeviceState.DISCONNECTED:
+        deviceState = DeviceState.DISCONNECTED;
+        break;
+      case LaserDeviceState.CONNECTING:
+        deviceState = DeviceState.CONNECTING;
+        break;
+      case LaserDeviceState.PLAYING:
+      case LaserDeviceState.STOPPED:
+        deviceState = DeviceState.CONNECTED;
+        break;
+      case LaserDeviceState.DISCONNECTING:
+        deviceState = DeviceState.DISCONNECTING;
+        break;
+      default:
+        break;
+    }
+  }
+  return deviceState;
+}
+
+export function convertCameraNodeDeviceState(cameraNode: any): DeviceState {
+  let deviceState = DeviceState.UNAVAILABLE;
+  if (cameraNode.connected) {
+    switch (cameraNode.state.deviceState) {
+      case CameraDeviceState.DISCONNECTED:
+        deviceState = DeviceState.DISCONNECTED;
+        break;
+      case CameraDeviceState.CONNECTING:
+        deviceState = DeviceState.CONNECTING;
+        break;
+      case CameraDeviceState.STREAMING:
+        deviceState = DeviceState.CONNECTED;
+        break;
+      case CameraDeviceState.DISCONNECTING:
+        deviceState = DeviceState.DISCONNECTING;
+        break;
+      default:
+        break;
+    }
+  }
+  return deviceState;
 }
 
 export default function DeviceCard({
@@ -41,6 +91,7 @@ export default function DeviceCard({
       );
       break;
     case DeviceState.CONNECTING:
+    case DeviceState.DISCONNECTING:
       cardColor = "bg-gray-300";
       button = (
         <Button className="w-full" disabled>

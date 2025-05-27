@@ -135,6 +135,8 @@ class LaserControlNode : public rclcpp::Node {
   uint8_t getDeviceState() {
     if (connecting_) {
       return laser_control_interfaces::msg::DeviceState::CONNECTING;
+    } else if (disconnecting_) {
+      return laser_control_interfaces::msg::DeviceState::DISCONNECTING;
     } else if (!dac_->isConnected()) {
       return laser_control_interfaces::msg::DeviceState::DISCONNECTED;
     } else if (dac_->isPlaying()) {
@@ -199,10 +201,14 @@ class LaserControlNode : public rclcpp::Node {
       return;
     }
 
-    dac_->close();
+    disconnecting_ = true;
     publishState();
 
+    dac_->close();
     response->success = true;
+
+    disconnecting_ = false;
+    publishState();
   }
 
   void onSetColor(
@@ -275,6 +281,7 @@ class LaserControlNode : public rclcpp::Node {
 
   std::shared_ptr<DAC> dac_;
   bool connecting_{false};
+  bool disconnecting_{false};
 };
 
 int main(int argc, char* argv[]) {

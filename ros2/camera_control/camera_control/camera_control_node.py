@@ -196,6 +196,8 @@ async def start_device(node, capture_mode):
 @aioros2.service("~/close_device", Trigger)
 async def close_device(node):
     shared_state.camera_started = False
+    _publish_state()
+
     # Wait until detection completes
     await shared_state.detection_completed_event.wait()
     shared_state.camera.stop()
@@ -678,7 +680,10 @@ def _get_device_state() -> DeviceState:
     if shared_state.camera.state == RgbdCameraState.CONNECTING:
         return DeviceState.CONNECTING
     elif shared_state.camera.state == RgbdCameraState.STREAMING:
-        return DeviceState.STREAMING
+        if shared_state.camera_started:
+            return DeviceState.STREAMING
+        else:
+            return DeviceState.DISCONNECTING
     else:
         return DeviceState.DISCONNECTED
 

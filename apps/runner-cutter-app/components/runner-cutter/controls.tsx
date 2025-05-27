@@ -6,6 +6,8 @@ import CalibrationCard, {
 } from "@/components/runner-cutter/calibration-card";
 import DeviceCard, {
   DeviceState,
+  convertCameraNodeDeviceState,
+  convertLaserNodeDeviceState,
 } from "@/components/runner-cutter/device-card";
 import NodesCarousel from "@/components/runner-cutter/nodes-carousel";
 import RunnerCutterCard, {
@@ -30,9 +32,7 @@ import useCameraNode, {
   DetectionType,
 } from "@/lib/useCameraNode";
 import useControlNode, { TrackState } from "@/lib/useControlNode";
-import useLaserNode, {
-  DeviceState as LaserDeviceState,
-} from "@/lib/useLaserNode";
+import useLaserNode from "@/lib/useLaserNode";
 import useLifecycleManagerNode from "@/lib/useLifecycleManagerNode";
 import { useCallback, useMemo, useState } from "react";
 
@@ -133,40 +133,8 @@ export default function Controls() {
     </Dialog>
   );
 
-  let cameraDeviceState = DeviceState.UNAVAILABLE;
-  if (cameraNode.connected) {
-    switch (cameraNode.state.deviceState) {
-      case CameraDeviceState.DISCONNECTED:
-        cameraDeviceState = DeviceState.DISCONNECTED;
-        break;
-      case CameraDeviceState.CONNECTING:
-        cameraDeviceState = DeviceState.CONNECTING;
-        break;
-      case CameraDeviceState.STREAMING:
-        cameraDeviceState = DeviceState.CONNECTED;
-        break;
-      default:
-        break;
-    }
-  }
-
-  let laserDeviceState = DeviceState.UNAVAILABLE;
-  if (laserNode.connected) {
-    switch (laserNode.state.deviceState) {
-      case LaserDeviceState.DISCONNECTED:
-        laserDeviceState = DeviceState.DISCONNECTED;
-        break;
-      case LaserDeviceState.CONNECTING:
-        laserDeviceState = DeviceState.CONNECTING;
-        break;
-      case LaserDeviceState.PLAYING:
-      case LaserDeviceState.STOPPED:
-        laserDeviceState = DeviceState.CONNECTED;
-        break;
-      default:
-        break;
-    }
-  }
+  const cameraDeviceState = convertCameraNodeDeviceState(cameraNode);
+  const laserDeviceState = convertLaserNodeDeviceState(laserNode);
 
   let calibrationState = CalibrationState.UNAVAILABLE;
   if (

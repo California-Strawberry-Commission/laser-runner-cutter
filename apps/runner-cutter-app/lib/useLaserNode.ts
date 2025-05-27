@@ -10,6 +10,7 @@ export enum DeviceState {
   CONNECTING,
   STOPPED,
   PLAYING,
+  DISCONNECTING,
 }
 
 function convertStateMessage(message: any): State {
