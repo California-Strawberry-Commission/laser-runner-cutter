@@ -25,6 +25,7 @@ laser0:
     fps: 1000
     pps: 1000
     transition_duration_ms: 0.5
+    color: [0.15, 0.0, 0.0, 0.0]
 furrow_perceiver_forward:
   ros__parameters:
     # Since RealSense ROS nodes are not using aioros2, we use a stub node def to represent the

@@ -1,4 +1,4 @@
-import useROSNode from "@/lib/ros/useROSNode";
+import useROSNode, { ParamType } from "@/lib/ros/useROSNode";
 import { useCallback } from "react";
 
 export type State = {
@@ -95,19 +95,12 @@ export default function useLaserNode(nodeName: string) {
     successOutputMapper
   );
 
-  const setColor = node.useService(
-    "~/set_color",
-    "laser_control_interfaces/SetColor",
-    useCallback(
-      (r: number, g: number, b: number) => ({
-        r: r,
-        g: g,
-        b: b,
-        i: 0.0,
-      }),
-      []
-    ),
-    successOutputMapper
+  const getColor = node.useGetParam("color");
+
+  const setColor = node.useSetParam(
+    "color",
+    ParamType.DOUBLE_ARRAY,
+    useCallback((r: number, g: number, b: number) => [r, g, b, 0.0], [])
   );
 
   return {
@@ -119,6 +112,7 @@ export default function useLaserNode(nodeName: string) {
     clearPath,
     play,
     stop,
+    getColor,
     setColor,
   };
 }

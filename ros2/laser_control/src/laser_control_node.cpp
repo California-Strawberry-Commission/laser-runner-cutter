@@ -5,7 +5,6 @@
 #include "laser_control_interfaces/msg/path.hpp"
 #include "laser_control_interfaces/msg/state.hpp"
 #include "laser_control_interfaces/srv/get_state.hpp"
-#include "laser_control_interfaces/srv/set_color.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
@@ -21,6 +20,11 @@ class LaserControlNode : public rclcpp::Node {
     declare_parameter<int>("fps", 30);
     declare_parameter<int>("pps", 30000);
     declare_parameter<float>("transition_duration_ms", 0.5f);
+    declare_parameter<std::vector<float>>("color", {0.15f, 0.0f, 0.0f, 0.0f});
+    paramSubscriber_ = std::make_shared<rclcpp::ParameterEventHandler>(this);
+    colorParamCallback_ = paramSubscriber_->add_parameter_callback(
+        "color", std::bind(&LaserControlNode::onColorChanged, this,
+                           std::placeholders::_1));
 
     /////////////
     // Publishers
@@ -57,11 +61,6 @@ class LaserControlNode : public rclcpp::Node {
         std::bind(&LaserControlNode::onCloseDevice, this, std::placeholders::_1,
                   std::placeholders::_2),
         rmw_qos_profile_services_default, serviceCallbackGroup_);
-    setColorService_ = create_service<laser_control_interfaces::srv::SetColor>(
-        "~/set_color",
-        std::bind(&LaserControlNode::onSetColor, this, std::placeholders::_1,
-                  std::placeholders::_2),
-        rmw_qos_profile_services_default, serviceCallbackGroup_);
     playService_ = create_service<std_srvs::srv::Trigger>(
         "~/play",
         std::bind(&LaserControlNode::onPlay, this, std::placeholders::_1,
@@ -89,6 +88,8 @@ class LaserControlNode : public rclcpp::Node {
     } else {
       throw std::runtime_error("Unknown dac_type: " + dacType);
     }
+    auto [r, g, b, i]{getParamColor()};
+    dac_->setColor(r, g, b, i);
 
     // Publish initial state
     publishState();
@@ -112,6 +113,25 @@ class LaserControlNode : public rclcpp::Node {
   float getParamTransitionDurationMs() {
     return static_cast<float>(
         get_parameter("transition_duration_ms").as_double());
+  }
+
+  std::tuple<float, float, float, float> getParamColor() {
+    auto param{get_parameter("color").as_double_array()};
+    return {param[0], param[1], param[2], param[3]};
+  }
+
+  void onColorChanged(const rclcpp::Parameter& param) {
+    std::vector<double> values{param.as_double_array()};
+    if (values.size() == 4) {
+      float r{static_cast<float>(values[0])};
+      float g{static_cast<float>(values[1])};
+      float b{static_cast<float>(values[2])};
+      float i{static_cast<float>(values[3])};
+      dac_->setColor(r, g, b, i);
+    } else {
+      RCLCPP_WARN(get_logger(), "Expected 4 values for 'color', got %zu",
+                  values.size());
+    }
   }
 
 #pragma endregion
@@ -197,15 +217,6 @@ class LaserControlNode : public rclcpp::Node {
     publishState();
   }
 
-  void onSetColor(
-      const std::shared_ptr<laser_control_interfaces::srv::SetColor::Request>
-          request,
-      std::shared_ptr<laser_control_interfaces::srv::SetColor::Response>
-          response) {
-    dac_->setColor(request->r, request->g, request->b, request->i);
-    response->success = true;
-  }
-
   void onPlay(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
               std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
     dac_->play(getParamFps(), getParamPps(), getParamTransitionDurationMs());
@@ -229,6 +240,8 @@ class LaserControlNode : public rclcpp::Node {
 
 #pragma endregion
 
+  std::shared_ptr<rclcpp::ParameterEventHandler> paramSubscriber_;
+  std::shared_ptr<rclcpp::ParameterCallbackHandle> colorParamCallback_;
   rclcpp::Publisher<laser_control_interfaces::msg::State>::SharedPtr
       statePublisher_;
   rclcpp::CallbackGroup::SharedPtr subscriberCallbackGroup_;
@@ -237,8 +250,6 @@ class LaserControlNode : public rclcpp::Node {
   rclcpp::CallbackGroup::SharedPtr serviceCallbackGroup_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr startDeviceService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr closeDeviceService_;
-  rclcpp::Service<laser_control_interfaces::srv::SetColor>::SharedPtr
-      setColorService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr playService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr stopService_;
   rclcpp::Service<laser_control_interfaces::srv::GetState>::SharedPtr

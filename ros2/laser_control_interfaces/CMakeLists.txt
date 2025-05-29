@@ -29,7 +29,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Path.msg"
   "msg/State.msg"
   "srv/GetState.srv"
-  "srv/SetColor.srv"
   DEPENDENCIES common_interfaces
 )
 

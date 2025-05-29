@@ -7,6 +7,8 @@ LaserControlClient::LaserControlClient(rclcpp::Node& callerNode,
                                        int timeoutSecs)
     : node_{callerNode}, timeoutSecs_{timeoutSecs} {
   std::string servicePrefix{"/" + clientNodeName};
+  parametersClient_ = std::make_shared<rclcpp::AsyncParametersClient>(
+      &callerNode, clientNodeName);
   pathPublisher_ =
       callerNode.create_publisher<laser_control_interfaces::msg::Path>(
           servicePrefix + "/path", 1);
@@ -18,10 +20,6 @@ LaserControlClient::LaserControlClient(rclcpp::Node& callerNode,
   closeDeviceClient_ = callerNode.create_client<std_srvs::srv::Trigger>(
       servicePrefix + "/close_device", rmw_qos_profile_services_default,
       clientCallbackGroup_);
-  setColorClient_ =
-      callerNode.create_client<laser_control_interfaces::srv::SetColor>(
-          servicePrefix + "/set_color", rmw_qos_profile_services_default,
-          clientCallbackGroup_);
   playClient_ = callerNode.create_client<std_srvs::srv::Trigger>(
       servicePrefix + "/play", rmw_qos_profile_services_default,
       clientCallbackGroup_);
@@ -61,21 +59,24 @@ bool LaserControlClient::closeDevice() {
 }
 
 bool LaserControlClient::setColor(float r, float g, float b, float i) {
-  auto request{
-      std::make_shared<laser_control_interfaces::srv::SetColor::Request>()};
-  request->r = r;
-  request->g = g;
-  request->b = b;
-  request->i = i;
-  auto future{setColorClient_->async_send_request(request)};
+  std::vector<double> color{r, g, b, i};
+  auto future{
+      parametersClient_->set_parameters({rclcpp::Parameter("color", color)})};
   if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
       std::future_status::ready) {
     RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
     return false;
   }
 
-  auto result{future.get()};
-  return result->success;
+  for (const auto& result : future.get()) {
+    if (!result.successful) {
+      RCLCPP_ERROR(node_.get_logger(), "Failed to set parameter: %s",
+                   result.reason.c_str());
+      return false;
+    }
+  }
+
+  return true;
 }
 
 bool LaserControlClient::setPoint(float x, float y) {
