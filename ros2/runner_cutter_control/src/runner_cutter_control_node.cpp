@@ -92,29 +92,23 @@ class RunnerCutterControlNode : public rclcpp::Node {
     /////////////
     // Parameters
     /////////////
-    declare_parameter<std::string>(
-        "runner_cutter_control_params.laser_control_node_name", "laser0");
-    declare_parameter<std::string>(
-        "runner_cutter_control_params.camera_control_node_name", "camera0");
-    declare_parameter<std::vector<float>>(
-        "runner_cutter_control_params.tracking_laser_color",
-        {0.15f, 0.0f, 0.0f});
-    declare_parameter<std::vector<float>>(
-        "runner_cutter_control_params.burn_laser_color", {0.0f, 0.0f, 1.0f});
-    declare_parameter<float>("runner_cutter_control_params.burn_time_secs",
-                             5.0);
-    declare_parameter<bool>("runner_cutter_control_params.enable_aiming", true);
+    declare_parameter<std::string>("laser_control_node_name", "laser0");
+    declare_parameter<std::string>("camera_control_node_name", "camera0");
+    declare_parameter<std::vector<float>>("tracking_laser_color",
+                                          {0.15f, 0.0f, 0.0f});
+    declare_parameter<std::vector<float>>("burn_laser_color",
+                                          {0.0f, 0.0f, 1.0f});
+    declare_parameter<float>("burn_time_secs", 5.0);
+    declare_parameter<bool>("enable_aiming", true);
     // Max number of times to attempt to target a detected runner to burn. An
     // attempt may fail if the runner burn point is outside the laser bounds, if
     // the aiming process failed, or if the runner was no longer detected. A
     // negative number means no limit.
-    declare_parameter<int>("runner_cutter_control_params.target_attempts", -1);
+    declare_parameter<int>("target_attempts", -1);
     // Duration, in seconds, during which if no viable target becomes available,
     // the runner cutter task will stop. A negative number means no auto disarm.
-    declare_parameter<float>("runner_cutter_control_params.auto_disarm_secs",
-                             -1.0);
-    declare_parameter<std::string>("runner_cutter_control_params.save_dir",
-                                   "~/runner_cutter");
+    declare_parameter<float>("auto_disarm_secs", -1.0);
+    declare_parameter<std::string>("save_dir", "~/runner_cutter");
 
     /////////////
     // Publishers
@@ -241,53 +235,41 @@ class RunnerCutterControlNode : public rclcpp::Node {
 #pragma region Param helpers
 
   std::string getParamLaserControlNodeName() {
-    return get_parameter("runner_cutter_control_params.laser_control_node_name")
-        .as_string();
+    return get_parameter("laser_control_node_name").as_string();
   }
 
   std::string getParamCameraControlNodeName() {
-    return get_parameter(
-               "runner_cutter_control_params.camera_control_node_name")
-        .as_string();
+    return get_parameter("camera_control_node_name").as_string();
   }
 
   std::tuple<float, float, float> getParamTrackingLaserColor() {
-    auto param{
-        get_parameter("runner_cutter_control_params.tracking_laser_color")
-            .as_double_array()};
+    auto param{get_parameter("tracking_laser_color").as_double_array()};
     return {param[0], param[1], param[2]};
   }
 
   std::tuple<float, float, float> getParamBurnLaserColor() {
-    auto param{get_parameter("runner_cutter_control_params.burn_laser_color")
-                   .as_double_array()};
+    auto param{get_parameter("burn_laser_color").as_double_array()};
     return {param[0], param[1], param[2]};
   }
 
   float getParamBurnTimeSecs() {
-    return static_cast<float>(
-        get_parameter("runner_cutter_control_params.burn_time_secs")
-            .as_double());
+    return static_cast<float>(get_parameter("burn_time_secs").as_double());
   }
 
   bool getParamEnableAiming() {
-    return get_parameter("runner_cutter_control_params.enable_aiming")
-        .as_bool();
+    return get_parameter("enable_aiming").as_bool();
   }
 
   int getParamTargetAttempts() {
-    return static_cast<int>(
-        get_parameter("runner_cutter_control_params.target_attempts").as_int());
+    return static_cast<int>(get_parameter("target_attempts").as_int());
   }
 
   float getParamAutoDisarmSecs() {
-    return static_cast<float>(
-        get_parameter("runner_cutter_control_params.auto_disarm_secs")
-            .as_double());
+    return static_cast<float>(get_parameter("auto_disarm_secs").as_double());
   }
 
   std::string getParamSaveDir() {
-    return get_parameter("runner_cutter_control_params.save_dir").as_string();
+    return get_parameter("save_dir").as_string();
   }
 
 #pragma endregion

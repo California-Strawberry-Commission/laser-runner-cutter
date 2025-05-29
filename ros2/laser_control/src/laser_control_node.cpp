@@ -15,13 +15,12 @@ class LaserControlNode : public rclcpp::Node {
     /////////////
     // Parameters
     /////////////
-    declare_parameter<std::string>("laser_control_params.dac_type",
+    declare_parameter<std::string>("dac_type",
                                    "helios");  // "helios" or "ether_dream"
-    declare_parameter<int>("laser_control_params.dac_index", 0);
-    declare_parameter<int>("laser_control_params.fps", 30);
-    declare_parameter<int>("laser_control_params.pps", 30000);
-    declare_parameter<float>("laser_control_params.transition_duration_ms",
-                             0.5f);
+    declare_parameter<int>("dac_index", 0);
+    declare_parameter<int>("fps", 30);
+    declare_parameter<int>("pps", 30000);
+    declare_parameter<float>("transition_duration_ms", 0.5f);
 
     /////////////
     // Publishers
@@ -99,26 +98,20 @@ class LaserControlNode : public rclcpp::Node {
 #pragma region Param helpers
 
   std::string getParamDacType() {
-    return get_parameter("laser_control_params.dac_type").as_string();
+    return get_parameter("dac_type").as_string();
   }
 
   int getParamDacIndex() {
-    return static_cast<int>(
-        get_parameter("laser_control_params.dac_index").as_int());
+    return static_cast<int>(get_parameter("dac_index").as_int());
   }
 
-  int getParamFps() {
-    return static_cast<int>(get_parameter("laser_control_params.fps").as_int());
-  }
+  int getParamFps() { return static_cast<int>(get_parameter("fps").as_int()); }
 
-  int getParamPps() {
-    return static_cast<int>(get_parameter("laser_control_params.pps").as_int());
-  }
+  int getParamPps() { return static_cast<int>(get_parameter("pps").as_int()); }
 
   float getParamTransitionDurationMs() {
     return static_cast<float>(
-        get_parameter("laser_control_params.transition_duration_ms")
-            .as_double());
+        get_parameter("transition_duration_ms").as_double());
   }
 
 #pragma endregion
