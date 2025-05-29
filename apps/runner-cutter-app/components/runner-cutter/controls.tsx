@@ -273,7 +273,7 @@ export default function Controls() {
       </Card>
       <FramePreviewWithOverlay
         className="w-full h-[360px]"
-        topicName="/camera0/debug_frame"
+        topicName={`${CAMERA_NODE_NAME}/debug_frame`}
         enableStream={
           cameraNode.state.deviceState === CameraDeviceState.STREAMING
         }

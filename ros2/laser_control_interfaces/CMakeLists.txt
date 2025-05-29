@@ -30,7 +30,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/State.msg"
   "srv/GetState.srv"
   "srv/SetColor.srv"
-  "srv/SetPlaybackParams.srv"
   DEPENDENCIES common_interfaces
 )
 

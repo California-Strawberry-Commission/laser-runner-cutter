@@ -4,7 +4,6 @@
 #include "laser_control_interfaces/msg/state.hpp"
 #include "laser_control_interfaces/srv/get_state.hpp"
 #include "laser_control_interfaces/srv/set_color.hpp"
-#include "laser_control_interfaces/srv/set_playback_params.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
@@ -19,7 +18,6 @@ class LaserControlClient {
   bool setColor(float r, float g, float b, float i);
   bool setPoint(float x, float y);
   bool clearPoint();
-  bool setPlaybackParams(int fps, int pps, float transitionDurationMs);
   bool play();
   bool stop();
   laser_control_interfaces::msg::State::SharedPtr getState();
@@ -35,8 +33,6 @@ class LaserControlClient {
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr closeDeviceClient_;
   rclcpp::Client<laser_control_interfaces::srv::SetColor>::SharedPtr
       setColorClient_;
-  rclcpp::Client<laser_control_interfaces::srv::SetPlaybackParams>::SharedPtr
-      setPlaybackParamsClient_;
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr playClient_;
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr stopClient_;
   rclcpp::Client<laser_control_interfaces::srv::GetState>::SharedPtr

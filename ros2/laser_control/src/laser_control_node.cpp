@@ -6,7 +6,6 @@
 #include "laser_control_interfaces/msg/state.hpp"
 #include "laser_control_interfaces/srv/get_state.hpp"
 #include "laser_control_interfaces/srv/set_color.hpp"
-#include "laser_control_interfaces/srv/set_playback_params.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
@@ -64,12 +63,6 @@ class LaserControlNode : public rclcpp::Node {
         std::bind(&LaserControlNode::onSetColor, this, std::placeholders::_1,
                   std::placeholders::_2),
         rmw_qos_profile_services_default, serviceCallbackGroup_);
-    setPlaybackParamsService_ =
-        create_service<laser_control_interfaces::srv::SetPlaybackParams>(
-            "~/set_playback_params",
-            std::bind(&LaserControlNode::onSetPlaybackParams, this,
-                      std::placeholders::_1, std::placeholders::_2),
-            rmw_qos_profile_services_default, serviceCallbackGroup_);
     playService_ = create_service<std_srvs::srv::Trigger>(
         "~/play",
         std::bind(&LaserControlNode::onPlay, this, std::placeholders::_1,
@@ -220,25 +213,6 @@ class LaserControlNode : public rclcpp::Node {
     response->success = true;
   }
 
-  void onSetPlaybackParams(
-      const std::shared_ptr<
-          laser_control_interfaces::srv::SetPlaybackParams::Request>
-          request,
-      std::shared_ptr<
-          laser_control_interfaces::srv::SetPlaybackParams::Response>
-          response) {
-    std::vector<rclcpp::Parameter> newParams{
-        rclcpp::Parameter{"laser_control_params.fps",
-                          static_cast<int>(request->fps)},
-        rclcpp::Parameter{"laser_control_params.pps",
-                          static_cast<int>(request->pps)},
-        rclcpp::Parameter{"laser_control_params.transition_duration_ms",
-                          static_cast<double>(request->transition_duration_ms)},
-    };
-    set_parameters(newParams);
-    response->success = true;
-  }
-
   void onPlay(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
               std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
     dac_->play(getParamFps(), getParamPps(), getParamTransitionDurationMs());
@@ -272,8 +246,6 @@ class LaserControlNode : public rclcpp::Node {
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr closeDeviceService_;
   rclcpp::Service<laser_control_interfaces::srv::SetColor>::SharedPtr
       setColorService_;
-  rclcpp::Service<laser_control_interfaces::srv::SetPlaybackParams>::SharedPtr
-      setPlaybackParamsService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr playService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr stopService_;
   rclcpp::Service<laser_control_interfaces::srv::GetState>::SharedPtr

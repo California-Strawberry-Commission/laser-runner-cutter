@@ -22,11 +22,6 @@ LaserControlClient::LaserControlClient(rclcpp::Node& callerNode,
       callerNode.create_client<laser_control_interfaces::srv::SetColor>(
           servicePrefix + "/set_color", rmw_qos_profile_services_default,
           clientCallbackGroup_);
-  setPlaybackParamsClient_ =
-      callerNode
-          .create_client<laser_control_interfaces::srv::SetPlaybackParams>(
-              servicePrefix + "/set_playback_params",
-              rmw_qos_profile_services_default, clientCallbackGroup_);
   playClient_ = callerNode.create_client<std_srvs::srv::Trigger>(
       servicePrefix + "/play", rmw_qos_profile_services_default,
       clientCallbackGroup_);
@@ -102,24 +97,6 @@ bool LaserControlClient::clearPoint() {
   pathPublisher_->publish(std::move(msg));
 
   return true;
-}
-
-bool LaserControlClient::setPlaybackParams(int fps, int pps,
-                                           float transitionDurationMs) {
-  auto request{std::make_shared<
-      laser_control_interfaces::srv::SetPlaybackParams::Request>()};
-  request->fps = fps;
-  request->pps = pps;
-  request->transition_duration_ms = transitionDurationMs;
-  auto future{setPlaybackParamsClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
-
-  auto result{future.get()};
-  return result->success;
 }
 
 bool LaserControlClient::play() {

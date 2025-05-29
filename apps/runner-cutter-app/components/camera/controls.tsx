@@ -288,7 +288,7 @@ export default function Controls() {
       </div>
       <FramePreviewWithOverlay
         className="w-full h-[480px]"
-        topicName="/camera0/debug_frame"
+        topicName={`${nodeName}/debug_frame`}
         enableStream={
           cameraNode.state.deviceState === CameraDeviceState.STREAMING
         }
