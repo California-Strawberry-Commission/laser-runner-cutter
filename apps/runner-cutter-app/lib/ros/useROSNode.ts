@@ -20,12 +20,36 @@ const outMappers = {
   trigger: (_data: any) => _data as { success: boolean; message: string },
 };
 
-/**
- * Pre-defined commonly used mapping functions.
- */
+// Pre-defined commonly used mapping functions.
 export const mappers = {
   in: inMappers,
   out: outMappers,
+};
+
+// Synced to rcl_interfaces/msg/ParameterType
+export enum ParamType {
+  BOOL = 1,
+  INTEGER = 2,
+  DOUBLE = 3,
+  STRING = 4,
+  BYTE_ARRAY = 5,
+  BOOL_ARRAY = 6,
+  INTEGER_ARRAY = 7,
+  DOUBLE_ARRAY = 8,
+  STRING_ARRAY = 9,
+}
+
+// Synced to rcl_interfaces/msg/ParameterValue
+const typeFieldMap: Record<ParamType, string> = {
+  [ParamType.BOOL]: "bool_value",
+  [ParamType.INTEGER]: "integer_value",
+  [ParamType.DOUBLE]: "double_value",
+  [ParamType.STRING]: "string_value",
+  [ParamType.BYTE_ARRAY]: "byte_array_value",
+  [ParamType.BOOL_ARRAY]: "bool_array_value",
+  [ParamType.INTEGER_ARRAY]: "integer_array_value",
+  [ParamType.DOUBLE_ARRAY]: "double_array_value",
+  [ParamType.STRING_ARRAY]: "string_array_value",
 };
 
 /**
@@ -126,21 +150,93 @@ function useService(nodeName: string, ros: ROS) {
     outMapper?: OUT_T
   ): MappableFn<IN_T, OUT_T> {
     async function _service(...arg: any) {
-      const serviceName = expandTopicOrServiceName(path, nodeName);
-
       const serviceData =
         typeof inMapper === "function" ? inMapper(...arg) : arg[0];
-
       // If the in mapper returns null/undefined, cancel the service call.
       if (serviceData == null) {
         return;
       }
 
-      const res = await ros.callService(serviceName, idl, serviceData);
+      const res = await ros.callService(
+        expandTopicOrServiceName(path, nodeName),
+        idl,
+        serviceData
+      );
       return typeof outMapper === "function" ? outMapper(res) : res;
     }
 
     return useCallback(_service, [path, idl, inMapper, outMapper]) as any;
+  };
+}
+
+// Note: tried ROSLIB.Param but it does not work for array types. So instead, we
+// use a service call to the node's get_parameters service.
+function useGetParam(nodeName: string, ros: ROS) {
+  return function useForLint<OUT_T>(
+    paramName: string,
+    outMapper?: OUT_T
+  ): () => Promise<OUT_T extends OutMapper ? ReturnType<OUT_T> : OUT_T> {
+    async function _getParam() {
+      const request = {
+        names: [paramName],
+      };
+      const response = await ros.callService(
+        expandTopicOrServiceName("~/get_parameters", nodeName),
+        "rcl_interfaces/srv/GetParameters",
+        request
+      );
+
+      const paramValue = response.values[0];
+      const typeField = typeFieldMap[paramValue.type as ParamType];
+      const value = paramValue[typeField];
+
+      return typeof outMapper === "function" ? outMapper(value) : value;
+    }
+
+    return useCallback(_getParam, [paramName, outMapper]) as any;
+  };
+}
+
+function useSetParam(nodeName: string, ros: ROS) {
+  type MappableFn<IN_T> = (
+    ...a: IN_T extends InMapper ? Parameters<IN_T> : [IN_T]
+  ) => Promise<boolean>;
+
+  return function useForLint<IN_T>(
+    paramName: string,
+    paramType: ParamType,
+    inMapper?: IN_T
+  ): MappableFn<IN_T> {
+    async function _setParam(...arg: any) {
+      const mappedValue =
+        typeof inMapper === "function" ? inMapper(...arg) : arg[0];
+      if (mappedValue == null) {
+        return;
+      }
+
+      const typeField = typeFieldMap[paramType];
+      const request = {
+        parameters: [
+          {
+            name: paramName,
+            value: {
+              type: paramType,
+              [typeField]: mappedValue,
+            },
+          },
+        ],
+      };
+
+      const response = await ros.callService(
+        expandTopicOrServiceName("~/set_parameters", nodeName),
+        "rcl_interfaces/srv/SetParameters",
+        request
+      );
+
+      return response.results[0].successful;
+    }
+
+    return useCallback(_setParam, [paramName, paramType, inMapper]) as any;
   };
 }
 
@@ -169,6 +265,8 @@ export default function useROSNode(nodeName: string) {
     rosConnected && nodeConnected
   );
   const usePublisherFn = usePublisher(nodeName, ros);
+  const useSetParamFn = useSetParam(nodeName, ros);
+  const useGetParamFn = useGetParam(nodeName, ros);
 
   return useMemo(() => {
     return {
@@ -178,6 +276,8 @@ export default function useROSNode(nodeName: string) {
       useService: useServiceFn,
       useSubscription: useSubscriptionFn,
       usePublisher: usePublisherFn,
+      useSetParam: useSetParamFn,
+      useGetParam: useGetParamFn,
     };
   }, [
     ros,
@@ -187,5 +287,7 @@ export default function useROSNode(nodeName: string) {
     useServiceFn,
     useSubscriptionFn,
     usePublisherFn,
+    useSetParamFn,
+    useGetParamFn,
   ]);
 }
