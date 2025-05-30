@@ -11,39 +11,15 @@ import { InputWithLabel } from "@/components/ui/input-with-label";
 import useLaserNode, {
   DeviceState as LaserDeviceState,
 } from "@/lib/useLaserNode";
+import useRgbColor from "@/lib/useRgbColor";
 import { useEffect, useState } from "react";
-
-function hexToRgb(hexColor: string) {
-  hexColor = hexColor.replace("#", "");
-  const r = parseInt(hexColor.substring(0, 2), 16) / 255.0;
-  const g = parseInt(hexColor.substring(2, 4), 16) / 255.0;
-  const b = parseInt(hexColor.substring(4, 6), 16) / 255.0;
-  if (isNaN(r) || isNaN(g) || isNaN(b)) {
-    return null;
-  } else {
-    return { r, g, b };
-  }
-}
-
-function rgbToHex(r: number, g: number, b: number) {
-  return (
-    "#" +
-    [r, g, b]
-      .map((x) =>
-        Math.round(x * 255)
-          .toString(16)
-          .padStart(2, "0")
-      )
-      .join("")
-      .toLowerCase()
-  );
-}
 
 export default function Controls() {
   // TODO: add ability to select node name
   const [nodeName, setNodeName] = useState<string>("/laser0");
   const laserNode = useLaserNode(nodeName);
-  const [laserColor, setLaserColor] = useState<string>("#000000");
+  // Normalized to [0, 1]
+  const [color, setColor] = useRgbColor({ r: 0.0, g: 0.0, b: 0.0 });
   const [startX, setStartX] = useState<string>("0.0");
   const [startY, setStartY] = useState<string>("0.0");
   const [endX, setEndX] = useState<string>("1.0");
@@ -55,13 +31,19 @@ export default function Controls() {
       if (laserNode.connected) {
         const result = await laserNode.getColor();
         if (result.length >= 3) {
-          setLaserColor(rgbToHex(result[0], result[1], result[2]));
+          setColor({
+            r: result[0],
+            g: result[1],
+            b: result[2],
+          });
         }
       }
     }
 
     fetchParams();
-  }, [laserNode.connected]);
+    // We intentionally did not add laserNode to deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setColor, laserNode.connected]);
 
   const laserDeviceState = convertLaserNodeDeviceState(laserNode);
   const disableButtons = laserDeviceState !== DeviceState.CONNECTED;
@@ -196,13 +178,11 @@ export default function Controls() {
             </div>
             <div className="flex flex-row items-center gap-4">
               <ColorPicker
-                color={laserColor}
-                onColorChange={(color: string) => {
-                  setLaserColor(color);
-                  const rgb = hexToRgb(color);
-                  if (rgb) {
-                    laserNode.setColor(rgb.r, rgb.g, rgb.b);
-                  }
+                className="w-[200px]"
+                color={color}
+                onColorChange={(color) => {
+                  setColor(color);
+                  laserNode.setColor(color.r, color.g, color.b);
                 }}
               />
               {playbackButton}

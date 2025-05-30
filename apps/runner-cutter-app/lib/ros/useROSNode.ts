@@ -92,7 +92,9 @@ function useSubscription(nodeName: string, ros: ROS, nodeConnected: boolean) {
         // multiple registrations of the same callback.
         sub.unsubscribe(callback);
       };
-    }, [nodeName, ros, path, idl, mapper, nodeConnected]);
+      // We intentionally added [nodeName, ros, nodeConnected] to deps
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [nodeName, ros, nodeConnected, path, idl, mapper]);
 
     return val;
   };
