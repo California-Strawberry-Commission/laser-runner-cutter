@@ -1,4 +1,4 @@
-import useROSNode from "@/lib/ros/useROSNode";
+import useROSNode, { ParamType } from "@/lib/ros/useROSNode";
 import { useCallback } from "react";
 
 export type State = {
@@ -150,6 +150,49 @@ export default function useControlNode(nodeName: string) {
     successOutputMapper
   );
 
+  const getTrackingLaserColor = node.useGetParam<number[]>(
+    "tracking_laser_color"
+  );
+  const setTrackingLaserColor = node.useSetParam(
+    "tracking_laser_color",
+    ParamType.DOUBLE_ARRAY,
+    useCallback((r: number, g: number, b: number) => [r, g, b, 0.0], [])
+  );
+
+  const getBurnLaserColor = node.useGetParam<number[]>("burn_laser_color");
+  const setBurnLaserColor = node.useSetParam(
+    "burn_laser_color",
+    ParamType.DOUBLE_ARRAY,
+    useCallback((r: number, g: number, b: number) => [r, g, b, 0.0], [])
+  );
+
+  const getBurnTimeSecs = node.useGetParam<number>("burn_time_secs");
+  const setBurnTimeSecs = node.useSetParam<number>(
+    "burn_time_secs",
+    ParamType.DOUBLE
+  );
+
+  const getEnableAiming = node.useGetParam<boolean>("enable_aiming");
+  const setEnableAiming = node.useSetParam<boolean>(
+    "enable_aiming",
+    ParamType.BOOL
+  );
+
+  const getTargetAttempts = node.useGetParam<number>("target_attempts");
+  const setTargetAttempts = node.useSetParam<number>(
+    "target_attempts",
+    ParamType.INTEGER
+  );
+
+  const getAutoDisarmSecs = node.useGetParam<number>("auto_disarm_secs");
+  const setAutoDisarmSecs = node.useSetParam<number>(
+    "auto_disarm_secs",
+    ParamType.DOUBLE
+  );
+
+  const getSaveDir = node.useGetParam<string>("save_dir");
+  const setSaveDir = node.useSetParam<string>("save_dir", ParamType.STRING);
+
   return {
     ...node,
     state,
@@ -162,5 +205,19 @@ export default function useControlNode(nodeName: string) {
     startRunnerCutter,
     startCircleFollower,
     stop,
+    getTrackingLaserColor,
+    setTrackingLaserColor,
+    getBurnLaserColor,
+    setBurnLaserColor,
+    getBurnTimeSecs,
+    setBurnTimeSecs,
+    getEnableAiming,
+    setEnableAiming,
+    getTargetAttempts,
+    setTargetAttempts,
+    getAutoDisarmSecs,
+    setAutoDisarmSecs,
+    getSaveDir,
+    setSaveDir,
   };
 }

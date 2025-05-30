@@ -2,8 +2,8 @@ control0:
   ros__parameters:
     laser_control_node_name: "laser0"
     camera_control_node_name: "camera0"
-    tracking_laser_color: [0.15, 0.0, 0.0]
-    burn_laser_color: [0.0, 0.0, 1.0]
+    tracking_laser_color: [0.15, 0.0, 0.0, 0.0]
+    burn_laser_color: [0.0, 0.0, 1.0, 0.0]
     burn_time_secs: 1.0
     enable_aiming: True
     target_attempts: 3

@@ -11,7 +11,7 @@ import { InputWithLabel } from "@/components/ui/input-with-label";
 import useLaserNode, {
   DeviceState as LaserDeviceState,
 } from "@/lib/useLaserNode";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 function hexToRgb(hexColor: string) {
   hexColor = hexColor.replace("#", "");
@@ -25,16 +25,43 @@ function hexToRgb(hexColor: string) {
   }
 }
 
+function rgbToHex(r: number, g: number, b: number) {
+  return (
+    "#" +
+    [r, g, b]
+      .map((x) =>
+        Math.round(x * 255)
+          .toString(16)
+          .padStart(2, "0")
+      )
+      .join("")
+      .toLowerCase()
+  );
+}
+
 export default function Controls() {
   // TODO: add ability to select node name
   const [nodeName, setNodeName] = useState<string>("/laser0");
   const laserNode = useLaserNode(nodeName);
-  const [laserColor, setLaserColor] = useState<string>("#ff0000");
+  const [laserColor, setLaserColor] = useState<string>("#000000");
   const [startX, setStartX] = useState<string>("0.0");
   const [startY, setStartY] = useState<string>("0.0");
   const [endX, setEndX] = useState<string>("1.0");
   const [endY, setEndY] = useState<string>("1.0");
   const [durationMs, setDurationMs] = useState<string>("1000");
+
+  useEffect(() => {
+    async function fetchParams() {
+      if (laserNode.connected) {
+        const result = await laserNode.getColor();
+        if (result.length >= 3) {
+          setLaserColor(rgbToHex(result[0], result[1], result[2]));
+        }
+      }
+    }
+
+    fetchParams();
+  }, [laserNode.connected]);
 
   const laserDeviceState = convertLaserNodeDeviceState(laserNode);
   const disableButtons = laserDeviceState !== DeviceState.CONNECTED;

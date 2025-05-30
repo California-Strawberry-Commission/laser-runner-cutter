@@ -9,11 +9,9 @@
 #include "runner_cutter_control/clients/laser_detection_context.hpp"
 
 Calibration::Calibration(std::shared_ptr<LaserControlClient> laser,
-                         std::shared_ptr<CameraControlClient> camera,
-                         std::tuple<float, float, float> laserColor)
+                         std::shared_ptr<CameraControlClient> camera)
     : laser_{std::move(laser)},
       camera_{std::move(camera)},
-      laserColor_{laserColor},
       pointCorrespondences_{} {}
 
 std::pair<int, int> Calibration::getCameraFrameSize() const {
@@ -42,6 +40,7 @@ void Calibration::reset() {
 }
 
 bool Calibration::calibrate(
+    std::tuple<float, float, float, float> laserColor,
     std::pair<int, int> gridSize,
     std::optional<std::reference_wrapper<std::atomic<bool>>> stopSignal) {
   reset();
@@ -66,7 +65,7 @@ bool Calibration::calibrate(
 
   // Get image correspondences
   spdlog::info("Getting image correspondences");
-  addCalibrationPoints(pendingLaserCoords, false, stopSignal);
+  addCalibrationPoints(pendingLaserCoords, laserColor, false, stopSignal);
   spdlog::info("{} out of {} point correspondences found.",
                pointCorrespondences_.size(), pendingLaserCoords.size());
   if (pointCorrespondences_.size() < 3) {
@@ -105,15 +104,15 @@ std::pair<float, float> Calibration::cameraPositionToLaserCoord(
 
 std::size_t Calibration::addCalibrationPoints(
     const std::vector<std::pair<float, float>>& laserCoords,
-    bool updateTransform,
+    std::tuple<float, float, float, float> laserColor, bool updateTransform,
     std::optional<std::reference_wrapper<std::atomic<bool>>> stopSignal) {
   if (laserCoords.empty()) {
     return 0;
   }
 
   std::size_t numPointCorrespondencesAdded{0};
-  auto [r, g, b]{laserColor_};
-  laser_->setColor(r, g, b, 0.0f);
+  auto [r, g, b, i]{laserColor};
+  laser_->setColor(r, g, b, i);
   laser_->clearPoint();
 
   {

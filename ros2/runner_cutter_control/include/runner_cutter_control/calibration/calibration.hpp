@@ -10,8 +10,7 @@
 class Calibration {
  public:
   explicit Calibration(std::shared_ptr<LaserControlClient> laser,
-                       std::shared_ptr<CameraControlClient> camera,
-                       std::tuple<float, float, float> laserColor);
+                       std::shared_ptr<CameraControlClient> camera);
 
   std::pair<int, int> getCameraFrameSize() const;
   std::tuple<int, int, int, int> getLaserBounds() const;
@@ -28,13 +27,15 @@ class Calibration {
    * 3. Identify the corresponding point in the camera frame
    * 4. Compute the transformation matrix from camera to laser
    *
+   * @param laserColor Laser color to shoot while calibrating.
    * @param gridSize Number of points in the x and y directions to use as
    * calibration points.
    * @param stopSignal Flag to enable the calibration process to be prematurely
    * terminated when set to true.
    * @return whether calibration was successful or not.
    */
-  bool calibrate(std::pair<int, int> gridSize = {5, 5},
+  bool calibrate(std::tuple<float, float, float, float> laserColor,
+                 std::pair<int, int> gridSize = {5, 5},
                  std::optional<std::reference_wrapper<std::atomic<bool>>>
                      stopSignal = std::nullopt);
 
@@ -52,6 +53,7 @@ class Calibration {
    * laserCoords and then optionally recalculate the transform.
    *
    * @param laserCoords Laser coordinates to find point correspondences with.
+   * @param laserColor Laser color to shoot while calibrating.
    * @param updateTransform Whether to recalculate the camera-space position to
    * laser coord transform.
    * @param stopSignal Flag to enable the calibration process to be prematurely
@@ -60,6 +62,7 @@ class Calibration {
    */
   std::size_t addCalibrationPoints(
       const std::vector<std::pair<float, float>>& laserCoords,
+      std::tuple<float, float, float, float> laserColor,
       bool updateTransform = false,
       std::optional<std::reference_wrapper<std::atomic<bool>>> stopSignal =
           std::nullopt);
@@ -112,7 +115,6 @@ class Calibration {
 
   std::shared_ptr<LaserControlClient> laser_;
   std::shared_ptr<CameraControlClient> camera_;
-  std::tuple<float, float, float> laserColor_{0.0f, 0.0f, 0.0f};
   std::pair<int, int> cameraFrameSize_{0, 0};
   PointCorrespondences pointCorrespondences_{};
   bool isCalibrated_{false};

@@ -95,8 +95,7 @@ export default function useLaserNode(nodeName: string) {
     successOutputMapper
   );
 
-  const getColor = node.useGetParam("color");
-
+  const getColor = node.useGetParam<number[]>("color");
   const setColor = node.useSetParam(
     "color",
     ParamType.DOUBLE_ARRAY,

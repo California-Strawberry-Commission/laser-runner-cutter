@@ -95,9 +95,9 @@ class RunnerCutterControlNode : public rclcpp::Node {
     declare_parameter<std::string>("laser_control_node_name", "laser0");
     declare_parameter<std::string>("camera_control_node_name", "camera0");
     declare_parameter<std::vector<float>>("tracking_laser_color",
-                                          {0.15f, 0.0f, 0.0f});
+                                          {0.15f, 0.0f, 0.0f, 0.0f});
     declare_parameter<std::vector<float>>("burn_laser_color",
-                                          {0.0f, 0.0f, 1.0f});
+                                          {0.0f, 0.0f, 1.0f, 0.0f});
     declare_parameter<float>("burn_time_secs", 5.0);
     declare_parameter<bool>("enable_aiming", true);
     // Max number of times to attempt to target a detected runner to burn. An
@@ -221,8 +221,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
     camera_ = std::make_shared<CameraControlClient>(
         *this, getParamCameraControlNodeName());
 
-    calibration_ = std::make_shared<Calibration>(laser_, camera_,
-                                                 getParamTrackingLaserColor());
+    calibration_ = std::make_shared<Calibration>(laser_, camera_);
     tracker_ = std::make_shared<Tracker>();
 
     // Publish initial state
@@ -242,14 +241,14 @@ class RunnerCutterControlNode : public rclcpp::Node {
     return get_parameter("camera_control_node_name").as_string();
   }
 
-  std::tuple<float, float, float> getParamTrackingLaserColor() {
+  std::tuple<float, float, float, float> getParamTrackingLaserColor() {
     auto param{get_parameter("tracking_laser_color").as_double_array()};
-    return {param[0], param[1], param[2]};
+    return {param[0], param[1], param[2], param[3]};
   }
 
-  std::tuple<float, float, float> getParamBurnLaserColor() {
+  std::tuple<float, float, float, float> getParamBurnLaserColor() {
     auto param{get_parameter("burn_laser_color").as_double_array()};
-    return {param[0], param[1], param[2]};
+    return {param[0], param[1], param[2], param[3]};
   }
 
   float getParamBurnTimeSecs() {
@@ -677,7 +676,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
   void calibrationTask() {
     publishNotification("Calibration started");
-    calibration_->calibrate({5, 5}, taskStopSignal_);
+    calibration_->calibrate(getParamTrackingLaserColor(), {5, 5},
+                            taskStopSignal_);
     publishNotification("Calibration complete");
   }
 
@@ -715,8 +715,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
                                      }),
                       laserCoords.end());
 
-    std::size_t numPointsAdded{
-        calibration_->addCalibrationPoints(laserCoords, true, taskStopSignal_)};
+    std::size_t numPointsAdded{calibration_->addCalibrationPoints(
+        laserCoords, getParamTrackingLaserColor(), true, taskStopSignal_)};
 
     publishNotification(
         fmt::format("Added {} calibration point(s)", numPointsAdded));
@@ -883,8 +883,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
   void burnTarget(int targetTrackId, std::pair<float, float> laserCoord) {
     float burnTimeSecs{getParamBurnTimeSecs()};
     laser_->clearPoint();
-    auto [r, g, b]{getParamBurnLaserColor()};
-    laser_->setColor(r, g, b, 0.0f);
+    auto [r, g, b, i]{getParamBurnLaserColor()};
+    laser_->setColor(r, g, b, i);
     laser_->play();
     RCLCPP_INFO(get_logger(), "Burning track %d for %f secs...", targetTrackId,
                 burnTimeSecs);
@@ -898,8 +898,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
   void circleFollowerTask(float laserIntervalSecs = 0.5f) {
     laser_->clearPoint();
-    auto [r, g, b]{getParamTrackingLaserColor()};
-    laser_->setColor(r, g, b, 0.0f);
+    auto [r, g, b, i]{getParamTrackingLaserColor()};
+    laser_->setColor(r, g, b, i);
     laser_->play();
     camera_->startDetection(
         camera_control_interfaces::msg::DetectionType::CIRCLE);
@@ -955,8 +955,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
     LaserDetectionContext context{laser_, camera_};
     auto initialLaserCoord{
         calibration_->cameraPositionToLaserCoord(targetCameraPosition)};
-    auto [r, g, b]{getParamTrackingLaserColor()};
-    laser_->setColor(r, g, b, 0.0f);
+    auto [r, g, b, i]{getParamTrackingLaserColor()};
+    laser_->setColor(r, g, b, i);
     auto correctedLaserCoord{
         correctLaser(initialLaserCoord, targetCameraPixel)};
     return correctedLaserCoord;
