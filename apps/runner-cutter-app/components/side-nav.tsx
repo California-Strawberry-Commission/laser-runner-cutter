@@ -20,6 +20,11 @@ const SIDENAV_ITEMS: SideNavItem[] = [
     isTestPage: false,
   },
   {
+    title: "Settings",
+    path: "/settings",
+    isTestPage: false,
+  },
+  {
     title: "Camera Test",
     path: "/test/camera",
     isTestPage: true,

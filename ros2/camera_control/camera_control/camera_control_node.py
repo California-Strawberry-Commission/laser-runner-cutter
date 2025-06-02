@@ -242,6 +242,7 @@ async def acquire_single_frame(node):
     }
 
 
+# TODO: Use param instead of service for setting exposure, gain, and save dir
 @aioros2.service("~/set_exposure", SetExposure)
 async def set_exposure(node, exposure_us):
     camera_control_params.exposure_us = exposure_us

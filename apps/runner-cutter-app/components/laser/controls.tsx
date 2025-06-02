@@ -20,11 +20,11 @@ export default function Controls() {
   const laserNode = useLaserNode(nodeName);
   // Normalized to [0, 1]
   const [color, setColor] = useRgbColor({ r: 0.0, g: 0.0, b: 0.0 });
-  const [startX, setStartX] = useState<string>("0.0");
-  const [startY, setStartY] = useState<string>("0.0");
-  const [endX, setEndX] = useState<string>("1.0");
-  const [endY, setEndY] = useState<string>("1.0");
-  const [durationMs, setDurationMs] = useState<string>("1000");
+  const [startX, setStartX] = useState<number>(0.0);
+  const [startY, setStartY] = useState<number>(0.0);
+  const [endX, setEndX] = useState<number>(1.0);
+  const [endY, setEndY] = useState<number>(1.0);
+  const [durationMs, setDurationMs] = useState<number>(1000.0);
 
   useEffect(() => {
     async function fetchParams() {
@@ -93,7 +93,7 @@ export default function Controls() {
                 onChange={(str) => {
                   const value = Number(str);
                   if (!isNaN(value)) {
-                    setStartX(str);
+                    setStartX(value);
                   }
                 }}
               />
@@ -108,7 +108,7 @@ export default function Controls() {
                 onChange={(str) => {
                   const value = Number(str);
                   if (!isNaN(value)) {
-                    setStartY(str);
+                    setStartY(value);
                   }
                 }}
               />
@@ -123,7 +123,7 @@ export default function Controls() {
                 onChange={(str) => {
                   const value = Number(str);
                   if (!isNaN(value)) {
-                    setEndX(str);
+                    setEndX(value);
                   }
                 }}
               />
@@ -138,7 +138,7 @@ export default function Controls() {
                 onChange={(str) => {
                   const value = Number(str);
                   if (!isNaN(value)) {
-                    setEndY(str);
+                    setEndY(value);
                   }
                 }}
               />
@@ -148,12 +148,12 @@ export default function Controls() {
                 id="durationMs"
                 name="durationMs"
                 label="Duration (ms)"
-                step={0.1}
+                step={100}
                 value={durationMs}
                 onChange={(str) => {
                   const value = Number(str);
                   if (!isNaN(value)) {
-                    setDurationMs(str);
+                    setDurationMs(value);
                   }
                 }}
               />
@@ -161,9 +161,9 @@ export default function Controls() {
                 disabled={disableButtons}
                 onClick={() =>
                   laserNode.setPath(
-                    { x: Number(startX), y: Number(startY) },
-                    { x: Number(endX), y: Number(endY) },
-                    Number(durationMs)
+                    { x: startX, y: startY },
+                    { x: endX, y: endY },
+                    durationMs
                   )
                 }
               >

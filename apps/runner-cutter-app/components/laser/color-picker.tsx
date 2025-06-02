@@ -52,10 +52,12 @@ export default function ColorPicker({
   color,
   onColorChange,
   className,
+  disabled = false,
 }: {
   color: RgbColor;
   onColorChange: (color: RgbColor) => void;
   className?: string;
+  disabled?: boolean;
 }) {
   const truncate = (n: number) => Math.trunc(n * 100) / 100;
   const colorStr = `rgb(${truncate(color.r)}, ${truncate(color.g)}, ${truncate(
@@ -74,6 +76,7 @@ export default function ColorPicker({
       <PopoverTrigger asChild>
         <Button
           variant={"outline"}
+          disabled={disabled}
           className={cn(
             "w-full justify-start text-left font-normal",
             !color && "text-muted-foreground",

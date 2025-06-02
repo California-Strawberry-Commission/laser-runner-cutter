@@ -14,8 +14,8 @@ export default function Controls() {
   // TODO: add ability to select node name
   const [nodeName, setNodeName] = useState<string>("/camera0");
   const cameraNode = useCameraNode(nodeName);
-  const [exposureUs, setExposureUs] = useState<string>("0");
-  const [gainDb, setGainDb] = useState<string>("0");
+  const [exposureUs, setExposureUs] = useState<number>(0.0);
+  const [gainDb, setGainDb] = useState<number>(0.0);
   const [saveDir, setSaveDir] = useState<string>("");
 
   const imgRef = useRef<HTMLImageElement>(null);
@@ -25,8 +25,8 @@ export default function Controls() {
 
   // Sync text inputs to node state
   useEffect(() => {
-    setExposureUs(String(cameraNode.state.exposureUs));
-    setGainDb(String(cameraNode.state.gainDb));
+    setExposureUs(cameraNode.state.exposureUs);
+    setGainDb(cameraNode.state.gainDb);
     setSaveDir(cameraNode.state.saveDirectory);
   }, [
     setExposureUs,
@@ -65,7 +65,7 @@ export default function Controls() {
                   onChange={(str) => {
                     const value = Number(str);
                     if (!isNaN(value)) {
-                      setExposureUs(str);
+                      setExposureUs(value);
                     }
                   }}
                 />
@@ -73,7 +73,7 @@ export default function Controls() {
                   className="rounded-none"
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.setExposure(Number(exposureUs));
+                    cameraNode.setExposure(exposureUs);
                   }}
                 >
                   Set
@@ -101,7 +101,7 @@ export default function Controls() {
                   onChange={(str) => {
                     const value = Number(str);
                     if (!isNaN(value)) {
-                      setGainDb(str);
+                      setGainDb(value);
                     }
                   }}
                 />
@@ -109,7 +109,7 @@ export default function Controls() {
                   className="rounded-none"
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.setGain(Number(gainDb));
+                    cameraNode.setGain(gainDb);
                   }}
                 >
                   Set
