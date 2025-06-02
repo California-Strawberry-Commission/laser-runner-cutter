@@ -4,21 +4,27 @@ import FramePreviewWithOverlay from "@/components/camera/frame-preview-with-over
 import { InputWithLabel } from "@/components/ui/input-with-label";
 import useFurrowPerceiverNode from "@/lib/useFurrowPerceiverNode";
 
-export default function FurrowPercieverControls() {
-  const f1 = useFurrowPerceiverNode("/furrow_perceiver_forward");
-  const f2 = useFurrowPerceiverNode("/furrow_perceiver_backward");
+export default function FurrowPercieverControls({
+  forwardNodeName,
+  backwardNodeName,
+}: {
+  forwardNodeName: string;
+  backwardNodeName: string;
+}) {
+  const f1 = useFurrowPerceiverNode(forwardNodeName);
+  const f2 = useFurrowPerceiverNode(backwardNodeName);
 
   return (
     <div className="flex items-center justify-center flex-col gap-4">
       <div className="flex flex-row gap-4">
         <FramePreviewWithOverlay
           className="w-[360px] h-[270px]"
-          topicName="/furrow_perceiver_forward/debug_img"
+          topicName={`${forwardNodeName}/debug_img`}
           enableStream
         />
         <FramePreviewWithOverlay
           className="w-[360px] h-[270px]"
-          topicName="/furrow_perceiver_backward/debug_img"
+          topicName={`${backwardNodeName}/debug_img`}
           enableStream
         />
       </div>

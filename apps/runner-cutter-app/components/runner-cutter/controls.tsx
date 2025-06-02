@@ -37,20 +37,25 @@ import useLifecycleManagerNode from "@/lib/useLifecycleManagerNode";
 import { enumToLabel } from "@/lib/utils";
 import { useCallback, useMemo, useState } from "react";
 
-const LIFECYCLE_MANAGER_NODE_NAME = "/lifecycle_manager";
-const CAMERA_NODE_NAME = "/camera0";
-const LASER_NODE_NAME = "/laser0";
-const CONTROL_NODE_NAME = "/control0";
-
-export default function Controls() {
+export default function Controls({
+  lifecycleManagerNodeName,
+  cameraNodeName,
+  laserNodeName,
+  controlNodeName,
+}: {
+  lifecycleManagerNodeName: string;
+  cameraNodeName: string;
+  laserNodeName: string;
+  controlNodeName: string;
+}) {
   const { connected: rosConnected } = useROS();
 
   const lifecycleManagerNode = useLifecycleManagerNode(
-    LIFECYCLE_MANAGER_NODE_NAME
+    lifecycleManagerNodeName
   );
-  const cameraNode = useCameraNode(CAMERA_NODE_NAME);
-  const laserNode = useLaserNode(LASER_NODE_NAME);
-  const controlNode = useControlNode(CONTROL_NODE_NAME);
+  const cameraNode = useCameraNode(cameraNodeName);
+  const laserNode = useLaserNode(laserNodeName);
+  const controlNode = useControlNode(controlNodeName);
 
   const [manualMode, setManualMode] = useState<boolean>(false);
 
@@ -273,7 +278,7 @@ export default function Controls() {
       </Card>
       <FramePreviewWithOverlay
         className="w-full h-[360px]"
-        topicName={`${CAMERA_NODE_NAME}/debug_frame`}
+        topicName={`${cameraNodeName}/debug_frame`}
         enableStream={
           cameraNode.state.deviceState === CameraDeviceState.STREAMING
         }

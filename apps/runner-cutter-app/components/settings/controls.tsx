@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { CAMERA_NODE_NAME, CONTROL_NODE_NAME } from "@/constants/node_names";
 import useCameraNode, {
   DeviceState as CameraDeviceState,
 } from "@/lib/useCameraNode";
@@ -14,9 +13,15 @@ import useRgbColor from "@/lib/useRgbColor";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-export default function Controls() {
-  const cameraNode = useCameraNode(CAMERA_NODE_NAME);
-  const controlNode = useControlNode(CONTROL_NODE_NAME);
+export default function Controls({
+  cameraNodeName,
+  controlNodeName,
+}: {
+  cameraNodeName: string;
+  controlNodeName: string;
+}) {
+  const cameraNode = useCameraNode(cameraNodeName);
+  const controlNode = useControlNode(controlNodeName);
 
   const [paramsFetched, setParamsFetched] = useState<boolean>(false);
   const [dirty, setDirty] = useState<boolean>(false);

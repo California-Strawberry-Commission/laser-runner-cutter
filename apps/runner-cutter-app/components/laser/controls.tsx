@@ -14,10 +14,8 @@ import useLaserNode, {
 import useRgbColor from "@/lib/useRgbColor";
 import { useEffect, useState } from "react";
 
-export default function Controls() {
-  // TODO: add ability to select node name
-  const [nodeName, setNodeName] = useState<string>("/laser0");
-  const laserNode = useLaserNode(nodeName);
+export default function Controls({ laserNodeName }: { laserNodeName: string }) {
+  const laserNode = useLaserNode(laserNodeName);
   // Normalized to [0, 1]
   const [color, setColor] = useRgbColor({ r: 0.0, g: 0.0, b: 0.0 });
   const [startX, setStartX] = useState<number>(0.0);

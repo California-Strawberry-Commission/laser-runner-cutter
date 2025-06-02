@@ -14,10 +14,12 @@ import useCameraNode, {
 } from "@/lib/useCameraNode";
 import { useEffect, useState } from "react";
 
-export default function Controls() {
-  // TODO: add ability to select node name
-  const [nodeName, setNodeName] = useState<string>("/camera0");
-  const cameraNode = useCameraNode(nodeName);
+export default function Controls({
+  cameraNodeName,
+}: {
+  cameraNodeName: string;
+}) {
+  const cameraNode = useCameraNode(cameraNodeName);
   const [exposureUs, setExposureUs] = useState<number>(0.0);
   const [gainDb, setGainDb] = useState<number>(0.0);
   const [saveDir, setSaveDir] = useState<string>("");
@@ -288,7 +290,7 @@ export default function Controls() {
       </div>
       <FramePreviewWithOverlay
         className="w-full h-[480px]"
-        topicName={`${nodeName}/debug_frame`}
+        topicName={`${cameraNodeName}/debug_frame`}
         enableStream={
           cameraNode.state.deviceState === CameraDeviceState.STREAMING
         }

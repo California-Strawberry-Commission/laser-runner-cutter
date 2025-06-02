@@ -8,8 +8,12 @@ import { InputWithLabel } from "@/components/ui/input-with-label";
 import { Button } from "@/components/ui/button";
 import useGuidanceBrainNode from "@/lib/useGuidanceBrainNode";
 
-export default function GuidanceBrainControls() {
-  const node = useGuidanceBrainNode("/guidance_brain");
+export default function GuidanceBrainControls({
+  guidanceBrainNodeName,
+}: {
+  guidanceBrainNodeName: string;
+}) {
+  const node = useGuidanceBrainNode(guidanceBrainNodeName);
 
   const disableButtons = !node.connected;
 

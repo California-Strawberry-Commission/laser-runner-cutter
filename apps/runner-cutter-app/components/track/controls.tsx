@@ -20,10 +20,18 @@ import useCameraNode, {
 import useControlNode from "@/lib/useControlNode";
 import useLaserNode from "@/lib/useLaserNode";
 
-export default function Controls() {
-  const cameraNode = useCameraNode("/camera0");
-  const laserNode = useLaserNode("/laser0");
-  const controlNode = useControlNode("/control0");
+export default function Controls({
+  cameraNodeName,
+  laserNodeName,
+  controlNodeName,
+}: {
+  cameraNodeName: string;
+  laserNodeName: string;
+  controlNodeName: string;
+}) {
+  const cameraNode = useCameraNode(cameraNodeName);
+  const laserNode = useLaserNode(laserNodeName);
+  const controlNode = useControlNode(controlNodeName);
 
   const cameraDeviceState = convertCameraNodeDeviceState(cameraNode);
   const laserDeviceState = convertLaserNodeDeviceState(laserNode);
@@ -103,7 +111,7 @@ export default function Controls() {
       </Card>
       <FramePreviewWithOverlay
         className="w-full h-[480px]"
-        topicName="/camera0/debug_frame"
+        topicName={`${cameraNodeName}/debug_frame`}
         enableStream={
           cameraNode.state.deviceState === CameraDeviceState.STREAMING
         }
