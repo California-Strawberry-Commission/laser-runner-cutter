@@ -41,9 +41,9 @@ class Tracker {
    * @param trackId The track ID.
    * @return The track, if it exists.
    */
-  std::optional<std::shared_ptr<Track>> getTrack(int trackId) const;
+  std::optional<std::shared_ptr<Track>> getTrack(uint32_t trackId) const;
 
-  std::unordered_map<int, std::shared_ptr<Track>> getTracks() const;
+  std::unordered_map<uint32_t, std::shared_ptr<Track>> getTracks() const;
 
   /**
    * Add a track to list of current tracks.
@@ -56,7 +56,7 @@ class Tracker {
    * @param confidence Confidence score associated with the detected target.
    * @return The newly created track, or existing track if it already exists.
    */
-  std::shared_ptr<Track> addTrack(int trackId, std::pair<int, int> pixel,
+  std::shared_ptr<Track> addTrack(uint32_t trackId, std::pair<int, int> pixel,
                                   std::tuple<float, float, float> position,
                                   double timestampMs, float confidence = 1.0f);
 
@@ -73,7 +73,7 @@ class Tracker {
    * @param trackId The track ID.
    * @param newState The new state.
    */
-  void processTrack(int trackId, Track::State newState);
+  void processTrack(uint32_t trackId, Track::State newState);
 
   /**
    * Clear all tracks from the tracker.
@@ -83,10 +83,10 @@ class Tracker {
   /**
    * Get a summary of all tracks with the count of each state.
    */
-  std::unordered_map<Track::State, int> getSummary() const;
+  std::unordered_map<Track::State, size_t> getSummary() const;
 
  private:
-  std::unordered_map<int, std::shared_ptr<Track>> tracks_;
+  std::unordered_map<uint32_t, std::shared_ptr<Track>> tracks_;
   std::deque<std::shared_ptr<Track>> pendingTracks_;
   mutable std::mutex tracksMutex_;
 };

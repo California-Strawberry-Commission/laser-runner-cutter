@@ -84,8 +84,6 @@ std::string expandUser(const std::string& path) {
   return std::string(home) + path.substr(1);
 }
 
-// TODO: stop task if laser or camera are disconnected
-
 class RunnerCutterControlNode : public rclcpp::Node {
  public:
   explicit RunnerCutterControlNode() : Node("runner_cutter_control_node") {
@@ -420,13 +418,13 @@ class RunnerCutterControlNode : public rclcpp::Node {
       // For new tracks, add to tracker and set as pending. For tracks that are
       // detected again, update the track pixel and position; for FAILED tracks,
       // set them as PENDING since they may have moved since the last detection.
-      std::unordered_set<int> prevPendingTracks;
+      std::unordered_set<uint32_t> prevPendingTracks;
       for (const auto& track :
            tracker_->getTracksWithState(Track::State::PENDING)) {
         prevPendingTracks.insert(track->getId());
       }
 
-      std::unordered_set<int> prevDetectedTrackIds{lastDetectedTrackIds_};
+      std::unordered_set<uint32_t> prevDetectedTrackIds{lastDetectedTrackIds_};
       lastDetectedTrackIds_.clear();
 
       for (const auto& instance : msg->instances) {
@@ -452,15 +450,15 @@ class RunnerCutterControlNode : public rclcpp::Node {
         // times) as they could now potentially be in bounds.
         int numAttempts{getParamTargetAttempts()};
         if (track->getState() == Track::State::FAILED &&
-            (numAttempts < 0 ||
-             track->getStateCount(Track::State::FAILED) < numAttempts)) {
+            (numAttempts < 0 || track->getStateCount(Track::State::FAILED) <
+                                    static_cast<std::size_t>(numAttempts))) {
           tracker_->processTrack(track->getId(), Track::State::PENDING);
         }
       }
 
       // Mark as FAILED any tracks that were previously detected, are PENDING,
       // but are no longer detected.
-      for (int trackId : prevDetectedTrackIds) {
+      for (auto trackId : prevDetectedTrackIds) {
         if (lastDetectedTrackIds_.find(trackId) ==
             lastDetectedTrackIds_.end()) {
           // We found a track that was previously detected but not anymore
@@ -479,7 +477,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
       }
 
       // Notify when the pending tracks have changed
-      std::unordered_set<int> pendingTracks;
+      std::unordered_set<uint32_t> pendingTracks;
       for (const auto& track :
            tracker_->getTracksWithState(Track::State::PENDING)) {
         pendingTracks.insert(track->getId());
@@ -756,7 +754,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
     // Burn
     if (shouldBurn) {
-      burnTarget(-1, laserCoord);
+      burnTarget(0, laserCoord);
     }
   }
 
@@ -820,7 +818,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
       if (getParamEnableAiming()) {
         auto laserCoordOpt{aim(target->getPosition(), target->getPixel())};
         if (!laserCoordOpt) {
-          RCLCPP_INFO(get_logger(), "Failed to aim laser at track %d.",
+          RCLCPP_INFO(get_logger(), "Failed to aim laser at track %u.",
                       target->getId());
           tracker_->processTrack(target->getId(), Track::State::FAILED);
           continue;
@@ -848,7 +846,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
   std::optional<std::shared_ptr<Track>> acquireNextTarget() {
     auto activeTracks{tracker_->getTracksWithState(Track::State::ACTIVE)};
     if (!activeTracks.empty()) {
-      RCLCPP_INFO(get_logger(), "Using active track [%d]",
+      RCLCPP_INFO(get_logger(), "Using active track [%u]",
                   activeTracks[0]->getId());
       return activeTracks[0];
     }
@@ -860,19 +858,19 @@ class RunnerCutterControlNode : public rclcpp::Node {
       }
 
       auto track{trackOpt.value()};
-      RCLCPP_INFO(get_logger(), "Processing pending track [%d]",
+      RCLCPP_INFO(get_logger(), "Processing pending track [%u]",
                   track->getId());
 
       auto laserCoord{
           calibration_->cameraPositionToLaserCoord(track->getPosition())};
       if (laserCoord.first >= 0.0 && laserCoord.first <= 1.0 &&
           laserCoord.second >= 0.0 && laserCoord.second <= 1.0) {
-        RCLCPP_INFO(get_logger(), "Setting track [%d] as target.",
+        RCLCPP_INFO(get_logger(), "Setting track [%u] as target.",
                     track->getId());
         return track;
       }
 
-      RCLCPP_INFO(get_logger(), "Track [%d] out of bounds. Marking as failed.",
+      RCLCPP_INFO(get_logger(), "Track [%u] out of bounds. Marking as failed.",
                   track->getId());
       tracker_->processTrack(track->getId(), Track::State::FAILED);
     }
@@ -880,20 +878,20 @@ class RunnerCutterControlNode : public rclcpp::Node {
     return std::nullopt;
   }
 
-  void burnTarget(int targetTrackId, std::pair<float, float> laserCoord) {
+  void burnTarget(uint32_t targetTrackId, std::pair<float, float> laserCoord) {
     float burnTimeSecs{getParamBurnTimeSecs()};
     laser_->clearPoint();
     auto [r, g, b, i]{getParamBurnLaserColor()};
     laser_->setColor(r, g, b, i);
     laser_->play();
-    RCLCPP_INFO(get_logger(), "Burning track %d for %f secs...", targetTrackId,
+    RCLCPP_INFO(get_logger(), "Burning track %u for %f secs...", targetTrackId,
                 burnTimeSecs);
     laser_->setPoint(laserCoord.first, laserCoord.second);
     std::this_thread::sleep_for(std::chrono::duration<float>(burnTimeSecs));
     laser_->clearPoint();
     laser_->stop();
     tracker_->processTrack(targetTrackId, Track::State::COMPLETED);
-    RCLCPP_INFO(get_logger(), "Burn complete on track %d...", targetTrackId);
+    RCLCPP_INFO(get_logger(), "Burn complete on track %u...", targetTrackId);
   }
 
   void circleFollowerTask(float laserIntervalSecs = 0.5f) {
@@ -1119,7 +1117,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
   std::atomic<bool> taskRunning_{false};
   std::string taskName_;
   std::shared_ptr<Tracker> tracker_;
-  std::unordered_set<int> lastDetectedTrackIds_;
+  std::unordered_set<uint32_t> lastDetectedTrackIds_;
   // Notifies waiting threads that new pending tracks were detected
   Event pendingTracksChangedEvent_;
 };

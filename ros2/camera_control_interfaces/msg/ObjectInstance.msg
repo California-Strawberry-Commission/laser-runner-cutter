@@ -1,5 +1,5 @@
 # Unique instance ID
-int32 track_id
+uint32 track_id
 # 3D position relative to camera
 common_interfaces/Vector3 position
 # 2D pixel coordinate on camera color frame

@@ -26,7 +26,8 @@ std::vector<std::shared_ptr<Track>> Tracker::getTracksWithState(
   return result;
 }
 
-std::optional<std::shared_ptr<Track>> Tracker::getTrack(int trackId) const {
+std::optional<std::shared_ptr<Track>> Tracker::getTrack(
+    uint32_t trackId) const {
   std::lock_guard<std::mutex> lock(tracksMutex_);
   auto it{tracks_.find(trackId)};
   if (it != tracks_.end()) {
@@ -35,14 +36,15 @@ std::optional<std::shared_ptr<Track>> Tracker::getTrack(int trackId) const {
   return std::nullopt;
 }
 
-std::unordered_map<int, std::shared_ptr<Track>> Tracker::getTracks() const {
+std::unordered_map<uint32_t, std::shared_ptr<Track>> Tracker::getTracks()
+    const {
   std::lock_guard<std::mutex> lock(tracksMutex_);
   // Return a copy for thread-safety
   return tracks_;
 }
 
 std::shared_ptr<Track> Tracker::addTrack(
-    int trackId, std::pair<int, int> pixel,
+    uint32_t trackId, std::pair<int, int> pixel,
     std::tuple<float, float, float> position, double timestampMs,
     float confidence) {
   if (trackId <= 0) {
@@ -84,7 +86,7 @@ std::optional<std::shared_ptr<Track>> Tracker::getNextPendingTrack() {
   return nextTrack;
 }
 
-void Tracker::processTrack(int trackId, Track::State newState) {
+void Tracker::processTrack(uint32_t trackId, Track::State newState) {
   auto trackOpt{getTrack(trackId)};
   if (!trackOpt) {
     return;
@@ -119,9 +121,9 @@ void Tracker::clear() {
   pendingTracks_.clear();
 }
 
-std::unordered_map<Track::State, int> Tracker::getSummary() const {
+std::unordered_map<Track::State, size_t> Tracker::getSummary() const {
   std::lock_guard<std::mutex> lock(tracksMutex_);
-  std::unordered_map<Track::State, int> summary;
+  std::unordered_map<Track::State, size_t> summary;
   for (const auto& track : tracks_) {
     summary[track.second->getState()]++;
   }

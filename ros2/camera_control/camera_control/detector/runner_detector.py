@@ -94,7 +94,7 @@ class RunnerDetector:
                 runner_masks.append(mask)
                 confs.append(conf)
                 track_ids.append(
-                    result["track_ids"][idx] if idx < len(result["track_ids"]) else -1
+                    result["track_ids"][idx] if idx < len(result["track_ids"]) else 0
                 )
             else:
                 self._logger.info(

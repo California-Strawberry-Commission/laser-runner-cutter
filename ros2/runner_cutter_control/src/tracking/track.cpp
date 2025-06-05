@@ -1,6 +1,6 @@
 #include "runner_cutter_control/tracking/track.hpp"
 
-Track::Track(int id, std::pair<int, int> pixel,
+Track::Track(uint32_t id, std::pair<int, int> pixel,
              std::tuple<float, float, float> position, Track::State state,
              std::unique_ptr<Predictor> predictor)
     : id_{id},
@@ -14,7 +14,7 @@ Track::Track(int id, std::pair<int, int> pixel,
   setState(state);
 }
 
-int Track::getStateCount(Track::State state) const {
+size_t Track::getStateCount(Track::State state) const {
   auto it = stateCount_.find(state);
   if (it != stateCount_.end()) {
     return it->second;

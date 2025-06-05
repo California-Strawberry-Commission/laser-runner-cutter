@@ -745,7 +745,9 @@ def _create_detection_result_msg(
         if position is not None:
             object_instance = ObjectInstance()
             object_instance.track_id = (
-                track_ids[idx] if track_ids is not None and idx < len(track_ids) else -1
+                track_ids[idx]
+                if track_ids is not None and idx < len(track_ids) and track_ids[idx] > 0
+                else 0
             )
             object_instance.position = Vector3(
                 x=position[0], y=position[1], z=position[2]
