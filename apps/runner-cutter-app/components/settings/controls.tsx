@@ -115,6 +115,8 @@ export default function Controls({
   const enableSaveButton = controlNode.connected && dirty;
 
   const handleSave = () => {
+    cameraNode.setExposure(exposureUs);
+    cameraNode.setGain(gainDb);
     controlNode.setTrackingLaserColor(
       trackingLaserColor.r,
       trackingLaserColor.g,
