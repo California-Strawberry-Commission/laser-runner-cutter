@@ -1,4 +1,0 @@
-common_interfaces/Vector2 start
-common_interfaces/Vector2 end
-float32 duration_ms
-bool laser_on

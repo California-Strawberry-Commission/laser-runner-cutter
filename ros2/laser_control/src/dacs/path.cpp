@@ -2,29 +2,19 @@
 
 #include <algorithm>
 
-Path::Path(const Point& start, const Point& end, float durationMs)
-    : start_(start), end_(end), durationMs_(durationMs) {}
+Path::Path(uint32_t id, const Point& origin)
+    : id_(id), origin_(origin), destination_(origin) {}
 
-void Path::start() {
-  if (isRunning_) {
-    return;
-  }
-
-  isRunning_ = true;
+void Path::setDestination(const Point& destination, float durationMs) {
+  origin_ = getCurrentPoint();
+  destination_ = destination;
+  durationMs_ = durationMs;
   startTime_ = std::chrono::steady_clock::now();
 }
 
-void Path::reset() { isRunning_ = false; }
-
-bool Path::isRunning() const { return isRunning_; }
-
-Path::Point Path::getCurrentPoint() const {
-  if (!isRunning_) {
-    return start_;
-  }
-
+Point Path::getCurrentPoint() const {
   if (durationMs_ <= 0.0f) {
-    return end_;
+    return destination_;
   }
 
   auto now{std::chrono::steady_clock::now()};
@@ -34,6 +24,6 @@ Path::Point Path::getCurrentPoint() const {
           .count()};
   float t{std::clamp(elapsedMs / durationMs_, 0.0f, 1.0f)};
 
-  return {start_.x + (end_.x - start_.x) * t,
-          start_.y + (end_.y - start_.y) * t};
+  return {origin_.x + (destination_.x - origin_.x) * t,
+          origin_.y + (destination_.y - origin_.y) * t};
 }

@@ -1,5 +1,10 @@
 #pragma once
 
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
+
 #include "laser_control/dacs/path.hpp"
 
 class DAC {
@@ -41,23 +46,6 @@ class DAC {
   virtual void setColor(float r, float g, float b, float i) = 0;
 
   /**
-   * Add a path to be rendered by the DAC.
-   *
-   * @param path The path to render.
-   */
-  virtual void addPath(const Path& path) = 0;
-
-  /**
-   * Remove the last added path.
-   */
-  virtual void removePath() = 0;
-
-  /**
-   * Remove all paths.
-   */
-  virtual void clearPaths() = 0;
-
-  /**
    * Start playback of points.
    *
    * @param fps Target frames per second.
@@ -81,4 +69,38 @@ class DAC {
    * Close connection to laser DAC.
    */
   virtual void close() = 0;
+
+  /**
+   * Whether the specified path exists.
+   *
+   * @return Whether the specified path exists.
+   */
+  bool hasPath(uint32_t pathId);
+
+  /**
+   * Set the destination point of the specified path.
+   *
+   * @param pathId The ID of the path to set the destination.
+   * @param destination The destination point.
+   * @param durationMs The duration, in ms, to take from the current point to
+   * the destination point.
+   */
+  void setPath(uint32_t pathId, const Point& destination, float durationMs);
+
+  /**
+   * Remove the specified path.
+   *
+   * @param pathId The ID of the path to remove.
+   * @return Whether the specified path was removed.
+   */
+  bool removePath(uint32_t pathId);
+
+  /**
+   * Remove all paths.
+   */
+  void clearPaths();
+
+ protected:
+  std::unordered_map<uint32_t, std::unique_ptr<Path>> paths_;
+  std::mutex pathsMutex_;
 };

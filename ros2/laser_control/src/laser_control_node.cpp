@@ -2,9 +2,10 @@
 #include "laser_control/dacs/ether_dream.hpp"
 #include "laser_control/dacs/helios.hpp"
 #include "laser_control_interfaces/msg/device_state.hpp"
-#include "laser_control_interfaces/msg/path.hpp"
+#include "laser_control_interfaces/msg/path_update.hpp"
 #include "laser_control_interfaces/msg/state.hpp"
 #include "laser_control_interfaces/srv/get_state.hpp"
+#include "laser_control_interfaces/srv/remove_path.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
@@ -41,10 +42,12 @@ class LaserControlNode : public rclcpp::Node {
     subscriberCallbackGroup_ =
         create_callback_group(rclcpp::CallbackGroupType::Reentrant);
     options.callback_group = subscriberCallbackGroup_;
-    pathSubscriber_ = create_subscription<laser_control_interfaces::msg::Path>(
-        "~/path", 1,
-        std::bind(&LaserControlNode::onPath, this, std::placeholders::_1),
-        options);
+    updatePathSubscriber_ =
+        create_subscription<laser_control_interfaces::msg::PathUpdate>(
+            "~/update_path", 1,
+            std::bind(&LaserControlNode::onUpdatePath, this,
+                      std::placeholders::_1),
+            options);
 
     ///////////
     // Services
@@ -59,6 +62,17 @@ class LaserControlNode : public rclcpp::Node {
     closeDeviceService_ = create_service<std_srvs::srv::Trigger>(
         "~/close_device",
         std::bind(&LaserControlNode::onCloseDevice, this, std::placeholders::_1,
+                  std::placeholders::_2),
+        rmw_qos_profile_services_default, serviceCallbackGroup_);
+    removePathService_ =
+        create_service<laser_control_interfaces::srv::RemovePath>(
+            "~/remove_path",
+            std::bind(&LaserControlNode::onRemovePath, this,
+                      std::placeholders::_1, std::placeholders::_2),
+            rmw_qos_profile_services_default, serviceCallbackGroup_);
+    clearPathsService_ = create_service<std_srvs::srv::Trigger>(
+        "~/clear_paths",
+        std::bind(&LaserControlNode::onClearPaths, this, std::placeholders::_1,
                   std::placeholders::_2),
         rmw_qos_profile_services_default, serviceCallbackGroup_);
     playService_ = create_service<std_srvs::srv::Trigger>(
@@ -164,18 +178,6 @@ class LaserControlNode : public rclcpp::Node {
 
 #pragma region Callbacks
 
-  void onPath(const laser_control_interfaces::msg::Path::SharedPtr msg) {
-    dac_->clearPaths();
-    if (msg->laser_on) {
-      Path::Point start{static_cast<float>(msg->start.x),
-                        static_cast<float>(msg->start.y)};
-      Path::Point end{static_cast<float>(msg->end.x),
-                      static_cast<float>(msg->end.y)};
-      Path path{start, end, msg->duration_ms};
-      dac_->addPath(path);
-    }
-  }
-
   void onStartDevice(
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
@@ -217,6 +219,28 @@ class LaserControlNode : public rclcpp::Node {
     publishState();
   }
 
+  void onUpdatePath(
+      const laser_control_interfaces::msg::PathUpdate::SharedPtr msg) {
+    Point destination{static_cast<float>(msg->destination.x),
+                      static_cast<float>(msg->destination.y)};
+    dac_->setPath(msg->path_id, destination, msg->duration_ms);
+  }
+
+  void onRemovePath(
+      const std::shared_ptr<laser_control_interfaces::srv::RemovePath::Request>
+          request,
+      std::shared_ptr<laser_control_interfaces::srv::RemovePath::Response>
+          response) {
+    response->success = dac_->removePath(request->path_id);
+  }
+
+  void onClearPaths(
+      const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+      std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+    dac_->clearPaths();
+    response->success = true;
+  }
+
   void onPlay(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
               std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
     dac_->play(getParamFps(), getParamPps(), getParamTransitionDurationMs());
@@ -245,11 +269,14 @@ class LaserControlNode : public rclcpp::Node {
   rclcpp::Publisher<laser_control_interfaces::msg::State>::SharedPtr
       statePublisher_;
   rclcpp::CallbackGroup::SharedPtr subscriberCallbackGroup_;
-  rclcpp::Subscription<laser_control_interfaces::msg::Path>::SharedPtr
-      pathSubscriber_;
+  rclcpp::Subscription<laser_control_interfaces::msg::PathUpdate>::SharedPtr
+      updatePathSubscriber_;
   rclcpp::CallbackGroup::SharedPtr serviceCallbackGroup_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr startDeviceService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr closeDeviceService_;
+  rclcpp::Service<laser_control_interfaces::srv::RemovePath>::SharedPtr
+      removePathService_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr clearPathsService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr playService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr stopService_;
   rclcpp::Service<laser_control_interfaces::srv::GetState>::SharedPtr

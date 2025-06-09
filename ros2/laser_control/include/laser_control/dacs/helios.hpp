@@ -54,23 +54,6 @@ class Helios final : public DAC {
   void setColor(float r, float g, float b, float i) override;
 
   /**
-   * Add a path to be rendered by the DAC.
-   *
-   * @param path The path to render.
-   */
-  void addPath(const Path& path) override;
-
-  /**
-   * Remove the last added path.
-   */
-  void removePath() override;
-
-  /**
-   * Remove all paths.
-   */
-  void clearPaths() override;
-
-  /**
    * Start playback of points.
    * Helios max rate: 65535 pps
    * Helios max points per frame (pps/fps): 4096
@@ -105,8 +88,6 @@ class Helios final : public DAC {
   HeliosDac heliosDac_{};
   std::atomic<bool> initialized_{false};
   int dacIdx_{-1};
-  std::vector<Path> paths_;
-  std::mutex pathsMutex_;
   std::tuple<float, float, float, float> color_;
   std::atomic<bool> playing_{false};
   std::atomic<bool> checkConnection_{false};

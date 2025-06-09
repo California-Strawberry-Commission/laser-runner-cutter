@@ -1,0 +1,3 @@
+uint32 path_id
+common_interfaces/Vector2 destination
+float32 duration_ms

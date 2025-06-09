@@ -56,23 +56,6 @@ class EtherDream final : public DAC {
   void setColor(float r, float g, float b, float i) override;
 
   /**
-   * Add a path to be rendered by the DAC.
-   *
-   * @param path The path to render.
-   */
-  void addPath(const Path& path) override;
-
-  /**
-   * Remove the last added path.
-   */
-  void removePath() override;
-
-  /**
-   * Remove all paths.
-   */
-  void clearPaths() override;
-
-  /**
    * Start playback of points.
    * Ether Dream max rate: 100K pps
    *
@@ -108,8 +91,6 @@ class EtherDream final : public DAC {
 
   std::atomic<bool> dacConnected_{false};
   unsigned long connectedDacId_{0};
-  std::vector<Path> paths_;
-  std::mutex pathsMutex_;
   std::tuple<float, float, float, float> color_;
   std::atomic<bool> playing_{false};
   std::atomic<bool> checkConnection_{false};

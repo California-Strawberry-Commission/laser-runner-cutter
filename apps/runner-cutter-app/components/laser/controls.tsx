@@ -17,11 +17,9 @@ import { useEffect, useState } from "react";
 export default function Controls({ laserNodeName }: { laserNodeName: string }) {
   const laserNode = useLaserNode(laserNodeName);
   // Normalized to [0, 1]
+  const [destinationX, setDestinationX] = useState<number>(0.0);
+  const [destinationY, setDestinationY] = useState<number>(0.0);
   const [color, setColor] = useRgbColor({ r: 0.0, g: 0.0, b: 0.0 });
-  const [startX, setStartX] = useState<number>(0.0);
-  const [startY, setStartY] = useState<number>(0.0);
-  const [endX, setEndX] = useState<number>(1.0);
-  const [endY, setEndY] = useState<number>(1.0);
   const [durationMs, setDurationMs] = useState<number>(1000.0);
 
   useEffect(() => {
@@ -79,64 +77,45 @@ export default function Controls({ laserNodeName }: { laserNodeName: string }) {
         />
         <Card>
           <CardContent className="p-4 flex flex-col items-center gap-4">
-            <div className="flex flex-row gap-4 items-center">
+            <div className="flex flex-row items-center gap-4">
+              <ColorPicker
+                className="w-[200px]"
+                color={color}
+                onColorChange={(color) => {
+                  setColor(color);
+                  laserNode.setColor(color.r, color.g, color.b);
+                }}
+              />
+              {playbackButton}
+            </div>
+            <div className="flex flex-row items-center gap-4">
               <InputWithLabel
                 className="flex-none w-16"
                 type="number"
-                id="startX"
-                name="startX"
-                label="Start X"
+                id="destinationX"
+                name="destinationX"
+                label="Dest X"
                 step={0.1}
-                value={startX}
+                value={destinationX}
                 onChange={(str) => {
                   const value = Number(str);
                   if (!isNaN(value)) {
-                    setStartX(value);
+                    setDestinationX(value);
                   }
                 }}
               />
               <InputWithLabel
                 className="flex-none w-16"
                 type="number"
-                id="startY"
-                name="startY"
-                label="Start Y"
+                id="destinationY"
+                name="destinationY"
+                label="Dest Y"
                 step={0.1}
-                value={startY}
+                value={destinationY}
                 onChange={(str) => {
                   const value = Number(str);
                   if (!isNaN(value)) {
-                    setStartY(value);
-                  }
-                }}
-              />
-              <InputWithLabel
-                className="flex-none w-16"
-                type="number"
-                id="endX"
-                name="endX"
-                label="End X"
-                step={0.1}
-                value={endX}
-                onChange={(str) => {
-                  const value = Number(str);
-                  if (!isNaN(value)) {
-                    setEndX(value);
-                  }
-                }}
-              />
-              <InputWithLabel
-                className="flex-none w-16"
-                type="number"
-                id="endY"
-                name="endY"
-                label="End Y"
-                step={0.1}
-                value={endY}
-                onChange={(str) => {
-                  const value = Number(str);
-                  if (!isNaN(value)) {
-                    setEndY(value);
+                    setDestinationY(value);
                   }
                 }}
               />
@@ -158,32 +137,33 @@ export default function Controls({ laserNodeName }: { laserNodeName: string }) {
               <Button
                 disabled={disableButtons}
                 onClick={() =>
-                  laserNode.setPath(
-                    { x: startX, y: startY },
-                    { x: endX, y: endY },
+                  laserNode.updatePath(
+                    1,
+                    { x: destinationX, y: destinationY },
                     durationMs
                   )
                 }
               >
-                Set Path
+                Update Dest
               </Button>
               <Button
                 disabled={disableButtons}
-                onClick={() => laserNode.clearPath()}
+                onClick={() =>
+                  laserNode.updatePath(
+                    1,
+                    { x: Math.random(), y: Math.random() },
+                    durationMs
+                  )
+                }
+              >
+                Random Dest
+              </Button>
+              <Button
+                disabled={disableButtons}
+                onClick={() => laserNode.clearPaths()}
               >
                 Clear Path
               </Button>
-            </div>
-            <div className="flex flex-row items-center gap-4">
-              <ColorPicker
-                className="w-[200px]"
-                color={color}
-                onColorChange={(color) => {
-                  setColor(color);
-                  laserNode.setColor(color.r, color.g, color.b);
-                }}
-              />
-              {playbackButton}
             </div>
           </CardContent>
         </Card>

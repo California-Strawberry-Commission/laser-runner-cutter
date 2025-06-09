@@ -49,9 +49,10 @@ target_include_directories(ether_dream_sdk PUBLIC
 
 # dacs
 add_library(dacs SHARED
+  src/dacs/dac.cpp
+  src/dacs/path.cpp
   src/dacs/helios.cpp
   src/dacs/ether_dream.cpp
-  src/dacs/path.cpp
 )
 target_include_directories(dacs PUBLIC
   ${HELIOS_DAC_SDK_DIR}

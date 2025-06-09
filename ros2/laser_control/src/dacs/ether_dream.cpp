@@ -59,23 +59,6 @@ void EtherDream::setColor(float r, float g, float b, float i) {
   color_ = {r, g, b, i};
 }
 
-void EtherDream::addPath(const Path& path) {
-  std::lock_guard<std::mutex> lock(pathsMutex_);
-  paths_.emplace_back(path);
-}
-
-void EtherDream::removePath() {
-  std::lock_guard<std::mutex> lock(pathsMutex_);
-  if (!paths_.empty()) {
-    paths_.pop_back();
-  }
-}
-
-void EtherDream::clearPaths() {
-  std::lock_guard<std::mutex> lock(pathsMutex_);
-  paths_.clear();
-}
-
 void EtherDream::play(int fps, int pps, float transitionDurationMs) {
   if (playing_) {
     return;
@@ -159,18 +142,15 @@ std::vector<etherdream_point> EtherDream::getFrame(int fps, int pps,
       frame[laxelIdx] = {0, 0, 0, 0, 0, 0, 0, 0};
     }
   } else {
-    for (size_t pointIdx = 0; pointIdx < paths_.size(); ++pointIdx) {
-      auto& path{paths_[pointIdx]};
-      if (!path.isRunning()) {
-        path.start();
-      }
-      auto point{path.getCurrentPoint()};
+    int pathIdx{0};
+    for (const auto& [pathId, path] : paths_) {
+      auto point{path->getCurrentPoint()};
 
       for (int laxelIdx = 0; laxelIdx < laxelsPerPoint; ++laxelIdx) {
         // Pad BEFORE the "on" laxel so that the galvo settles first, and only
         // if there is more than one point
         bool isTransition{numPoints > 1 && laxelIdx < laxelsPerTransition};
-        int frameLaxelIdx{static_cast<int>(pointIdx) * laxelsPerPoint +
+        int frameLaxelIdx{static_cast<int>(pathIdx) * laxelsPerPoint +
                           laxelIdx};
 
         auto pointDenorm = denormalizePoint(point.x, point.y);
@@ -184,6 +164,8 @@ std::vector<etherdream_point> EtherDream::getFrame(int fps, int pps,
                                 0};
       }
     }
+
+    ++pathIdx;
   }
 
   return frame;

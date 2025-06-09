@@ -2,38 +2,28 @@
 
 #include <chrono>
 
+struct Point {
+  float x;
+  float y;
+};
+
 class Path {
  public:
-  struct Point {
-    float x;
-    float y;
-  };
+  /**
+   * @param id Path ID.
+   * @param origin Start point, with values normalized to [0, 1]. (0, 0)
+   * corresponds to bottom left.
+   */
+  explicit Path(uint32_t id, const Point& origin);
 
   /**
-   * @param start Start point, with values normalized to [0, 1]. (0, 0)
-   * corresponds to bottom left.
-   * @param end End point, with value normalized to [0, 1]. (0, 0) corresponds
-   * to bottom left.
+   * Set a new destination and duration.
+   *
+   * @param destination Destination point, with value normalized to [0, 1]. (0,
+   * 0) corresponds to bottom left.
    * @param durationMs The duration of the path in milliseconds.
    */
-  Path(const Point& start, const Point& end, float durationMs);
-
-  /**
-   * Begin the interpolation.
-   */
-  void start();
-
-  /**
-   * Reset the interpolation.
-   */
-  void reset();
-
-  /**
-   * Whether the path interpolation is running.
-   *
-   * @return Whether the path interpolation is running.
-   */
-  bool isRunning() const;
+  void setDestination(const Point& destination, float durationMs);
 
   /**
    * Get the interpolated point based on the time elapsed since `start()` was
@@ -44,9 +34,9 @@ class Path {
   Point getCurrentPoint() const;
 
  private:
-  Point start_{0, 0};
-  Point end_{0, 0};
-  float durationMs_{0};
+  uint32_t id_;
+  Point origin_{0, 0};
+  Point destination_{0, 0};
+  float durationMs_{0.0f};
   std::chrono::steady_clock::time_point startTime_;
-  bool isRunning_{false};
 };

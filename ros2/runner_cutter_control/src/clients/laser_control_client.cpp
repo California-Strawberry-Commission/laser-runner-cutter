@@ -9,9 +9,9 @@ LaserControlClient::LaserControlClient(rclcpp::Node& callerNode,
   std::string servicePrefix{"/" + clientNodeName};
   parametersClient_ = std::make_shared<rclcpp::AsyncParametersClient>(
       &callerNode, clientNodeName);
-  pathPublisher_ =
-      callerNode.create_publisher<laser_control_interfaces::msg::Path>(
-          servicePrefix + "/path", 1);
+  updatePathPublisher_ =
+      callerNode.create_publisher<laser_control_interfaces::msg::PathUpdate>(
+          servicePrefix + "/update_path", 1);
   clientCallbackGroup_ =
       callerNode.create_callback_group(rclcpp::CallbackGroupType::Reentrant);
   startDeviceClient_ = callerNode.create_client<std_srvs::srv::Trigger>(
@@ -19,6 +19,13 @@ LaserControlClient::LaserControlClient(rclcpp::Node& callerNode,
       clientCallbackGroup_);
   closeDeviceClient_ = callerNode.create_client<std_srvs::srv::Trigger>(
       servicePrefix + "/close_device", rmw_qos_profile_services_default,
+      clientCallbackGroup_);
+  removePathClient_ =
+      callerNode.create_client<laser_control_interfaces::srv::RemovePath>(
+          servicePrefix + "/remove_path", rmw_qos_profile_services_default,
+          clientCallbackGroup_);
+  clearPathsClient_ = callerNode.create_client<std_srvs::srv::Trigger>(
+      servicePrefix + "/clear_paths", rmw_qos_profile_services_default,
       clientCallbackGroup_);
   playClient_ = callerNode.create_client<std_srvs::srv::Trigger>(
       servicePrefix + "/play", rmw_qos_profile_services_default,
@@ -80,24 +87,26 @@ bool LaserControlClient::setColor(float r, float g, float b, float i) {
 }
 
 bool LaserControlClient::setPoint(float x, float y) {
-  auto msg{laser_control_interfaces::msg::Path()};
-  msg.start.x = x;
-  msg.start.y = y;
-  msg.end.x = x;
-  msg.end.y = y;
-  msg.duration_ms = 0.0;
-  msg.laser_on = true;
-  pathPublisher_->publish(std::move(msg));
+  auto msg{laser_control_interfaces::msg::PathUpdate()};
+  msg.path_id = 1;
+  msg.destination.x = x;
+  msg.destination.y = y;
+  updatePathPublisher_->publish(std::move(msg));
 
   return true;
 }
 
 bool LaserControlClient::clearPoint() {
-  auto msg{laser_control_interfaces::msg::Path()};
-  msg.laser_on = false;
-  pathPublisher_->publish(std::move(msg));
+  auto request{std::make_shared<std_srvs::srv::Trigger::Request>()};
+  auto future{clearPathsClient_->async_send_request(request)};
+  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
+      std::future_status::ready) {
+    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
+    return false;
+  }
 
-  return true;
+  auto result{future.get()};
+  return result->success;
 }
 
 bool LaserControlClient::play() {
