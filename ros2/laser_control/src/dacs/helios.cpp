@@ -62,6 +62,8 @@ void Helios::play(int fps, int pps, float transitionDurationMs) {
   fps = std::max(0, fps);
   // Helios max rate: 65535 pps
   pps = std::clamp(pps, 0, 65535);
+  // For Helios, we need to manually activate the shutter
+  heliosDac_.SetShutter(dacIdx_, true);
   playing_ = true;
 
   playbackThread_ = std::thread([this, fps, pps, transitionDurationMs]() {
@@ -80,6 +82,7 @@ void Helios::play(int fps, int pps, float transitionDurationMs) {
       }
     }
     heliosDac_.Stop(dacIdx_);
+    heliosDac_.SetShutter(dacIdx_, false);
   });
 }
 
