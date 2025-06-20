@@ -15,3 +15,6 @@
 [submodule "ros2/runner_cutter_control/third_party/matplotlib-cpp"]
 	path = ros2/runner_cutter_control/third_party/matplotlib-cpp
 	url = https://github.com/lava/matplotlib-cpp.git
+[submodule "ros2/camera_control_cpp/third_party/bs_thread_pool"]
+	path = ros2/camera_control_cpp/third_party/bs_thread_pool
+	url = https://github.com/bshoshany/thread-pool.git

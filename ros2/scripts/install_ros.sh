@@ -30,3 +30,6 @@ sudo apt remove -y python3-matplotlib
 # libusb is required by some of our ROS packages
 # Note: Ubuntu 22.04 already has this installed
 sudo apt install -y libusb-1.0-0-dev
+
+# opencv is required by some of our ROS packages
+sudo apt install -y libopencv-dev

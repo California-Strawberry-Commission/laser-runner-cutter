@@ -183,6 +183,7 @@ class LaserControlNode : public rclcpp::Node {
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
     if (dac_->isConnected()) {
       response->success = false;
+      response->message = "DAC was already started";
       return;
     }
 
@@ -192,6 +193,7 @@ class LaserControlNode : public rclcpp::Node {
     int numDacs{dac_->initialize()};
     if (numDacs == 0) {
       response->success = false;
+      response->message = "Could not find any DACs";
     } else {
       dac_->connect(getParamDacIndex());
       response->success = true;
@@ -206,6 +208,7 @@ class LaserControlNode : public rclcpp::Node {
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
     if (!dac_->isConnected()) {
       response->success = false;
+      response->message = "DAC was not started";
       return;
     }
 
