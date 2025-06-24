@@ -997,8 +997,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
           get_logger(),
           "Aiming laser. Target camera pixel = (%d, %d), laser detected at = "
           "(%d, %d), dist = %f",
-          targetCameraPixel.first, targetCameraPixel.second,
-          targetCameraPixel.first, targetCameraPixel.second, dist);
+          targetCameraPixel.first, targetCameraPixel.second, laserPixel.first,
+          laserPixel.second, dist);
 
       if (dist <= pixelDistanceThreshold) {
         RCLCPP_INFO(get_logger(), "Correction successful");
