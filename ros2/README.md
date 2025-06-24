@@ -2,9 +2,9 @@
 
 This project uses **Ubuntu 22.04 (Jammy Jellyfish)** and **ROS Humble**.
 
-## Auto-Install
+## Environment Setup
 
-Auto-installation assumes a fresh version of **Ubuntu 22.04 desktop/server** on a dedicated deployment or development PC.
+Installation assumes a fresh version of **Ubuntu 22.04 desktop/server** on a dedicated deployment or development PC.
 
 1.  Install Git LFS
 
@@ -21,7 +21,7 @@ Auto-installation assumes a fresh version of **Ubuntu 22.04 desktop/server** on 
         $ cd laser-runner-cutter/ros2/scripts
         $ ./install.sh
 
-1.  Set up your environment. If you cloned somewhere other than home, use that directory instead of `~`. Optionally, also add this line to the end of your `.bashrc` to automagically activate the environment on every login (useful for deployed/dev systems)
+1.  Source the environment. If you cloned somewhere other than home, use that directory instead of `~`. Optionally, also add this line to the end of your `.bashrc` to automagically activate the environment on every login (useful for deployed/dev systems)
 
         $ source ~/laser-runner-cutter/ros2/scripts/setup.sh
 
@@ -31,15 +31,22 @@ Linux systems require udev rules to allow access to USB devices without root pri
 
 ### Using LUCID cameras (Triton and Helios2)
 
-LUCID cameras require the Arena SDK and Arena Python Package, which can be found at https://thinklucid.com/downloads-hub/. This is already set up as part of the auto-install process above.
+LUCID cameras require the Arena SDK and Arena Python Package, which can be found at https://thinklucid.com/downloads-hub/. This is already set up as part of the auto-install process above, in `/opt/ArenaSDK`.
 
-## Run
+## Build and Run
 
 ### Local development
 
-1.  Run `scripts/run_ros.sh`
+1.  To build all ROS 2 packages, as well as compile the TensorRT models, run `scripts/build.sh`. The TensorRT models may take some time to compile, but it will only need to be done once.
 
-### Production device
+1.  To run all ROS 2 nodes, run `scripts/run_ros.sh`.
+
+While making code changes locally, it may be convenient to build and run a single node. Note that if you've initially built by running `scripts/build.sh`, you will not need to rebuild Python nodes as they are symlinked. However, changes to C++ nodes will need to be rebuilt. Here is an example of building and running the laser_control node:
+
+    $ colcon build --packages-select laser_control --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+    $ ros2 launch laser_control launch.py
+
+### Production deployment
 
 On a production device, we can set up the machine to start the ROS2 nodes on startup:
 

@@ -4,9 +4,9 @@ Web app for laser runner cutter control and automation, built with Next.js.
 
 ## Setup
 
-1.  Follow setup steps in [ros2/README.md](../../ros2/README.md)
+1.  Follow setup steps in [ros2/README.md](../../ros2/README.md) to build and run the ROS 2 nodes.
 
-1.  Run the following:
+1.  Run the following to fetch dependencies and build the app:
 
         $ scripts/setup.sh
 
