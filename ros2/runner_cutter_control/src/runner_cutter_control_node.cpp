@@ -879,6 +879,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
   }
 
   void burnTarget(uint32_t targetTrackId, std::pair<float, float> laserCoord) {
+    LaserDetectionContext context{laser_, camera_};
     float burnTimeSecs{getParamBurnTimeSecs()};
     laser_->clearPoint();
     auto [r, g, b, i]{getParamBurnLaserColor()};
@@ -981,6 +982,11 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
     while (!taskStopSignal_) {
       laser_->setPoint(currentLaserCoord.first, currentLaserCoord.second);
+      // Give sufficient time for galvo to settle.
+      // TODO: This shouldn't be necessary in theory since getDetection waits
+      // for several frames before running detection, so we'll need to figure
+      // out why this helps.
+      std::this_thread::sleep_for(std::chrono::duration<float>(0.1f));
       // Get detected camera pixel coord and camera-space position for laser
       auto detectResultOpt{detectLaser()};
       if (!detectResultOpt) {
@@ -997,8 +1003,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
           get_logger(),
           "Aiming laser. Target camera pixel = (%d, %d), laser detected at = "
           "(%d, %d), dist = %f",
-          targetCameraPixel.first, targetCameraPixel.second,
-          targetCameraPixel.first, targetCameraPixel.second, dist);
+          targetCameraPixel.first, targetCameraPixel.second, laserPixel.first,
+          laserPixel.second, dist);
 
       if (dist <= pixelDistanceThreshold) {
         RCLCPP_INFO(get_logger(), "Correction successful");
