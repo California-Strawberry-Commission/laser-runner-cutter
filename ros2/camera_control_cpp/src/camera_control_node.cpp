@@ -41,6 +41,19 @@ std::string expandUser(const std::string& path) {
   return std::string(home) + path.substr(1);
 }
 
+std::string getCurrentTimeString() {
+  // Get the current timestamp and format it as a string
+  auto now{std::chrono::system_clock::now()};
+  auto timestamp{std::chrono::system_clock::to_time_t(now)};
+  std::stringstream datetimeString;
+  datetimeString << std::put_time(std::localtime(&timestamp), "%Y%m%d%H%M%S");
+  auto ms{std::chrono::duration_cast<std::chrono::milliseconds>(
+              now.time_since_epoch()) %
+          1000};
+  datetimeString << std::setw(3) << std::setfill('0') << ms.count();
+  return datetimeString.str();
+}
+
 class CameraControlNode : public rclcpp::Node {
  public:
   explicit CameraControlNode() : Node("camera_control_node") {
@@ -403,15 +416,9 @@ class CameraControlNode : public rclcpp::Node {
     saveDir = expandUser(saveDir);
     std::filesystem::create_directories(saveDir);
 
-    // Get the current timestamp and format it as a string
-    auto timestamp{
-        std::chrono::system_clock::to_time_t(std::chrono::system_clock::now())};
-    std::stringstream datetimeString;
-    datetimeString << std::put_time(std::localtime(&timestamp), "%Y%m%d%H%M%S");
-
     // Generate the image file name and path
     std::string filepath{
-        fmt::format("{}/{}.png", saveDir, datetimeString.str())};
+        fmt::format("{}/{}.png", saveDir, getCurrentTimeString())};
 
     // Convert the frame color format (if needed) and save the image
     cv::Mat colorFrameBgr;
@@ -441,16 +448,9 @@ class CameraControlNode : public rclcpp::Node {
       saveDir = expandUser(saveDir);
       std::filesystem::create_directories(saveDir);
 
-      // Get the current timestamp and format it as a string
-      auto timestamp{std::chrono::system_clock::to_time_t(
-          std::chrono::system_clock::now())};
-      std::stringstream datetimeString;
-      datetimeString << std::put_time(std::localtime(&timestamp),
-                                      "%Y%m%d%H%M%S");
-
       // Generate the video file name and path
       std::string filepath{
-          fmt::format("{}/{}.avi", saveDir, datetimeString.str())};
+          fmt::format("{}/{}.avi", saveDir, getCurrentTimeString())};
 
       int width{frame.cols};
       int height{frame.rows};
