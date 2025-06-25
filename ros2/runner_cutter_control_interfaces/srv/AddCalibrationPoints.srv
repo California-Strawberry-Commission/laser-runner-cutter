@@ -1,3 +1,4 @@
 common_interfaces/Vector2[] normalized_pixel_coords
+bool save_images
 ---
 bool success

@@ -30,12 +30,13 @@ class Calibration {
    * @param laserColor Laser color to shoot while calibrating.
    * @param gridSize Number of points in the x and y directions to use as
    * calibration points.
+   * @param saveImages Whether to save an image at each calibration coordinate.
    * @param stopSignal Flag to enable the calibration process to be prematurely
    * terminated when set to true.
    * @return whether calibration was successful or not.
    */
   bool calibrate(std::tuple<float, float, float, float> laserColor,
-                 std::pair<int, int> gridSize = {5, 5},
+                 std::pair<int, int> gridSize = {5, 5}, bool saveImages = false,
                  std::optional<std::reference_wrapper<std::atomic<bool>>>
                      stopSignal = std::nullopt);
 
@@ -56,6 +57,7 @@ class Calibration {
    * @param laserColor Laser color to shoot while calibrating.
    * @param updateTransform Whether to recalculate the camera-space position to
    * laser coord transform.
+   * @param saveImages Whether to save an image at each laser coordinate.
    * @param stopSignal Flag to enable the calibration process to be prematurely
    * terminated when set to true.
    * @return Number of point correspondences successfully added.
@@ -63,7 +65,7 @@ class Calibration {
   std::size_t addCalibrationPoints(
       const std::vector<std::pair<float, float>>& laserCoords,
       std::tuple<float, float, float, float> laserColor,
-      bool updateTransform = false,
+      bool updateTransform = false, bool saveImages = false,
       std::optional<std::reference_wrapper<std::atomic<bool>>> stopSignal =
           std::nullopt);
 

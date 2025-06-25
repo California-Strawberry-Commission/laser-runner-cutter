@@ -81,7 +81,7 @@ export default function Controls({
               calibrationState !== CalibrationState.CALIBRATING &&
               controlNode.state.state !== "idle"
             }
-            onCalibrateClick={() => controlNode.calibrate()}
+            onCalibrateClick={() => controlNode.calibrate(true)}
             onStopClick={() => controlNode.stop()}
             onSaveClick={() => controlNode.saveCalibration()}
             onLoadClick={() => controlNode.loadCalibration()}

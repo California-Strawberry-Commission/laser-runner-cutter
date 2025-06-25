@@ -79,8 +79,13 @@ export default function useControlNode(nodeName: string) {
 
   const calibrate = node.useService(
     "~/calibrate",
-    "std_srvs/Trigger",
-    triggerInputMapper,
+    "runner_cutter_control_interfaces/Calibrate",
+    useCallback(
+      (saveImages: boolean = false) => ({
+        save_images: saveImages,
+      }),
+      []
+    ),
     successOutputMapper
   );
 
@@ -102,8 +107,13 @@ export default function useControlNode(nodeName: string) {
     "~/add_calibration_points",
     "runner_cutter_control_interfaces/AddCalibrationPoints",
     useCallback(
-      (normalizedX: number, normalizedY: number) => ({
+      (
+        normalizedX: number,
+        normalizedY: number,
+        saveImage: boolean = false
+      ) => ({
         normalized_pixel_coords: [{ x: normalizedX, y: normalizedY }],
+        save_images: saveImage,
       }),
       []
     ),
