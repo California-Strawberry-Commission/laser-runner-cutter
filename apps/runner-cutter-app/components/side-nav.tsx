@@ -35,8 +35,8 @@ const SIDENAV_ITEMS: SideNavItem[] = [
     isTestPage: true,
   },
   {
-    title: "Aim Test",
-    path: "/test/aim",
+    title: "Calibration Test",
+    path: "/test/calibration",
     isTestPage: true,
   },
   {

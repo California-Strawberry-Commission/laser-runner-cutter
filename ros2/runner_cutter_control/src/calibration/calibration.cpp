@@ -41,7 +41,7 @@ void Calibration::reset() {
 
 bool Calibration::calibrate(
     std::tuple<float, float, float, float> laserColor,
-    std::pair<int, int> gridSize,
+    std::pair<int, int> gridSize, bool saveImages,
     std::optional<std::reference_wrapper<std::atomic<bool>>> stopSignal) {
   reset();
 
@@ -65,7 +65,8 @@ bool Calibration::calibrate(
 
   // Get image correspondences
   spdlog::info("Getting image correspondences");
-  addCalibrationPoints(pendingLaserCoords, laserColor, false, stopSignal);
+  addCalibrationPoints(pendingLaserCoords, laserColor, false, saveImages,
+                       stopSignal);
   spdlog::info("{} out of {} point correspondences found.",
                pointCorrespondences_.size(), pendingLaserCoords.size());
   if (pointCorrespondences_.size() < 3) {
@@ -105,6 +106,7 @@ std::pair<float, float> Calibration::cameraPositionToLaserCoord(
 std::size_t Calibration::addCalibrationPoints(
     const std::vector<std::pair<float, float>>& laserCoords,
     std::tuple<float, float, float, float> laserColor, bool updateTransform,
+    bool saveImages,
     std::optional<std::reference_wrapper<std::atomic<bool>>> stopSignal) {
   if (laserCoords.empty()) {
     return 0;
@@ -131,6 +133,11 @@ std::size_t Calibration::addCalibrationPoints(
       std::this_thread::sleep_for(std::chrono::duration<float>(0.1f));
 
       auto resultOpt{findPointCorrespondence(laserCoord)};
+
+      if (saveImages) {
+        camera_->saveImage();
+      }
+
       if (!resultOpt) {
         continue;
       }

@@ -22,6 +22,7 @@
 #include "runner_cutter_control_interfaces/msg/track_state.hpp"
 #include "runner_cutter_control_interfaces/msg/tracks.hpp"
 #include "runner_cutter_control_interfaces/srv/add_calibration_points.hpp"
+#include "runner_cutter_control_interfaces/srv/calibrate.hpp"
 #include "runner_cutter_control_interfaces/srv/get_state.hpp"
 #include "runner_cutter_control_interfaces/srv/manual_target_laser.hpp"
 #include "std_srvs/srv/trigger.hpp"
@@ -162,11 +163,12 @@ class RunnerCutterControlNode : public rclcpp::Node {
         create_callback_group(rclcpp::CallbackGroupType::Reentrant);
     // TODO: use action instead once there's a new release of roslib. Currently
     // roslib does not support actions with ROS2
-    calibrateService_ = create_service<std_srvs::srv::Trigger>(
-        "~/calibrate",
-        std::bind(&RunnerCutterControlNode::onCalibrate, this,
-                  std::placeholders::_1, std::placeholders::_2),
-        rmw_qos_profile_services_default, serviceCallbackGroup_);
+    calibrateService_ =
+        create_service<runner_cutter_control_interfaces::srv::Calibrate>(
+            "~/calibrate",
+            std::bind(&RunnerCutterControlNode::onCalibrate, this,
+                      std::placeholders::_1, std::placeholders::_2),
+            rmw_qos_profile_services_default, serviceCallbackGroup_);
     saveCalibrationService_ = create_service<std_srvs::srv::Trigger>(
         "~/save_calibration",
         std::bind(&RunnerCutterControlNode::onSaveCalibration, this,
@@ -488,10 +490,15 @@ class RunnerCutterControlNode : public rclcpp::Node {
     }
   }
 
-  void onCalibrate(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
-                   std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-    bool res{
-        startTask("calibration", &RunnerCutterControlNode::calibrationTask)};
+  void onCalibrate(
+      const std::shared_ptr<
+          runner_cutter_control_interfaces::srv::Calibrate::Request>
+          request,
+      std::shared_ptr<
+          runner_cutter_control_interfaces::srv::Calibrate::Response>
+          response) {
+    bool res{startTask("calibration", &RunnerCutterControlNode::calibrationTask,
+                       request->save_images)};
     response->success = res;
   }
 
@@ -539,7 +546,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
     }
     bool res{startTask("add_calibration_points",
                        &RunnerCutterControlNode::addCalibrationPointsTask,
-                       normalizedPixelCoords)};
+                       normalizedPixelCoords, request->save_images)};
     response->success = res;
   }
 
@@ -672,16 +679,17 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
 #pragma region Task definitions
 
-  void calibrationTask() {
+  void calibrationTask(bool saveImages = false) {
     publishNotification("Calibration started");
-    calibration_->calibrate(getParamTrackingLaserColor(), {5, 5},
+    calibration_->calibrate(getParamTrackingLaserColor(), {11, 11}, saveImages,
                             taskStopSignal_);
     publishNotification("Calibration complete");
   }
 
   void addCalibrationPointsTask(
       std::shared_ptr<std::vector<std::pair<float, float>>>
-          normalizedPixelCoords) {
+          normalizedPixelCoords,
+      bool saveImages = false) {
     // For each camera pixel coord, find the 3D position wrt the camera
     auto positionsOpt{camera_->getPositions(*normalizedPixelCoords)};
     if (!positionsOpt) {
@@ -714,7 +722,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
                       laserCoords.end());
 
     std::size_t numPointsAdded{calibration_->addCalibrationPoints(
-        laserCoords, getParamTrackingLaserColor(), true, taskStopSignal_)};
+        laserCoords, getParamTrackingLaserColor(), true, saveImages,
+        taskStopSignal_)};
 
     publishNotification(
         fmt::format("Added {} calibration point(s)", numPointsAdded));
@@ -1100,7 +1109,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
   rclcpp::Subscription<camera_control_interfaces::msg::DetectionResult>::
       SharedPtr detectionsSubscriber_;
   rclcpp::CallbackGroup::SharedPtr serviceCallbackGroup_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr calibrateService_;
+  rclcpp::Service<runner_cutter_control_interfaces::srv::Calibrate>::SharedPtr
+      calibrateService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr saveCalibrationService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr loadCalibrationService_;
   rclcpp::Service<runner_cutter_control_interfaces::srv::AddCalibrationPoints>::

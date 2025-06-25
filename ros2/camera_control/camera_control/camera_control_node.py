@@ -58,6 +58,11 @@ def milliseconds_to_ros_time(milliseconds):
     return int(seconds), int(nanoseconds)
 
 
+def get_current_time_str():
+    now = datetime.now()
+    return now.strftime("%Y%m%d%H%M%S") + f"{int(now.microsecond / 1000):03d}"
+
+
 @dataclass
 class CameraControlParams:
     camera_type: str = "lucid"  # "realsense" or "lucid"
@@ -624,10 +629,7 @@ def _save_image() -> Optional[str]:
 
     save_dir = os.path.expanduser(camera_control_params.save_dir)
     os.makedirs(save_dir, exist_ok=True)
-    ts = time.time()
-    datetime_obj = datetime.fromtimestamp(ts)
-    datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
-    image_name = f"{datetime_string}.png"
+    image_name = f"{get_current_time_str()}.png"
     image_path = os.path.join(save_dir, image_name)
     cv2.imwrite(
         image_path,
@@ -654,10 +656,7 @@ def _write_video_frame():
     elif shared_state.debug_frame is not None:
         save_dir = os.path.expanduser(camera_control_params.save_dir)
         os.makedirs(save_dir, exist_ok=True)
-        ts = time.time()
-        datetime_obj = datetime.fromtimestamp(ts)
-        datetime_string = datetime_obj.strftime("%Y%m%d%H%M%S")
-        video_name = f"{datetime_string}.avi"
+        video_name = f"{get_current_time_str()}.avi"
         video_path = os.path.join(save_dir, video_name)
         h, w, _ = shared_state.debug_frame.shape
         shared_state.video_writer = cv2.VideoWriter(
