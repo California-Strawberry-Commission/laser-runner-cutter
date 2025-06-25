@@ -17,6 +17,9 @@ class Calibration {
   std::tuple<float, float, float, float> getNormalizedLaserBounds() const;
   bool isCalibrated() const;
   void reset();
+  std::size_t getPointCorrespondencesCount() const {
+    return pointCorrespondences_.size();
+  }
 
   /**
    * Use image correspondences to compute the transformation matrix from camera
