@@ -681,7 +681,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
   void calibrationTask(bool saveImages = false) {
     publishNotification("Calibration started");
-    calibration_->calibrate(getParamTrackingLaserColor(), {10, 10}, saveImages,
+    calibration_->calibrate(getParamTrackingLaserColor(), {11, 11}, saveImages,
                             taskStopSignal_);
     publishNotification("Calibration complete");
   }
