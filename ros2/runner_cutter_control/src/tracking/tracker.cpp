@@ -43,10 +43,10 @@ std::unordered_map<uint32_t, std::shared_ptr<Track>> Tracker::getTracks()
   return tracks_;
 }
 
-std::shared_ptr<Track> Tracker::addTrack(
-    uint32_t trackId, std::pair<int, int> pixel,
-    std::tuple<float, float, float> position, double timestampMs,
-    float confidence) {
+std::shared_ptr<Track> Tracker::addTrack(uint32_t trackId,
+                                         const PixelCoord& pixel,
+                                         const Position& position,
+                                         double timestampMs, float confidence) {
   if (trackId <= 0) {
     throw std::invalid_argument("Track ID must be positive");
   }

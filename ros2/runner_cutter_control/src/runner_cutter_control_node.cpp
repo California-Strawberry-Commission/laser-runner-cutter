@@ -16,6 +16,7 @@
 #include "runner_cutter_control/clients/camera_control_client.hpp"
 #include "runner_cutter_control/clients/laser_control_client.hpp"
 #include "runner_cutter_control/clients/laser_detection_context.hpp"
+#include "runner_cutter_control/common_types.hpp"
 #include "runner_cutter_control/tracking/tracker.hpp"
 #include "runner_cutter_control_interfaces/msg/state.hpp"
 #include "runner_cutter_control_interfaces/msg/track.hpp"
@@ -241,14 +242,16 @@ class RunnerCutterControlNode : public rclcpp::Node {
     return get_parameter("camera_control_node_name").as_string();
   }
 
-  std::tuple<float, float, float, float> getParamTrackingLaserColor() {
+  LaserColor getParamTrackingLaserColor() {
     auto param{get_parameter("tracking_laser_color").as_double_array()};
-    return {param[0], param[1], param[2], param[3]};
+    return {static_cast<float>(param[0]), static_cast<float>(param[1]),
+            static_cast<float>(param[2]), static_cast<float>(param[3])};
   }
 
-  std::tuple<float, float, float, float> getParamBurnLaserColor() {
+  LaserColor getParamBurnLaserColor() {
     auto param{get_parameter("burn_laser_color").as_double_array()};
-    return {param[0], param[1], param[2], param[3]};
+    return {static_cast<float>(param[0]), static_cast<float>(param[1]),
+            static_cast<float>(param[2]), static_cast<float>(param[3])};
   }
 
   float getParamBurnTimeSecs() {
@@ -299,11 +302,11 @@ class RunnerCutterControlNode : public rclcpp::Node {
       trackMsg.id = track->getId();
       common_interfaces::msg::Vector2 normalizedPixelCoordMsg;
       normalizedPixelCoordMsg.x =
-          frameWidth > 0 ? static_cast<float>(track->getPixel().first) /
+          frameWidth > 0 ? static_cast<float>(track->getPixel().u) /
                                static_cast<float>(frameWidth)
                          : -1.0f;
       normalizedPixelCoordMsg.y =
-          frameHeight > 0 ? static_cast<float>(track->getPixel().second) /
+          frameHeight > 0 ? static_cast<float>(track->getPixel().v) /
                                 static_cast<float>(frameHeight)
                           : -1.0f;
       trackMsg.normalized_pixel_coord = normalizedPixelCoordMsg;
@@ -430,11 +433,11 @@ class RunnerCutterControlNode : public rclcpp::Node {
       lastDetectedTrackIds_.clear();
 
       for (const auto& instance : msg->instances) {
-        std::pair<int, int> pixel{
-            static_cast<int>(std::round(instance.point.x)),
-            static_cast<int>(std::round(instance.point.y))};
-        std::tuple<float, float, float> position{
-            instance.position.x, instance.position.y, instance.position.z};
+        PixelCoord pixel{static_cast<int>(std::round(instance.point.x)),
+                         static_cast<int>(std::round(instance.point.y))};
+        Position position{static_cast<float>(instance.position.x),
+                          static_cast<float>(instance.position.y),
+                          static_cast<float>(instance.position.z)};
 
         std::shared_ptr<Track> track;
         try {
@@ -540,9 +543,10 @@ class RunnerCutterControlNode : public rclcpp::Node {
           runner_cutter_control_interfaces::srv::AddCalibrationPoints::Response>
           response) {
     auto normalizedPixelCoords{
-        std::make_shared<std::vector<std::pair<float, float>>>()};
+        std::make_shared<std::vector<NormalizedPixelCoord>>()};
     for (const auto& coord : request->normalized_pixel_coords) {
-      normalizedPixelCoords->push_back({coord.x, coord.y});
+      normalizedPixelCoords->push_back(NormalizedPixelCoord{
+          static_cast<float>(coord.x), static_cast<float>(coord.y)});
     }
     bool res{startTask("add_calibration_points",
                        &RunnerCutterControlNode::addCalibrationPointsTask,
@@ -557,8 +561,9 @@ class RunnerCutterControlNode : public rclcpp::Node {
       std::shared_ptr<
           runner_cutter_control_interfaces::srv::ManualTargetLaser::Response>
           response) {
-    std::pair<float, float> normalizedPixelCoord{
-        request->normalized_pixel_coord.x, request->normalized_pixel_coord.y};
+    NormalizedPixelCoord normalizedPixelCoord{
+        static_cast<float>(request->normalized_pixel_coord.x),
+        static_cast<float>(request->normalized_pixel_coord.y)};
     bool res{startTask("manual_target_laser",
                        &RunnerCutterControlNode::manualTargetLaserTask,
                        normalizedPixelCoord, request->aim, request->burn)};
@@ -689,8 +694,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
   }
 
   void addCalibrationPointsTask(
-      std::shared_ptr<std::vector<std::pair<float, float>>>
-          normalizedPixelCoords,
+      std::shared_ptr<std::vector<NormalizedPixelCoord>> normalizedPixelCoords,
       bool saveImages = false) {
     // For each camera pixel coord, find the 3D position wrt the camera
     auto positionsOpt{camera_->getPositions(*normalizedPixelCoords)};
@@ -700,28 +704,28 @@ class RunnerCutterControlNode : public rclcpp::Node {
     auto positions{positionsOpt.value()};
 
     // Filter out any invalid positions (x, y, and z are all negative)
-    positions.erase(
-        std::remove_if(positions.begin(), positions.end(),
-                       [](const std::tuple<float, float, float>& position) {
-                         auto [x, y, z]{position};
-                         return x < 0.0f && y < 0.0f && z < 0.0f;
-                       }),
-        positions.end());
+    positions.erase(std::remove_if(positions.begin(), positions.end(),
+                                   [](const Position& position) {
+                                     return position.x < 0.0f &&
+                                            position.y < 0.0f &&
+                                            position.z < 0.0f;
+                                   }),
+                    positions.end());
 
     // Convert camera positions to laser pixels
-    std::vector<std::pair<float, float>> laserCoords;
+    std::vector<LaserCoord> laserCoords;
     for (const auto& position : positions) {
       laserCoords.push_back(calibration_->cameraPositionToLaserCoord(position));
     }
 
     // Filter out laser coords that are out of bounds
-    laserCoords.erase(std::remove_if(laserCoords.begin(), laserCoords.end(),
-                                     [](const std::pair<float, float>& coord) {
-                                       auto [x, y]{coord};
-                                       return !(0.0f <= x && x <= 1.0f &&
-                                                0.0f <= y && y <= 1.0f);
-                                     }),
-                      laserCoords.end());
+    laserCoords.erase(
+        std::remove_if(laserCoords.begin(), laserCoords.end(),
+                       [](const LaserCoord& coord) {
+                         return !(0.0f <= coord.x && coord.x <= 1.0f &&
+                                  0.0f <= coord.y && coord.y <= 1.0f);
+                       }),
+        laserCoords.end());
 
     std::size_t numPointsAdded{calibration_->addCalibrationPoints(
         laserCoords, getParamTrackingLaserColor(), true, saveImages,
@@ -731,10 +735,10 @@ class RunnerCutterControlNode : public rclcpp::Node {
         fmt::format("Added {} calibration point(s)", numPointsAdded));
   }
 
-  void manualTargetLaserTask(std::pair<float, float> normalizedPixelCoord,
+  void manualTargetLaserTask(const NormalizedPixelCoord& normalizedPixelCoord,
                              bool shouldAim, bool shouldBurn) {
     // Find the 3D position wrt the camera
-    std::vector<std::pair<float, float>> normalizedPixelCoords{
+    std::vector<NormalizedPixelCoord> normalizedPixelCoords{
         normalizedPixelCoord};
     auto positionsOpt{camera_->getPositions(normalizedPixelCoords)};
     if (!positionsOpt) {
@@ -744,13 +748,12 @@ class RunnerCutterControlNode : public rclcpp::Node {
     auto positions{positionsOpt.value()};
     auto targetPosition{positions[0]};
     auto [frameWidth, frameHeight]{calibration_->getCameraFrameSize()};
-    std::pair<int, int> targetPixel{
-        static_cast<int>(std::round(normalizedPixelCoord.first * frameWidth)),
-        static_cast<int>(
-            std::round(normalizedPixelCoord.second * frameHeight))};
+    PixelCoord targetPixel{
+        static_cast<int>(std::round(normalizedPixelCoord.u * frameWidth)),
+        static_cast<int>(std::round(normalizedPixelCoord.v * frameHeight))};
 
     // Aim
-    std::pair<float, float> laserCoord;
+    LaserCoord laserCoord;
     if (shouldAim) {
       auto laserCoordOpt{aim(targetPosition, targetPixel)};
       if (!laserCoordOpt) {
@@ -789,7 +792,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
     // using the full color camera frame, but if the runner is completely out of
     // the detection bounds, the result is not published via the detections
     // topic.
-    auto normalizedLaserBounds{calibration_->getNormalizedLaserBounds()};
+    NormalizedPixelRect normalizedLaserBounds{
+        calibration_->getNormalizedLaserBounds()};
     camera_->startDetection(detectionType, normalizedLaserBounds);
 
     while (!taskStopSignal_) {
@@ -825,7 +829,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
       }
 
       // Aim
-      std::pair<float, float> laserCoord;
+      LaserCoord laserCoord;
       if (getParamEnableAiming()) {
         auto laserCoordOpt{aim(target->getPosition(), target->getPixel())};
         if (!laserCoordOpt) {
@@ -872,10 +876,10 @@ class RunnerCutterControlNode : public rclcpp::Node {
       RCLCPP_INFO(get_logger(), "Processing pending track [%u]",
                   track->getId());
 
-      auto laserCoord{
+      LaserCoord laserCoord{
           calibration_->cameraPositionToLaserCoord(track->getPosition())};
-      if (laserCoord.first >= 0.0 && laserCoord.first <= 1.0 &&
-          laserCoord.second >= 0.0 && laserCoord.second <= 1.0) {
+      if (laserCoord.x >= 0.0 && laserCoord.x <= 1.0 && laserCoord.y >= 0.0 &&
+          laserCoord.y <= 1.0) {
         RCLCPP_INFO(get_logger(), "Setting track [%u] as target.",
                     track->getId());
         return track;
@@ -889,16 +893,15 @@ class RunnerCutterControlNode : public rclcpp::Node {
     return std::nullopt;
   }
 
-  void burnTarget(uint32_t targetTrackId, std::pair<float, float> laserCoord) {
+  void burnTarget(uint32_t targetTrackId, const LaserCoord& laserCoord) {
     LaserDetectionContext context{laser_, camera_};
     float burnTimeSecs{getParamBurnTimeSecs()};
     laser_->clearPoint();
-    auto [r, g, b, i]{getParamBurnLaserColor()};
-    laser_->setColor(r, g, b, i);
+    laser_->setColor(getParamBurnLaserColor());
     laser_->play();
     RCLCPP_INFO(get_logger(), "Burning track %u for %f secs...", targetTrackId,
                 burnTimeSecs);
-    laser_->setPoint(laserCoord.first, laserCoord.second);
+    laser_->setPoint(laserCoord);
     std::this_thread::sleep_for(std::chrono::duration<float>(burnTimeSecs));
     laser_->clearPoint();
     laser_->stop();
@@ -908,8 +911,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
   void circleFollowerTask(float laserIntervalSecs = 0.5f) {
     laser_->clearPoint();
-    auto [r, g, b, i]{getParamTrackingLaserColor()};
-    laser_->setColor(r, g, b, i);
+    laser_->setColor(getParamTrackingLaserColor());
     laser_->play();
     camera_->startDetection(
         camera_control_interfaces::msg::DetectionType::CIRCLE);
@@ -932,13 +934,13 @@ class RunnerCutterControlNode : public rclcpp::Node {
           std::chrono::duration<double, std::milli>(
               std::chrono::high_resolution_clock::now().time_since_epoch())
               .count()};
-      auto predictedPosition{track->getPredictor().predict(
+      Position predictedPosition{track->getPredictor().predict(
           timestampMillis + estimatedCameraLatencyMs)};
-      auto laserCoord{
+      LaserCoord laserCoord{
           calibration_->cameraPositionToLaserCoord(predictedPosition)};
       track->getPredictor().reset();
 
-      laser_->setPoint(laserCoord.first, laserCoord.second);
+      laser_->setPoint(laserCoord);
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
       laser_->clearPoint();
     }
@@ -959,17 +961,15 @@ class RunnerCutterControlNode : public rclcpp::Node {
    * @return The corrected laser coordinate that projects to the target camera
    * pixel.
    */
-  std::optional<std::pair<float, float>> aim(
-      std::tuple<float, float, float> targetCameraPosition,
-      std::pair<int, int> targetCameraPixel) {
+  std::optional<LaserCoord> aim(const Position& targetCameraPosition,
+                                const PixelCoord& targetCameraPixel) {
     LaserDetectionContext context{laser_, camera_};
-    auto initialLaserCoord{
+    LaserCoord initialLaserCoord{
         calibration_->cameraPositionToLaserCoord(targetCameraPosition)};
-    auto [r, g, b, i]{getParamTrackingLaserColor()};
-    laser_->setColor(r, g, b, i);
-    auto correctedLaserCoord{
+    laser_->setColor(getParamTrackingLaserColor());
+    auto correctedLaserCoordOpt{
         correctLaser(initialLaserCoord, targetCameraPixel)};
-    return correctedLaserCoord;
+    return correctedLaserCoordOpt;
   }
 
   /**
@@ -986,14 +986,14 @@ class RunnerCutterControlNode : public rclcpp::Node {
    * @return The corrected laser coordinate that projects to the target camera
    * pixel.
    */
-  std::optional<std::pair<float, float>> correctLaser(
-      std::pair<float, float> initialLaserCoord,
-      std::pair<int, int> targetCameraPixel,
-      float pixelDistanceThreshold = 2.5f, int maxAttempts = 5) {
-    auto currentLaserCoord{initialLaserCoord};
+  std::optional<LaserCoord> correctLaser(const LaserCoord& initialLaserCoord,
+                                         const PixelCoord& targetCameraPixel,
+                                         float pixelDistanceThreshold = 2.5f,
+                                         int maxAttempts = 5) {
+    LaserCoord currentLaserCoord{initialLaserCoord};
     int attempt{0};
     while (attempt < maxAttempts && !taskStopSignal_) {
-      laser_->setPoint(currentLaserCoord.first, currentLaserCoord.second);
+      laser_->setPoint(currentLaserCoord);
       // Give sufficient time for galvo to settle.
       // TODO: This shouldn't be necessary in theory since getDetection waits
       // for several frames before running detection, so we'll need to figure
@@ -1008,17 +1008,16 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
       // Calculate camera pixel distance
       auto [laserPixel, laserPosition]{detectResultOpt.value()};
-      std::pair<int, int> cameraPixelDelta{
-          targetCameraPixel.first - laserPixel.first,
-          targetCameraPixel.second - laserPixel.second};
+      PixelCoord cameraPixelDelta{targetCameraPixel.u - laserPixel.u,
+                                  targetCameraPixel.v - laserPixel.v};
       float dist{static_cast<float>(
-          std::hypot(cameraPixelDelta.first, cameraPixelDelta.second))};
+          std::hypot(cameraPixelDelta.u, cameraPixelDelta.v))};
       RCLCPP_INFO(
           get_logger(),
           "Aiming laser. Target camera pixel = (%d, %d), laser detected at = "
           "(%d, %d), dist = %f",
-          targetCameraPixel.first, targetCameraPixel.second, laserPixel.first,
-          laserPixel.second, dist);
+          targetCameraPixel.u, targetCameraPixel.v, laserPixel.u, laserPixel.v,
+          dist);
 
       if (dist <= pixelDistanceThreshold) {
         RCLCPP_INFO(get_logger(), "Correction successful");
@@ -1031,20 +1030,19 @@ class RunnerCutterControlNode : public rclcpp::Node {
                                            laserPosition);
 
       // Calculate new laser coord
-      auto laserCoordCorrection{
+      LaserCoord laserCoordCorrection{
           calibration_->cameraPixelDeltaToLaserCoordDelta(cameraPixelDelta)};
-      std::pair<float, float> newLaserCoord{
-          currentLaserCoord.first + laserCoordCorrection.first,
-          currentLaserCoord.second + laserCoordCorrection.second};
+      LaserCoord newLaserCoord{currentLaserCoord.x + laserCoordCorrection.x,
+                               currentLaserCoord.y + laserCoordCorrection.y};
       RCLCPP_INFO(
           get_logger(),
           "Distance too large. Correcting laser. Current laser coord = (%f, "
           "%f), corrected laser coord = (%f, %f)",
-          currentLaserCoord.first, currentLaserCoord.second,
-          newLaserCoord.first, newLaserCoord.second);
+          currentLaserCoord.x, currentLaserCoord.y, newLaserCoord.x,
+          newLaserCoord.y);
 
-      if (newLaserCoord.first > 1.0f || newLaserCoord.second > 1.0f ||
-          newLaserCoord.first < 0.0f || newLaserCoord.second < 0.0f) {
+      if (newLaserCoord.x > 1.0f || newLaserCoord.y > 1.0f ||
+          newLaserCoord.x < 0.0f || newLaserCoord.y < 0.0f) {
         RCLCPP_INFO(get_logger(), "Laser coord is outside of renderable area.");
         return std::nullopt;
       }
@@ -1057,8 +1055,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
   }
 
   struct DetectLaserResult {
-    std::pair<int, int> cameraPixel;
-    std::tuple<float, float, float> cameraPosition;
+    PixelCoord cameraPixel;
+    Position cameraPosition;
   };
   std::optional<DetectLaserResult> detectLaser(int maxAttempts = 3) {
     int attempt{0};
@@ -1077,7 +1075,9 @@ class RunnerCutterControlNode : public rclcpp::Node {
         return DetectLaserResult{
             {static_cast<int>(std::round(instance.point.x)),
              static_cast<int>(std::round(instance.point.y))},
-            {instance.position.x, instance.position.y, instance.position.z}};
+            {static_cast<float>(instance.position.x),
+             static_cast<float>(instance.position.y),
+             static_cast<float>(instance.position.z)}};
       }
 
       // No lasers detected. Try again.

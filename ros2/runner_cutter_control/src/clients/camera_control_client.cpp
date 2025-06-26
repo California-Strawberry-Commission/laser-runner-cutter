@@ -240,17 +240,15 @@ CameraControlClient::getDetection(uint8_t detectionType,
 }
 
 bool CameraControlClient::startDetection(
-    uint8_t detectionType,
-    std::tuple<float, float, float, float> normalizedBounds) {
+    uint8_t detectionType, const NormalizedPixelRect& normalizedBounds) {
   auto request{std::make_shared<
       camera_control_interfaces::srv::StartDetection::Request>()};
   request->detection_type = detectionType;
-  auto [w, x, y, z]{normalizedBounds};
   common_interfaces::msg::Vector4 normalizedBoundsMsg;
-  normalizedBoundsMsg.w = w;
-  normalizedBoundsMsg.x = x;
-  normalizedBoundsMsg.y = y;
-  normalizedBoundsMsg.z = z;
+  normalizedBoundsMsg.w = normalizedBounds.u;
+  normalizedBoundsMsg.x = normalizedBounds.v;
+  normalizedBoundsMsg.y = normalizedBounds.width;
+  normalizedBoundsMsg.z = normalizedBounds.height;
   request->normalized_bounds = normalizedBoundsMsg;
   auto future{startDetectionClient_->async_send_request(request)};
   if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
@@ -388,15 +386,14 @@ CameraControlClient::getState() {
   return std::make_shared<camera_control_interfaces::msg::State>(result->state);
 }
 
-std::optional<std::vector<std::tuple<float, float, float>>>
-CameraControlClient::getPositions(
-    const std::vector<std::pair<float, float>>& normalizedPixelCoords) {
+std::optional<std::vector<Position>> CameraControlClient::getPositions(
+    const std::vector<NormalizedPixelCoord>& normalizedPixelCoords) {
   auto request{std::make_shared<
       camera_control_interfaces::srv::GetPositions::Request>()};
   for (const auto& coord : normalizedPixelCoords) {
     common_interfaces::msg::Vector2 coordMsg;
-    coordMsg.x = coord.first;
-    coordMsg.y = coord.second;
+    coordMsg.x = coord.u;
+    coordMsg.y = coord.v;
     request->normalized_pixel_coords.push_back(coordMsg);
   }
   auto future{getPositionsClient_->async_send_request(request)};
@@ -407,9 +404,11 @@ CameraControlClient::getPositions(
   }
 
   auto result{future.get()};
-  std::vector<std::tuple<float, float, float>> positions;
+  std::vector<Position> positions;
   for (const auto& position : result->positions) {
-    positions.push_back({position.x, position.y, position.z});
+    positions.push_back(Position{static_cast<float>(position.x),
+                                 static_cast<float>(position.y),
+                                 static_cast<float>(position.z)});
   }
   return positions;
 }

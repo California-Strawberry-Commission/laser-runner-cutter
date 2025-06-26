@@ -16,6 +16,7 @@
 #include "camera_control_interfaces/srv/stop_detection.hpp"
 #include "common_interfaces/srv/get_bool.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "runner_cutter_control/common_types.hpp"
 #include "sensor_msgs/msg/compressed_image.hpp"
 #include "sensor_msgs/msg/image.hpp"
 #include "std_srvs/srv/trigger.hpp"
@@ -43,8 +44,8 @@ class CameraControlClient {
   camera_control_interfaces::msg::DetectionResult::SharedPtr getDetection(
       uint8_t detectionType, bool waitForNextFrame = false);
   bool startDetection(uint8_t detectionType,
-                      std::tuple<float, float, float, float> normalizedBounds =
-                          {0.0f, 0.0f, 1.0f, 1.0f});
+                      const NormalizedPixelRect& normalizedBounds = {
+                          0.0f, 0.0f, 1.0f, 1.0f});
   bool stopDetection(uint8_t detectionType);
   bool stopAllDetections();
   bool startRecordingVideo();
@@ -54,8 +55,8 @@ class CameraControlClient {
   bool stopIntervalCapture();
   bool setSaveDirectory(const std::string& saveDirectory);
   camera_control_interfaces::msg::State::SharedPtr getState();
-  std::optional<std::vector<std::tuple<float, float, float>>> getPositions(
-      const std::vector<std::pair<float, float>>& normalizedPixelCoords);
+  std::optional<std::vector<Position>> getPositions(
+      const std::vector<NormalizedPixelCoord>& normalizedPixelCoords);
 
  private:
   rclcpp::Node& node_;

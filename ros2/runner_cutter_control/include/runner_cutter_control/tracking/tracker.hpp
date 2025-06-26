@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "runner_cutter_control/tracking/track.hpp"
+#include "runner_cutter_control/common_types.hpp"
 
 /**
  * Tracker maintains a collection of Tracks with state management. Thread-safe.
@@ -56,8 +57,8 @@ class Tracker {
    * @param confidence Confidence score associated with the detected target.
    * @return The newly created track, or existing track if it already exists.
    */
-  std::shared_ptr<Track> addTrack(uint32_t trackId, std::pair<int, int> pixel,
-                                  std::tuple<float, float, float> position,
+  std::shared_ptr<Track> addTrack(uint32_t trackId, const PixelCoord& pixel,
+                                  const Position& position,
                                   double timestampMs, float confidence = 1.0f);
 
   /**

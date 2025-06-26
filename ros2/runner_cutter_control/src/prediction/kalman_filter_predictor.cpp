@@ -2,11 +2,10 @@
 
 KalmanFilterPredictor::KalmanFilterPredictor() { reset(); }
 
-void KalmanFilterPredictor::add(std::tuple<float, float, float> position,
-                                double timestampMs, float confidence) {
+void KalmanFilterPredictor::add(const Position& position, double timestampMs,
+                                float confidence) {
   if (!initialized_) {
-    x_.head<3>() = Eigen::Vector3d(std::get<0>(position), std::get<1>(position),
-                                   std::get<2>(position));
+    x_.head<3>() = Eigen::Vector3d(position.x, position.y, position.z);
     initialized_ = true;
   } else {
     double dt{timestampMs - lastTimestampMs_};
@@ -24,8 +23,7 @@ void KalmanFilterPredictor::add(std::tuple<float, float, float> position,
 
     // Update step
     R_ = lerpR(confidence, 10.0f, 50.0f);
-    Eigen::Vector3d z{std::get<0>(position), std::get<1>(position),
-                      std::get<2>(position)};
+    Eigen::Vector3d z{position.x, position.y, position.z};
     Eigen::VectorXd y{z - H_ * x_};
     Eigen::MatrixXd S{H_ * P_ * H_.transpose() + R_};
     Eigen::MatrixXd K{P_ * H_.transpose() * S.inverse()};
@@ -36,18 +34,19 @@ void KalmanFilterPredictor::add(std::tuple<float, float, float> position,
   lastTimestampMs_ = timestampMs;
 }
 
-std::tuple<float, float, float> KalmanFilterPredictor::predict(
-    double timestampMs) {
+Position KalmanFilterPredictor::predict(double timestampMs) {
   double dt{timestampMs - lastTimestampMs_};
   if (dt <= 0.0) {
-    return {x_[0], x_[1], x_[2]};
+    return {static_cast<float>(x_[0]), static_cast<float>(x_[1]),
+            static_cast<float>(x_[2])};
   }
 
   Eigen::MatrixXd F_future{Eigen::MatrixXd::Identity(6, 6)};
   // (x', y', z') = (x + vx * dt, y + vy * dt, z + vz * dt)
   F_future(0, 3) = F_future(1, 4) = F_future(2, 5) = dt;
   Eigen::VectorXd x_future{F_future * x_};
-  return {x_future[0], x_future[1], x_future[2]};
+  return {static_cast<float>(x_future[0]), static_cast<float>(x_future[1]),
+          static_cast<float>(x_future[2])};
 }
 
 void KalmanFilterPredictor::reset() {

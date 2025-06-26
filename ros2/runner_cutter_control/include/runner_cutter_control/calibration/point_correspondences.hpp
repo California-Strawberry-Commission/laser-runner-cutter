@@ -4,14 +4,15 @@
 #include <tuple>
 #include <vector>
 
+#include "runner_cutter_control/common_types.hpp"
+
 class PointCorrespondences {
  public:
   PointCorrespondences();
 
   std::size_t size() const;
-  void add(std::pair<float, float> laserCoord,
-           std::pair<int, int> cameraPixelCoord,
-           std::tuple<float, float, float> cameraPosition);
+  void add(const LaserCoord& laserCoord, const PixelCoord& cameraPixelCoord,
+           const Position& cameraPosition);
   void clear();
   void updateTransformLinearLeastSquares();
   void updateTransformNonlinearLeastSquares();
@@ -41,15 +42,14 @@ class PointCorrespondences {
    * @return Tuple representing (min x, min y, width, height) of the laser
    * bounds.
    */
-  std::tuple<int, int, int, int> getLaserBounds() const { return laserBounds_; }
+  PixelRect getLaserBounds() const { return laserBounds_; }
 
   /**
    * Get the Jacobian from camera pixels to laser coords.
    *
-   * @return {Jacobian matrix, offset vector}
+   * @return Jacobian matrix.
    */
-  std::pair<Eigen::Matrix2d, Eigen::Vector2d>
-  getCameraPixelToLaserCoordJacobian() const {
+  Eigen::Matrix2d getCameraPixelToLaserCoordJacobian() const {
     return cameraToLaserJacobian_;
   }
 
@@ -57,12 +57,12 @@ class PointCorrespondences {
   void deserialize(std::istream& is);
 
  private:
-  std::vector<std::pair<float, float>> laserCoords_;
-  std::vector<std::pair<int, int>> cameraPixelCoords_;
-  std::vector<std::tuple<float, float, float>> cameraPositions_;
+  std::vector<LaserCoord> laserCoords_;
+  std::vector<PixelCoord> cameraPixelCoords_;
+  std::vector<Position> cameraPositions_;
   Eigen::MatrixXd cameraToLaserTransform_;
-  std::tuple<int, int, int, int> laserBounds_{0, 0, 0, 0};
-  std::pair<Eigen::Matrix2d, Eigen::Vector2d> cameraToLaserJacobian_;
+  PixelRect laserBounds_{0, 0, 0, 0};
+  Eigen::Matrix2d cameraToLaserJacobian_;
 
   void updateLaserBounds();
 };

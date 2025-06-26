@@ -14,16 +14,13 @@ Calibration::Calibration(std::shared_ptr<LaserControlClient> laser,
       camera_{std::move(camera)},
       pointCorrespondences_{} {}
 
-std::pair<int, int> Calibration::getCameraFrameSize() const {
-  return cameraFrameSize_;
-}
+FrameSize Calibration::getCameraFrameSize() const { return cameraFrameSize_; }
 
-std::tuple<int, int, int, int> Calibration::getLaserBounds() const {
+PixelRect Calibration::getLaserBounds() const {
   return pointCorrespondences_.getLaserBounds();
 }
 
-std::tuple<float, float, float, float> Calibration::getNormalizedLaserBounds()
-    const {
+NormalizedPixelRect Calibration::getNormalizedLaserBounds() const {
   auto [w, h]{getCameraFrameSize()};
   auto [boundsXMin, boundsYMin, boundsWidth, boundsHeight]{getLaserBounds()};
   return {(w > 0) ? boundsXMin / static_cast<float>(w) : 0.0f,
@@ -40,8 +37,7 @@ void Calibration::reset() {
 }
 
 bool Calibration::calibrate(
-    std::tuple<float, float, float, float> laserColor,
-    std::pair<int, int> gridSize, bool saveImages,
+    const LaserColor& laserColor, std::pair<int, int> gridSize, bool saveImages,
     std::optional<std::reference_wrapper<std::atomic<bool>>> stopSignal) {
   reset();
 
@@ -51,15 +47,16 @@ bool Calibration::calibrate(
     return false;
   }
   auto colorFrame{frameOpt.value().colorFrame};
-  cameraFrameSize_ = {colorFrame->width, colorFrame->height};
+  cameraFrameSize_ = {static_cast<int>(colorFrame->width),
+                      static_cast<int>(colorFrame->height)};
 
   // Get calibration points
   float xStep{1.0f / (gridSize.first - 1)};
   float yStep{1.0f / (gridSize.second - 1)};
-  std::vector<std::pair<float, float>> pendingLaserCoords;
+  std::vector<LaserCoord> pendingLaserCoords;
   for (int i = 0; i < gridSize.first; ++i) {
     for (int j = 0; j < gridSize.second; ++j) {
-      pendingLaserCoords.emplace_back(i * xStep, j * yStep);
+      pendingLaserCoords.emplace_back(LaserCoord{i * xStep, j * yStep});
     }
   }
 
@@ -86,11 +83,12 @@ bool Calibration::calibrate(
   return true;
 }
 
-std::pair<float, float> Calibration::cameraPositionToLaserCoord(
-    std::tuple<float, float, float> cameraPosition) const {
-  Eigen::Vector4d homogeneousCameraPosition{std::get<0>(cameraPosition),
-                                            std::get<1>(cameraPosition),
-                                            std::get<2>(cameraPosition), 1.0};
+LaserCoord Calibration::cameraPositionToLaserCoord(
+    const Position& cameraPosition) const {
+  Eigen::Vector4d homogeneousCameraPosition{
+      static_cast<double>(cameraPosition.x),
+      static_cast<double>(cameraPosition.y),
+      static_cast<double>(cameraPosition.z), 1.0};
   Eigen::Vector3d transformed{
       homogeneousCameraPosition.transpose() *
       pointCorrespondences_.getCameraToLaserTransform()};
@@ -102,32 +100,31 @@ std::pair<float, float> Calibration::cameraPositionToLaserCoord(
   // Normalize by the third (homogeneous) coordinate to get (x, y)
   // coordinates
   Eigen::Vector3d homogeneousTransformed{transformed / transformed[2]};
-  return {homogeneousTransformed[0], homogeneousTransformed[1]};
+  return {static_cast<float>(homogeneousTransformed[0]),
+          static_cast<float>(homogeneousTransformed[1])};
 }
 
-std::pair<float, float> Calibration::cameraPixelDeltaToLaserCoordDelta(
-    std::pair<int, int> cameraPixelCoordDelta) const {
-  auto [J, b]{pointCorrespondences_.getCameraPixelToLaserCoordJacobian()};
+LaserCoord Calibration::cameraPixelDeltaToLaserCoordDelta(
+    const PixelCoord& cameraPixelCoordDelta) const {
+  auto jacobian{pointCorrespondences_.getCameraPixelToLaserCoordJacobian()};
   Eigen::Vector2d cameraPixelDelta{
-      static_cast<double>(cameraPixelCoordDelta.first),
-      static_cast<double>(cameraPixelCoordDelta.second)};
-  // For deltas, we ignore the offset/bias b
-  Eigen::Vector2d laserCoordDelta{J * cameraPixelDelta};
-  return {laserCoordDelta[0], laserCoordDelta[1]};
+      static_cast<double>(cameraPixelCoordDelta.u),
+      static_cast<double>(cameraPixelCoordDelta.v)};
+  Eigen::Vector2d laserCoordDelta{jacobian * cameraPixelDelta};
+  return {static_cast<float>(laserCoordDelta[0]),
+          static_cast<float>(laserCoordDelta[1])};
 }
 
 std::size_t Calibration::addCalibrationPoints(
-    const std::vector<std::pair<float, float>>& laserCoords,
-    std::tuple<float, float, float, float> laserColor, bool updateTransform,
-    bool saveImages,
+    const std::vector<LaserCoord>& laserCoords, const LaserColor& laserColor,
+    bool updateTransform, bool saveImages,
     std::optional<std::reference_wrapper<std::atomic<bool>>> stopSignal) {
   if (laserCoords.empty()) {
     return 0;
   }
 
   std::size_t numPointCorrespondencesAdded{0};
-  auto [r, g, b, i]{laserColor};
-  laser_->setColor(r, g, b, i);
+  laser_->setColor(laserColor);
   laser_->clearPoint();
 
   {
@@ -138,7 +135,7 @@ std::size_t Calibration::addCalibrationPoints(
         return 0;
       }
 
-      laser_->setPoint(laserCoord.first, laserCoord.second);
+      laser_->setPoint(laserCoord);
       // Give sufficient time for galvo to settle.
       // TODO: This shouldn't be necessary in theory since getDetection waits
       // for several frames before running detection, so we'll need to figure
@@ -173,9 +170,10 @@ std::size_t Calibration::addCalibrationPoints(
   return numPointCorrespondencesAdded;
 }
 
-void Calibration::addPointCorrespondence(
-    std::pair<float, float> laserCoord, std::pair<int, int> cameraPixelCoord,
-    std::tuple<float, float, float> cameraPosition, bool updateTransform) {
+void Calibration::addPointCorrespondence(const LaserCoord& laserCoord,
+                                         const PixelCoord& cameraPixelCoord,
+                                         const Position& cameraPosition,
+                                         bool updateTransform) {
   pointCorrespondences_.add(laserCoord, cameraPixelCoord, cameraPosition);
   spdlog::info("Added point correspondence. {} total correspondences.",
                pointCorrespondences_.size());
@@ -209,10 +207,10 @@ bool Calibration::save(const std::string& filePath) {
     }
 
     // Save the camera frame size
-    ofs.write(reinterpret_cast<const char*>(&cameraFrameSize_.first),
-              sizeof(cameraFrameSize_.first));
-    ofs.write(reinterpret_cast<const char*>(&cameraFrameSize_.second),
-              sizeof(cameraFrameSize_.second));
+    ofs.write(reinterpret_cast<const char*>(&cameraFrameSize_.width),
+              sizeof(cameraFrameSize_.width));
+    ofs.write(reinterpret_cast<const char*>(&cameraFrameSize_.height),
+              sizeof(cameraFrameSize_.height));
 
     // Save the point correspondences
     pointCorrespondences_.serialize(ofs);
@@ -263,7 +261,7 @@ bool Calibration::load(const std::string& filePath) {
 }
 
 std::optional<Calibration::FindPointCorrespondenceResult>
-Calibration::findPointCorrespondence(std::pair<float, float> laserCoord,
+Calibration::findPointCorrespondence(const LaserCoord& laserCoord,
                                      int numAttempts,
                                      float attemptIntervalSecs) {
   for (int attempt = 0; attempt < numAttempts; ++attempt) {
@@ -279,18 +277,17 @@ Calibration::findPointCorrespondence(std::pair<float, float> laserCoord,
 
     // TODO: handle case where multiple lasers detected
     auto& instance{result->instances.front()};
-    std::pair<int, int> cameraPixelCoord{std::round(instance.point.x),
-                                         std::round(instance.point.y)};
-    std::tuple<float, float, float> cameraPosition{
-        instance.position.x, instance.position.y, instance.position.z};
+    PixelCoord cameraPixelCoord{static_cast<int>(std::round(instance.point.x)),
+                                static_cast<int>(std::round(instance.point.y))};
+    Position cameraPosition{static_cast<float>(instance.position.x),
+                            static_cast<float>(instance.position.y),
+                            static_cast<float>(instance.position.z)};
 
     spdlog::info(
         "Found point correspondence: laser_coord = ({}, {}), pixel = ({}, "
-        "{}), "
-        "position = ({}, {}, {}).",
-        laserCoord.first, laserCoord.second, cameraPixelCoord.first,
-        cameraPixelCoord.second, instance.position.x, instance.position.y,
-        instance.position.z);
+        "{}), position = ({}, {}, {}).",
+        laserCoord.x, laserCoord.y, cameraPixelCoord.u, cameraPixelCoord.v,
+        cameraPosition.x, cameraPosition.y, cameraPosition.z);
 
     return FindPointCorrespondenceResult{cameraPixelCoord, cameraPosition};
   }
