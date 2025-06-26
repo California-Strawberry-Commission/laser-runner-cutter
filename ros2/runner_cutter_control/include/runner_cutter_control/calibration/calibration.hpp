@@ -50,7 +50,16 @@ class Calibration {
    * @return (x, y) laser coordinates.
    */
   std::pair<float, float> cameraPositionToLaserCoord(
-      std::tuple<float, float, float> cameraPosition);
+      std::tuple<float, float, float> cameraPosition) const;
+
+  /**
+   * Transform a camera pixel coord delta to a laser coord delta.
+   *
+   * @param cameraPixelCoord Camera pixel coordinate delta (dx, dy).
+   * @return (dx, dy) laser coordinate delta.
+   */
+  std::pair<float, float> cameraPixelDeltaToLaserCoordDelta(
+      std::pair<int, int> cameraPixelCoordDelta) const;
 
   /**
    * Find and add additional point correspondences by shooting the laser at each
@@ -108,7 +117,7 @@ class Calibration {
   bool load(const std::string& filePath);
 
  private:
-  static constexpr float EPSILON = 1e-6f;
+  static constexpr float EPSILON{1e-6f};
 
   struct FindPointCorrespondenceResult {
     std::pair<int, int> cameraPixelCoord;

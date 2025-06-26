@@ -1007,9 +1007,11 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
       // Calculate camera pixel distance
       auto [laserPixel, laserPosition]{detectResultOpt.value()};
+      std::pair<int, int> cameraPixelDelta{
+          targetCameraPixel.first - laserPixel.first,
+          targetCameraPixel.second - laserPixel.second};
       float dist{static_cast<float>(
-          std::hypot(laserPixel.first - targetCameraPixel.first,
-                     laserPixel.second - targetCameraPixel.second))};
+          std::hypot(cameraPixelDelta.first, cameraPixelDelta.second))};
       RCLCPP_INFO(
           get_logger(),
           "Aiming laser. Target camera pixel = (%d, %d), laser detected at = "
@@ -1027,24 +1029,12 @@ class RunnerCutterControlNode : public rclcpp::Node {
       calibration_->addPointCorrespondence(currentLaserCoord, laserPixel,
                                            laserPosition);
 
-      // Compute correction factor
-      float correctionX{static_cast<float>(targetCameraPixel.first) -
-                        static_cast<float>(laserPixel.first)};
-      float correctionY{static_cast<float>(targetCameraPixel.second) -
-                        static_cast<float>(laserPixel.second)};
-
-      // Scale the correction by the camera frame size
-      auto [frameWidth, frameHeight]{calibration_->getCameraFrameSize()};
-      correctionX /= frameWidth;
-      correctionY /= frameHeight;
-
-      // Invert Y coordinate as laser coord Y is flipped from camera frame Y
-      correctionY *= -1;
-
       // Calculate new laser coord
+      auto laserCoordCorrection{
+          calibration_->cameraPixelDeltaToLaserCoordDelta(cameraPixelDelta)};
       std::pair<float, float> newLaserCoord{
-          currentLaserCoord.first + correctionX,
-          currentLaserCoord.second + correctionY};
+          currentLaserCoord.first + laserCoordCorrection.first,
+          currentLaserCoord.second + laserCoordCorrection.second};
       RCLCPP_INFO(
           get_logger(),
           "Distance too large. Correcting laser. Current laser coord = (%f, "

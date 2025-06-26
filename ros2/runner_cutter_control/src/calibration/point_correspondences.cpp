@@ -178,6 +178,35 @@ void PointCorrespondences::updateTransformNonlinearLeastSquares() {
       Eigen::Map<const Eigen::MatrixXd>{params.data(), 4, 3};
 }
 
+void PointCorrespondences::updateCameraPixelToLaserCoordJacobian() {
+  auto numSamples{size()};
+  if (numSamples < 2 || cameraPixelCoords_.size() != laserCoords_.size()) {
+    // Mismatched or insufficient data for Jacobian estimation
+    return;
+  }
+
+  Eigen::MatrixXd X{numSamples, 2};  // camera pixels
+  Eigen::MatrixXd Y{numSamples, 2};  // laser coords
+
+  for (std::size_t i = 0; i < numSamples; ++i) {
+    X(i, 0) = static_cast<double>(cameraPixelCoords_[i].first);
+    X(i, 1) = static_cast<double>(cameraPixelCoords_[i].second);
+    Y(i, 0) = static_cast<double>(laserCoords_[i].first);
+    Y(i, 1) = static_cast<double>(laserCoords_[i].second);
+  }
+
+  // Add bias column: [xf yf 1]
+  Eigen::MatrixXd xWithBias{numSamples, 3};
+  xWithBias << X, Eigen::VectorXd::Ones(numSamples);
+
+  // Solve: Y = xWithBias * [J^T | b^T]
+  Eigen::MatrixXd res{xWithBias.colPivHouseholderQr().solve(Y)};  // 3x2
+  Eigen::Matrix2d J{res.topRows(2).transpose()};                  // 2x2
+  Eigen::Vector2d b{res.row(2).transpose()};                      // 2x1
+  cameraToLaserJacobian_.first = J;
+  cameraToLaserJacobian_.second = b;
+}
+
 float PointCorrespondences::getReprojectionError() const {
   // Homogeneous camera positions
   Eigen::MatrixXd cameraMat{cameraPositions_.size(), 4};
@@ -203,14 +232,6 @@ float PointCorrespondences::getReprojectionError() const {
     error += std::sqrt(dx * dx + dy * dy);
   }
   return error / laserCoords_.size();
-}
-
-Eigen::MatrixXd PointCorrespondences::getCameraToLaserTransform() const {
-  return cameraToLaserTransform_;
-}
-
-std::tuple<int, int, int, int> PointCorrespondences::getLaserBounds() const {
-  return laserBounds_;
 }
 
 void PointCorrespondences::serialize(std::ostream& os) const {
@@ -262,6 +283,7 @@ void PointCorrespondences::deserialize(std::istream& is) {
   // nonlinear least squares
   updateTransformLinearLeastSquares();
   updateTransformNonlinearLeastSquares();
+  updateCameraPixelToLaserCoordJacobian();
 }
 
 void PointCorrespondences::updateLaserBounds() {

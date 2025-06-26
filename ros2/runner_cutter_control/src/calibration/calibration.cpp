@@ -65,8 +65,9 @@ bool Calibration::calibrate(
 
   // Get image correspondences
   spdlog::info("Getting image correspondences");
-  addCalibrationPoints(pendingLaserCoords, laserColor, false, saveImages,
-                       stopSignal);
+  addCalibrationPoints(pendingLaserCoords, laserColor,
+                       false,  // we will update transforms later
+                       saveImages, stopSignal);
   spdlog::info("{} out of {} point correspondences found.",
                pointCorrespondences_.size(), pendingLaserCoords.size());
   if (pointCorrespondences_.size() < 3) {
@@ -79,13 +80,14 @@ bool Calibration::calibrate(
   // nonlinear least squares
   pointCorrespondences_.updateTransformLinearLeastSquares();
   pointCorrespondences_.updateTransformNonlinearLeastSquares();
+  pointCorrespondences_.updateCameraPixelToLaserCoordJacobian();
 
   isCalibrated_ = true;
   return true;
 }
 
 std::pair<float, float> Calibration::cameraPositionToLaserCoord(
-    std::tuple<float, float, float> cameraPosition) {
+    std::tuple<float, float, float> cameraPosition) const {
   Eigen::Vector4d homogeneousCameraPosition{std::get<0>(cameraPosition),
                                             std::get<1>(cameraPosition),
                                             std::get<2>(cameraPosition), 1.0};
@@ -101,6 +103,17 @@ std::pair<float, float> Calibration::cameraPositionToLaserCoord(
   // coordinates
   Eigen::Vector3d homogeneousTransformed{transformed / transformed[2]};
   return {homogeneousTransformed[0], homogeneousTransformed[1]};
+}
+
+std::pair<float, float> Calibration::cameraPixelDeltaToLaserCoordDelta(
+    std::pair<int, int> cameraPixelCoordDelta) const {
+  auto [J, b]{pointCorrespondences_.getCameraPixelToLaserCoordJacobian()};
+  Eigen::Vector2d cameraPixelDelta{
+      static_cast<double>(cameraPixelCoordDelta.first),
+      static_cast<double>(cameraPixelCoordDelta.second)};
+  // For deltas, we ignore the offset/bias b
+  Eigen::Vector2d laserCoordDelta{J * cameraPixelDelta};
+  return {laserCoordDelta[0], laserCoordDelta[1]};
 }
 
 std::size_t Calibration::addCalibrationPoints(
@@ -154,6 +167,7 @@ std::size_t Calibration::addCalibrationPoints(
   // non-trivial
   if (updateTransform && numPointCorrespondencesAdded > 0) {
     pointCorrespondences_.updateTransformNonlinearLeastSquares();
+    pointCorrespondences_.updateCameraPixelToLaserCoordJacobian();
   }
 
   return numPointCorrespondencesAdded;
@@ -170,6 +184,7 @@ void Calibration::addPointCorrespondence(
   // non-trivial
   if (updateTransform) {
     pointCorrespondences_.updateTransformNonlinearLeastSquares();
+    pointCorrespondences_.updateCameraPixelToLaserCoordJacobian();
   }
 }
 
