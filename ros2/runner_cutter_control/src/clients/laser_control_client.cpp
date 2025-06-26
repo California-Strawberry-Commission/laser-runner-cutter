@@ -65,10 +65,10 @@ bool LaserControlClient::closeDevice() {
   return result->success;
 }
 
-bool LaserControlClient::setColor(float r, float g, float b, float i) {
-  std::vector<double> color{r, g, b, i};
-  auto future{
-      parametersClient_->set_parameters({rclcpp::Parameter("color", color)})};
+bool LaserControlClient::setColor(const LaserColor& color) {
+  std::vector<double> colorVec{color.r, color.g, color.b, color.i};
+  auto future{parametersClient_->set_parameters(
+      {rclcpp::Parameter("color", colorVec)})};
   if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
       std::future_status::ready) {
     RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
@@ -86,11 +86,11 @@ bool LaserControlClient::setColor(float r, float g, float b, float i) {
   return true;
 }
 
-bool LaserControlClient::setPoint(float x, float y) {
+bool LaserControlClient::setPoint(const LaserCoord& point) {
   auto msg{laser_control_interfaces::msg::PathUpdate()};
   msg.path_id = 1;
-  msg.destination.x = x;
-  msg.destination.y = y;
+  msg.destination.x = point.x;
+  msg.destination.y = point.y;
   updatePathPublisher_->publish(std::move(msg));
 
   return true;

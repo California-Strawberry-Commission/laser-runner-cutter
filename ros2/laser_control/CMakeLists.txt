@@ -36,7 +36,7 @@ target_include_directories(helios_dac_sdk PUBLIC
   ${HELIOS_DAC_SDK_DIR}
 )
 target_link_libraries(helios_dac_sdk PUBLIC ${LIBUSB_LIBRARIES})
-target_compile_options(helios_dac_sdk PRIVATE -fpermissive -Wno-write-strings -Wno-pedantic -Wno-unused-variable -Wno-address)
+target_compile_options(helios_dac_sdk PUBLIC -fpermissive -Wno-write-strings -Wno-pedantic -Wno-unused-variable -Wno-address)
 
 # Add Ether Dream SDK
 set(ETHER_DREAM_SDK_DIR third_party/ether-dream-sdk/src)

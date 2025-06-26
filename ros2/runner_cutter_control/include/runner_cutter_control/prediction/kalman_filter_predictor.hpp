@@ -17,7 +17,7 @@ class KalmanFilterPredictor final : public Predictor {
    * @param timestampMs Timestamp (in ms) associated with the measurement.
    * @param confidence Confidence score associated with the measurement.
    */
-  void add(std::tuple<float, float, float> position, double timestampMs,
+  void add(const Position& position, double timestampMs,
            float confidence = 1.0f) override;
 
   /**
@@ -25,7 +25,7 @@ class KalmanFilterPredictor final : public Predictor {
    *
    * @param timestampMs Timestamp (in ms) to predict the measurement for.
    */
-  std::tuple<float, float, float> predict(double timestampMs) override;
+  Position predict(double timestampMs) override;
 
   /**
    * Clear the predictor's state.

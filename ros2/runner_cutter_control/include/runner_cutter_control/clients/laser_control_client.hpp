@@ -5,6 +5,7 @@
 #include "laser_control_interfaces/srv/get_state.hpp"
 #include "laser_control_interfaces/srv/remove_path.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "runner_cutter_control/common_types.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
 class LaserControlClient {
@@ -15,8 +16,8 @@ class LaserControlClient {
 
   bool startDevice();
   bool closeDevice();
-  bool setColor(float r, float g, float b, float i);
-  bool setPoint(float x, float y);
+  bool setColor(const LaserColor& color);
+  bool setPoint(const LaserCoord& point);
   bool clearPoint();
   bool play();
   bool stop();

@@ -9,7 +9,7 @@ int main() {
   KalmanFilterPredictor predictor;
 
   // Moving
-  std::vector<std::pair<double, std::tuple<float, float, float>>> data{
+  std::vector<std::pair<double, Position>> data{
       {1740157598942.124, {41.0, -64.5, 432.75}},
       {1740157599001.046, {42.25, -70.75, 446.25}},
       {1740157599059.6873, {42.0, -74.75, 434.0}},
@@ -23,7 +23,7 @@ int main() {
 
   /*
   // Static
-  std::vector<std::pair<double, std::tuple<float, float, float>>> data{
+  std::vector<std::pair<double, Position>> data{
       {1740155698317.263, {51.75, -75.5, 427.0}},
       {1740155698376.7227, {52.25, -77.5, 431.5}},
       {1740155698434.172, {51.5, -75.5, 426.5}},
@@ -40,8 +40,8 @@ int main() {
 
   for (const auto& [ts, pos] : data) {
     predictor.add(pos, ts);
-    measX.push_back(std::get<0>(pos));
-    measY.push_back(std::get<1>(pos));
+    measX.push_back(pos.x);
+    measY.push_back(pos.y);
   }
 
   std::vector<double> timeDeltas;

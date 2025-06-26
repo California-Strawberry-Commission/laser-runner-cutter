@@ -6,15 +6,16 @@
 #include "runner_cutter_control/calibration/point_correspondences.hpp"
 #include "runner_cutter_control/clients/camera_control_client.hpp"
 #include "runner_cutter_control/clients/laser_control_client.hpp"
+#include "runner_cutter_control/common_types.hpp"
 
 class Calibration {
  public:
   explicit Calibration(std::shared_ptr<LaserControlClient> laser,
                        std::shared_ptr<CameraControlClient> camera);
 
-  std::pair<int, int> getCameraFrameSize() const;
-  std::tuple<int, int, int, int> getLaserBounds() const;
-  std::tuple<float, float, float, float> getNormalizedLaserBounds() const;
+  FrameSize getCameraFrameSize() const;
+  PixelRect getLaserBounds() const;
+  NormalizedPixelRect getNormalizedLaserBounds() const;
   bool isCalibrated() const;
   void reset();
   std::size_t getPointCorrespondencesCount() const {
@@ -38,7 +39,7 @@ class Calibration {
    * terminated when set to true.
    * @return whether calibration was successful or not.
    */
-  bool calibrate(std::tuple<float, float, float, float> laserColor,
+  bool calibrate(const LaserColor& laserColor,
                  std::pair<int, int> gridSize = {5, 5}, bool saveImages = false,
                  std::optional<std::reference_wrapper<std::atomic<bool>>>
                      stopSignal = std::nullopt);
@@ -49,17 +50,16 @@ class Calibration {
    * @param cameraPosition A 3D position (x, y, z) in camera-space.
    * @return (x, y) laser coordinates.
    */
-  std::pair<float, float> cameraPositionToLaserCoord(
-      std::tuple<float, float, float> cameraPosition) const;
+  LaserCoord cameraPositionToLaserCoord(const Position& cameraPosition) const;
 
   /**
    * Transform a camera pixel coord delta to a laser coord delta.
    *
-   * @param cameraPixelCoord Camera pixel coordinate delta (dx, dy).
+   * @param cameraPixelCoordDelta Camera pixel coordinate delta (dx, dy).
    * @return (dx, dy) laser coordinate delta.
    */
-  std::pair<float, float> cameraPixelDeltaToLaserCoordDelta(
-      std::pair<int, int> cameraPixelCoordDelta) const;
+  LaserCoord cameraPixelDeltaToLaserCoordDelta(
+      const PixelCoord& cameraPixelCoordDelta) const;
 
   /**
    * Find and add additional point correspondences by shooting the laser at each
@@ -75,8 +75,7 @@ class Calibration {
    * @return Number of point correspondences successfully added.
    */
   std::size_t addCalibrationPoints(
-      const std::vector<std::pair<float, float>>& laserCoords,
-      std::tuple<float, float, float, float> laserColor,
+      const std::vector<LaserCoord>& laserCoords, const LaserColor& laserColor,
       bool updateTransform = false, bool saveImages = false,
       std::optional<std::reference_wrapper<std::atomic<bool>>> stopSignal =
           std::nullopt);
@@ -92,9 +91,9 @@ class Calibration {
    * correspondence.
    * @param updateTransform Whether to update the transform matrix or not.
    */
-  void addPointCorrespondence(std::pair<float, float> laserCoord,
-                              std::pair<int, int> cameraPixelCoord,
-                              std::tuple<float, float, float> cameraPosition,
+  void addPointCorrespondence(const LaserCoord& laserCoord,
+                              const PixelCoord& cameraPixelCoord,
+                              const Position& cameraPosition,
                               bool updateTransform = false);
 
   /**
@@ -120,16 +119,16 @@ class Calibration {
   static constexpr float EPSILON{1e-6f};
 
   struct FindPointCorrespondenceResult {
-    std::pair<int, int> cameraPixelCoord;
-    std::tuple<float, float, float> cameraPosition;
+    PixelCoord cameraPixelCoord;
+    Position cameraPosition;
   };
   std::optional<FindPointCorrespondenceResult> findPointCorrespondence(
-      std::pair<float, float> laserCoord, int numAttempts = 3,
+      const LaserCoord& laserCoord, int numAttempts = 3,
       float attemptIntervalSecs = 0.25f);
 
   std::shared_ptr<LaserControlClient> laser_;
   std::shared_ptr<CameraControlClient> camera_;
-  std::pair<int, int> cameraFrameSize_{0, 0};
+  FrameSize cameraFrameSize_{0, 0};
   PointCorrespondences pointCorrespondences_{};
   bool isCalibrated_{false};
 };

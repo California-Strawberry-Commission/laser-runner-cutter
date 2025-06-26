@@ -8,9 +8,9 @@ PointCorrespondences::PointCorrespondences()
 
 std::size_t PointCorrespondences::size() const { return laserCoords_.size(); }
 
-void PointCorrespondences::add(std::pair<float, float> laserCoord,
-                               std::pair<int, int> cameraPixelCoord,
-                               std::tuple<float, float, float> cameraPosition) {
+void PointCorrespondences::add(const LaserCoord& laserCoord,
+                               const PixelCoord& cameraPixelCoord,
+                               const Position& cameraPosition) {
   laserCoords_.push_back(laserCoord);
   cameraPixelCoords_.push_back(cameraPixelCoord);
   cameraPositions_.push_back(cameraPosition);
@@ -44,8 +44,8 @@ void PointCorrespondences::updateTransformLinearLeastSquares() {
   // Homogeneous laser coords
   Eigen::MatrixXd laserMat{laserCoords_.size(), 3};
   for (size_t i = 0; i < laserCoords_.size(); ++i) {
-    laserMat(i, 0) = laserCoords_[i].first;
-    laserMat(i, 1) = laserCoords_[i].second;
+    laserMat(i, 0) = laserCoords_[i].x;
+    laserMat(i, 1) = laserCoords_[i].y;
     laserMat(i, 2) = 1.0;
   }
 
@@ -154,8 +154,8 @@ void PointCorrespondences::updateTransformNonlinearLeastSquares() {
   // Homogeneous laser coords
   Eigen::MatrixXd laserMat{laserCoords_.size(), 3};
   for (size_t i = 0; i < laserCoords_.size(); ++i) {
-    laserMat(i, 0) = laserCoords_[i].first;
-    laserMat(i, 1) = laserCoords_[i].second;
+    laserMat(i, 0) = laserCoords_[i].x;
+    laserMat(i, 1) = laserCoords_[i].y;
     laserMat(i, 2) = 1.0;
   }
 
@@ -189,22 +189,14 @@ void PointCorrespondences::updateCameraPixelToLaserCoordJacobian() {
   Eigen::MatrixXd Y{numSamples, 2};  // laser coords
 
   for (std::size_t i = 0; i < numSamples; ++i) {
-    X(i, 0) = static_cast<double>(cameraPixelCoords_[i].first);
-    X(i, 1) = static_cast<double>(cameraPixelCoords_[i].second);
-    Y(i, 0) = static_cast<double>(laserCoords_[i].first);
-    Y(i, 1) = static_cast<double>(laserCoords_[i].second);
+    X(i, 0) = static_cast<double>(cameraPixelCoords_[i].u);
+    X(i, 1) = static_cast<double>(cameraPixelCoords_[i].v);
+    Y(i, 0) = static_cast<double>(laserCoords_[i].x);
+    Y(i, 1) = static_cast<double>(laserCoords_[i].y);
   }
 
-  // Add bias column: [xf yf 1]
-  Eigen::MatrixXd xWithBias{numSamples, 3};
-  xWithBias << X, Eigen::VectorXd::Ones(numSamples);
-
-  // Solve: Y = xWithBias * [J^T | b^T]
-  Eigen::MatrixXd res{xWithBias.colPivHouseholderQr().solve(Y)};  // 3x2
-  Eigen::Matrix2d J{res.topRows(2).transpose()};                  // 2x2
-  Eigen::Vector2d b{res.row(2).transpose()};                      // 2x1
-  cameraToLaserJacobian_.first = J;
-  cameraToLaserJacobian_.second = b;
+  // Solve for Jacobian: Y = X * J
+  cameraToLaserJacobian_ = X.colPivHouseholderQr().solve(Y).transpose();
 }
 
 float PointCorrespondences::getReprojectionError() const {
@@ -226,9 +218,9 @@ float PointCorrespondences::getReprojectionError() const {
   float error{0.0f};
   for (int i = 0; i < homogeneousTransformed.rows(); ++i) {
     float dx{static_cast<float>(homogeneousTransformed(i, 0)) -
-             laserCoords_[i].first};
+             laserCoords_[i].x};
     float dy{static_cast<float>(homogeneousTransformed(i, 1)) -
-             laserCoords_[i].second};
+             laserCoords_[i].y};
     error += std::sqrt(dx * dx + dy * dy);
   }
   return error / laserCoords_.size();
@@ -294,11 +286,10 @@ void PointCorrespondences::updateLaserBounds() {
 
   auto [minX, maxX]{std::minmax_element(
       cameraPixelCoords_.begin(), cameraPixelCoords_.end(),
-      [](const auto& a, const auto& b) { return a.first < b.first; })};
+      [](const auto& a, const auto& b) { return a.u < b.u; })};
   auto [minY, maxY]{std::minmax_element(
       cameraPixelCoords_.begin(), cameraPixelCoords_.end(),
-      [](const auto& a, const auto& b) { return a.second < b.second; })};
+      [](const auto& a, const auto& b) { return a.v < b.v; })};
 
-  laserBounds_ = {minX->first, minY->second, maxX->first - minX->first,
-                  maxY->second - minY->second};
+  laserBounds_ = {minX->u, minY->v, maxX->u - minX->u, maxY->v - minY->v};
 }

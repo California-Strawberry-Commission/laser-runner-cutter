@@ -2,6 +2,8 @@
 
 #include <tuple>
 
+#include "runner_cutter_control/common_types.hpp"
+
 class Predictor {
  public:
   /**
@@ -13,7 +15,7 @@ class Predictor {
    * @param timestampMs Timestamp (in ms) associated with the measurement.
    * @param confidence Confidence score associated with the measurement.
    */
-  virtual void add(std::tuple<float, float, float> position, double timestampMs,
+  virtual void add(const Position& position, double timestampMs,
                    float confidence = 1.0f) = 0;
 
   /**
@@ -21,7 +23,7 @@ class Predictor {
    *
    * @param timestampMs Timestamp (in ms) to predict the measurement for.
    */
-  virtual std::tuple<float, float, float> predict(double timestampMs) = 0;
+  virtual Position predict(double timestampMs) = 0;
 
   /**
    * Clear the predictor's state.
