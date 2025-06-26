@@ -97,6 +97,15 @@ class Calibration {
                               bool updateTransform = false);
 
   /**
+   * Recalculate the camera-space position to laser coord transform. Calculation
+   * of the transform is computationally expensive, so it is recommended to call
+   * `addPointCorrespondence()` multiple times with the param `updateTransform`
+   * set to false, then call `updateTransform()` when no longer in a performance
+   * sensitive loop.
+   */
+  void updateTransform();
+
+  /**
    * Save the current calibration data (specifically, point correspondences) to
    * a file.
    *

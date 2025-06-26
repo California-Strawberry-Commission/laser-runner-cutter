@@ -73,11 +73,10 @@ bool Calibration::calibrate(
     return false;
   }
 
-  // Use linear least squares for an initial estimate, then refine using
-  // nonlinear least squares
+  // Use linear least squares for an initial estimate...
   pointCorrespondences_.updateTransformLinearLeastSquares();
-  pointCorrespondences_.updateTransformNonlinearLeastSquares();
-  pointCorrespondences_.updateCameraPixelToLaserCoordJacobian();
+  // ...then refine using nonlinear least squares
+  updateTransform();
 
   isCalibrated_ = true;
   return true;
@@ -163,8 +162,7 @@ std::size_t Calibration::addCalibrationPoints(
   // This is behind a flag as updating the transform is computationally
   // non-trivial
   if (updateTransform && numPointCorrespondencesAdded > 0) {
-    pointCorrespondences_.updateTransformNonlinearLeastSquares();
-    pointCorrespondences_.updateCameraPixelToLaserCoordJacobian();
+    this->updateTransform();
   }
 
   return numPointCorrespondencesAdded;
@@ -181,9 +179,13 @@ void Calibration::addPointCorrespondence(const LaserCoord& laserCoord,
   // This is behind a flag as updating the transform is computationally
   // non-trivial
   if (updateTransform) {
-    pointCorrespondences_.updateTransformNonlinearLeastSquares();
-    pointCorrespondences_.updateCameraPixelToLaserCoordJacobian();
+    this->updateTransform();
   }
+}
+
+void Calibration::updateTransform() {
+  pointCorrespondences_.updateTransformNonlinearLeastSquares();
+  pointCorrespondences_.updateCameraPixelToLaserCoordJacobian();
 }
 
 bool Calibration::save(const std::string& filePath) {

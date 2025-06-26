@@ -969,6 +969,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
     laser_->setColor(getParamTrackingLaserColor());
     auto correctedLaserCoordOpt{
         correctLaser(initialLaserCoord, targetCameraPixel)};
+    // There may have been point correspondences added, so update transform
+    calibration_->updateTransform();
     return correctedLaserCoordOpt;
   }
 
@@ -988,8 +990,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
    */
   std::optional<LaserCoord> correctLaser(const LaserCoord& initialLaserCoord,
                                          const PixelCoord& targetCameraPixel,
-                                         float pixelDistanceThreshold = 2.5f,
-                                         int maxAttempts = 5) {
+                                         float pixelDistanceThreshold = 3.0f,
+                                         int maxAttempts = 10) {
     LaserCoord currentLaserCoord{initialLaserCoord};
     int attempt{0};
     while (attempt < maxAttempts && !taskStopSignal_) {
