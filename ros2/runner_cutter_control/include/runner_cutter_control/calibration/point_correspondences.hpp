@@ -7,6 +7,7 @@
 class PointCorrespondences {
  public:
   PointCorrespondences();
+
   std::size_t size() const;
   void add(std::pair<float, float> laserCoord,
            std::pair<int, int> cameraPixelCoord,
@@ -17,13 +18,21 @@ class PointCorrespondences {
   float getReprojectionError() const;
 
   /**
+   * Update the Jacobian from camera pixels to laser coords using all point
+   * correspondences.
+   */
+  void updateCameraPixelToLaserCoordJacobian();
+
+  /**
    * The transform matrix that converts a 3D position in camera-space to laser
    * coordinates.
    *
    * @return Transform matrix that converts a 3D position in camera-space to
    * laser coordinates.
    */
-  Eigen::MatrixXd getCameraToLaserTransform() const;
+  Eigen::MatrixXd getCameraToLaserTransform() const {
+    return cameraToLaserTransform_;
+  }
 
   /**
    * The rect (min x, min y, width, height) representing the reach of the laser,
@@ -32,7 +41,17 @@ class PointCorrespondences {
    * @return Tuple representing (min x, min y, width, height) of the laser
    * bounds.
    */
-  std::tuple<int, int, int, int> getLaserBounds() const;
+  std::tuple<int, int, int, int> getLaserBounds() const { return laserBounds_; }
+
+  /**
+   * Get the Jacobian from camera pixels to laser coords.
+   *
+   * @return {Jacobian matrix, offset vector}
+   */
+  std::pair<Eigen::Matrix2d, Eigen::Vector2d>
+  getCameraPixelToLaserCoordJacobian() const {
+    return cameraToLaserJacobian_;
+  }
 
   void serialize(std::ostream& os) const;
   void deserialize(std::istream& is);
@@ -43,6 +62,7 @@ class PointCorrespondences {
   std::vector<std::tuple<float, float, float>> cameraPositions_;
   Eigen::MatrixXd cameraToLaserTransform_;
   std::tuple<int, int, int, int> laserBounds_{0, 0, 0, 0};
+  std::pair<Eigen::Matrix2d, Eigen::Vector2d> cameraToLaserJacobian_;
 
   void updateLaserBounds();
 };

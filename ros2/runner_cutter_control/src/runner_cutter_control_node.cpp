@@ -683,7 +683,9 @@ class RunnerCutterControlNode : public rclcpp::Node {
     publishNotification("Calibration started");
     calibration_->calibrate(getParamTrackingLaserColor(), {11, 11}, saveImages,
                             taskStopSignal_);
-    publishNotification("Calibration complete");
+    publishNotification(
+        fmt::format("Calibration complete with {} point correspondences",
+                    calibration_->getPointCorrespondencesCount()));
   }
 
   void addCalibrationPointsTask(
@@ -980,16 +982,17 @@ class RunnerCutterControlNode : public rclcpp::Node {
    * @param targetCameraPixel Target camera pixel coordinate.
    * @param pixelDistanceThreshold Pixel distance threshold under which the
    * corrected laser coordinate is considered close enough to the target.
+   * @param maxAttempts Maximum number of iterations.
    * @return The corrected laser coordinate that projects to the target camera
    * pixel.
    */
   std::optional<std::pair<float, float>> correctLaser(
       std::pair<float, float> initialLaserCoord,
       std::pair<int, int> targetCameraPixel,
-      float pixelDistanceThreshold = 2.5f) {
+      float pixelDistanceThreshold = 2.5f, int maxAttempts = 5) {
     auto currentLaserCoord{initialLaserCoord};
-
-    while (!taskStopSignal_) {
+    int attempt{0};
+    while (attempt < maxAttempts && !taskStopSignal_) {
       laser_->setPoint(currentLaserCoord.first, currentLaserCoord.second);
       // Give sufficient time for galvo to settle.
       // TODO: This shouldn't be necessary in theory since getDetection waits
@@ -1005,9 +1008,11 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
       // Calculate camera pixel distance
       auto [laserPixel, laserPosition]{detectResultOpt.value()};
+      std::pair<int, int> cameraPixelDelta{
+          targetCameraPixel.first - laserPixel.first,
+          targetCameraPixel.second - laserPixel.second};
       float dist{static_cast<float>(
-          std::hypot(laserPixel.first - targetCameraPixel.first,
-                     laserPixel.second - targetCameraPixel.second))};
+          std::hypot(cameraPixelDelta.first, cameraPixelDelta.second))};
       RCLCPP_INFO(
           get_logger(),
           "Aiming laser. Target camera pixel = (%d, %d), laser detected at = "
@@ -1025,24 +1030,12 @@ class RunnerCutterControlNode : public rclcpp::Node {
       calibration_->addPointCorrespondence(currentLaserCoord, laserPixel,
                                            laserPosition);
 
-      // Compute correction factor
-      float correctionX{static_cast<float>(targetCameraPixel.first) -
-                        static_cast<float>(laserPixel.first)};
-      float correctionY{static_cast<float>(targetCameraPixel.second) -
-                        static_cast<float>(laserPixel.second)};
-
-      // Scale the correction by the camera frame size
-      auto [frameWidth, frameHeight]{calibration_->getCameraFrameSize()};
-      correctionX /= frameWidth;
-      correctionY /= frameHeight;
-
-      // Invert Y coordinate as laser coord Y is flipped from camera frame Y
-      correctionY *= -1;
-
       // Calculate new laser coord
+      auto laserCoordCorrection{
+          calibration_->cameraPixelDeltaToLaserCoordDelta(cameraPixelDelta)};
       std::pair<float, float> newLaserCoord{
-          currentLaserCoord.first + correctionX,
-          currentLaserCoord.second + correctionY};
+          currentLaserCoord.first + laserCoordCorrection.first,
+          currentLaserCoord.second + laserCoordCorrection.second};
       RCLCPP_INFO(
           get_logger(),
           "Distance too large. Correcting laser. Current laser coord = (%f, "
@@ -1057,6 +1050,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
       }
 
       currentLaserCoord = newLaserCoord;
+      ++attempt;
     }
 
     return std::nullopt;
