@@ -982,16 +982,17 @@ class RunnerCutterControlNode : public rclcpp::Node {
    * @param targetCameraPixel Target camera pixel coordinate.
    * @param pixelDistanceThreshold Pixel distance threshold under which the
    * corrected laser coordinate is considered close enough to the target.
+   * @param maxAttempts Maximum number of iterations.
    * @return The corrected laser coordinate that projects to the target camera
    * pixel.
    */
   std::optional<std::pair<float, float>> correctLaser(
       std::pair<float, float> initialLaserCoord,
       std::pair<int, int> targetCameraPixel,
-      float pixelDistanceThreshold = 2.5f) {
+      float pixelDistanceThreshold = 2.5f, int maxAttempts = 5) {
     auto currentLaserCoord{initialLaserCoord};
-
-    while (!taskStopSignal_) {
+    int attempt{0};
+    while (attempt < maxAttempts && !taskStopSignal_) {
       laser_->setPoint(currentLaserCoord.first, currentLaserCoord.second);
       // Give sufficient time for galvo to settle.
       // TODO: This shouldn't be necessary in theory since getDetection waits
@@ -1049,6 +1050,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
       }
 
       currentLaserCoord = newLaserCoord;
+      ++attempt;
     }
 
     return std::nullopt;
