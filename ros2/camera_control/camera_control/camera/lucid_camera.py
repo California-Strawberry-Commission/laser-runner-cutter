@@ -20,6 +20,10 @@ from .lucid_frame import LucidFrame
 from .rgbd_camera import RgbdCamera, State
 from .rgbd_frame import RgbdFrame
 
+import subprocess
+import shutil
+import tempfile
+
 COLOR_CAMERA_MODEL_PREFIXES = ["ATL", "ATX", "PHX", "TRI", "TRT"]
 DEPTH_CAMERA_MODEL_PREFIXES = ["HTP", "HLT", "HTR", "HTW"]
 
@@ -918,13 +922,31 @@ def _get_frame(output_dir):
 
     camera = create_lucid_rgbd_camera()
     camera.start()
-    time.sleep(1)
+    # Wait for the camera to start streaming
+    with camera._cv:
+        while not camera._is_running:
+            camera._cv.wait(timeout=1)
+            if not camera._is_running:
+                raise RuntimeError("Camera failed to start streaming")
+    if camera._color_device.nodemap["AcquisitionMode"].value == "SingleFrame" and camera._depth_device.nodemap["AcquisitionMode"].value == "SingleFrame":
+        camera._color_device.nodemap["AcquisitionStart"].execute()
+        camera._depth_device.nodemap["AcquisitionStart"].execute()
+        # Wait for the first frame to be captured
+        with camera._cv:
+            while not camera._color_device.has_buffer() or not camera._depth_device.has_buffer():
+                camera._cv.wait(timeout=1)
+                if not camera._color_device.has_buffer() or not camera._depth_device.has_buffer():
+                    raise RuntimeError("Camera failed to capture first frame")
+        camera._color_device.nodemap["AcquisitionStop"].execute()
+        camera._depth_device.nodemap["AcquisitionStop"].execute()
 
     color_frame = camera._get_color_frame()
     depth_frame = camera._get_depth_frame()
 
     if color_frame is not None and depth_frame is not None:
-        triton_mono_image = cv2.cvtColor(color_frame, cv2.COLOR_RGB2GRAY)
+        # Convert BayerRG8 to RGB8 first
+        color_frame_rgb = cv2.cvtColor(color_frame, cv2.COLOR_BayerRGGB2RGB)
+        triton_mono_image = cv2.cvtColor(color_frame_rgb, cv2.COLOR_RGB2GRAY)
         helios_intensity_image = (depth_frame["i"] / 256).astype(np.uint8)
         helios_xyz = np.stack(
             [depth_frame["x"], depth_frame["y"], depth_frame["z"]], axis=-1
@@ -934,11 +956,11 @@ def _get_frame(output_dir):
             os.makedirs(output_dir)
         np.save(
             os.path.join(output_dir, "triton_color_image.npy"),
-            color_frame,
+            color_frame_rgb,
         )
         cv2.imwrite(
             os.path.join(output_dir, "triton_color_image.png"),
-            cv2.cvtColor(color_frame, cv2.COLOR_RGB2BGR),
+            cv2.cvtColor(color_frame_rgb, cv2.COLOR_RGB2BGR),
         )
         np.save(
             os.path.join(output_dir, "triton_mono_image.npy"),
@@ -957,6 +979,138 @@ def _get_frame(output_dir):
             helios_intensity_image,
         )
         np.save(os.path.join(output_dir, "helios_xyz.npy"), helios_xyz)
+
+
+def _get_heatmap_frame(output_dir):
+    output_dir = os.path.expanduser(output_dir)
+
+    camera = create_lucid_rgbd_camera()
+    camera.start()
+    # Wait for the camera to start streaming
+    with camera._cv:  # type: ignore
+        while not camera._is_running:  # type: ignore
+            camera._cv.wait(timeout=1)
+            if not camera._is_running:  # type: ignore
+                raise RuntimeError("Camera failed to start streaming")
+    
+    if camera._depth_device.nodemap["AcquisitionMode"].value == "SingleFrame":
+        camera._depth_device.nodemap["AcquisitionStart"].execute()
+        # Wait for the first frame to be captured
+        with camera._cv:
+            while not camera._depth_device.has_buffer():
+                camera._cv.wait(timeout=1)
+                if not camera._depth_device.has_buffer():
+                    raise RuntimeError("Camera failed to capture first frame")
+        camera._depth_device.nodemap["AcquisitionStop"].execute()
+
+    depth_frame = camera._get_depth_frame()
+
+    if depth_frame is not None:        
+        # Extract depth values (z-component) from the structured array
+        depth_values = depth_frame["z"]
+        
+        # Create a mask for valid depth values (not -1)
+        valid_mask = depth_values != -1.0
+        
+        # Create heatmap visualization
+        if np.any(valid_mask):
+            # Normalize depth values for visualization
+            valid_depths = depth_values[valid_mask]
+            min_depth = np.min(valid_depths)
+            max_depth = np.max(valid_depths)
+            
+            # Create normalized depth image
+            normalized_depth = np.zeros_like(depth_values, dtype=np.float32)
+            if max_depth > min_depth:
+                normalized_depth[valid_mask] = (depth_values[valid_mask] - min_depth) / (max_depth - min_depth)
+            
+            # Convert to 8-bit for colormap application
+            depth_8bit = (normalized_depth * 255).astype(np.uint8)
+            
+            # Apply colormap (COLORMAP_JET gives a nice heatmap: blue=far, red=close)
+            heatmap = cv2.applyColorMap(depth_8bit, cv2.COLORMAP_JET)
+            
+            # Set invalid pixels to black
+            heatmap[~valid_mask] = [0, 0, 0]
+        else:
+            # If no valid depth data, create a black image
+            heatmap = np.zeros((depth_values.shape[0], depth_values.shape[1], 3), dtype=np.uint8)
+
+        # Save all outputs
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+
+        # Save depth values as grayscale
+        depth_grayscale = (normalized_depth * 255).astype(np.uint8)
+        cv2.imwrite(
+            os.path.join(output_dir, "depth_grayscale.png"),
+            depth_grayscale,
+        )
+        # Save heatmap
+        cv2.imwrite(
+            os.path.join(output_dir, "depth_heatmap.png"),
+            heatmap,
+        )
+        
+        print(f"Heatmap saved successfully!")
+        print(f"Depth range: {min_depth:.1f}mm to {max_depth:.1f}mm")
+        print(f"Valid pixels: {np.sum(valid_mask)} / {valid_mask.size}")
+    
+    camera.stop()
+
+def stream_heatmap_to_terminal():
+    if shutil.which("chafa") is None:
+        print("chafa is not installed or not in PATH. Please install chafa to use this feature.")
+        return
+
+    camera = create_lucid_rgbd_camera()
+    camera.start()
+    try:
+        # Wait for the camera to start streaming
+        with camera._cv:
+            while not camera._is_running:
+                camera._cv.wait(timeout=1)
+                if not camera._is_running:
+                    raise RuntimeError("Camera failed to start streaming")
+
+        print("Press Ctrl+C to stop streaming.")
+        # Use a persistent temporary file for chafa to avoid flicker
+        with tempfile.NamedTemporaryFile(suffix=".png") as tmpfile:
+            while True:
+                depth_frame = camera._get_depth_frame()
+                if depth_frame is not None:
+                    depth_values = depth_frame["z"]
+                    valid_mask = depth_values != -1.0
+                    if np.any(valid_mask):
+                        valid_depths = depth_values[valid_mask]
+                        min_depth = np.min(valid_depths)
+                        max_depth = np.max(valid_depths)
+                        normalized_depth = np.zeros_like(depth_values, dtype=np.float32)
+                        if max_depth > min_depth:
+                            normalized_depth[valid_mask] = (depth_values[valid_mask] - min_depth) / (max_depth - min_depth)
+                        depth_8bit = (normalized_depth * 255).astype(np.uint8)
+                        heatmap = cv2.applyColorMap(depth_8bit, cv2.COLORMAP_JET)
+                        heatmap[~valid_mask] = [0, 0, 0]
+                    else:
+                        heatmap = np.zeros((depth_values.shape[0], depth_values.shape[1], 3), dtype=np.uint8)
+
+                    # Write heatmap to the persistent temporary PNG file
+                    cv2.imwrite(tmpfile.name, heatmap)
+                    # Use chafa to render the image in the terminal, overwrite previous output
+                    subprocess.run(
+                        ["chafa", "--size=80x40", tmpfile.name],
+                        stdout=sys.stdout,
+                        stderr=subprocess.DEVNULL,
+                    )
+                else:
+                    print("No depth frame available.")
+                # Use a short sleep to control frame rate (adjust as needed)
+                time.sleep(0.05)
+    except KeyboardInterrupt:
+        print("Stopped streaming.")
+    finally:
+        camera.stop()
 
 
 def _get_position(
@@ -1204,6 +1358,17 @@ if __name__ == "__main__":
     )
     get_frame_parser.add_argument("--output_dir", type=str, default=None, required=True)
 
+    get_heatmap_parser = subparsers.add_parser(
+        "get_heatmap",
+        help="Capture frames and generate a heatmapped depth visualization",
+    )
+    get_heatmap_parser.add_argument("--output_dir", type=str, default=None, required=True)
+
+    stream_heatmap_parser = subparsers.add_parser(
+        "stream_heatmap",
+        help="Stream depth heatmap visualization to terminal using chafa",
+    )
+
     get_extrinsic_parser = subparsers.add_parser(
         "get_extrinsic",
         help="Calculate extrinsic matrix between Helios2 to Triton cameras",
@@ -1269,6 +1434,10 @@ if __name__ == "__main__":
 
     if args.command == "get_frame":
         _get_frame(args.output_dir)
+    elif args.command == "get_heatmap":
+        _get_heatmap_frame(args.output_dir)
+    elif args.command == "stream_heatmap":
+        stream_heatmap_to_terminal()
     elif args.command == "get_extrinsic":
         _get_extrinsic(
             args.triton_mono_image,
