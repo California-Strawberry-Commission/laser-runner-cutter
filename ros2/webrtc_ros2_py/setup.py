@@ -1,0 +1,36 @@
+import os
+from glob import glob
+
+from setuptools import find_packages, setup
+
+package_name = "webrtc_ros2_py"
+
+setup(
+    name=package_name,
+    version="0.0.0",
+    packages=find_packages(exclude=["test"]),
+    data_files=[
+        ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
+        ("share/" + package_name, ["package.xml"]),
+        # Include all launch files.
+        (
+            os.path.join("share", package_name, "launch"),
+            glob(os.path.join("launch", "*launch.[pxy][yma]*")),
+        ),
+        # Include all config files.
+        # (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
+    ],
+    install_requires=["setuptools"],
+    zip_safe=True,
+    maintainer="genki",
+    maintainer_email="kondo.genki@gmail.com",
+    description="TODO: Package description",
+    license="MIT",
+    tests_require=["pytest"],
+    entry_points={
+        "console_scripts": [
+            "webrtc_node = webrtc_ros2_py.webrtc_node:main",
+            "test_video_frame_publisher_node = webrtc_ros2_py.test_video_frame_publisher_node:main",
+        ],
+    },
+)
