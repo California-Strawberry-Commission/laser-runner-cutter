@@ -1,21 +1,30 @@
 {
   "editor.tabSize": 2,
-  "editor.rulers": [
-      100
-  ],
+  "editor.rulers": [100],
   "ros.distro": "humble",
+  "files.exclude": {
+    "**/build": true,
+    "**/install": true,
+    "**/log": true
+  },
   "search.exclude": {
-      "**/build": true,
-      "**/install": true,
-      "**/log": true
+    "**/build": true,
+    "**/install": true,
+    "**/log": true
+  },
+  "files.watcherExclude": {
+    "**/build/**": true,
+    "**/install/**": true,
+    "**/log/**": true
   },
   "python.autoComplete.extraPaths": [
     "/opt/ros/humble/lib/python3.10/site-packages",
-    "/opt/ros/humble/local/lib/python3.10/dist-packages",
+    "/opt/ros/humble/local/lib/python3.10/dist-packages"
   ],
   "python.analysis.extraPaths": [
     "/opt/ros/humble/lib/python3.10/site-packages",
-    "/opt/ros/humble/local/lib/python3.10/dist-packages",
+    "/opt/ros/humble/local/lib/python3.10/dist-packages"
   ],
-  "C_Cpp.codeAnalysis.clangTidy.enabled": true,
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "C_Cpp.codeAnalysis.clangTidy.enabled": true
 }

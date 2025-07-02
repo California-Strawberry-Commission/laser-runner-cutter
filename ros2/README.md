@@ -33,6 +33,19 @@ Linux systems require udev rules to allow access to USB devices without root pri
 
 LUCID cameras require the Arena SDK and Arena Python Package, which can be found at https://thinklucid.com/downloads-hub/. This is already set up as part of the auto-install process above, in `/opt/ArenaSDK`.
 
+## Development Environment
+
+We use Visual Studio Code, and recommend the following extensions:
+
+- ROS
+- C/C++
+- C/C++ Extension Pack
+- CMake
+- Python
+- Pylance
+- Black Formatter
+- Tasks
+
 ## Build and Run
 
 ### Local development
