@@ -92,12 +92,17 @@ ament_target_dependencies(camera_control_node PUBLIC
   OpenCV
 )
 
+# Tools
+add_executable(calibrate src/tools/calibrate.cpp)
+ament_target_dependencies(calibrate rclcpp std_msgs)
+
 #############
 ## Install ##
 #############
 
 install(TARGETS
   camera_control_node
+  calibrate
   DESTINATION lib/${PROJECT_NAME})
 
 # Install launch files
