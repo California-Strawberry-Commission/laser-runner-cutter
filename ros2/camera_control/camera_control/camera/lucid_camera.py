@@ -208,6 +208,7 @@ class LucidRgbdCamera(RgbdCamera):
         self._gain_db = 0.0
 
         self._cv = threading.Condition()
+        self._setup_cv = threading.Condition()
         self._is_running = False
         self._connection_thread = None
         self._acquisition_thread = None
@@ -377,6 +378,8 @@ class LucidRgbdCamera(RgbdCamera):
                         )
                         device_was_ever_connected = True
                         device_connected = True
+                        with self._setup_cv:
+                            self._setup_cv.notify_all()
                     else:
                         self._logger.warning(
                             f"Either device (color, serial={self.color_camera_serial_number}) or device (depth, serial={self.depth_camera_serial_number}) was not found"
@@ -869,29 +872,35 @@ class LucidRgbdCamera(RgbdCamera):
     
     def _wait_for_setup(self):
         # Wait for the camera to start streaming
-        with self._cv:
-            while not self.state == State.STREAMING:
-                self._cv.wait(timeout=0.1)
-                if not self.state == State.STREAMING:
-                    raise RuntimeError("Camera failed to start streaming")
-                # time.sleep(0.05)
+        with self._setup_cv:
+            if not self.state == State.STREAMING:
+                self._setup_cv.wait(timeout=10) # Wait 10 seconds for camera
+            if not self.state == State.STREAMING:
+                raise RuntimeError("Camera failed to start streaming")
         
         
-    def _wait_for_frame(self, ):
-        #Check AcquisitionMode for SingleFrame
-        if self._color_device.nodemap["AcquisitionMode"].value == "SingleFrame" and self._depth_device.nodemap["AcquisitionMode"].value == "SingleFrame":
+    def _wait_for_frame(self):
+        #Check color AcquisitionMode for SingleFrame
+        if self._color_device.nodemap["AcquisitionMode"].value == "SingleFrame":
             self._color_device.nodemap["AcquisitionStart"].execute()
-            self._depth_device.nodemap["AcquisitionStart"].execute()
-            # Wait for the first frame to be captured
-            with self._cv:
-                while not self._color_device.has_buffer() or not self._depth_device.has_buffer():
-                    self._cv.wait(timeout=1)
-                    if not self._color_device.has_buffer() or not self._depth_device.has_buffer():
-                        raise RuntimeError("Camera failed to capture first frame")
+            # Give 5 seconds to wait for first frame capture
+            timeout = time.time() + 5.0
+            while not self._color_device.has_buffer():
+                if time.time() > timeout:
+                    raise RuntimeError("Camera failed to capture first frame")
+                time.sleep(0.01) 
             self._color_device.nodemap["AcquisitionStop"].execute()
+            
+        #Check depth AcquisitionMode for SingleFrame
+        if self._depth_device.nodemap["AcquisitionMode"].value == "SingleFrame":
+            self._depth_device.nodemap["AcquisitionStart"].execute()
+            # Give 5 seconds to wait for first frame capture
+            timeout = time.time() + 5.0
+            while not self._color_device.has_buffer():
+                if time.time() > timeout:
+                    raise RuntimeError("Camera failed to capture first frame")
+                time.sleep(0.01) 
             self._depth_device.nodemap["AcquisitionStop"].execute()
-        else:
-            raise RuntimeError("Camera not in SingleFrame mode")
 
 
 def create_lucid_rgbd_camera(
@@ -950,6 +959,7 @@ def _get_frame(output_dir):
     camera.start()
 
     camera._wait_for_setup()
+    camera._wait_for_frame()
 
     color_frame = camera._get_color_frame()
     depth_frame = camera._get_depth_frame()
@@ -999,6 +1009,7 @@ def _get_heatmap_frame(output_dir):
     camera.start()
 
     camera._wait_for_setup()
+    camera._wait_for_frame()
 
     depth_frame = camera._get_depth_frame()
 
