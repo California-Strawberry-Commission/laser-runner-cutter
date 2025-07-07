@@ -64,6 +64,118 @@ Mat invert_extrinsic_matrix(Mat& extrinsic) {
     return extrinsic_inv;
 }
 
+tuple<double, vector<double>> _calc_reprojection_error (
+        vector<vector<Point3f>>& objectPoints,
+        vector<vector<Point2f>>& imagePoints,
+        vector<Mat>& rvecs,
+        vector<Mat>& tvecs,
+        Mat& cameraMatrix,
+        Mat& distCoeffs
+    ) {
+    /*
+    Compute the reprojection error.
+
+    Args:
+        object_points (List[np.ndarray]): List of object points in real-world space
+        image_points (List[np.ndarray]): List of corresponding image points detected in images
+        rvecs (np.ndarray): List of rotation vectors returned by cv2.calibrateCamera
+        tvecs (np.ndarray): List of translation vectors returned by cv2.calibrateCamera
+        camera_matrix (np.ndarray): Camera matrix
+        dist_coeffs (np.ndarray): Distortion coefficients
+
+    Returns:
+        float: Tuple of (mean reprojection error, list of per-image errors)
+    */
+    vector<double> errors;
+    double totalError = 0;
+    double err;
+    size_t i;
+    for (i=0; i<objectPoints.size(); i++) {
+        vector<Point2f> projected;
+        projectPoints(
+            objectPoints[i], rvecs[i], tvecs[i], cameraMatrix, distCoeffs, projected
+        );
+        err = norm(
+            imagePoints[i], projected, NORM_L2
+        ) / projected.size();
+        errors.push_back(err);
+        totalError += err;
+    }
+    double meanErr = totalError / objectPoints.size();
+    return make_tuple(meanErr, errors);
+}
+
+
+tuple<optional<Mat>, optional<Mat>> calibrate_camera(
+        vector<Mat> monoImages,
+        Size& gridSize,
+        int gridType = CALIB_CB_SYMMETRIC_GRID,
+        Ptr<FeatureDetector> blobDetector = NULL
+    ) {
+    /*
+    Finds the camera intrinsic parameters and distortion coefficients from several views of a
+    calibration pattern.
+
+    Args:
+        mono_images (List[np.ndarray]): Grayscale images each containing the calibration pattern.
+        grid_size (Tuple[int, int]): (# cols, # rows) of the calibration pattern.
+        grid_type (int): One of the following:
+            cv2.CALIB_CB_SYMMETRIC_GRID uses symmetric pattern of circles.
+            cv2.CALIB_CB_ASYMMETRIC_GRID uses asymmetric pattern of circles.
+            cv2.CALIB_CB_CLUSTERING uses a special algorithm for grid detection. It is more robust to perspective distortions but much more sensitive to background clutter.
+        blobDetector: Feature detector that finds blobs, like dark circalibrationPointscles on light background. If None then a default implementation is used.
+
+    Returns:
+        Tuple[Optional[np.ndarray], Optional[np.ndarray]]: A tuple of (camera intrisic matrix, distortion coefficients), or (None, None) if calibration was unsuccessful.
+    */
+
+    // Prepare calibration pattern points,
+    // These points are in the calibration pattern coordinate space. Since the calibration grid
+    // is on a flat plane, we can set the Z coordinates as 0.
+
+    vector<Point3f> calibrationPoints;
+    int i, j;
+    if(gridType == CALIB_CB_SYMMETRIC_GRID) {
+        for (i=0; i < gridSize.height; i++) {
+            for (j=0; j < gridSize.width; j++) {
+                calibrationPoints.emplace_back(j, i, 0);
+            }
+        }
+    } else if (gridType == CALIB_CB_ASYMMETRIC_GRID) {
+        for (i=0; i < gridSize.height; i++) {
+            for (j=0; j < gridSize.width; j++) {
+                calibrationPoints.emplace_back((2 * j + i % 2), i, 0);
+            }
+        }
+    } else {
+        cerr << "Unsupported grid type." << endl;
+        return make_tuple(nullopt, nullopt);
+    }
+
+    vector<vector<Point3f>> objPoints;
+    vector<vector<Point2f>> imgPoints;
+    bool found;
+    for (Mat image : monoImages) {
+        vector<Point2f> centers;
+        found = findCirclesGrid(image, gridSize, centers, gridType, blobDetector);
+        if (found) {
+            objPoints.push_back(calibrationPoints);
+            imgPoints.push_back(centers);
+        } else {
+            cerr << "Could not get circle centers. Ignoring Image." << endl;
+        }
+    }
+
+    try {
+        /* code */
+    } catch(exception& e) {
+        std::cerr << e.what() << endl;
+    }
+   
+}
+
+
+
 int main(int argc, char * argv[]) {
 
     if (argc != 2) {
