@@ -106,7 +106,7 @@ tuple<double, vector<double>> _calc_reprojection_error (
 }
 
 
-tuple<optional<Mat>, optional<Mat>> calibrate_camera(
+tuple<Mat, Mat> calibrate_camera(
         vector<Mat> monoImages,
         Size& gridSize,
         int gridType = CALIB_CB_SYMMETRIC_GRID,
@@ -149,7 +149,7 @@ tuple<optional<Mat>, optional<Mat>> calibrate_camera(
         }
     } else {
         cerr << "Unsupported grid type." << endl;
-        return make_tuple(nullopt, nullopt);
+        exit(-1);
     }
 
     vector<vector<Point3f>> objPoints;
@@ -167,11 +167,25 @@ tuple<optional<Mat>, optional<Mat>> calibrate_camera(
     }
 
     try {
-        /* code */
+        vector<Mat> rvecs, tvecs;
+        Mat cameraMatrix = Mat::eye(3, 3, CV_64F);
+        Mat distCoeffs = Mat::zeros(8, 1, CV_64F);
+        double retval = calibrateCamera(
+            objPoints, imgPoints, monoImages[0].size(), cameraMatrix, distCoeffs, rvecs, tvecs
+        );
+        if (retval) {
+            tuple<double, vector<double>> projErrors = _calc_reprojection_error(
+                objPoints, imgPoints, rvecs, tvecs, cameraMatrix, distCoeffs
+            );
+            cout << "Calibration successful. Used " << objPoints.size() << " images. Mean reprojection error: " << get<0>(projErrors) << endl;
+            return make_tuple(cameraMatrix, distCoeffs);
+        }
     } catch(exception& e) {
         std::cerr << e.what() << endl;
     }
-   
+
+    cerr << "Calibration unsuccessful" << endl;
+    exit(-1);
 }
 
 
@@ -190,14 +204,20 @@ int main(int argc, char * argv[]) {
     }
 
     vector<path> image_paths;
+    vector<Mat> images;
     size_t image_count = 0;
     for (const auto& entry : directory_iterator(dir_path)) {
         if (entry.is_regular_file()) {
             auto ext = entry.path().extension().string();
             transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
             if (ext == ".png" || ext == ".jpg" || ext == ".jpeg") {
-                image_paths.push_back(entry.path());
-                ++image_count;
+                Mat img = imread(entry.path().string());
+                if (!img.empty()) {
+                    image_paths.push_back(entry.path());
+                    cvtColor(img, img, COLOR_BGR2GRAY);
+                    images.push_back(img);
+                    ++image_count;
+                }
             }
         }
     }
@@ -208,8 +228,31 @@ int main(int argc, char * argv[]) {
         cout << "Directory opened successfully: " << dir_path << endl;
     }
 
+    Size gSize = Size(5,4);
+    tuple<Mat, Mat> calibVals = calibrate_camera(
+        images, gSize, CALIB_CB_SYMMETRIC_GRID, createBlobDetector()
+    );
     
+    Mat cameraMatrix = get<0>(calibVals);
+    Mat distCoeffs = get<1>(calibVals);
     
+    cout << "Calibrated intrins: " << cameraMatrix << endl;
+    cout << "Distortion coeffs: " << distCoeffs << endl;
+
+    // Undistortion Test: 
+    Mat img = images[1];
+    Mat newCameraMatrix, undistorted;
+    Rect roi;
+    newCameraMatrix = getOptimalNewCameraMatrix(cameraMatrix, distCoeffs, img.size(), 1, img.size(), &roi);
+    undistort(img, undistorted, cameraMatrix, distCoeffs, newCameraMatrix);
+    undistorted = undistorted(roi);
+    string filename = "undistortion_test.png";
+    bool success = imwrite(filename, img);
+    if (success) {
+        std::cout << "Image saved successfully as " << filename << std::endl;
+    } else {
+        std::cerr << "Error saving image to " << filename << std::endl;
+    }
 
     return 0;
 }
