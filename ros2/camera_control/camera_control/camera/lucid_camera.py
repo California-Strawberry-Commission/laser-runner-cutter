@@ -207,7 +207,8 @@ class LucidRgbdCamera(RgbdCamera):
         self._exposure_us = 0.0
         self._gain_db = 0.0
 
-        self._cv = threading.Condition()
+        self._cv = threading.Condition() # For syncing acquisition and connection threads
+        self._setup_cv = threading.Condition() # For syncing setup wait to the connection thread
         self._is_running = False
         self._connection_thread = None
         self._acquisition_thread = None
@@ -377,6 +378,8 @@ class LucidRgbdCamera(RgbdCamera):
                         )
                         device_was_ever_connected = True
                         device_connected = True
+                        with self._setup_cv:
+                            self._setup_cv.notify_all()
                     else:
                         self._logger.warning(
                             f"Either device (color, serial={self.color_camera_serial_number}) or device (depth, serial={self.depth_camera_serial_number}) was not found"
@@ -866,6 +869,38 @@ class LucidRgbdCamera(RgbdCamera):
         self._depth_device.requeue_buffer(buffer)
 
         return np_array
+    
+    def _wait_for_setup(self):
+        # Wait for the camera to start streaming
+        with self._setup_cv:
+            if not self.state == State.STREAMING:
+                self._setup_cv.wait(timeout=10) # Wait 10 seconds for camera
+            if not self.state == State.STREAMING:
+                raise RuntimeError("Camera failed to start streaming")
+        
+        
+    def _wait_for_frame(self):
+        #Check color AcquisitionMode for SingleFrame
+        if self._color_device.nodemap["AcquisitionMode"].value == "SingleFrame":
+            self._color_device.nodemap["AcquisitionStart"].execute()
+            # Give 5 seconds to wait for first frame capture
+            timeout = time.time() + 5.0
+            while not self._color_device.has_buffer():
+                if time.time() > timeout:
+                    raise RuntimeError("Camera failed to capture first frame")
+                time.sleep(0.01) 
+            self._color_device.nodemap["AcquisitionStop"].execute()
+            
+        #Check depth AcquisitionMode for SingleFrame
+        if self._depth_device.nodemap["AcquisitionMode"].value == "SingleFrame":
+            self._depth_device.nodemap["AcquisitionStart"].execute()
+            # Give 5 seconds to wait for first frame capture
+            timeout = time.time() + 5.0
+            while not self._color_device.has_buffer():
+                if time.time() > timeout:
+                    raise RuntimeError("Camera failed to capture first frame")
+                time.sleep(0.01) 
+            self._depth_device.nodemap["AcquisitionStop"].execute()
 
 
 def create_lucid_rgbd_camera(
@@ -922,23 +957,9 @@ def _get_frame(output_dir):
 
     camera = create_lucid_rgbd_camera()
     camera.start()
-    # Wait for the camera to start streaming
-    with camera._cv:
-        while not camera._is_running:
-            camera._cv.wait(timeout=1)
-            if not camera._is_running:
-                raise RuntimeError("Camera failed to start streaming")
-    if camera._color_device.nodemap["AcquisitionMode"].value == "SingleFrame" and camera._depth_device.nodemap["AcquisitionMode"].value == "SingleFrame":
-        camera._color_device.nodemap["AcquisitionStart"].execute()
-        camera._depth_device.nodemap["AcquisitionStart"].execute()
-        # Wait for the first frame to be captured
-        with camera._cv:
-            while not camera._color_device.has_buffer() or not camera._depth_device.has_buffer():
-                camera._cv.wait(timeout=1)
-                if not camera._color_device.has_buffer() or not camera._depth_device.has_buffer():
-                    raise RuntimeError("Camera failed to capture first frame")
-        camera._color_device.nodemap["AcquisitionStop"].execute()
-        camera._depth_device.nodemap["AcquisitionStop"].execute()
+
+    camera._wait_for_setup()
+    camera._wait_for_frame()
 
     color_frame = camera._get_color_frame()
     depth_frame = camera._get_depth_frame()
@@ -986,22 +1007,9 @@ def _get_heatmap_frame(output_dir):
 
     camera = create_lucid_rgbd_camera()
     camera.start()
-    # Wait for the camera to start streaming
-    with camera._cv:  # type: ignore
-        while not camera._is_running:  # type: ignore
-            camera._cv.wait(timeout=1)
-            if not camera._is_running:  # type: ignore
-                raise RuntimeError("Camera failed to start streaming")
-    
-    if camera._depth_device.nodemap["AcquisitionMode"].value == "SingleFrame":
-        camera._depth_device.nodemap["AcquisitionStart"].execute()
-        # Wait for the first frame to be captured
-        with camera._cv:
-            while not camera._depth_device.has_buffer():
-                camera._cv.wait(timeout=1)
-                if not camera._depth_device.has_buffer():
-                    raise RuntimeError("Camera failed to capture first frame")
-        camera._depth_device.nodemap["AcquisitionStop"].execute()
+
+    camera._wait_for_setup()
+    camera._wait_for_frame()
 
     depth_frame = camera._get_depth_frame()
 
@@ -1059,7 +1067,7 @@ def _get_heatmap_frame(output_dir):
     
     camera.stop()
 
-def stream_heatmap_to_terminal():
+def _stream_heatmap_to_terminal():
     if shutil.which("chafa") is None:
         print("chafa is not installed or not in PATH. Please install chafa to use this feature.")
         return
@@ -1067,13 +1075,7 @@ def stream_heatmap_to_terminal():
     camera = create_lucid_rgbd_camera()
     camera.start()
     try:
-        # Wait for the camera to start streaming
-        with camera._cv:
-            while not camera._is_running:
-                camera._cv.wait(timeout=1)
-                if not camera._is_running:
-                    raise RuntimeError("Camera failed to start streaming")
-
+        camera._wait_for_setup()
         print("Press Ctrl+C to stop streaming.")
         # Use a persistent temporary file for chafa to avoid flicker
         with tempfile.NamedTemporaryFile(suffix=".png") as tmpfile:
@@ -1106,7 +1108,7 @@ def stream_heatmap_to_terminal():
                 else:
                     print("No depth frame available.")
                 # Use a short sleep to control frame rate (adjust as needed)
-                time.sleep(0.05)
+                time.sleep(0.1)
     except KeyboardInterrupt:
         print("Stopped streaming.")
     finally:
@@ -1437,7 +1439,7 @@ if __name__ == "__main__":
     elif args.command == "get_heatmap":
         _get_heatmap_frame(args.output_dir)
     elif args.command == "stream_heatmap":
-        stream_heatmap_to_terminal()
+        _stream_heatmap_to_terminal()
     elif args.command == "get_extrinsic":
         _get_extrinsic(
             args.triton_mono_image,
