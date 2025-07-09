@@ -207,7 +207,7 @@ class LucidRgbdCamera(RgbdCamera):
         self._exposure_us = 0.0
         self._gain_db = 0.0
 
-        self._cv = threading.Condition() # For synncing acquisition and connection threads
+        self._cv = threading.Condition() # For syncing acquisition and connection threads
         self._setup_cv = threading.Condition() # For syncing setup wait to the connection thread
         self._is_running = False
         self._connection_thread = None
