@@ -4,24 +4,7 @@ using namespace std;
 using namespace filesystem;
 using namespace cv;
 
-Ptr<SimpleBlobDetector> createBlobDetector() {
-    /*
-        Blob detector for white circles on black background
-    */
 
-    SimpleBlobDetector::Params params;
-
-    // Filter By Color
-    params.filterByColor = true;
-    params.blobColor = 255;
-
-    // Filter By Area
-    params.filterByArea = true;
-    params.minArea = 10.0;
-    params.maxArea = 10000.0;
-
-    return SimpleBlobDetector::create(params);
-}
 
 Mat constructExtrinsicMatrix(Mat& rvec, Mat& tvec) {
     /*
@@ -62,6 +45,59 @@ Mat invert_extrinsic_matrix(Mat& extrinsic) {
     t_inv.copyTo(extrinsic_inv(Range(0, 3), Range(3, 4)));
 
     return extrinsic_inv;
+}
+
+Point2f distort_pixel_coords(
+    Point2f& undistortedPixelCoords, 
+    Mat& intrinsicMatrix,
+    Mat& distCoeffs
+    ) {
+
+    // Extract focal length, principal point, etc.
+    float fx = intrinsicMatrix.at<float>(0,0);
+    float fy = intrinsicMatrix.at<float>(1,1);
+    float cx = intrinsicMatrix.at<float>(0,2);
+    float cy = intrinsicMatrix.at<float>(1,2);
+
+    // Normalize Points & create 3d
+    vector<Point3f> normalizedPoints = { 
+        Point3f(
+            (undistortedPixelCoords.x - cx) / fx,
+            (undistortedPixelCoords.y - cy) / fy,
+            1.0f
+        )
+    };
+
+    // Designate no rotation or translation
+    Mat rvec = Mat::zeros(3, 1, CV_64F);
+    Mat tvec = Mat::zeros(3, 1, CV_64F);
+
+    // Project using distortion
+    vector<Point2f> distortedPoints;
+    projectPoints(
+        normalizedPoints, rvec, tvec, intrinsicMatrix, distCoeffs, distortedPoints
+    );
+
+    return distortedPoints[0];
+}
+
+Ptr<SimpleBlobDetector> createBlobDetector() {
+    /*
+        Blob detector for white circles on black background
+    */
+
+    SimpleBlobDetector::Params params;
+
+    // Filter By Color
+    params.filterByColor = true;
+    params.blobColor = 255;
+
+    // Filter By Area
+    params.filterByArea = true;
+    params.minArea = 10.0;
+    params.maxArea = 10000.0;
+
+    return SimpleBlobDetector::create(params);
 }
 
 tuple<double, vector<double>> _calc_reprojection_error (
@@ -203,7 +239,6 @@ int main(int argc, char * argv[]) {
         return 1;
     }
 
-    vector<path> image_paths;
     vector<Mat> images;
     size_t image_count = 0;
     for (const auto& entry : directory_iterator(dir_path)) {
@@ -213,7 +248,6 @@ int main(int argc, char * argv[]) {
             if (ext == ".png" || ext == ".jpg" || ext == ".jpeg") {
                 Mat img = imread(entry.path().string());
                 if (!img.empty()) {
-                    image_paths.push_back(entry.path());
                     cvtColor(img, img, COLOR_BGR2GRAY);
                     images.push_back(img);
                     ++image_count;
