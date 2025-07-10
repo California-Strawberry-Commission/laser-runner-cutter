@@ -51,8 +51,7 @@ Point2f distort_pixel_coords(
     Point2f& undistortedPixelCoords, 
     Mat& intrinsicMatrix,
     Mat& distCoeffs
-    ) {
-
+) {
     // Extract focal length, principal point, etc.
     float fx = intrinsicMatrix.at<float>(0,0);
     float fy = intrinsicMatrix.at<float>(1,1);
@@ -101,13 +100,13 @@ Ptr<SimpleBlobDetector> createBlobDetector() {
 }
 
 tuple<double, vector<double>> _calc_reprojection_error (
-        vector<vector<Point3f>>& objectPoints,
-        vector<vector<Point2f>>& imagePoints,
-        vector<Mat>& rvecs,
-        vector<Mat>& tvecs,
-        Mat& cameraMatrix,
-        Mat& distCoeffs
-    ) {
+    vector<vector<Point3f>>& objectPoints,
+    vector<vector<Point2f>>& imagePoints,
+    vector<Mat>& rvecs,
+    vector<Mat>& tvecs,
+    Mat& cameraMatrix,
+    Mat& distCoeffs
+) {
     /*
     Compute the reprojection error.
 
@@ -143,11 +142,11 @@ tuple<double, vector<double>> _calc_reprojection_error (
 
 
 tuple<Mat, Mat> calibrate_camera(
-        vector<Mat> monoImages,
-        Size& gridSize,
-        int gridType = CALIB_CB_SYMMETRIC_GRID,
-        Ptr<FeatureDetector> blobDetector = NULL
-    ) {
+    vector<Mat> monoImages,
+    Size& gridSize,
+    int gridType = CALIB_CB_SYMMETRIC_GRID,
+    Ptr<FeatureDetector> blobDetector = NULL
+) {
     /*
     Finds the camera intrinsic parameters and distortion coefficients from several views of a
     calibration pattern.
