@@ -44,7 +44,10 @@ We use Visual Studio Code, and recommend the following extensions:
 - [Python](https://marketplace.visualstudio.com/items?itemName=ms-python.python)
 - [Pylance](https://marketplace.visualstudio.com/items?itemName=ms-python.vscode-pylance)
 - [Black Formatter](https://marketplace.visualstudio.com/items?itemName=ms-python.black-formatter)
+- [isort](https://marketplace.visualstudio.com/items?itemName=ms-python.isort)
 - [Tasks](https://marketplace.visualstudio.com/items?itemName=actboy168.tasks)
+- [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode)
+- [Tailwind CSS IntelliSense](https://marketplace.visualstudio.com/items?itemName=bradlc.vscode-tailwindcss)
 
 ## Build and Run
 
