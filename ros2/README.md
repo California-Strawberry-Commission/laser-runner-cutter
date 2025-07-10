@@ -37,14 +37,14 @@ LUCID cameras require the Arena SDK and Arena Python Package, which can be found
 
 We use Visual Studio Code, and recommend the following extensions:
 
-- ROS
-- C/C++
-- C/C++ Extension Pack
-- CMake
-- Python
-- Pylance
-- Black Formatter
-- Tasks
+- [Robotics Developer Environment](https://marketplace.visualstudio.com/items?itemName=Ranch-Hand-Robotics.rde-pack)
+- [C/C++](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools)
+- [C/C++ Extension Pack](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools-extension-pack)
+- [CMake Tools](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cmake-tools)
+- [Python](https://marketplace.visualstudio.com/items?itemName=ms-python.python)
+- [Pylance](https://marketplace.visualstudio.com/items?itemName=ms-python.vscode-pylance)
+- [Black Formatter](https://marketplace.visualstudio.com/items?itemName=ms-python.black-formatter)
+- [Tasks](https://marketplace.visualstudio.com/items?itemName=actboy168.tasks)
 
 ## Build and Run
 
