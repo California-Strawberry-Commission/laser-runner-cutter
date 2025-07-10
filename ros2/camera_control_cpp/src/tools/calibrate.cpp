@@ -224,6 +224,24 @@ tuple<Mat, Mat> calibrate_camera(
     exit(-1);
 }
 
+void test_undistortion(
+    Mat& cameraMatrix,
+    Mat& distCoeffs,
+    Mat& img
+) {
+    Mat newCameraMatrix, undistorted;
+    Rect roi;
+    newCameraMatrix = getOptimalNewCameraMatrix(cameraMatrix, distCoeffs, img.size(), 1, img.size(), &roi);
+    undistort(img, undistorted, cameraMatrix, distCoeffs, newCameraMatrix);
+    undistorted = undistorted(roi);
+    string filename = "undistortion_test.png";
+    bool success = imwrite(filename, img);
+    if (success) {
+        std::cout << "Image saved successfully as " << filename << std::endl;
+    } else {
+        std::cerr << "Error saving image to " << filename << std::endl;
+    }
+}
 
 
 int main(int argc, char * argv[]) {
@@ -272,21 +290,6 @@ int main(int argc, char * argv[]) {
     
     cout << "Calibrated intrins: " << cameraMatrix << endl;
     cout << "Distortion coeffs: " << distCoeffs << endl;
-
-    // Undistortion Test: 
-    Mat img = images[1];
-    Mat newCameraMatrix, undistorted;
-    Rect roi;
-    newCameraMatrix = getOptimalNewCameraMatrix(cameraMatrix, distCoeffs, img.size(), 1, img.size(), &roi);
-    undistort(img, undistorted, cameraMatrix, distCoeffs, newCameraMatrix);
-    undistorted = undistorted(roi);
-    string filename = "undistortion_test.png";
-    bool success = imwrite(filename, img);
-    if (success) {
-        std::cout << "Image saved successfully as " << filename << std::endl;
-    } else {
-        std::cerr << "Error saving image to " << filename << std::endl;
-    }
 
     return 0;
 }
