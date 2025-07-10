@@ -132,7 +132,11 @@ class LucidCamera {
   void callStateChangeCallback();
   void acquisitionThreadFn(FrameCallback frameCallback = nullptr);
   std::optional<cv::Mat> getColorFrame();
-  std::optional<std::pair<cv::Mat, cv::Mat>> getDepthFrame();
+  struct GetDepthFrameResult {
+    cv::Mat xyz;
+    cv::Mat intensity;
+  };
+  std::optional<GetDepthFrameResult> getDepthFrame();
   LucidFrame getRgbdFrame(const cv::Mat& colorFrame,
                           const cv::Mat& depthFrameXyz);
 };
