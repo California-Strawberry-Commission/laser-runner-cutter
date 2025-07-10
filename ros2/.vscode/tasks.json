@@ -19,7 +19,11 @@
       "label": "[ros2] build package",
       "detail": "Build single ROS 2 package",
       "type": "shell",
-      "command": "colcon build --symlink-install --packages-select ${input:package} --cmake-args '-DCMAKE_EXPORT_COMPILE_COMMANDS=On'",
+      "command": "bash",
+      "args": [
+        "-c",
+        "source ${workspaceFolder}/scripts/setup.sh && colcon build --symlink-install --packages-select ${input:package} --cmake-args '-DCMAKE_EXPORT_COMPILE_COMMANDS=On'"
+      ],
       "options": { "cwd": "${workspaceFolder}" },
       "group": {
         "kind": "build",
@@ -31,7 +35,11 @@
       "label": "[ros2] debug workspace",
       "detail": "Build ROS 2 workspace with debug symbols",
       "type": "shell",
-      "command": "colcon build --symlink-install  --cmake-args '-DCMAKE_BUILD_TYPE=Debug'",
+      "command": "bash",
+      "args": [
+        "-c",
+        "source ${workspaceFolder}/scripts/setup.sh && colcon build --symlink-install --cmake-args '-DCMAKE_BUILD_TYPE=Debug'"
+      ],
       "group": "build",
       "problemMatcher": "$gcc"
     },
@@ -39,7 +47,11 @@
       "label": "[ros2] debug package",
       "detail": "Build single ROS 2 package with debug symbols",
       "type": "shell",
-      "command": "colcon build --symlink-install --packages-select ${input:package} --cmake-args '-DCMAKE_BUILD_TYPE=Debug'",
+      "command": "bash",
+      "args": [
+        "-c",
+        "source ${workspaceFolder}/scripts/setup.sh && colcon build --symlink-install --packages-select ${input:package} --cmake-args '-DCMAKE_BUILD_TYPE=Debug'"
+      ],
       "group": "build",
       "problemMatcher": "$gcc"
     },
