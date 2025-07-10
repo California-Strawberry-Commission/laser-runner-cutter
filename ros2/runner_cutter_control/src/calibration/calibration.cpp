@@ -277,13 +277,19 @@ Calibration::findPointCorrespondence(const LaserCoord& laserCoord,
       continue;
     }
 
-    // TODO: handle case where multiple lasers detected
-    auto& instance{result->instances.front()};
-    PixelCoord cameraPixelCoord{static_cast<int>(std::round(instance.point.x)),
-                                static_cast<int>(std::round(instance.point.y))};
-    Position cameraPosition{static_cast<float>(instance.position.x),
-                            static_cast<float>(instance.position.y),
-                            static_cast<float>(instance.position.z)};
+    // In case multiple lasers were detected, use the instance with the highest
+    // confidence
+    const auto& bestInstance =
+        *std::max_element(result->instances.begin(), result->instances.end(),
+                          [](const auto& a, const auto& b) {
+                            return a.confidence < b.confidence;
+                          });
+    PixelCoord cameraPixelCoord{
+        static_cast<int>(std::round(bestInstance.point.x)),
+        static_cast<int>(std::round(bestInstance.point.y))};
+    Position cameraPosition{static_cast<float>(bestInstance.position.x),
+                            static_cast<float>(bestInstance.position.y),
+                            static_cast<float>(bestInstance.position.z)};
 
     spdlog::info(
         "Found point correspondence: laser_coord = ({}, {}), pixel = ({}, "

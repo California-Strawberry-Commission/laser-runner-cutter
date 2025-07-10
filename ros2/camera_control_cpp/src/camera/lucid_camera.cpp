@@ -479,11 +479,12 @@ void LucidCamera::acquisitionThreadFn(FrameCallback frameCallback) {
     try {
       std::future<std::optional<cv::Mat>> colorFrameFuture{
           threadPool.submit_task([this] { return getColorFrame(); })};
-      std::future<std::optional<std::pair<cv::Mat, cv::Mat>>> depthFrameFuture{
-          threadPool.submit_task([this] { return getDepthFrame(); })};
+      std::future<std::optional<LucidCamera::GetDepthFrameResult>>
+          depthFrameFuture{
+              threadPool.submit_task([this] { return getDepthFrame(); })};
 
       std::optional<cv::Mat> colorFrame{colorFrameFuture.get()};
-      std::optional<std::pair<cv::Mat, cv::Mat>> depthFrame{
+      std::optional<LucidCamera::GetDepthFrameResult> depthFrame{
           depthFrameFuture.get()};
 
       if (!colorFrame || !depthFrame) {
@@ -494,7 +495,7 @@ void LucidCamera::acquisitionThreadFn(FrameCallback frameCallback) {
       }
 
       auto frame{std::make_shared<LucidFrame>(
-          getRgbdFrame(colorFrame.value(), depthFrame.value().first))};
+          getRgbdFrame(colorFrame.value(), depthFrame.value().xyz))};
       if (frameCallback) {
         frameCallback(frame);
       }
@@ -537,7 +538,7 @@ std::optional<cv::Mat> LucidCamera::getColorFrame() {
   return cvImage;
 }
 
-std::optional<std::pair<cv::Mat, cv::Mat>> LucidCamera::getDepthFrame() {
+std::optional<LucidCamera::GetDepthFrameResult> LucidCamera::getDepthFrame() {
   if (!depthDevice_) {
     return std::nullopt;
   }
@@ -584,7 +585,7 @@ std::optional<std::pair<cv::Mat, cv::Mat>> LucidCamera::getDepthFrame() {
 
   depthDevice_->RequeueBuffer(image);
 
-  return std::make_pair(xyzMm, intensityImage);
+  return GetDepthFrameResult{xyzMm, intensityImage};
 }
 
 LucidFrame LucidCamera::getRgbdFrame(const cv::Mat& colorFrame,

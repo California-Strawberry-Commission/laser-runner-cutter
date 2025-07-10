@@ -1067,19 +1067,19 @@ class RunnerCutterControlNode : public rclcpp::Node {
           camera_control_interfaces::msg::DetectionType::LASER, true)};
       auto instances{detectionResult->instances};
       if (instances.size() > 0) {
-        // TODO: better handle case where more than 1 laser detected. For now,
-        // just ignore everything except the first result.
-        if (instances.size() > 1) {
-          RCLCPP_WARN(get_logger(),
-                      "Found more than 1 laser during correction");
-        }
-        auto instance{instances[0]};
+        // In case multiple lasers were detected, use the instance with the
+        // highest confidence
+        const auto& bestInstance =
+            *std::max_element(instances.begin(), instances.end(),
+                              [](const auto& a, const auto& b) {
+                                return a.confidence < b.confidence;
+                              });
         return DetectLaserResult{
-            {static_cast<int>(std::round(instance.point.x)),
-             static_cast<int>(std::round(instance.point.y))},
-            {static_cast<float>(instance.position.x),
-             static_cast<float>(instance.position.y),
-             static_cast<float>(instance.position.z)}};
+            {static_cast<int>(std::round(bestInstance.point.x)),
+             static_cast<int>(std::round(bestInstance.point.y))},
+            {static_cast<float>(bestInstance.position.x),
+             static_cast<float>(bestInstance.position.y),
+             static_cast<float>(bestInstance.position.z)}};
       }
 
       // No lasers detected. Try again.
