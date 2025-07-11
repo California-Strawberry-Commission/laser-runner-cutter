@@ -93,8 +93,8 @@ ament_target_dependencies(camera_control_node PUBLIC
 )
 
 # Tools
-add_executable(calibrate src/tools/calibrate.cpp)
-target_link_libraries(calibrate PRIVATE ${OpenCV_LIBS})
+add_executable(calibrate src/camera/calibrate.cpp)
+target_link_libraries(calibrate PRIVATE ${OpenCV_LIBS} fmt::fmt)
 ament_target_dependencies(calibrate PUBLIC rclcpp std_msgs OpenCV)
 
 #############

@@ -1,51 +1,38 @@
 #pragma once
 
-#include <filesystem>
-#include <vector>
-#include <iostream>
 #include <algorithm>
-#include <string>
 #include <atomic>
 #include <condition_variable>
-#include <functional>
-#include <mutex>
-#include <optional>
-#include <thread>
-
-
+#include <filesystem>
+#include <iostream>
+#include <opencv2/calib3d.hpp>
+#include <opencv2/core.hpp>
+#include <opencv2/features2d.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/objdetect.hpp>
 #include <opencv2/opencv.hpp>
 #include <opencv2/opencv_modules.hpp>
-#include <opencv2/objdetect.hpp>
-#include <opencv2/core.hpp>
-#include <opencv2/calib3d.hpp>
-#include <opencv2/imgproc.hpp>
-#include <opencv2/highgui.hpp>
-#include <opencv2/features2d.hpp>
+#include <optional>
+#include <string>
+#include <vector>
 
-Mat constructExtrinsicMatrix(Mat& rvec, Mat& tvec);
-Mat invert_extrinsic_matrix(Mat& extrinsic);
-Point2f distort_pixel_coords(
-    Point2f& undistortedPixelCoords, 
-    Mat& intrinsicMatrix,
-    Mat& distCoeffs
-);
+#include "spdlog/spdlog.h"
+
+cv::Mat constructExtrinsicMatrix(const cv::Mat& rvec, const cv::Mat& tvec);
+cv::Mat invertExtrinsicMatrix(const cv::Mat& extrinsic);
+cv::Point2f distortPixelCoords(const cv::Point2f& undistortedPixelCoords,
+                               const cv::Mat& intrinsicMatrix,
+                               const cv::Mat& distCoeffs);
 cv::Ptr<cv::SimpleBlobDetector> createBlobDetector();
-tuple<double, vector<double>> _calc_reprojection_error (
-    vector<vector<Point3f>>& objectPoints,
-    vector<vector<Point2f>>& imagePoints,
-    vector<Mat>& rvecs,
-    vector<Mat>& tvecs,
-    Mat& cameraMatrix,
-    Mat& distCoeffs
-);
-tuple<Mat, Mat> calibrate_camera(
-    vector<Mat> monoImages,
-    Size& gridSize,
-    int gridType = CALIB_CB_SYMMETRIC_GRID,
-    Ptr<FeatureDetector> blobDetector = NULL
-);
-void test_undistortion(
-    Mat& cameraMatrix,
-    Mat& distCoeffs,
-    Mat& img
-);
+std::tuple<float, std::vector<float>> _calcReprojectionError(
+    const std::vector<std::vector<cv::Point3f>>& objectPoints,
+    const std::vector<std::vector<cv::Point2f>>& imagePoints,
+    const std::vector<cv::Mat>& rvecs, const std::vector<cv::Mat>& tvecs,
+    const cv::Mat& cameraMatrix, const cv::Mat& distCoeffs);
+std::optional<std::tuple<cv::Mat, cv::Mat>> calibrateCamera(
+    const std::vector<cv::Mat> monoImages, const cv::Size& gridSize,
+    int gridType = cv::CALIB_CB_SYMMETRIC_GRID,
+    const cv::Ptr<cv::FeatureDetector> blobDetector = NULL);
+void testUndistortion(const cv::Mat& cameraMatrix, const cv::Mat& distCoeffs,
+                      const cv::Mat& img);
