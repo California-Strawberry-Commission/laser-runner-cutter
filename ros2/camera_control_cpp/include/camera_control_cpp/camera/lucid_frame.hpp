@@ -3,6 +3,10 @@
 #include <opencv2/opencv.hpp>
 #include <optional>
 
+// General min and max possible depths
+#define DEPTH_MIN_MM 500
+#define DEPTH_MAX_MM 10000
+
 class LucidFrame {
  public:
   LucidFrame(const cv::Mat& colorFrame, const cv::Mat& depthFrameXyz,
@@ -42,4 +46,21 @@ class LucidFrame {
   cv::Mat xyzToColorCameraExtrinsicMatrix_;
   cv::Mat xyzToDepthCameraExtrinsicMatrix_;
   std::pair<int, int> colorFrameOffset_;
+
+  cv::Vec3f deprojectPixel(const cv::Point2i& pixel, float depth,
+                           const cv::Mat& cameraMatrix,
+                           const cv::Mat& distCoeffs);
+  cv::Vec3f transformPosition(const cv::Vec3f& position,
+                              const cv::Mat extrinsic);
+  cv::Point2i projectPosition(const cv::Vec3f& position,
+                              const cv::Mat& cameraMatrix,
+                              const cv::Mat& distCoeffs,
+                              const cv::Mat& extrinsicMatrix = cv::Mat());
+  cv::Point2i adjustPixelToBounds(const cv::Point2i& pixel, int width,
+                                  int height);
+  cv::Point2i nextPixelInLine(const cv::Point2i& curr, const cv::Point2i& start,
+                              const cv::Point2i& end);
+  bool is_pixel_in_line(const cv::Point2i& curr, const cv::Point2i& start,
+                        const cv::Point2i& end);
+  cv::Point2i getCorrespondingDepthPixel(const cv::Point2i& colorPixel);
 };
