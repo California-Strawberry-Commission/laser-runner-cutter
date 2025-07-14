@@ -211,6 +211,13 @@ void LucidCamera::startStream(const Arena::DeviceInfo& colorDeviceInfo,
     depthDevice_ = arena_->CreateDevice(depthDeviceInfo);
   }
 
+  // Note: A camera's node list can be found in the camera's Technical Reference
+  // Manual such as https://support.thinklucid.com/triton-tri032s/.
+  // To get more in depth information about a node (such as type and accepted
+  // values), you can use the Arena SDK's precompiled example
+  // `C_Explore_NodeTypes`:
+  // `/opt/ArenaSDK/ArenaSDK_Linux_x64/precompiledExamples/C_Explore_NodeTypes`
+
   /////////////////////////////////
   // Configure color device nodemap
   /////////////////////////////////
