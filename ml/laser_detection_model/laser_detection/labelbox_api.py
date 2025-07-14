@@ -1,7 +1,7 @@
-""" File: labelbox_api.py
+"""File: labelbox_api.py
 
 Description: Functions for using the Labelbox API and creating yolo model labels from
-Labelbox exports. 
+Labelbox exports.
 """
 
 import argparse
@@ -18,7 +18,7 @@ from natsort import natsorted
 
 load_dotenv()
 CLIENT = lb.Client(os.getenv("LABELBOX_API_KEY"))
-DATASET_NAME = "laser_detection"
+DATASET_NAME = "Lasers"
 PROJECT_NAME = "Laser Detection"
 CLASS_MAP = {"laser": 0}
 
