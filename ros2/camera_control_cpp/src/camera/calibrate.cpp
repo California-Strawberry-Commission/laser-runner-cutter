@@ -38,9 +38,19 @@ cv::Mat calibration::invertExtrinsicMatrix(const cv::Mat& extrinsic) {
   return extrinsic_inv;
 }
 
-cv::Point2f calibration::distortPixelCoords(
+std::optional<cv::Point2f> calibration::distortPixelCoords(
     const cv::Point2f& undistortedPixelCoords, const cv::Mat& intrinsicMatrix,
     const cv::Mat& distCoeffs) {
+
+  if (intrinsicMatrix.type() != CV_64F) {
+    spdlog::warn("Invalid type for Intrinsic Camera Matrix: {}", intrinsicMatrix.type());
+    return std::nullopt;
+  }
+  if (distCoeffs.type() != CV_64F) {
+    spdlog::warn("Invalid type for Distortion Coefficients Matrix: {}", distCoeffs.type());
+    return std::nullopt;
+  }
+
   // Extract focal length, principal point, etc.
   double fx{intrinsicMatrix.at<double>(0, 0)};
   double fy{intrinsicMatrix.at<double>(1, 1)};
@@ -58,7 +68,7 @@ cv::Point2f calibration::distortPixelCoords(
 
   // Project using distortion
   std::vector<cv::Point2f> distortedPoints;
-  projectPoints(normalizedPoints, rvec, tvec, intrinsicMatrix, distCoeffs,
+  cv::projectPoints(normalizedPoints, rvec, tvec, intrinsicMatrix, distCoeffs,
                 distortedPoints);
 
   return distortedPoints[0];
@@ -89,7 +99,7 @@ calibration::ReprojectErrors calibration::_calcReprojectionError(
   float err;
   for (size_t i = 0; i < objectPoints.size(); i++) {
     std::vector<cv::Point2f> projected;
-    projectPoints(objectPoints[i], rvecs[i], tvecs[i], cameraMatrix, distCoeffs,
+    cv::projectPoints(objectPoints[i], rvecs[i], tvecs[i], cameraMatrix, distCoeffs,
                   projected);
     err = norm(imagePoints[i], projected, cv::NORM_L2) / projected.size();
     retVals.perImageErrors.push_back(err);

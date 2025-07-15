@@ -29,7 +29,7 @@ cv::Mat constructExtrinsicMatrix(const cv::Mat& rvec, const cv::Mat& tvec);
 /**
  * Inverts a 4x4 extrinsic transformation matrix.
  *
- * @param extrinsic The 4x4 extrinsic transformation matrix (CV_32F or CV_64F).
+ * @param extrinsic The 4x4 extrinsic transformation matrix (CV_64F).
  * @return The inverted 4x4 extrinsic transformation matrix.
  */
 cv::Mat invertExtrinsicMatrix(const cv::Mat& extrinsic);
@@ -39,14 +39,14 @@ cv::Mat invertExtrinsicMatrix(const cv::Mat& extrinsic);
  * intrinsics and distortion coefficients.
  *
  * @param undistortedPixelCoords The undistorted pixel coordinates (input).
- * @param intrinsicMatrix The camera intrinsic matrix (3x3, CV_32F or CV_64F).
- * @param distCoeffs The distortion coefficients (1xN, where N >= 4, CV_32F or
- * CV_64F).
- * @return cv::Point2f The distorted pixel coordinates.
+ * @param intrinsicMatrix The camera intrinsic matrix (3x3, CV_64F).
+ * @param distCoeffs The distortion coefficients (1xN, where N >= 4, CV_64F).
+ * @return std::optional<cv::Point2f> The distorted pixel coordinates, or
+ * std::nullopt on failure.
  */
-cv::Point2f distortPixelCoords(const cv::Point2f& undistortedPixelCoords,
-                               const cv::Mat& intrinsicMatrix,
-                               const cv::Mat& distCoeffs);
+std::optional<cv::Point2f> distortPixelCoords(
+    const cv::Point2f& undistortedPixelCoords, const cv::Mat& intrinsicMatrix,
+    const cv::Mat& distCoeffs);
 
 /**
  * Creates and returns a pointer to a configured SimpleBlobDetector.
