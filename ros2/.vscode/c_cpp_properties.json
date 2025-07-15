@@ -1,21 +1,17 @@
 {
   "configurations": [
     {
-      "browse": {
-        "databaseFilename": "${default}",
-        "limitSymbolsToIncludedHeaders": false
-      },
-      "includePath": [
-        "/opt/ros/humble/include/**",
-        "/usr/include/**"
-      ],
       "name": "ROS",
-      "intelliSenseMode": "gcc-x64",
+      "intelliSenseMode": "${default}",
       "compilerPath": "/usr/bin/gcc",
+      "compileCommands": "${workspaceFolder}/build/compile_commands.json",
       "cStandard": "gnu11",
       "cppStandard": "c++17",
-      "configurationProvider": "ms-vscode.cmake-tools",
-      "compileCommands": "${workspaceFolder}/build/compile_commands.json"
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": true
+      },
+      "configurationProvider": "ms-vscode.cmake-tools"
     }
   ],
   "version": 4
