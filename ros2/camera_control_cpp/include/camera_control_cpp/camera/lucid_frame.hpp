@@ -49,18 +49,18 @@ class LucidFrame {
 
   cv::Vec3f deprojectPixel(const cv::Point2i& pixel, float depth,
                            const cv::Mat& cameraMatrix,
-                           const cv::Mat& distCoeffs);
+                           const cv::Mat& distCoeffs) const;
   cv::Vec3f transformPosition(const cv::Vec3f& position,
-                              const cv::Mat extrinsic);
+                              const cv::Mat extrinsic) const;
   cv::Point2i projectPosition(const cv::Vec3f& position,
                               const cv::Mat& cameraMatrix,
                               const cv::Mat& distCoeffs,
-                              const cv::Mat& extrinsicMatrix = cv::Mat());
+                              const cv::Mat& extrinsicMatrix = cv::Mat()) const;
   cv::Point2i adjustPixelToBounds(const cv::Point2i& pixel, int width,
-                                  int height);
+                                  int height) const;
   cv::Point2i nextPixelInLine(const cv::Point2i& curr, const cv::Point2i& start,
-                              const cv::Point2i& end);
-  bool is_pixel_in_line(const cv::Point2i& curr, const cv::Point2i& start,
-                        const cv::Point2i& end);
-  cv::Point2i getCorrespondingDepthPixel(const cv::Point2i& colorPixel);
+                              const cv::Point2i& end) const;
+  bool isPixelInLine(const cv::Point2i& curr, const cv::Point2i& start,
+                     const cv::Point2i& end) const;
+  cv::Point2i getCorrespondingDepthPixel(const cv::Point2i& colorPixel) const;
 };

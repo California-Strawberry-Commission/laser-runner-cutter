@@ -42,7 +42,7 @@ cv::Mat LucidFrame::getDepthFrame() const {
 
 cv::Vec3f LucidFrame::deprojectPixel(const cv::Point2i& pixel, float depth,
                                      const cv::Mat& cameraMatrix,
-                                     const cv::Mat& distCoeffs) {
+                                     const cv::Mat& distCoeffs) const {
   std::vector<cv::Point2f> src{{cv::Point2f(pixel)}};
   std::vector<cv::Point2f> undistorted;
   cv::undistortPoints(src, undistorted, cameraMatrix, distCoeffs);
@@ -50,7 +50,7 @@ cv::Vec3f LucidFrame::deprojectPixel(const cv::Point2i& pixel, float depth,
 }
 
 cv::Vec3f LucidFrame::transformPosition(const cv::Vec3f& position,
-                                        const cv::Mat extrinsic) {
+                                        const cv::Mat extrinsic) const {
   cv::Mat homogeneousPosition{
       (cv::Mat_<double>(4, 1) << position[0], position[1], position[2], 1.0)};
   cv::Mat transformed{homogeneousPosition * extrinsic};
@@ -60,7 +60,8 @@ cv::Vec3f LucidFrame::transformPosition(const cv::Vec3f& position,
 
 cv::Point2i LucidFrame::projectPosition(
     const cv::Vec3f& position, const cv::Mat& cameraMatrix,
-    const cv::Mat& distCoeffs, const cv::Mat& extrinsicMatrix = cv::Mat()) {
+    const cv::Mat& distCoeffs,
+    const cv::Mat& extrinsicMatrix = cv::Mat()) const {
   cv::Mat rvec, tvec;
   if (extrinsicMatrix.empty()) {
     rvec = cv::Mat::eye(3, 1, CV_64F);
@@ -81,7 +82,7 @@ cv::Point2i LucidFrame::projectPosition(
 }
 
 cv::Point2i LucidFrame::adjustPixelToBounds(const cv::Point2i& pixel, int width,
-                                            int height) {
+                                            int height) const {
   int x{std::max(0, std::min(cvRound(pixel.x), width - 1))};
   int y{std::max(0, std::min(cvRound(pixel.y), height - 1))};
   return cv::Point2i(x, y);
@@ -89,7 +90,7 @@ cv::Point2i LucidFrame::adjustPixelToBounds(const cv::Point2i& pixel, int width,
 
 cv::Point2i LucidFrame::nextPixelInLine(const cv::Point2i& curr,
                                         const cv::Point2i& start,
-                                        const cv::Point2i& end) {
+                                        const cv::Point2i& end) const {
   cv::Point2f direction{cv::Point2f(end - curr)};
   float length(cv::norm(direction));
   direction /= length;
@@ -97,9 +98,9 @@ cv::Point2i LucidFrame::nextPixelInLine(const cv::Point2i& curr,
   return cv::Point2i(cvRound(next.x), cvRound(next.y));
 }
 
-bool LucidFrame::is_pixel_in_line(const cv::Point2i& curr,
-                                  const cv::Point2i& start,
-                                  const cv::Point2i& end) {
+bool LucidFrame::isPixelInLine(const cv::Point2i& curr,
+                               const cv::Point2i& start,
+                               const cv::Point2i& end) const {
   int min_x{std::min(start.x, end.x)};
   int max_x{std::max(start.x, end.x)};
   int min_y{std::min(start.y, end.y)};
@@ -109,7 +110,7 @@ bool LucidFrame::is_pixel_in_line(const cv::Point2i& curr,
 }
 
 cv::Point2i LucidFrame::getCorrespondingDepthPixel(
-    const cv::Point2i& colorPixel) {
+    const cv::Point2i& colorPixel) const {
   /*
   Given an (x, y) coordinate in the color frame, return the corresponding (x, y)
   coordinate in the depth frame.
@@ -147,31 +148,78 @@ cv::Point2i LucidFrame::getCorrespondingDepthPixel(
   cv::Point2i fullFrameColorPixel{
       colorPixel +
       cv::Point2i(colorFrameOffset_.first, colorFrameOffset_.second)};
-  
+
   // Min-depth and max-depth positions in color camera-space
-  cv::Vec3f minDepthPositionColorSpace{deprojectPixel(fullFrameColorPixel, DEPTH_MIN_MM, colorCameraIntrinsicMatrix_, colorCameraDistortionCoeffs_)};
-  cv::Vec3f maxDepthPositionColorSpace{deprojectPixel(fullFrameColorPixel, DEPTH_MAX_MM, colorCameraIntrinsicMatrix_, colorCameraDistortionCoeffs_)};
+  cv::Vec3f minDepthPositionColorSpace{deprojectPixel(
+      fullFrameColorPixel, DEPTH_MIN_MM, colorCameraIntrinsicMatrix_,
+      colorCameraDistortionCoeffs_)};
+  cv::Vec3f maxDepthPositionColorSpace{deprojectPixel(
+      fullFrameColorPixel, DEPTH_MAX_MM, colorCameraIntrinsicMatrix_,
+      colorCameraDistortionCoeffs_)};
 
   // Min-depth and max-depth positions in depth camera-space
-  cv::Vec3f minDepthPositionDepthSpace{transformPosition(minDepthPositionColorSpace, xyzToDepthCameraExtrinsicMatrix_)};
-  cv::Vec3f maxDepthPositionDepthSpace{transformPosition(maxDepthPositionColorSpace, xyzToDepthCameraExtrinsicMatrix_)};
-
+  cv::Vec3f minDepthPositionDepthSpace{transformPosition(
+      minDepthPositionColorSpace, xyzToDepthCameraExtrinsicMatrix_)};
+  cv::Vec3f maxDepthPositionDepthSpace{transformPosition(
+      maxDepthPositionColorSpace, xyzToDepthCameraExtrinsicMatrix_)};
 
   // Project depth camera-space positions to depth pixels
-  cv::Point2i minDepthPixel{projectPosition(minDepthPositionDepthSpace, depthCameraIntrinsicMatrix_, depthCameraDistortionCoeffs_)};
-  cv::Point2i maxDepthPixel{projectPosition(maxDepthPositionDepthSpace, depthCameraIntrinsicMatrix_, depthCameraDistortionCoeffs_)};
-  
-  // Make sure pixel coords are in boundary
-  cv::Point2i minDepthPixelAdjusted{adjustPixelToBounds(minDepthPixel, depthFrameXyz_.cols, depthFrameXyz_.rows)};
-  cv::Point2i maxDepthPixelAdjusted{adjustPixelToBounds(maxDepthPixel, depthFrameXyz_.cols, depthFrameXyz_.rows)};
+  cv::Point2i minDepthPixel{projectPosition(minDepthPositionDepthSpace,
+                                            depthCameraIntrinsicMatrix_,
+                                            depthCameraDistortionCoeffs_)};
+  cv::Point2i maxDepthPixel{projectPosition(maxDepthPositionDepthSpace,
+                                            depthCameraIntrinsicMatrix_,
+                                            depthCameraDistortionCoeffs_)};
 
-  // Search along the line for the depth pixel for which its corresponding projected color pixel is the closest
-  // to the target color pixel
-  
+  // Make sure pixel coords are in boundary
+  cv::Point2i minDepthPixelAdjusted{adjustPixelToBounds(
+      minDepthPixel, depthFrameXyz_.cols, depthFrameXyz_.rows)};
+  cv::Point2i maxDepthPixelAdjusted{adjustPixelToBounds(
+      maxDepthPixel, depthFrameXyz_.cols, depthFrameXyz_.rows)};
+
+  // Search along the line for the depth pixel for which its corresponding
+  // projected color pixel is the closest to the target color pixel
+  int minDist{-1};
+  cv::Point2i closestDepthPixel{minDepthPixelAdjusted};
+  cv::Point2i currDepthPixel{minDepthPixelAdjusted};
+  while (true) {
+    cv::Vec3f xyzmm{
+        depthFrameXyz_.at<cv::Vec3f>(currDepthPixel.y, currDepthPixel.x)};
+    cv::Point2i currColorPixel = projectPosition(
+        xyzmm, colorCameraIntrinsicMatrix_, colorCameraDistortionCoeffs_,
+        xyzToColorCameraExtrinsicMatrix_);
+    double distance = cv::norm(cv::Point2f(currColorPixel) -
+                               cv::Point2f(fullFrameColorPixel));
+    if (distance < minDist || minDist < 0) {
+      minDist = distance;
+      closestDepthPixel = currDepthPixel;
+    }
+    // Stop if we've processed the maxDepthPixel
+    if (currDepthPixel.x == maxDepthPixel.x &&
+        currDepthPixel.y == maxDepthPixel.y) {
+      break;
+    }
+    // Otherwise, find the next pixel along the line that we shold try
+    currDepthPixel =
+        nextPixelInLine(currDepthPixel, minDepthPixel, maxDepthPixel);
+    if (!isPixelInLine(currDepthPixel, minDepthPixel, maxDepthPixel)) {
+      break;
+    }
+  }
+  return closestDepthPixel;
 }
 
 std::optional<std::tuple<double, double, double>> LucidFrame::getPosition(
     std::pair<int, int> colorPixel) const {
-  // TODO: implement this
-  return std::nullopt;
+  cv::Point2i colorPixelPoint{cv::Point2i(colorPixel.first, colorPixel.second)};
+  cv::Point2i depthPixel = getCorrespondingDepthPixel(colorPixelPoint);
+  cv::Vec3f position{depthFrameXyz_.at<cv::Vec3f>(depthPixel.y, depthPixel.x)};
+  // Negative depth indicates an invalid position. Depth greater than 2^14 - 1
+  // also indicates invalid position.
+  if (position[2] < 0.0f || position[2] > ((1 << 14) - 1)) {
+    return std::nullopt;
+  }
+  return std::make_tuple(static_cast<double>(position[0]),
+                         static_cast<double>(position[1]),
+                         static_cast<double>(position[2]));
 }
