@@ -17,7 +17,7 @@ class LaserDetector:
             "models",
         )
         model_weights_path = os.path.join(models_dir, "LaserDetectionYoloV8n.pt")
-        self._input_image_size = (640, 480)
+        self._input_image_size = (1024, 768)
         self._model = Yolo(
             weights_file=model_weights_path,
             input_image_size=self._input_image_size,
