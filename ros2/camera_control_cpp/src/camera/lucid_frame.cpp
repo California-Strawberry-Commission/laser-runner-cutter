@@ -61,7 +61,7 @@ cv::Vec3f LucidFrame::transformPosition(const cv::Vec3f& position,
 cv::Point2i LucidFrame::projectPosition(
     const cv::Vec3f& position, const cv::Mat& cameraMatrix,
     const cv::Mat& distCoeffs,
-    const cv::Mat& extrinsicMatrix = cv::Mat()) const {
+    const cv::Mat& extrinsicMatrix) const {
   cv::Mat rvec, tvec;
   if (extrinsicMatrix.empty()) {
     rvec = cv::Mat::eye(3, 1, CV_64F);

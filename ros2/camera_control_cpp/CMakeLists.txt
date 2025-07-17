@@ -94,8 +94,13 @@ ament_target_dependencies(camera_control_node PUBLIC
 
 # Tools
 add_executable(calibrate src/camera/calibrate.cpp)
-target_link_libraries(calibrate PRIVATE ${OpenCV_LIBS} fmt::fmt)
+target_include_directories(calibrate PUBLIC ${ARENA_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(calibrate PRIVATE ${ARENA_LIBS} ${OpenCV_LIBS} fmt::fmt)
 ament_target_dependencies(calibrate PUBLIC rclcpp std_msgs OpenCV)
+
+add_executable(test_getPosition src/tools/test_getPosition.cpp)
+target_link_libraries(test_getPosition PRIVATE ${OpenCV_LIBS} fmt::fmt)
+ament_target_dependencies(test_getPosition PUBLIC rclcpp std_msgs OpenCV)
 
 #############
 ## Install ##
@@ -104,6 +109,7 @@ ament_target_dependencies(calibrate PUBLIC rclcpp std_msgs OpenCV)
 install(TARGETS
   camera_control_node
   calibrate
+  test_getPosition
   DESTINATION lib/${PROJECT_NAME})
 
 # Install launch files

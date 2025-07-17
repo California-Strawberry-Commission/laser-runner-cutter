@@ -4,6 +4,9 @@
 #include <optional>
 #include <vector>
 
+#include "ArenaApi.h"
+#include "GenApi/GenApi.h"
+
 namespace calibration {
 
 struct ReprojectErrors {
@@ -95,6 +98,9 @@ std::optional<calibration::CalibrationMetrics> calibrateCamera(
     const std::vector<cv::Mat>& monoImages, const cv::Size& gridSize,
     const int gridType = cv::CALIB_CB_SYMMETRIC_GRID,
     const cv::Ptr<cv::FeatureDetector> blobDetector = NULL);
+
+
+std::optional<calibration::CalibrationMetrics> getDepthCameraCalibration();
 
 /**
  * Tests the undistortion of an image using the provided camera matrix and

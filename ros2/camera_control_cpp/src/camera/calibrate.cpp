@@ -41,13 +41,14 @@ cv::Mat calibration::invertExtrinsicMatrix(const cv::Mat& extrinsic) {
 std::optional<cv::Point2f> calibration::distortPixelCoords(
     const cv::Point2f& undistortedPixelCoords, const cv::Mat& intrinsicMatrix,
     const cv::Mat& distCoeffs) {
-
   if (intrinsicMatrix.type() != CV_64F) {
-    spdlog::warn("Invalid type for Intrinsic Camera Matrix: {}", intrinsicMatrix.type());
+    spdlog::warn("Invalid type for Intrinsic Camera Matrix: {}",
+                 intrinsicMatrix.type());
     return std::nullopt;
   }
   if (distCoeffs.type() != CV_64F) {
-    spdlog::warn("Invalid type for Distortion Coefficients Matrix: {}", distCoeffs.type());
+    spdlog::warn("Invalid type for Distortion Coefficients Matrix: {}",
+                 distCoeffs.type());
     return std::nullopt;
   }
 
@@ -69,7 +70,7 @@ std::optional<cv::Point2f> calibration::distortPixelCoords(
   // Project using distortion
   std::vector<cv::Point2f> distortedPoints;
   cv::projectPoints(normalizedPoints, rvec, tvec, intrinsicMatrix, distCoeffs,
-                distortedPoints);
+                    distortedPoints);
 
   return distortedPoints[0];
 }
@@ -99,8 +100,8 @@ calibration::ReprojectErrors calibration::_calcReprojectionError(
   float err;
   for (size_t i = 0; i < objectPoints.size(); i++) {
     std::vector<cv::Point2f> projected;
-    cv::projectPoints(objectPoints[i], rvecs[i], tvecs[i], cameraMatrix, distCoeffs,
-                  projected);
+    cv::projectPoints(objectPoints[i], rvecs[i], tvecs[i], cameraMatrix,
+                      distCoeffs, projected);
     err = norm(imagePoints[i], projected, cv::NORM_L2) / projected.size();
     retVals.perImageErrors.push_back(err);
     totalError += err;
@@ -174,13 +175,77 @@ std::optional<calibration::CalibrationMetrics> calibration::calibrateCamera(
   return std::nullopt;
 }
 
+std::optional<calibration::CalibrationMetrics>
+calibration::getDepthCameraCalibration() {
+  try {
+    Arena::ISystem* pSystem = Arena::OpenSystem();
+    std::vector<Arena::DeviceInfo> deviceInfos = pSystem->GetDevices();
+    // Wait for at least one camera to be detected, with a timeout
+    constexpr int maxRetries = 20;
+    constexpr int retryDelayMs = 1000;
+    int retries = 0;
+    while (deviceInfos.empty() && retries < maxRetries) {
+      spdlog::info("No devices found. Waiting for camera to be detected... (attempt {}/{})", retries + 1, maxRetries);
+      pSystem->UpdateDevices(retryDelayMs);
+      deviceInfos = pSystem->GetDevices();
+      ++retries;
+    }
+    if (deviceInfos.empty()) {
+      spdlog::warn("No devices found after waiting.");
+      Arena::CloseSystem(pSystem);
+      return std::nullopt;
+    }
+
+    Arena::IDevice* pDevice = pSystem->CreateDevice(deviceInfos[1]);
+    GenApi::INodeMap* pNodeMap = pDevice->GetNodeMap();
+
+    calibration::CalibrationMetrics metrics;
+    double fx = Arena::GetNodeValue<double>(pNodeMap, "CalibFocalLengthX");
+    double fy = Arena::GetNodeValue<double>(pNodeMap, "CalibFocalLengthY");
+    double cx = Arena::GetNodeValue<double>(pNodeMap, "CalibOpticalCenterX");
+    double cy = Arena::GetNodeValue<double>(pNodeMap, "CalibOpticalCenterY");
+    metrics.intrinsicMatrix =
+        (cv::Mat_<double>(3, 3) << fx, 0, cx, 0, fy, cy, 0, 0, 1);
+
+    // Getting distortion coeffs by modifying selector value
+    std::vector<double> coeffs;
+    GenApi::CEnumerationPtr selector = pNodeMap->GetNode("CalibLensDistortionValueSelector");
+    GenApi::CFloatPtr value = pNodeMap->GetNode("CalibLensDistortionValue");
+    if (!GenApi::IsAvailable(selector) || !GenApi::IsReadable(selector) || !GenApi::IsAvailable(value) || !GenApi::IsReadable(value)) {
+      spdlog::warn("Distortion selector or value not available.");
+      return std::nullopt;
+    }
+    GenApi::NodeList_t entries;
+    selector->GetEntries(entries);
+    for (size_t i = 0; i < entries.size(); ++i) {
+        GenApi::CEnumEntryPtr entry = entries[i];
+        if (GenApi::IsAvailable(entry) && GenApi::IsReadable(entry)) {
+            selector->SetIntValue(entry->GetValue());
+            coeffs.push_back(value->GetValue());
+        }
+    }
+    metrics.distCoeffs = cv::Mat(coeffs);
+
+    Arena::CloseSystem(pSystem);
+    return metrics;
+
+  } catch (GenICam::GenericException& e) {
+    spdlog::warn("GenICam exception: {}", e.GetDescription());
+    return std::nullopt;
+  } catch (std::exception& e) {
+    spdlog::warn("Standard exception: {}", e.what());
+    return std::nullopt;
+  }
+  return std::nullopt;
+}
+
 void calibration::testUndistortion(const cv::Mat& cameraMatrix,
                                    const cv::Mat& distCoeffs,
                                    const cv::Mat& img) {
   cv::Mat newCameraMatrix, undistorted;
   cv::Rect roi;
-  newCameraMatrix = cv::getOptimalNewCameraMatrix(cameraMatrix, distCoeffs,
-                                              img.size(), 1, img.size(), &roi);
+  newCameraMatrix = cv::getOptimalNewCameraMatrix(
+      cameraMatrix, distCoeffs, img.size(), 1, img.size(), &roi);
   cv::undistort(img, undistorted, cameraMatrix, distCoeffs, newCameraMatrix);
   undistorted = undistorted(roi);
   std::string filename{"undistortion_test.png"};
@@ -232,18 +297,31 @@ int main(int argc, char* argv[]) {
   }
 
   cv::Size gSize{cv::Size(5, 4)};
-  std::optional<calibration::CalibrationMetrics> calibVals{
+  std::optional<calibration::CalibrationMetrics> rgbMetrics{
       calibration::calibrateCamera(images, gSize, cv::CALIB_CB_SYMMETRIC_GRID,
                                    calibration::createBlobDetector())};
-  if (calibVals == std::nullopt) {
-    spdlog::error("Calibration failed. Exiting.");
-    return -1;
+
+  if (rgbMetrics == std::nullopt) {
+    spdlog::error("RGB Calibration failed.");
   } else {
     std::ostringstream oss1, oss2;
-    oss1 << (*calibVals).intrinsicMatrix;
-    oss2 << (*calibVals).distCoeffs;
-    spdlog::info("Calibrated intrins: \n{}", oss1.str());
-    spdlog::info("Distortion coeffs: \n{}", oss2.str());
+    oss1 << (*rgbMetrics).intrinsicMatrix;
+    oss2 << (*rgbMetrics).distCoeffs;
+    spdlog::info("RGB Intrinsic Matrix: \n{}", oss1.str());
+    spdlog::info("RGB Distortion Coeffs: \n{}", oss2.str());
+  }
+
+  std::optional<calibration::CalibrationMetrics> depthMetrics =
+      calibration::getDepthCameraCalibration();
+
+  if (depthMetrics == std::nullopt) {
+    spdlog::error("Could not get depth camera calibration metrics.");
+  } else {
+    std::ostringstream oss3, oss4;
+    oss3 << (*depthMetrics).intrinsicMatrix;
+    oss4 << (*depthMetrics).distCoeffs;
+    spdlog::info("Depth Intrinsic Matrix: \n{}", oss3.str());
+    spdlog::info("Depth Distortion Coeffs: \n{}", oss4.str());
   }
 
   return 0;
