@@ -99,8 +99,23 @@ std::optional<calibration::CalibrationMetrics> calibrateCamera(
     const int gridType = cv::CALIB_CB_SYMMETRIC_GRID,
     const cv::Ptr<cv::FeatureDetector> blobDetector = NULL);
 
-
+/**
+ * @brief Retrieves the calibration metrics for the depth camera.
+ *
+ * @return std::optional<calibration::CalibrationMetrics>
+ *         The calibration metrics if available, otherwise std::nullopt.
+ */
 std::optional<calibration::CalibrationMetrics> getDepthCameraCalibration();
+
+/**
+ * @brief Saves the calibration metrics for color and depth cameras.
+ *
+ * @param colorMetrics Calibration metrics for the color camera.
+ * @param depthMetrics Calibration metrics for the depth camera.
+ * @return int Returns 0 on success, or a non-zero error code on failure.
+ */
+int saveMetrics(const calibration::CalibrationMetrics& colorMetrics,
+                const calibration::CalibrationMetrics& depthMetrics);
 
 /**
  * Tests the undistortion of an image using the provided camera matrix and

@@ -185,14 +185,38 @@ calibration::getDepthCameraCalibration() {
     constexpr int retryDelayMs = 1000;
     int retries = 0;
     while (deviceInfos.empty() && retries < maxRetries) {
-      spdlog::info("No devices found. Waiting for camera to be detected... (attempt {}/{})", retries + 1, maxRetries);
+      spdlog::info(
+          "No devices found. Waiting for camera to be detected... (attempt "
+          "{}/{})",
+          retries + 1, maxRetries);
       pSystem->UpdateDevices(retryDelayMs);
       deviceInfos = pSystem->GetDevices();
       ++retries;
     }
+    int depthDeviceNum = -1;
     if (deviceInfos.empty()) {
       spdlog::warn("No devices found after waiting.");
       Arena::CloseSystem(pSystem);
+      return std::nullopt;
+    } else {
+      for (size_t i = 0; i < deviceInfos.size(); ++i) {
+        spdlog::info("Found Camera [{}] | Model: {} | Serial: {} | Vendor: {} | Device Version: {}",
+          i,
+          deviceInfos[i].ModelName(),
+          deviceInfos[i].SerialNumber(),
+          deviceInfos[i].VendorName(),
+          deviceInfos[i].DeviceVersion()
+        );
+        if (deviceInfos[i].ModelName().substr(0, 3) == "HTR") {
+          depthDeviceNum = i;
+        }
+      }
+    }
+
+    if (depthDeviceNum != -1) {
+      spdlog::info("Found depth camera! [Camera #{}]", depthDeviceNum);
+    } else {
+      spdlog::warn("Didn't find any depth camera attached.");
       return std::nullopt;
     }
 
@@ -209,20 +233,22 @@ calibration::getDepthCameraCalibration() {
 
     // Getting distortion coeffs by modifying selector value
     std::vector<double> coeffs;
-    GenApi::CEnumerationPtr selector = pNodeMap->GetNode("CalibLensDistortionValueSelector");
+    GenApi::CEnumerationPtr selector =
+        pNodeMap->GetNode("CalibLensDistortionValueSelector");
     GenApi::CFloatPtr value = pNodeMap->GetNode("CalibLensDistortionValue");
-    if (!GenApi::IsAvailable(selector) || !GenApi::IsReadable(selector) || !GenApi::IsAvailable(value) || !GenApi::IsReadable(value)) {
+    if (!GenApi::IsAvailable(selector) || !GenApi::IsReadable(selector) ||
+        !GenApi::IsAvailable(value) || !GenApi::IsReadable(value)) {
       spdlog::warn("Distortion selector or value not available.");
       return std::nullopt;
     }
     GenApi::NodeList_t entries;
     selector->GetEntries(entries);
     for (size_t i = 0; i < entries.size(); ++i) {
-        GenApi::CEnumEntryPtr entry = entries[i];
-        if (GenApi::IsAvailable(entry) && GenApi::IsReadable(entry)) {
-            selector->SetIntValue(entry->GetValue());
-            coeffs.push_back(value->GetValue());
-        }
+      GenApi::CEnumEntryPtr entry = entries[i];
+      if (GenApi::IsAvailable(entry) && GenApi::IsReadable(entry)) {
+        selector->SetIntValue(entry->GetValue());
+        coeffs.push_back(value->GetValue());
+      }
     }
     metrics.distCoeffs = cv::Mat(coeffs);
 
@@ -237,6 +263,62 @@ calibration::getDepthCameraCalibration() {
     return std::nullopt;
   }
   return std::nullopt;
+}
+
+int calibration::saveMetrics(
+    const calibration::CalibrationMetrics& rgbMetrics,
+    const calibration::CalibrationMetrics& depthMetrics) {
+  std::string dir = std::string(std::getenv("PWD")) +
+                    "/camera_control_cpp/calibration_params/";
+  if (!std::filesystem::exists(dir)) {
+    spdlog::warn("Output dir for saving metrics DNE: {}", dir);
+    return -1;
+  } else {
+    spdlog::info("Saving calibration metrics to: {}", dir);
+  }
+
+  try {
+    cv::FileStorage tritonIntrinsicFile(dir + "triton_intrinsic_matrix.yml",
+                                        cv::FileStorage::WRITE);
+    tritonIntrinsicFile.write("Intrinsic Matrix", rgbMetrics.intrinsicMatrix);
+    tritonIntrinsicFile.release();
+  } catch (const cv::Exception& e) {
+    spdlog::warn("OpenCV error saving triton intrinsic matrix: {}", e.what());
+    return -1;
+  }
+  try {
+    cv::FileStorage tritonDistortionFile(dir + "triton_distortion_coeffs.yml",
+                                         cv::FileStorage::WRITE);
+    tritonDistortionFile.write("Distortion Coefficients",
+                               rgbMetrics.distCoeffs);
+    tritonDistortionFile.release();
+  } catch (const cv::Exception& e) {
+    spdlog::error("OpenCV error saving triton distortion coefficients: {}",
+                  e.what());
+    return -1;
+  }
+
+  try {
+    cv::FileStorage heliosIntrinsicFile(dir + "helios_intrinsic_matrix.yml",
+                                        cv::FileStorage::WRITE);
+    heliosIntrinsicFile.write("Intrinsic Matrix", depthMetrics.intrinsicMatrix);
+    heliosIntrinsicFile.release();
+  } catch (const cv::Exception& e) {
+    spdlog::warn("OpenCV error saving helios intrinsic matrix: {}", e.what());
+    return -1;
+  }
+  try {
+    cv::FileStorage heliosDistortionFile(dir + "helios_distortion_coeffs.yml",
+                                         cv::FileStorage::WRITE);
+    heliosDistortionFile.write("Distortion Coefficients",
+                               depthMetrics.distCoeffs);
+    heliosDistortionFile.release();
+  } catch (const cv::Exception& e) {
+    spdlog::error("OpenCV error saving helios distortion coefficients: {}",
+                  e.what());
+    return -1;
+  }
+  return 0;
 }
 
 void calibration::testUndistortion(const cv::Mat& cameraMatrix,
@@ -322,6 +404,14 @@ int main(int argc, char* argv[]) {
     oss4 << (*depthMetrics).distCoeffs;
     spdlog::info("Depth Intrinsic Matrix: \n{}", oss3.str());
     spdlog::info("Depth Distortion Coeffs: \n{}", oss4.str());
+  }
+
+  if (rgbMetrics != std::nullopt && depthMetrics != std::nullopt) {
+    if (calibration::saveMetrics(*rgbMetrics, *depthMetrics) < 0) {
+      spdlog::error("Failed to save Calibration Metrics");
+    } else {
+      spdlog::info("Successfully saved Calibration Metrics");
+    }
   }
 
   return 0;
