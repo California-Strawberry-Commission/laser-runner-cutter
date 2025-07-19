@@ -9,6 +9,9 @@
 
 namespace calibration {
 
+std::string calibrationParamsDir =
+    std::string(std::getenv("PWD")) + "/camera_control_cpp/calibration_params/";
+
 struct ReprojectErrors {
   float meanError;
   std::vector<float> perImageErrors;
@@ -17,6 +20,11 @@ struct ReprojectErrors {
 struct CalibrationMetrics {
   cv::Mat intrinsicMatrix;
   cv::Mat distCoeffs;
+};
+
+struct ExtrinsicMetrics {
+  cv::Mat rvec;
+  cv::Mat tvec;
 };
 
 /**
@@ -100,7 +108,7 @@ std::optional<calibration::CalibrationMetrics> calibrateCamera(
     const cv::Ptr<cv::FeatureDetector> blobDetector = NULL);
 
 /**
- * @brief Retrieves the calibration metrics for the depth camera.
+ * Retrieves the calibration metrics for the depth camera.
  *
  * @return std::optional<calibration::CalibrationMetrics>
  *         The calibration metrics if available, otherwise std::nullopt.
@@ -108,7 +116,52 @@ std::optional<calibration::CalibrationMetrics> calibrateCamera(
 std::optional<calibration::CalibrationMetrics> getDepthCameraCalibration();
 
 /**
- * @brief Saves the calibration metrics for color and depth cameras.
+ * Scales a grayscale image to enhance its intensity range.
+ *
+ * @param monoImage The input grayscale image (CV_8UC1 or CV_16UC1).
+ * @return cv::Mat The scaled grayscale image with adjusted intensity values.
+ */
+cv::Mat scaleGrayscaleImage(const cv::Mat& monoImage);
+
+/**
+ * Finds the rotation and translation vectors that describe the conversion from
+ Helios 3D coordinates to the Triton camera's coordinate system.
+ *
+ * @param tritonMonoImage Grayscale image from the Triton camera containing
+ calibration pattern.
+ * @param heliosIntensityImage Intensity image from the Helios camera containing
+ calibration pattern.
+ * @param heliosXyzImage 3D point cloud image from the Helios camera (XYZ
+ coordinates).
+ * @param tritonIntrinsicMatrix Intrinsic matrix of the Triton camera.
+ * @param tritonDistortionCoeffs Distortion coefficients of the Triton camera.
+ * @param gridSize Size of the calibration grid (number of inner corners per
+ chessboard row and column).
+ * @param gridType Type of calibration grid (default:
+ cv::CALIB_CB_SYMMETRIC_GRID).
+ * @param blobDetector Optional custom blob detector for grid detection.
+ * @return std::optional<calibration::ExtrinsicMetrics> Estimated extrinsic
+ metrics if calibration is successful, std::nullopt otherwise.
+ */
+std::optional<calibration::ExtrinsicMetrics> getExtrinsics(
+    const cv::Mat& tritonMonoImage, const cv::Mat& heliosIntensityImage,
+    const cv::Mat& heliosXyzImage, const cv::Mat& tritonIntrinsicMatrix,
+    const cv::Mat& tritonDistortionCoeffs, const cv::Size& gridSize,
+    const int& gridType = cv::CALIB_CB_SYMMETRIC_GRID,
+    const cv::Ptr<cv::FeatureDetector>& blobDetector = nullptr);
+
+
+
+/**
+ * Saves the extrinsic calibration matrices for both cameras.
+ *
+ * @param colorMetrics The extrinsic metrics containing calibration data for the color camera.
+ * @return int Returns 0 on success, or a negative error code on failure.
+ */
+int calibration::saveExtrinsics(calibration::ExtrinsicMetrics colorMetrics);
+
+/**
+ * Saves the calibration metrics for color and depth cameras.
  *
  * @param colorMetrics Calibration metrics for the color camera.
  * @param depthMetrics Calibration metrics for the depth camera.

@@ -200,13 +200,11 @@ calibration::getDepthCameraCalibration() {
       return std::nullopt;
     } else {
       for (size_t i = 0; i < deviceInfos.size(); ++i) {
-        spdlog::info("Found Camera [{}] | Model: {} | Serial: {} | Vendor: {} | Device Version: {}",
-          i,
-          deviceInfos[i].ModelName(),
-          deviceInfos[i].SerialNumber(),
-          deviceInfos[i].VendorName(),
-          deviceInfos[i].DeviceVersion()
-        );
+        spdlog::info(
+            "Found Camera [{}] | Model: {} | Serial: {} | Vendor: {} | Device "
+            "Version: {}",
+            i, deviceInfos[i].ModelName(), deviceInfos[i].SerialNumber(),
+            deviceInfos[i].VendorName(), deviceInfos[i].DeviceVersion());
         if (deviceInfos[i].ModelName().substr(0, 3) == "HTR") {
           depthDeviceNum = i;
         }
@@ -265,21 +263,98 @@ calibration::getDepthCameraCalibration() {
   return std::nullopt;
 }
 
+cv::Mat calibration::scaleGrayscaleImage(const cv::Mat& monoImage) {
+  cv::Mat floatImage;
+  monoImage.convertTo(floatImage, CV_32F);
+  double minVal, maxVal;
+  cv::minMaxLoc(floatImage, &minVal, &maxVal);
+  if (maxVal > minVal) {
+    floatImage = (floatImage - minVal) / (maxVal - minVal);
+  } else {
+    floatImage = floatImage - minVal;
+  }
+  floatImage *= 255.0;
+  cv::Mat scaledImage;
+  floatImage.convertTo(scaledImage, CV_8U);
+  return scaledImage;
+}
+
+std::optional<calibration::ExtrinsicMetrics> calibration::getExtrinsics(
+    const cv::Mat& tritonMonoImage, const cv::Mat& heliosIntensityImage,
+    const cv::Mat& heliosXyzImage, const cv::Mat& tritonIntrinsicMatrix,
+    const cv::Mat& tritonDistortionCoeffs, const cv::Size& gridSize,
+    const int& gridType, const cv::Ptr<cv::FeatureDetector>& blobDetector) {
+  cv::Mat scaledTritonMono = calibration::scaleGrayscaleImage(tritonMonoImage);
+  cv::Mat scaledHeliosIntensity =
+      calibration::scaleGrayscaleImage(heliosIntensityImage);
+
+  std::vector<cv::Point2f> tritonCircleCenters;
+  bool tritonRetval{cv::findCirclesGrid(
+      scaledTritonMono, gridSize, tritonCircleCenters, gridType, blobDetector)};
+  if (tritonRetval == false) {
+    spdlog::warn("Could not get circle centers from Triton mono image.");
+    return std::nullopt;
+  }
+
+  std::vector<cv::Point2f> heliosCircleCenters;
+  bool heliosRetval{cv::findCirclesGrid(scaledHeliosIntensity, gridSize,
+                                        tritonCircleCenters, gridType,
+                                        blobDetector)};
+  if (heliosRetval == false) {
+    spdlog::warn("Could not get circle centers from Helios intensity image.");
+    return std::nullopt;
+  }
+
+  std::vector<cv::Point> heliosPixelCoords;
+  for (const cv::Point2f& pt : heliosCircleCenters) {
+    heliosPixelCoords.emplace_back(cv::Point(cvRound(pt.x), cvRound(pt.y)));
+  }
+
+  std::vector<cv::Point3f> heliosCirclePositions;
+  for (const cv::Point& pt : heliosPixelCoords) {
+    const cv::Vec3f& vec{heliosXyzImage.at<cv::Vec3f>(pt.x, pt.y)};
+    heliosCirclePositions.emplace_back(cv::Point3f(vec));
+  }
+
+  calibration::ExtrinsicMetrics metrics;
+  bool pnpRetval{cv::solvePnP(heliosCirclePositions, tritonCircleCenters,
+                              tritonIntrinsicMatrix, tritonDistortionCoeffs,
+                              metrics.rvec, metrics.tvec)};
+  if (pnpRetval) {
+    return metrics;
+  } else {
+    spdlog::warn("Error from solvePnP.");
+    return std::nullopt;
+  }
+}
+
+int calibration::saveExtrinsics(calibration::ExtrinsicMetrics colorMetrics) {
+  if (!std::filesystem::exists(calibration::calibrationParamsDir)) {
+    spdlog::warn("Output dir for saving extrinsics DNE: {}",
+                 calibration::calibrationParamsDir);
+    return -1;
+  }
+
+  cv::Mat helios3dToTritonExtrinsicMatrix{calibration::constructExtrinsicMatrix(colorMetrics.rvec, colorMetrics.tvec)};
+  
+}
+
 int calibration::saveMetrics(
     const calibration::CalibrationMetrics& rgbMetrics,
     const calibration::CalibrationMetrics& depthMetrics) {
-  std::string dir = std::string(std::getenv("PWD")) +
-                    "/camera_control_cpp/calibration_params/";
-  if (!std::filesystem::exists(dir)) {
-    spdlog::warn("Output dir for saving metrics DNE: {}", dir);
+  if (!std::filesystem::exists(calibration::calibrationParamsDir)) {
+    spdlog::warn("Output dir for saving metrics DNE: {}",
+                 calibration::calibrationParamsDir);
     return -1;
   } else {
-    spdlog::info("Saving calibration metrics to: {}", dir);
+    spdlog::info("Saving calibration metrics to: {}",
+                 calibration::calibrationParamsDir);
   }
 
   try {
-    cv::FileStorage tritonIntrinsicFile(dir + "triton_intrinsic_matrix.yml",
-                                        cv::FileStorage::WRITE);
+    cv::FileStorage tritonIntrinsicFile(
+        calibration::calibrationParamsDir + "triton_intrinsic_matrix.yml",
+        cv::FileStorage::WRITE);
     tritonIntrinsicFile.write("Intrinsic Matrix", rgbMetrics.intrinsicMatrix);
     tritonIntrinsicFile.release();
   } catch (const cv::Exception& e) {
@@ -287,8 +362,9 @@ int calibration::saveMetrics(
     return -1;
   }
   try {
-    cv::FileStorage tritonDistortionFile(dir + "triton_distortion_coeffs.yml",
-                                         cv::FileStorage::WRITE);
+    cv::FileStorage tritonDistortionFile(
+        calibration::calibrationParamsDir + "triton_distortion_coeffs.yml",
+        cv::FileStorage::WRITE);
     tritonDistortionFile.write("Distortion Coefficients",
                                rgbMetrics.distCoeffs);
     tritonDistortionFile.release();
@@ -299,8 +375,9 @@ int calibration::saveMetrics(
   }
 
   try {
-    cv::FileStorage heliosIntrinsicFile(dir + "helios_intrinsic_matrix.yml",
-                                        cv::FileStorage::WRITE);
+    cv::FileStorage heliosIntrinsicFile(
+        calibration::calibrationParamsDir + "helios_intrinsic_matrix.yml",
+        cv::FileStorage::WRITE);
     heliosIntrinsicFile.write("Intrinsic Matrix", depthMetrics.intrinsicMatrix);
     heliosIntrinsicFile.release();
   } catch (const cv::Exception& e) {
@@ -308,8 +385,9 @@ int calibration::saveMetrics(
     return -1;
   }
   try {
-    cv::FileStorage heliosDistortionFile(dir + "helios_distortion_coeffs.yml",
-                                         cv::FileStorage::WRITE);
+    cv::FileStorage heliosDistortionFile(
+        calibration::calibrationParamsDir + "helios_distortion_coeffs.yml",
+        cv::FileStorage::WRITE);
     heliosDistortionFile.write("Distortion Coefficients",
                                depthMetrics.distCoeffs);
     heliosDistortionFile.release();
