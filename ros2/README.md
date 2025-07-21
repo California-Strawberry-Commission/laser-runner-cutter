@@ -88,6 +88,27 @@ C/C++ libraries included were compiled for linux-x86_64 and linux-aarch64 from t
 - Helios DAC: https://github.com/Grix/helios_dac
 - Ether Dream 4 DAC: https://github.com/genkikondo/ether-dream-sdk
 
+## LUCID camera calibration
+
+We currently use the following LUCID cameras:
+
+- Triton 3.2 MP Model ([TRI032S-CC](https://thinklucid.com/product/triton-32-mp-imx265/))
+- Helios2 Ray Outdoor IP67 ToF 3D Camera ([HTR003S-001](https://thinklucid.com/product/helios2-ray-outdoor-tof-ip67-3d-camera/))
+
+We need to calculate the intrinsic matrix and distortion coefficients for each camera, as well as the extrinic matrix that describes the rotation and translation between the two cameras. For more details, see https://support.thinklucid.com/app-note-helios-3d-point-cloud-with-rgb-color/
+
+### Intrinsics
+
+For each camera, do the following:
+
+Grab at least 3 images (9 recommended) of the [calibration grid](https://arenasdk.s3-us-west-2.amazonaws.com/LUCID_target_whiteCircles.pdf) in varying locations in the camera's field of view, roughly 3 feet away (note: for the Helios camera, use the intensity channel of the frame to generate a grayscale image). Then, use `calibrate_camera` in [`calibration.py`](camera_control/camera_control/camera/calibration.py), which calculates the intrinsic matrix and distortion coefficients using the method based on https://docs.opencv.org/4.x/d4/d94/tutorial_camera_calibration.html
+
+### Extrinsics
+
+Solving for orientation of the Helios relative to the Triton requires a single image of the calibration target from each camera. Place the calibration grid near the center of both cameras field of view at roughly 3 feet away. Make sure not to move the calibration target or cameras in between grabbing the Helios image and grabbing the Triton image, and make sure to grab both the xyz and intensity image from the Helios.
+
+Then, use `get_extrinsics` in [`lucid_camera.py`](camera_control/camera_control/camera/lucid_camera.py) to get the rotation matrix and translation vector.
+
 ## Troubleshooting
 
 ### No space left on device
