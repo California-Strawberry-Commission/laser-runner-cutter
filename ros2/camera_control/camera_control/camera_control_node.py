@@ -296,7 +296,7 @@ async def get_detection(node, detection_type, wait_for_next_frame):
         return {}
 
     if detection_type == DetectionType.LASER:
-        laser_points, confs = await shared_state.laser_detector.detect(
+        laser_points, confs = shared_state.laser_detector.detect_simple(
             frame.color_frame
         )
         return {
@@ -517,7 +517,7 @@ async def _detection_task():
         debug_frame = np.copy(frame.color_frame)
 
         if DetectionType.LASER in shared_state.enabled_detections:
-            laser_points, confs = await shared_state.laser_detector.detect(
+            laser_points, confs = shared_state.laser_detector.detect_simple(
                 frame.color_frame
             )
             debug_frame = _debug_draw_lasers(debug_frame, laser_points, confs)
