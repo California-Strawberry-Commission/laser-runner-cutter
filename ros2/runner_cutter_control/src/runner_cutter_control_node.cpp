@@ -990,7 +990,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
    */
   std::optional<LaserCoord> correctLaser(const LaserCoord& initialLaserCoord,
                                          const PixelCoord& targetCameraPixel,
-                                         float pixelDistanceThreshold = 3.0f,
+                                         float pixelDistanceThreshold = 6.0f,
                                          int maxAttempts = 10) {
     LaserCoord currentLaserCoord{initialLaserCoord};
     int attempt{0};
