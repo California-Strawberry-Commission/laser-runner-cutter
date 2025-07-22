@@ -27,6 +27,18 @@ export default function Controls({
   const [dirty, setDirty] = useState<boolean>(false);
   const [exposureUs, setExposureUs] = useState<number>(0.0);
   const [gainDb, setGainDb] = useState<number>(0.0);
+  const [calibrationGridSize, setCalibrationGridSize] = useState<{
+    numX: number;
+    numY: number;
+  }>({ numX: 0, numY: 0 });
+  const [calibrationXBounds, setCalibrationXBounds] = useState<{
+    min: number;
+    max: number;
+  }>({ min: 0.0, max: 1.0 });
+  const [calibrationYBounds, setCalibrationYBounds] = useState<{
+    min: number;
+    max: number;
+  }>({ min: 0.0, max: 1.0 });
   const [trackingLaserColor, setTrackingLaserColor] = useRgbColor({
     r: 0.0,
     g: 0.0,
@@ -52,6 +64,31 @@ export default function Controls({
       }
 
       if (controlNode.connected) {
+        const calibrationGridSizeRes =
+          await controlNode.getCalibrationGridSize();
+        if (calibrationGridSizeRes.length >= 2) {
+          setCalibrationGridSize({
+            numX: calibrationGridSizeRes[0],
+            numY: calibrationGridSizeRes[1],
+          });
+        }
+
+        const calibrationXBoundsRes = await controlNode.getCalibrationXBounds();
+        if (calibrationXBoundsRes.length >= 2) {
+          setCalibrationXBounds({
+            min: calibrationXBoundsRes[0],
+            max: calibrationXBoundsRes[1],
+          });
+        }
+
+        const calibrationYBoundsRes = await controlNode.getCalibrationYBounds();
+        if (calibrationYBoundsRes.length >= 2) {
+          setCalibrationYBounds({
+            min: calibrationYBoundsRes[0],
+            max: calibrationYBoundsRes[1],
+          });
+        }
+
         const trackingLaserColorRes = await controlNode.getTrackingLaserColor();
         if (trackingLaserColorRes.length >= 3) {
           setTrackingLaserColor({
@@ -101,6 +138,9 @@ export default function Controls({
     cameraNode.state.gainDb,
     setExposureUs,
     setGainDb,
+    setCalibrationGridSize,
+    setCalibrationXBounds,
+    setCalibrationYBounds,
     setTrackingLaserColor,
     setBurnLaserColor,
     setBurnTimeSecs,
@@ -117,6 +157,18 @@ export default function Controls({
   const handleSave = () => {
     cameraNode.setExposure(exposureUs);
     cameraNode.setGain(gainDb);
+    controlNode.setCalibrationGridSize(
+      calibrationGridSize.numX,
+      calibrationGridSize.numY
+    );
+    controlNode.setCalibrationXBounds(
+      calibrationXBounds.min,
+      calibrationXBounds.max
+    );
+    controlNode.setCalibrationYBounds(
+      calibrationYBounds.min,
+      calibrationYBounds.max
+    );
     controlNode.setTrackingLaserColor(
       trackingLaserColor.r,
       trackingLaserColor.g,
@@ -192,6 +244,140 @@ export default function Controls({
             }
           }}
         />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-2 w-full">
+        <div className="flex flex-col gap-1">
+          <Label>Calibration grid size</Label>
+          <Label className="text-xs font-light">
+            (# x divisions, # y divisions)
+          </Label>
+        </div>
+        <div className="flex flex-row gap-2">
+          <Input
+            type="number"
+            inputMode="numeric"
+            id="calibrationGridSizeX"
+            name="calibrationGridSizeX"
+            step={1}
+            disabled={!enableFields}
+            value={calibrationGridSize.numX}
+            onChange={(str) => {
+              const value = Number(str);
+              if (!isNaN(value)) {
+                setCalibrationGridSize({
+                  numX: Math.floor(value),
+                  numY: calibrationGridSize.numY,
+                });
+                setDirty(true);
+              }
+            }}
+          />
+          <Input
+            type="number"
+            inputMode="numeric"
+            id="calibrationGridSizeY"
+            name="calibrationGridSizeY"
+            step={1}
+            disabled={!enableFields}
+            value={calibrationGridSize.numY}
+            onChange={(str) => {
+              const value = Number(str);
+              if (!isNaN(value)) {
+                setCalibrationGridSize({
+                  numX: calibrationGridSize.numX,
+                  numY: Math.floor(value),
+                });
+                setDirty(true);
+              }
+            }}
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-2 w-full">
+        <div className="flex flex-col gap-1">
+          <Label>Calibration bounds</Label>
+          <Label className="text-xs font-light">
+            (min x, max x, min y, max y)
+          </Label>
+        </div>
+        <div className="flex flex-row gap-2">
+          <Input
+            type="number"
+            inputMode="numeric"
+            id="calibrationXBoundsMin"
+            name="calibrationXBoundsMin"
+            step={0.1}
+            disabled={!enableFields}
+            value={calibrationXBounds.min}
+            onChange={(str) => {
+              const value = Number(str);
+              if (!isNaN(value)) {
+                setCalibrationXBounds({
+                  min: value,
+                  max: calibrationXBounds.max,
+                });
+                setDirty(true);
+              }
+            }}
+          />
+          <Input
+            type="number"
+            inputMode="numeric"
+            id="calibrationXBoundsMax"
+            name="calibrationXBoundsMax"
+            step={0.1}
+            disabled={!enableFields}
+            value={calibrationXBounds.max}
+            onChange={(str) => {
+              const value = Number(str);
+              if (!isNaN(value)) {
+                setCalibrationXBounds({
+                  min: calibrationXBounds.min,
+                  max: value,
+                });
+                setDirty(true);
+              }
+            }}
+          />
+          <Input
+            type="number"
+            inputMode="numeric"
+            id="calibrationYBoundsMin"
+            name="calibrationYBoundsMin"
+            step={0.1}
+            disabled={!enableFields}
+            value={calibrationYBounds.min}
+            onChange={(str) => {
+              const value = Number(str);
+              if (!isNaN(value)) {
+                setCalibrationYBounds({
+                  min: value,
+                  max: calibrationYBounds.max,
+                });
+                setDirty(true);
+              }
+            }}
+          />
+          <Input
+            type="number"
+            inputMode="numeric"
+            id="calibrationYBoundsMax"
+            name="calibrationYBoundsMax"
+            step={0.1}
+            disabled={!enableFields}
+            value={calibrationYBounds.max}
+            onChange={(str) => {
+              const value = Number(str);
+              if (!isNaN(value)) {
+                setCalibrationYBounds({
+                  min: calibrationYBounds.min,
+                  max: value,
+                });
+                setDirty(true);
+              }
+            }}
+          />
+        </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-2 w-full">
         <Label>Tracking laser color</Label>
