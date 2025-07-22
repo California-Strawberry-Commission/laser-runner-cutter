@@ -150,15 +150,13 @@ std::optional<calibration::ExtrinsicMetrics> getExtrinsics(
     const int& gridType = cv::CALIB_CB_SYMMETRIC_GRID,
     const cv::Ptr<cv::FeatureDetector>& blobDetector = nullptr);
 
-
-
 /**
  * Saves the extrinsic calibration matrices for both cameras.
  *
  * @param colorMetrics The extrinsic metrics containing calibration data for the color camera.
  * @return int Returns 0 on success, or a negative error code on failure.
  */
-int calibration::saveExtrinsics(calibration::ExtrinsicMetrics colorMetrics);
+int saveExtrinsics(calibration::ExtrinsicMetrics colorMetrics);
 
 /**
  * Saves the calibration metrics for color and depth cameras.

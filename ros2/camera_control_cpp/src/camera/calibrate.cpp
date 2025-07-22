@@ -153,7 +153,7 @@ std::optional<calibration::CalibrationMetrics> calibration::calibrateCamera(
     std::vector<cv::Mat> rvecs, tvecs;
     calibration::CalibrationMetrics metrics;
     metrics.intrinsicMatrix = cv::Mat::eye(3, 3, CV_64F);
-    metrics.distCoeffs = cv::Mat::zeros(8, 1, CV_64F);
+    metrics.distCoeffs = cv::Mat::zeros(5, 1, CV_64F);
     float retval = cv::calibrateCamera(
         objPoints, imgPoints, monoImages[0].size(), metrics.intrinsicMatrix,
         metrics.distCoeffs, rvecs, tvecs);
@@ -284,6 +284,27 @@ std::optional<calibration::ExtrinsicMetrics> calibration::getExtrinsics(
     const cv::Mat& heliosXyzImage, const cv::Mat& tritonIntrinsicMatrix,
     const cv::Mat& tritonDistortionCoeffs, const cv::Size& gridSize,
     const int& gridType, const cv::Ptr<cv::FeatureDetector>& blobDetector) {
+  if (tritonMonoImage.empty()) {
+    spdlog::warn("Invalid tritonMonoImage matrix.");
+    return std::nullopt;
+  }
+  if (heliosIntensityImage.empty()) {
+    spdlog::warn("Invalid heliosIntensityImage matrix.");
+    return std::nullopt;
+  }
+  if (heliosXyzImage.empty() || heliosXyzImage.type() != CV_32FC3) {
+    spdlog::warn("Invalid healiosXyzImage.");
+    return std::nullopt;
+  }
+  if (tritonIntrinsicMatrix.empty()) {
+    spdlog::warn("Triton intrinsic matrix is invalid.");
+    return std::nullopt;
+  }
+  if (tritonDistortionCoeffs.empty()) {
+    spdlog::warn("Triton distortion coefficients are invalid.");
+    return std::nullopt;
+  }
+
   cv::Mat scaledTritonMono = calibration::scaleGrayscaleImage(tritonMonoImage);
   cv::Mat scaledHeliosIntensity =
       calibration::scaleGrayscaleImage(heliosIntensityImage);
@@ -298,7 +319,7 @@ std::optional<calibration::ExtrinsicMetrics> calibration::getExtrinsics(
 
   std::vector<cv::Point2f> heliosCircleCenters;
   bool heliosRetval{cv::findCirclesGrid(scaledHeliosIntensity, gridSize,
-                                        tritonCircleCenters, gridType,
+                                        heliosCircleCenters, gridType,
                                         blobDetector)};
   if (heliosRetval == false) {
     spdlog::warn("Could not get circle centers from Helios intensity image.");
@@ -335,8 +356,17 @@ int calibration::saveExtrinsics(calibration::ExtrinsicMetrics colorMetrics) {
     return -1;
   }
 
-  cv::Mat helios3dToTritonExtrinsicMatrix{calibration::constructExtrinsicMatrix(colorMetrics.rvec, colorMetrics.tvec)};
-  
+  // XYZ to color
+  cv::Mat heliosToTritonExtrinsicMatrix{calibration::constructExtrinsicMatrix(
+      colorMetrics.rvec, colorMetrics.tvec)};
+  cv::Mat tritonToHeliosExtrinsicMatrix{
+      calibration::invertExtrinsicMatrix(heliosToTritonExtrinsicMatrix)};
+  std::ostringstream ossr1, ossr2;
+  ossr1 << heliosToTritonExtrinsicMatrix;
+  ossr2 << tritonToHeliosExtrinsicMatrix;
+  spdlog::info("Helios to Triton Extrinsic Matrix:\n{}", ossr1.str());
+  spdlog::info("Triton to Helios Extrinsic Matrix:\n{}", ossr2.str());
+  return 0;
 }
 
 int calibration::saveMetrics(
@@ -437,7 +467,11 @@ int main(int argc, char* argv[]) {
     if (entry.is_regular_file()) {
       auto ext = entry.path().extension().string();
       std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-      if (ext == ".png" || ext == ".jpg" || ext == ".jpeg") {
+      std::string filename = entry.path().filename().string();
+      std::transform(filename.begin(), filename.end(), filename.begin(),
+                     ::tolower);
+      if (filename.find("rgb") != std::string::npos &&
+          (ext == ".png" || ext == ".jpg" || ext == ".jpeg")) {
         cv::Mat img{cv::imread(entry.path().string())};
         if (!img.empty()) {
           cvtColor(img, img, cv::COLOR_BGR2GRAY);
@@ -490,6 +524,31 @@ int main(int argc, char* argv[]) {
     } else {
       spdlog::info("Successfully saved Calibration Metrics");
     }
+  }
+
+  cv::Mat tritonMonoImage;
+  cv::Mat heliosIntensityImage;
+  cv::Mat heliosXyzImage;
+
+  std::optional<calibration::ExtrinsicMetrics> eMetrics{
+      calibration::getExtrinsics(
+          tritonMonoImage, heliosIntensityImage, heliosXyzImage,
+          (*rgbMetrics).intrinsicMatrix, (*rgbMetrics).distCoeffs, gSize,
+          cv::CALIB_CB_SYMMETRIC_GRID, calibration::createBlobDetector())};
+
+  if (eMetrics == std::nullopt) {
+    spdlog::error("Extrinsic calibration failed.");
+    return -1;
+  } else {
+    spdlog::info("Extrinsic calibration successful.");
+  }
+
+  int successfulExtrinsicSave{calibration::saveExtrinsics(*eMetrics)};
+  if (successfulExtrinsicSave < 0) {
+    spdlog::error("Failed to save extrinsic calibration metrics.");
+    return -1;
+  } else {
+    spdlog::info("Successfully saved extrinsic calibration metrics.");
   }
 
   return 0;

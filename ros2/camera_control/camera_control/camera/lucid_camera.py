@@ -1067,6 +1067,50 @@ def _get_heatmap_frame(output_dir):
     
     camera.stop()
 
+def _get_calibration_frames(output_dir):
+    output_dir = os.path.expanduser(output_dir)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    camera = create_lucid_rgbd_camera()
+    camera.start()
+    camera._wait_for_setup()
+
+    print("Calibration frame capture: Press Enter to capture each frame (1-9).")
+    for idx in range(1, 10):
+        input(f"Press Enter to capture calibration frame {idx}/9...")
+        camera._wait_for_frame()
+        color_frame = camera._get_color_frame()
+        depth_frame = camera._get_depth_frame()
+
+        if color_frame is not None and depth_frame is not None:
+            # Convert BayerRG8 to RGB8
+            color_frame_rgb = cv2.cvtColor(color_frame, cv2.COLOR_BayerRGGB2RGB)
+            # Save RGB image as PNG
+            rgb_path = os.path.join(output_dir, f"calib_rgb_{idx}.png")
+            cv2.imwrite(rgb_path, cv2.cvtColor(color_frame_rgb, cv2.COLOR_RGB2BGR))
+
+            # Save intensity image as PNG (scale to 8-bit)
+            intensity_image = (depth_frame["i"] / 256).astype(np.uint8)
+            intensity_path = os.path.join(output_dir, f"calib_intensity_{idx}.png")
+            cv2.imwrite(intensity_path, intensity_image)
+
+            # Save xyz as 3-channel 32FC1 EXR (OpenCV can read EXR in C++)
+            xyz = np.stack([depth_frame["x"], depth_frame["y"], depth_frame["z"]], axis=-1).astype(np.float32)
+            xyz_path = os.path.join(output_dir, f"calib_xyz_{idx}.yml")
+            fs = cv2.FileStorage(xyz_path, cv2.FILE_STORAGE_WRITE)
+            fs.write("xyz", xyz)
+            fs.release()
+
+            print(f"Saved frame {idx}:")
+            print(f"  RGB:        {rgb_path}")
+            print(f"  Intensity:  {intensity_path}")
+            print(f"  XYZ:        {xyz_path}")
+        else:
+            print(f"Failed to capture frame {idx}.")
+
+    camera.stop()
+
 def _stream_heatmap_to_terminal():
     if shutil.which("chafa") is None:
         print("chafa is not installed or not in PATH. Please install chafa to use this feature.")
@@ -1366,6 +1410,14 @@ if __name__ == "__main__":
     )
     get_heatmap_parser.add_argument("--output_dir", type=str, default=None, required=True)
 
+    get_calibration_frames_parser = subparsers.add_parser(
+        "get_calibration_frames",
+        help="Interactively capture calibration frames from both cameras",
+    )
+    get_calibration_frames_parser.add_argument(
+        "--output_dir", type=str, default=None, required=True
+    )
+
     stream_heatmap_parser = subparsers.add_parser(
         "stream_heatmap",
         help="Stream depth heatmap visualization to terminal using chafa",
@@ -1440,6 +1492,8 @@ if __name__ == "__main__":
         _get_heatmap_frame(args.output_dir)
     elif args.command == "stream_heatmap":
         _stream_heatmap_to_terminal()
+    elif args.command == "get_calibration_frames":
+        _get_calibration_frames(args.output_dir)
     elif args.command == "get_extrinsic":
         _get_extrinsic(
             args.triton_mono_image,
