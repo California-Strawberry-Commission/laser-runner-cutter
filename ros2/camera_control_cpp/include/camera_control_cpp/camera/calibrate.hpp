@@ -124,60 +124,76 @@ std::optional<calibration::CalibrationMetrics> getDepthCameraCalibration();
 cv::Mat scaleGrayscaleImage(const cv::Mat& monoImage);
 
 /**
- * Finds the rotation and translation vectors that describe the conversion from
- Helios 3D coordinates to the Triton camera's coordinate system.
+ * Computes the extrinsic calibration metrics between two images using a
+ * calibration grid.
  *
- * @param tritonMonoImage Grayscale image from the Triton camera containing
- calibration pattern.
- * @param heliosIntensityImage Intensity image from the Helios camera containing
- calibration pattern.
- * @param heliosXyzImage 3D point cloud image from the Helios camera (XYZ
- coordinates).
- * @param tritonIntrinsicMatrix Intrinsic matrix of the Triton camera.
- * @param tritonDistortionCoeffs Distortion coefficients of the Triton camera.
- * @param gridSize Size of the calibration grid (number of inner corners per
- chessboard row and column).
- * @param gridType Type of calibration grid (default:
- cv::CALIB_CB_SYMMETRIC_GRID).
- * @param blobDetector Optional custom blob detector for grid detection.
- * @return std::optional<calibration::ExtrinsicMetrics> Estimated extrinsic
- metrics if calibration is successful, std::nullopt otherwise.
+ * @param fromImage The source image in which the calibration grid is to be
+ * detected.
+ * @param toImage The target image in which the calibration grid is to be
+ * detected.
+ * @param xyzImage A matrix containing the 3D coordinates of the calibration
+ * grid points.
+ * @param fromIntrinsicMatrix The intrinsic camera matrix for the source image.
+ * @param fomDistortionCoeffs The distortion coefficients for the source camera.
+ * @param gridSize The size of the calibration grid (number of inner corners per
+ * chessboard row and column).
+ * @param gridType The type of calibration grid to detect (e.g.,
+ * cv::CALIB_CB_SYMMETRIC_GRID). Defaults to symmetric grid.
+ * @param blobDetector Optional custom blob detector for grid detection. If
+ * nullptr, the default detector is used.
+ * @return std::optional<calibration::ExtrinsicMetrics> The computed extrinsic
+ * metrics if successful, std::nullopt otherwise.
  */
 std::optional<calibration::ExtrinsicMetrics> getExtrinsics(
-    const cv::Mat& tritonMonoImage, const cv::Mat& heliosIntensityImage,
-    const cv::Mat& heliosXyzImage, const cv::Mat& tritonIntrinsicMatrix,
-    const cv::Mat& tritonDistortionCoeffs, const cv::Size& gridSize,
-    const int& gridType = cv::CALIB_CB_SYMMETRIC_GRID,
+    const cv::Mat& fromImage, const cv::Mat& toImage, const cv::Mat& xyzImage,
+    const cv::Mat& fromIntrinsicMatrix, const cv::Mat& fomDistortionCoeffs,
+    const cv::Size& gridSize, const int& gridType = cv::CALIB_CB_SYMMETRIC_GRID,
     const cv::Ptr<cv::FeatureDetector>& blobDetector = nullptr);
 
 /**
- * Saves the extrinsic calibration matrices for both cameras.
- *
- * @param colorMetrics The extrinsic metrics containing calibration data for the color camera.
- * @return int Returns 0 on success, or a negative error code on failure.
- */
-int saveExtrinsics(calibration::ExtrinsicMetrics colorMetrics);
-
-/**
- * Saves the calibration metrics for color and depth cameras.
+ * Saves the calibration metrics for color and depth cameras, along with the extrinsic matrices.
  *
  * @param colorMetrics Calibration metrics for the color camera.
  * @param depthMetrics Calibration metrics for the depth camera.
+ * @param tritonToHeliosExtrinsicMatrix 4x4 extrinsic matrix from Triton to Helios.
+ * @param heliosToTritonExtrinsicMatrix 4x4 extrinsic matrix from Helios to Triton.
  * @return int Returns 0 on success, or a non-zero error code on failure.
  */
 int saveMetrics(const calibration::CalibrationMetrics& colorMetrics,
-                const calibration::CalibrationMetrics& depthMetrics);
+                const calibration::CalibrationMetrics& depthMetrics,
+                const cv::Mat& tritonToHeliosExtrinsicMatrix,
+                const cv::Mat& heliosToTritonExtrinsicMatrix);
+
+/**
+ * Enhances the intensity of the input image.
+ *
+ * @param intensityImage The input grayscale image (cv::Mat) to be enhanced.
+ * @return std::optional<cv::Mat> The enhanced intensity image, or std::nullopt
+ * on failure.
+ */
+std::optional<cv::Mat> boostIntensity(const cv::Mat& intensityImage);
 
 /**
  * Tests the undistortion of an image using the provided camera matrix and
  * distortion coefficients.
  *
- * @param cameraMatrix The camera intrinsic matrix (3x3) used for undistortion.
+ * @param cameraMatrix The camera intrinsic matrix (3x3) used for
+ * undistortion.
  * @param distCoeffs The distortion coefficients vector (typically 1x5 or 1x8)
  * for the camera.
  * @param img The input distorted image to be undistorted.
+ * @return cv::Mat The undistorted output image.
  */
-void testUndistortion(const cv::Mat& cameraMatrix, const cv::Mat& distCoeffs,
-                      const cv::Mat& img);
+cv::Mat testUndistortion(const cv::Mat& cameraMatrix, const cv::Mat& distCoeffs,
+                         const cv::Mat& img);
+
+/**
+ * Displays an OpenCV image in the terminal using chafa with a label.
+ *
+ * @param img   The OpenCV image to display (cv::Mat).
+ * @param label The label to display alongside the image (std::string).
+ * @return int  Returns 0 on success, or a non-zero error code on failure.
+ */
+int showWithChafa(const cv::Mat& img, const std::string& label);
 
 }  // namespace calibration

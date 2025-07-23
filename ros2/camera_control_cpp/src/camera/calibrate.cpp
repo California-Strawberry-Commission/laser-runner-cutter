@@ -176,7 +176,8 @@ std::optional<calibration::CalibrationMetrics> calibration::calibrateCamera(
 }
 
 std::optional<calibration::CalibrationMetrics>
-calibration::getDepthCameraCalibration() {
+calibration::getDepthCameraCalibration() {  // DEPRECATED (Used internal factory
+                                            // calibration)
   try {
     Arena::ISystem* pSystem = Arena::OpenSystem();
     std::vector<Arena::DeviceInfo> deviceInfos = pSystem->GetDevices();
@@ -280,66 +281,65 @@ cv::Mat calibration::scaleGrayscaleImage(const cv::Mat& monoImage) {
 }
 
 std::optional<calibration::ExtrinsicMetrics> calibration::getExtrinsics(
-    const cv::Mat& tritonMonoImage, const cv::Mat& heliosIntensityImage,
-    const cv::Mat& heliosXyzImage, const cv::Mat& tritonIntrinsicMatrix,
-    const cv::Mat& tritonDistortionCoeffs, const cv::Size& gridSize,
-    const int& gridType, const cv::Ptr<cv::FeatureDetector>& blobDetector) {
-  if (tritonMonoImage.empty()) {
-    spdlog::warn("Invalid tritonMonoImage matrix.");
+    const cv::Mat& fromImage, const cv::Mat& toImage, const cv::Mat& xyzImage,
+    const cv::Mat& fromIntrinsicMatrix, const cv::Mat& fromDistortionCoeffs,
+    const cv::Size& gridSize, const int& gridType,
+    const cv::Ptr<cv::FeatureDetector>& blobDetector) {
+  if (fromImage.empty()) {
+    spdlog::warn("Invalid fromImage matrix.");
     return std::nullopt;
   }
-  if (heliosIntensityImage.empty()) {
-    spdlog::warn("Invalid heliosIntensityImage matrix.");
+  if (toImage.empty()) {
+    spdlog::warn("Invalid toImage matrix.");
     return std::nullopt;
   }
-  if (heliosXyzImage.empty() || heliosXyzImage.type() != CV_32FC3) {
-    spdlog::warn("Invalid healiosXyzImage.");
+  if (xyzImage.empty() || xyzImage.type() != CV_32FC3) {
+    spdlog::warn("Invalid xyzImage matrix.");
     return std::nullopt;
   }
-  if (tritonIntrinsicMatrix.empty()) {
-    spdlog::warn("Triton intrinsic matrix is invalid.");
+  if (fromIntrinsicMatrix.empty()) {
+    spdlog::warn("\"From\" intrinsic matrix is invalid.");
     return std::nullopt;
   }
-  if (tritonDistortionCoeffs.empty()) {
-    spdlog::warn("Triton distortion coefficients are invalid.");
+  if (fromDistortionCoeffs.empty()) {
+    spdlog::warn("\"From\" distortion coefficients are invalid.");
     return std::nullopt;
   }
 
-  cv::Mat scaledTritonMono = calibration::scaleGrayscaleImage(tritonMonoImage);
-  cv::Mat scaledHeliosIntensity =
-      calibration::scaleGrayscaleImage(heliosIntensityImage);
+  cv::Mat scaledFromImage = calibration::scaleGrayscaleImage(fromImage);
+  cv::Mat scaledToImage = calibration::scaleGrayscaleImage(toImage);
 
-  std::vector<cv::Point2f> tritonCircleCenters;
-  bool tritonRetval{cv::findCirclesGrid(
-      scaledTritonMono, gridSize, tritonCircleCenters, gridType, blobDetector)};
-  if (tritonRetval == false) {
+  std::vector<cv::Point2f> fromCircleCenters;
+  bool fromRetval{cv::findCirclesGrid(
+      scaledFromImage, gridSize, fromCircleCenters, gridType, blobDetector)};
+  if (fromRetval == false) {
     spdlog::warn("Could not get circle centers from Triton mono image.");
     return std::nullopt;
   }
 
-  std::vector<cv::Point2f> heliosCircleCenters;
-  bool heliosRetval{cv::findCirclesGrid(scaledHeliosIntensity, gridSize,
-                                        heliosCircleCenters, gridType,
-                                        blobDetector)};
-  if (heliosRetval == false) {
+  std::vector<cv::Point2f> toCircleCenters;
+  bool toRetval{cv::findCirclesGrid(scaledToImage, gridSize, toCircleCenters,
+                                    gridType, blobDetector)};
+  if (toRetval == false) {
     spdlog::warn("Could not get circle centers from Helios intensity image.");
     return std::nullopt;
   }
 
-  std::vector<cv::Point> heliosPixelCoords;
-  for (const cv::Point2f& pt : heliosCircleCenters) {
-    heliosPixelCoords.emplace_back(cv::Point(cvRound(pt.x), cvRound(pt.y)));
+  std::vector<cv::Point> toPixelCoords;
+  for (const cv::Point2f& pt : toCircleCenters) {
+    toPixelCoords.emplace_back(cv::Point(cvRound(pt.x), cvRound(pt.y)));
   }
 
-  std::vector<cv::Point3f> heliosCirclePositions;
-  for (const cv::Point& pt : heliosPixelCoords) {
-    const cv::Vec3f& vec{heliosXyzImage.at<cv::Vec3f>(pt.x, pt.y)};
-    heliosCirclePositions.emplace_back(cv::Point3f(vec));
+  std::vector<cv::Point3f> toCirclePositions;
+  for (const cv::Point& pt : toPixelCoords) {
+    const cv::Vec3f& vec{xyzImage.at<cv::Vec3f>(pt.x, pt.y)};
+    toCirclePositions.emplace_back(cv::Point3f(vec));
   }
 
   calibration::ExtrinsicMetrics metrics;
-  bool pnpRetval{cv::solvePnP(heliosCirclePositions, tritonCircleCenters,
-                              tritonIntrinsicMatrix, tritonDistortionCoeffs,
+  /*  "FROM" universe --> "TO" universe */
+  bool pnpRetval{cv::solvePnP(toCirclePositions, fromCircleCenters,
+                              fromIntrinsicMatrix, fromDistortionCoeffs,
                               metrics.rvec, metrics.tvec)};
   if (pnpRetval) {
     return metrics;
@@ -349,29 +349,11 @@ std::optional<calibration::ExtrinsicMetrics> calibration::getExtrinsics(
   }
 }
 
-int calibration::saveExtrinsics(calibration::ExtrinsicMetrics colorMetrics) {
-  if (!std::filesystem::exists(calibration::calibrationParamsDir)) {
-    spdlog::warn("Output dir for saving extrinsics DNE: {}",
-                 calibration::calibrationParamsDir);
-    return -1;
-  }
-
-  // XYZ to color
-  cv::Mat heliosToTritonExtrinsicMatrix{calibration::constructExtrinsicMatrix(
-      colorMetrics.rvec, colorMetrics.tvec)};
-  cv::Mat tritonToHeliosExtrinsicMatrix{
-      calibration::invertExtrinsicMatrix(heliosToTritonExtrinsicMatrix)};
-  std::ostringstream ossr1, ossr2;
-  ossr1 << heliosToTritonExtrinsicMatrix;
-  ossr2 << tritonToHeliosExtrinsicMatrix;
-  spdlog::info("Helios to Triton Extrinsic Matrix:\n{}", ossr1.str());
-  spdlog::info("Triton to Helios Extrinsic Matrix:\n{}", ossr2.str());
-  return 0;
-}
-
 int calibration::saveMetrics(
     const calibration::CalibrationMetrics& rgbMetrics,
-    const calibration::CalibrationMetrics& depthMetrics) {
+    const calibration::CalibrationMetrics& depthMetrics,
+    const cv::Mat& tritonToHeliosExtrinsicMatrix,
+    const cv::Mat& heliosToTritonExtrinsicMatrix) {
   if (!std::filesystem::exists(calibration::calibrationParamsDir)) {
     spdlog::warn("Output dir for saving metrics DNE: {}",
                  calibration::calibrationParamsDir);
@@ -426,26 +408,117 @@ int calibration::saveMetrics(
                   e.what());
     return -1;
   }
+
+  try {
+    cv::FileStorage tritonToHeliosExtrinsicMatrixFile(
+        calibration::calibrationParamsDir +
+            "triton_to_helios_extrinsic_matrix.yml",
+        cv::FileStorage::WRITE);
+    tritonToHeliosExtrinsicMatrixFile.write("Extrinsic Matrix",
+                                            tritonToHeliosExtrinsicMatrix);
+    tritonToHeliosExtrinsicMatrixFile.release();
+  } catch (const cv::Exception& e) {
+    spdlog::error("OpenCV error saving triton to helios extrinsic matrix: {}",
+                  e.what());
+    return -1;
+  }
+
+  try {
+    cv::FileStorage heliosToTritonExtrinsicMatrixFile(
+        calibration::calibrationParamsDir +
+            "helios_to_triton_extrinsic_matrix.yml",
+        cv::FileStorage::WRITE);
+    heliosToTritonExtrinsicMatrixFile.write("Extrinsic Matrix",
+                                            heliosToTritonExtrinsicMatrix);
+    heliosToTritonExtrinsicMatrixFile.release();
+  } catch (const cv::Exception& e) {
+    spdlog::error("OpenCV error saving helios to triton extrinsic matrix: {}",
+                  e.what());
+    return -1;
+  }
+
   return 0;
 }
 
-void calibration::testUndistortion(const cv::Mat& cameraMatrix,
-                                   const cv::Mat& distCoeffs,
-                                   const cv::Mat& img) {
+std::optional<cv::Mat> calibration::boostIntensity(
+    const cv::Mat& intensityImage) {
+  if (intensityImage.empty() || intensityImage.channels() != 1) {
+    spdlog::warn("Input intensity image is empty or not single-channel.");
+    return std::nullopt;
+  }
+  cv::Mat boosted;
+  double minVal, maxVal;
+  cv::minMaxLoc(intensityImage, &minVal, &maxVal);
+  if (maxVal > minVal) {
+    // Linear stretch
+    double alpha = 255.0 / (maxVal - minVal);
+    double beta = -minVal * alpha;
+    intensityImage.convertTo(boosted, -1, alpha, beta);
+    spdlog::info("Boosting intensity image with alpha: {}, beta: {}", alpha,
+                 beta);
+    // Aggressive gamma correction
+    cv::Mat lookupTable(1, 256, CV_8U);
+    uchar* p = lookupTable.ptr();
+    double gamma = 0.4;  // Very aggressive
+    for (int i = 0; i < 256; ++i) {
+      p[i] = cv::saturate_cast<uchar>(pow(i / 255.0, gamma) * 255.0);
+    }
+    cv::LUT(boosted, lookupTable, boosted);
+    spdlog::info("Applied gamma correction with gamma: {}", gamma);
+  } else {
+    intensityImage.convertTo(boosted, -1);
+    spdlog::info(
+        "Max and min intensity values are equal. Intensity not boosted.");
+  }
+  return boosted;
+}
+
+cv::Mat calibration::testUndistortion(const cv::Mat& cameraMatrix,
+                                      const cv::Mat& distCoeffs,
+                                      const cv::Mat& img) {
   cv::Mat newCameraMatrix, undistorted;
   cv::Rect roi;
   newCameraMatrix = cv::getOptimalNewCameraMatrix(
       cameraMatrix, distCoeffs, img.size(), 1, img.size(), &roi);
   cv::undistort(img, undistorted, cameraMatrix, distCoeffs, newCameraMatrix);
   undistorted = undistorted(roi);
-  std::string filename{"undistortion_test.png"};
-  bool success{cv::imwrite(filename, undistorted)};
-  if (success) {
-    std::cout << "Image saved successfully as " << filename << std::endl;
-  } else {
-    std::cerr << "Error saving image to " << filename << std::endl;
-  }
+  return undistorted;
 }
+
+int calibration::showWithChafa(const cv::Mat& img, const std::string& label) {
+  bool hasChafa = (std::system("which chafa > /dev/null 2>&1") == 0);
+  bool hasFiglet = (std::system("which figlet > /dev/null 2>&1") == 0);
+  if (!hasChafa) {
+    spdlog::warn("chafa not found in PATH. Skipping image display for '{}'.",
+                 label);
+    return -1;
+  }
+  if (img.empty()) {
+    spdlog::warn("Image for {} is empty, skipping chafa display.", label);
+    return -1;
+  }
+  if (!hasFiglet) {
+    spdlog::warn(
+        "figlet not found in PATH. Label will not be stylized for '{}'.",
+        label);
+    std::string tmpfile = "/tmp/" + label + ".png";
+    cv::imwrite(tmpfile, img);
+    std::string cmd = "chafa " + tmpfile;
+    std::cout << "=== " << label << " ===" << std::endl;
+    std::system(cmd.c_str());
+    std::remove(tmpfile.c_str());
+  } else {
+    std::string tmpfile = "/tmp/" + label + ".png";
+    cv::imwrite(tmpfile, img);
+    std::string figletCmd = "figlet \"" + label + "\"";
+    std::string chafaCmd = "chafa " + tmpfile;
+    std::cout << std::endl;
+    std::system(figletCmd.c_str());
+    std::system(chafaCmd.c_str());
+    std::remove(tmpfile.c_str());
+  }
+  return 0;
+};
 
 int main(int argc, char* argv[]) {
   if (argc != 2) {
@@ -461,94 +534,206 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  std::vector<cv::Mat> images;
-  size_t imageCount{0};
+  std::vector<cv::Mat> rgbImages, intensityImages, xyzImages;
+  std::vector<std::filesystem::directory_entry> entries;
   for (const auto& entry : std::filesystem::directory_iterator(dirPath)) {
+    entries.push_back(entry);
+  }
+  std::sort(entries.begin(), entries.end(),
+            [](const std::filesystem::directory_entry& a,
+               const std::filesystem::directory_entry& b) {
+              return a.path().filename().string() <
+                     b.path().filename().string();
+            });
+  for (const auto& entry : entries) {
     if (entry.is_regular_file()) {
       auto ext = entry.path().extension().string();
       std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
       std::string filename = entry.path().filename().string();
       std::transform(filename.begin(), filename.end(), filename.begin(),
                      ::tolower);
-      if (filename.find("rgb") != std::string::npos &&
-          (ext == ".png" || ext == ".jpg" || ext == ".jpeg")) {
+      if (ext == ".png" || ext == ".jpg" || ext == ".jpeg") {
         cv::Mat img{cv::imread(entry.path().string())};
         if (!img.empty()) {
-          cvtColor(img, img, cv::COLOR_BGR2GRAY);
-          images.push_back(img);
-          ++imageCount;
+          if (filename.find("rgb") != std::string::npos) {
+            cvtColor(img, img, cv::COLOR_BGR2GRAY);
+            rgbImages.push_back(img);
+            spdlog::info("Loaded RGB image: {}",
+                         entry.path().filename().string());
+          } else if (filename.find("intensity") != std::string::npos) {
+            cvtColor(img, img, cv::COLOR_BGR2GRAY);
+            intensityImages.push_back(img);
+            spdlog::info("Loaded intensity image: {}",
+                         entry.path().filename().string());
+          }
+        }
+      } else if (ext == ".yml") {
+        if (filename.find("xyz") != std::string::npos) {
+          cv::FileStorage fs(entry.path().string(), cv::FileStorage::READ);
+          if (fs.isOpened()) {
+            cv::Mat xyz;
+            fs["xyz"] >> xyz;
+            if (!xyz.empty()) {
+              xyzImages.push_back(xyz);
+              spdlog::info("Loaded XYZ image: {}",
+                           entry.path().filename().string());
+            } else {
+              spdlog::warn("Failed to load xyz data from {}",
+                           entry.path().string());
+            }
+            fs.release();
+          } else {
+            spdlog::warn("Could not open xyz file: {}", entry.path().string());
+          }
         }
       }
     }
   }
-  if (imageCount < 9) {
-    spdlog::error(
-        "Error: Directory must contain at least 9 image (.png, .jpg, .jpeg) "
-        "files.");
+  if (rgbImages.size() < 9 || intensityImages.size() < 9 ||
+      xyzImages.size() < 9) {
+    spdlog::error("Error: Directory must contain at least 9 image files.");
     return -1;
   } else {
     spdlog::info("Directory opened successfully: \n{}", dirPath.string());
   }
 
+  spdlog::info("Loaded {} RGB images, {} Intensity images, {} XYZ images",
+               rgbImages.size(), intensityImages.size(), xyzImages.size());
+  if (!rgbImages.empty()) {
+    spdlog::info("First RGB image channels: {}", rgbImages[0].channels());
+  }
+  if (!intensityImages.empty()) {
+    spdlog::info("First Intensity image channels: {}",
+                 intensityImages[0].channels());
+  }
+  if (!xyzImages.empty()) {
+    spdlog::info("First XYZ image channels: {}, type: {}, size: {}x{}",
+                 xyzImages[0].channels(), xyzImages[0].type(),
+                 xyzImages[0].cols, xyzImages[0].rows);
+  }
+
   cv::Size gSize{cv::Size(5, 4)};
   std::optional<calibration::CalibrationMetrics> rgbMetrics{
-      calibration::calibrateCamera(images, gSize, cv::CALIB_CB_SYMMETRIC_GRID,
+      calibration::calibrateCamera(rgbImages, gSize,
+                                   cv::CALIB_CB_SYMMETRIC_GRID,
                                    calibration::createBlobDetector())};
 
   if (rgbMetrics == std::nullopt) {
     spdlog::error("RGB Calibration failed.");
   } else {
-    std::ostringstream oss1, oss2;
-    oss1 << (*rgbMetrics).intrinsicMatrix;
-    oss2 << (*rgbMetrics).distCoeffs;
-    spdlog::info("RGB Intrinsic Matrix: \n{}", oss1.str());
-    spdlog::info("RGB Distortion Coeffs: \n{}", oss2.str());
+    std::ostringstream ossi1, ossd1;
+    ossi1 << (*rgbMetrics).intrinsicMatrix;
+    ossd1 << (*rgbMetrics).distCoeffs;
+    spdlog::info("RGB Intrinsic Matrix: \n{}", ossi1.str());
+    spdlog::info("RGB Distortion Coeffs: \n{}", ossd1.str());
   }
 
-  std::optional<calibration::CalibrationMetrics> depthMetrics =
-      calibration::getDepthCameraCalibration();
+  std::vector<cv::Mat> boostedIntensityImages;
+  for (cv::Mat img : intensityImages) {
+    std::optional<cv::Mat> boosted = calibration::boostIntensity(img);
+    if (boosted != std::nullopt) {
+      boostedIntensityImages.push_back(*boosted);
+    } else {
+      spdlog::warn("Failed to boost an intensity image.");
+    }
+  }
+
+  std::optional<calibration::CalibrationMetrics> depthMetrics{
+      calibration::calibrateCamera(boostedIntensityImages, gSize,
+                                   cv::CALIB_CB_SYMMETRIC_GRID,
+                                   calibration::createBlobDetector())};
 
   if (depthMetrics == std::nullopt) {
     spdlog::error("Could not get depth camera calibration metrics.");
   } else {
-    std::ostringstream oss3, oss4;
-    oss3 << (*depthMetrics).intrinsicMatrix;
-    oss4 << (*depthMetrics).distCoeffs;
-    spdlog::info("Depth Intrinsic Matrix: \n{}", oss3.str());
-    spdlog::info("Depth Distortion Coeffs: \n{}", oss4.str());
+    std::ostringstream ossi2, ossd2;
+    ossi2 << (*depthMetrics).intrinsicMatrix;
+    ossd2 << (*depthMetrics).distCoeffs;
+    spdlog::info("Depth Intrinsic Matrix: \n{}", ossi2.str());
+    spdlog::info("Depth Distortion Coeffs: \n{}", ossd2.str());
   }
 
-  if (rgbMetrics != std::nullopt && depthMetrics != std::nullopt) {
-    if (calibration::saveMetrics(*rgbMetrics, *depthMetrics) < 0) {
-      spdlog::error("Failed to save Calibration Metrics");
-    } else {
-      spdlog::info("Successfully saved Calibration Metrics");
+  cv::Mat distorted{rgbImages[5]};
+  cv::Mat undistorted{calibration::testUndistortion(
+      (*rgbMetrics).intrinsicMatrix, (*rgbMetrics).distCoeffs, distorted)};
+
+  calibration::showWithChafa(distorted, "Distorted");
+  calibration::showWithChafa(undistorted, "Undistorted");
+
+  int imageIndex{0};
+  cv::Mat tritonMonoImage{rgbImages[imageIndex]};
+  cv::Mat heliosIntensityImage{boostedIntensityImages[imageIndex]};
+  cv::Mat heliosXyzImage{xyzImages[imageIndex]};
+
+  calibration::showWithChafa(tritonMonoImage, "triton_mono");
+  calibration::showWithChafa(heliosIntensityImage, "helios_intensity");
+
+  // For xyz image, visualize the Z channel as grayscale
+  if (!heliosXyzImage.empty() && heliosXyzImage.type() == CV_32FC3) {
+    std::vector<cv::Mat> xyz_channels;
+    cv::split(heliosXyzImage, xyz_channels);
+    cv::Mat z_vis;
+    double minz, maxz;
+    cv::minMaxLoc(xyz_channels[2], &minz, &maxz);
+    if (maxz > minz) {
+      xyz_channels[2].convertTo(z_vis, CV_8U, 255.0 / (maxz - minz),
+                                -minz * 255.0 / (maxz - minz));
+      calibration::showWithChafa(z_vis, "helios_xyz_flat");
     }
   }
 
-  cv::Mat tritonMonoImage;
-  cv::Mat heliosIntensityImage;
-  cv::Mat heliosXyzImage;
+  std::optional<cv::Mat> tritonToHeliosExtrinsicMatrix{std::nullopt},
+      heliosToTritonExtrinsicMatrix{std::nullopt};
 
-  std::optional<calibration::ExtrinsicMetrics> eMetrics{
+  std::optional<calibration::ExtrinsicMetrics> tritonToHeliosExtrinsicMetrics{
       calibration::getExtrinsics(
           tritonMonoImage, heliosIntensityImage, heliosXyzImage,
           (*rgbMetrics).intrinsicMatrix, (*rgbMetrics).distCoeffs, gSize,
           cv::CALIB_CB_SYMMETRIC_GRID, calibration::createBlobDetector())};
 
-  if (eMetrics == std::nullopt) {
-    spdlog::error("Extrinsic calibration failed.");
+  if (tritonToHeliosExtrinsicMetrics == std::nullopt) {
+    spdlog::error("Extrinsic calibration (triton to helios) failed.");
     return -1;
   } else {
-    spdlog::info("Extrinsic calibration successful.");
+    spdlog::info("Extrinsic calibration (triton to helios) successful.");
+    tritonToHeliosExtrinsicMatrix = calibration::constructExtrinsicMatrix(
+        tritonToHeliosExtrinsicMetrics->rvec,
+        tritonToHeliosExtrinsicMetrics->tvec);
+    std::ostringstream osse1;
+    osse1 << *tritonToHeliosExtrinsicMatrix;
+    spdlog::info("Constructed Extrinsic Matrix (triton to helios):\n{}",
+                 osse1.str());
   }
 
-  int successfulExtrinsicSave{calibration::saveExtrinsics(*eMetrics)};
-  if (successfulExtrinsicSave < 0) {
-    spdlog::error("Failed to save extrinsic calibration metrics.");
-    return -1;
+  std::optional<calibration::ExtrinsicMetrics> heliosToTritonExtrinsicMetrics{
+      calibration::getExtrinsics(
+          heliosIntensityImage, tritonMonoImage, heliosXyzImage,
+          (*depthMetrics).intrinsicMatrix, (*depthMetrics).distCoeffs, gSize,
+          cv::CALIB_CB_SYMMETRIC_GRID, calibration::createBlobDetector())};
+
+  if (heliosToTritonExtrinsicMetrics == std::nullopt) {
+    spdlog::error("Extrinsic calibration (helios to triton) failed.");
   } else {
-    spdlog::info("Successfully saved extrinsic calibration metrics.");
+    spdlog::info("Extrinsic calibration (helios to triton) successful.");
+    heliosToTritonExtrinsicMatrix = calibration::constructExtrinsicMatrix(
+        heliosToTritonExtrinsicMetrics->rvec,
+        heliosToTritonExtrinsicMetrics->tvec);
+    std::ostringstream osse2;
+    osse2 << *heliosToTritonExtrinsicMatrix;
+    spdlog::info("Constructed Extrinsic Matrix (helios to triton):\n{}",
+                 osse2.str());
+  }
+
+  if (rgbMetrics != std::nullopt && depthMetrics != std::nullopt &&
+      tritonToHeliosExtrinsicMetrics != std::nullopt &&
+      heliosToTritonExtrinsicMetrics != std::nullopt) {
+    if (calibration::saveMetrics(*rgbMetrics, *depthMetrics,
+                                 *tritonToHeliosExtrinsicMatrix,
+                                 *heliosToTritonExtrinsicMatrix) < 0) {
+      spdlog::error("Failed to save Calibration Metrics");
+    } else {
+      spdlog::info("Successfully saved Calibration Metrics");
+    }
   }
 
   return 0;

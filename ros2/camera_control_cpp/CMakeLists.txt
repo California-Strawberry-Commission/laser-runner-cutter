@@ -99,7 +99,8 @@ target_link_libraries(calibrate PRIVATE ${ARENA_LIBS} ${OpenCV_LIBS} fmt::fmt)
 ament_target_dependencies(calibrate PUBLIC rclcpp std_msgs OpenCV)
 
 add_executable(test_getPosition src/tools/test_getPosition.cpp)
-target_link_libraries(test_getPosition PRIVATE ${OpenCV_LIBS} fmt::fmt)
+target_include_directories(test_getPosition PUBLIC ${ARENA_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(test_getPosition PRIVATE ${ARENA_LIBS} ${OpenCV_LIBS} fmt::fmt)
 ament_target_dependencies(test_getPosition PUBLIC rclcpp std_msgs OpenCV)
 
 #############
