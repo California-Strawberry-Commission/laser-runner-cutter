@@ -1,0 +1,103 @@
+cmake_minimum_required(VERSION 3.8)
+project(detection_cpp)
+
+# Default to C++17
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+endif()
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-fpermissive -Wall -Wextra -Wpedantic -Wno-unknown-pragmas)
+endif()
+
+# Find dependencies
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
+find_package(camera_control_interfaces REQUIRED)
+find_package(spdlog REQUIRED)
+find_package(fmt REQUIRED)
+find_package(OpenCV REQUIRED)
+find_package(cv_bridge REQUIRED)
+
+###########
+## Build ##
+###########
+
+include_directories(include)
+
+# Add Arena SDK
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+    set(ARENA_SDK_PATH "/opt/ArenaSDK/ArenaSDK_Linux_x64")
+    link_directories(
+      ${ARENA_SDK_PATH}/lib64
+      ${ARENA_SDK_PATH}/GenICam/library/lib/Linux64_x64
+      ${ARENA_SDK_PATH}/ffmpeg
+    )
+elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+    set(ARENA_SDK_PATH "/opt/ArenaSDK/ArenaSDK_Linux_ARM64")
+    link_directories(
+      ${ARENA_SDK_PATH}/lib
+      ${ARENA_SDK_PATH}/GenICam/library/lib/Linux64_ARM
+      ${ARENA_SDK_PATH}/ffmpeg
+    )
+else()
+    message(FATAL_ERROR "Unsupported architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+set(GENICAM_LIBS
+  GCBase_gcc54_v3_3_LUCID
+  GenApi_gcc54_v3_3_LUCID
+  Log_gcc54_v3_3_LUCID
+  log4cpp_gcc54_v3_3_LUCID
+  MathParser_gcc54_v3_3_LUCID
+  NodeMapData_gcc54_v3_3_LUCID
+  XmlParser_gcc54_v3_3_LUCID
+)
+set(FFMPEG_LIBS avcodec avformat avutil swresample)
+set(ARENA_LIBS arena save gentl ${GENICAM_LIBS} ${FFMPEG_LIBS} pthread lucidlog)
+set(ARENA_INCLUDE_DIRS
+  ${ARENA_SDK_PATH}/include/Arena
+  ${ARENA_SDK_PATH}/include/Save
+  ${ARENA_SDK_PATH}/include/GenTL
+  ${ARENA_SDK_PATH}/GenICam/library/CPP/include
+)
+
+# Add BS Thread Pool
+include_directories(third_party/bs_thread_pool/include)
+
+# Node executable
+add_executable(detection_node
+  src/detection_node.cpp
+)
+target_link_libraries(detection_node PRIVATE fmt::fmt)
+ament_target_dependencies(detection_node PUBLIC
+  rclcpp
+  std_msgs
+  std_srvs
+  camera_control_interfaces
+  cv_bridge
+  OpenCV
+)
+
+# Tools
+add_executable(test_singleFrame src/tools/test_singleFrame.cpp)
+target_link_libraries(test_singleFrame PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS} fmt::fmt)
+ament_target_dependencies(test_singleFrame PUBLIC rclcpp std_msgs OpenCV)
+
+#############
+## Install ##
+#############
+
+install(TARGETS
+  detection_node
+  test_singleFrame
+  DESTINATION lib/${PROJECT_NAME})
+
+# Install launch files
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}/
+)
+
+ament_package()
