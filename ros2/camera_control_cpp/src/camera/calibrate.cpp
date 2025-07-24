@@ -4,6 +4,9 @@
 
 #include "spdlog/spdlog.h"
 
+std::string calibration::calibrationParamsDir =
+    std::string(std::getenv("PWD")) + "/camera_control_cpp/calibration_params/";
+
 cv::Mat calibration::constructExtrinsicMatrix(const cv::Mat& rvec,
                                               const cv::Mat& tvec) {
   cv::Mat R;
@@ -282,7 +285,7 @@ cv::Mat calibration::scaleGrayscaleImage(const cv::Mat& monoImage) {
 
 std::optional<calibration::ExtrinsicMetrics> calibration::getExtrinsics(
     const cv::Mat& fromImage, const cv::Mat& toImage, const cv::Mat& xyzImage,
-    const cv::Mat& fromIntrinsicMatrix, const cv::Mat& fromDistortionCoeffs,
+    const cv::Mat& toIntrinsicMatrix, const cv::Mat& toDistortionCoeffs,
     const cv::Size& gridSize, const int& gridType,
     const cv::Ptr<cv::FeatureDetector>& blobDetector) {
   if (fromImage.empty()) {
@@ -297,11 +300,11 @@ std::optional<calibration::ExtrinsicMetrics> calibration::getExtrinsics(
     spdlog::warn("Invalid xyzImage matrix.");
     return std::nullopt;
   }
-  if (fromIntrinsicMatrix.empty()) {
+  if (toIntrinsicMatrix.empty()) {
     spdlog::warn("\"From\" intrinsic matrix is invalid.");
     return std::nullopt;
   }
-  if (fromDistortionCoeffs.empty()) {
+  if (toDistortionCoeffs.empty()) {
     spdlog::warn("\"From\" distortion coefficients are invalid.");
     return std::nullopt;
   }
@@ -325,22 +328,72 @@ std::optional<calibration::ExtrinsicMetrics> calibration::getExtrinsics(
     return std::nullopt;
   }
 
-  std::vector<cv::Point> toPixelCoords;
-  for (const cv::Point2f& pt : toCircleCenters) {
-    toPixelCoords.emplace_back(cv::Point(cvRound(pt.x), cvRound(pt.y)));
+  std::vector<cv::Point> fromPixelCoords;
+  for (const cv::Point2f& pt : fromCircleCenters) {
+    fromPixelCoords.emplace_back(cv::Point(cvRound(pt.x), cvRound(pt.y)));
   }
 
-  std::vector<cv::Point3f> toCirclePositions;
-  for (const cv::Point& pt : toPixelCoords) {
-    const cv::Vec3f& vec{xyzImage.at<cv::Vec3f>(pt.x, pt.y)};
-    toCirclePositions.emplace_back(cv::Point3f(vec));
+  std::vector<cv::Point3f> fromCirclePositions;
+  for (const cv::Point& pt : fromPixelCoords) {
+    const cv::Vec3f& vec{xyzImage.at<cv::Vec3f>(pt.y, pt.x)};
+    fromCirclePositions.emplace_back(cv::Point3f(vec) * (1.0f/1000.0f));
   }
+
+
+  // Generate synthetic grid layout (in meters)
+  const float squareSize = 0.05f; // 50 mm or adjust to match your calibration target
+  std::vector<cv::Point3f> objectPoints;
+  for (int i = 0; i < gridSize.height; ++i) {
+    for (int j = 0; j < gridSize.width; ++j) {
+      objectPoints.emplace_back(j * squareSize, i * squareSize, 0.0f);
+    }
+  }
+
+  spdlog::info("solvePnP input:");
+  // Log 3D object points (fromCirclePositions)
+  std::ostringstream oss_obj;
+  oss_obj << "[";
+  for (size_t i = 0; i < fromCirclePositions.size(); ++i) {
+    oss_obj << "(" << fromCirclePositions[i].x << ", "
+            << fromCirclePositions[i].y << ", "
+            << fromCirclePositions[i].z << ")";
+    if (i != fromCirclePositions.size() - 1) oss_obj << ", ";
+  }
+  oss_obj << "]";
+  spdlog::info("Object Points (fromCirclePositions): {}", oss_obj.str());
+
+  // Log 2D image points (toCircleCenters)
+  std::ostringstream oss_img;
+  oss_img << "[";
+  for (size_t i = 0; i < toCircleCenters.size(); ++i) {
+    oss_img << "(" << toCircleCenters[i].x << ", "
+            << toCircleCenters[i].y << ")";
+    if (i != toCircleCenters.size() - 1) oss_img << ", ";
+  }
+  oss_img << "]";
+  spdlog::info("Image Points (toCircleCenters): {}", oss_img.str());
+
+  // Log intrinsic matrix
+  std::ostringstream oss_intr;
+  oss_intr << toIntrinsicMatrix;
+  spdlog::info("Intrinsic Matrix:\n{}", oss_intr.str());
+
+  // Log distortion coefficients
+  std::ostringstream oss_dist;
+  oss_dist << toDistortionCoeffs;
+  spdlog::info("Distortion Coefficients:\n{}", oss_dist.str());
 
   calibration::ExtrinsicMetrics metrics;
   /*  "FROM" universe --> "TO" universe */
-  bool pnpRetval{cv::solvePnP(toCirclePositions, fromCircleCenters,
-                              fromIntrinsicMatrix, fromDistortionCoeffs,
+  bool pnpRetval{cv::solvePnP(fromCirclePositions, toCircleCenters,
+                              toIntrinsicMatrix, toDistortionCoeffs,
                               metrics.rvec, metrics.tvec)};
+  std::ostringstream oss_rvec;
+  oss_rvec << metrics.rvec;
+  spdlog::info("rvec (rotation): {}", oss_rvec.str());
+  spdlog::info("tvec (translation): [{}, {}, {}] meters",
+               metrics.tvec.at<double>(0), metrics.tvec.at<double>(1),
+               metrics.tvec.at<double>(2));
   if (pnpRetval) {
     return metrics;
   } else {
@@ -503,7 +556,7 @@ int calibration::showWithChafa(const cv::Mat& img, const std::string& label) {
         label);
     std::string tmpfile = "/tmp/" + label + ".png";
     cv::imwrite(tmpfile, img);
-    std::string cmd = "chafa " + tmpfile;
+    std::string cmd = "chafa " + tmpfile + "--exact";
     std::cout << "=== " << label << " ===" << std::endl;
     std::system(cmd.c_str());
     std::remove(tmpfile.c_str());
@@ -519,6 +572,8 @@ int calibration::showWithChafa(const cv::Mat& img, const std::string& label) {
   }
   return 0;
 };
+
+#ifndef CALIBRATE_AS_LIBRARY
 
 int main(int argc, char* argv[]) {
   if (argc != 2) {
@@ -688,7 +743,7 @@ int main(int argc, char* argv[]) {
   std::optional<calibration::ExtrinsicMetrics> tritonToHeliosExtrinsicMetrics{
       calibration::getExtrinsics(
           tritonMonoImage, heliosIntensityImage, heliosXyzImage,
-          (*rgbMetrics).intrinsicMatrix, (*rgbMetrics).distCoeffs, gSize,
+          (*depthMetrics).intrinsicMatrix, (*depthMetrics).distCoeffs, gSize,
           cv::CALIB_CB_SYMMETRIC_GRID, calibration::createBlobDetector())};
 
   if (tritonToHeliosExtrinsicMetrics == std::nullopt) {
@@ -708,7 +763,7 @@ int main(int argc, char* argv[]) {
   std::optional<calibration::ExtrinsicMetrics> heliosToTritonExtrinsicMetrics{
       calibration::getExtrinsics(
           heliosIntensityImage, tritonMonoImage, heliosXyzImage,
-          (*depthMetrics).intrinsicMatrix, (*depthMetrics).distCoeffs, gSize,
+          (*rgbMetrics).intrinsicMatrix, (*rgbMetrics).distCoeffs, gSize,
           cv::CALIB_CB_SYMMETRIC_GRID, calibration::createBlobDetector())};
 
   if (heliosToTritonExtrinsicMetrics == std::nullopt) {
@@ -738,3 +793,5 @@ int main(int argc, char* argv[]) {
 
   return 0;
 }
+
+#endif

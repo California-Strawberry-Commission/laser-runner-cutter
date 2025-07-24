@@ -9,8 +9,7 @@
 
 namespace calibration {
 
-std::string calibrationParamsDir =
-    std::string(std::getenv("PWD")) + "/camera_control_cpp/calibration_params/";
+extern std::string calibrationParamsDir;
 
 struct ReprojectErrors {
   float meanError;
@@ -146,17 +145,20 @@ cv::Mat scaleGrayscaleImage(const cv::Mat& monoImage);
  */
 std::optional<calibration::ExtrinsicMetrics> getExtrinsics(
     const cv::Mat& fromImage, const cv::Mat& toImage, const cv::Mat& xyzImage,
-    const cv::Mat& fromIntrinsicMatrix, const cv::Mat& fomDistortionCoeffs,
+    const cv::Mat& toIntrinsicMatrix, const cv::Mat& toDistortionCoeffs,
     const cv::Size& gridSize, const int& gridType = cv::CALIB_CB_SYMMETRIC_GRID,
     const cv::Ptr<cv::FeatureDetector>& blobDetector = nullptr);
 
 /**
- * Saves the calibration metrics for color and depth cameras, along with the extrinsic matrices.
+ * Saves the calibration metrics for color and depth cameras, along with the
+ * extrinsic matrices.
  *
  * @param colorMetrics Calibration metrics for the color camera.
  * @param depthMetrics Calibration metrics for the depth camera.
- * @param tritonToHeliosExtrinsicMatrix 4x4 extrinsic matrix from Triton to Helios.
- * @param heliosToTritonExtrinsicMatrix 4x4 extrinsic matrix from Helios to Triton.
+ * @param tritonToHeliosExtrinsicMatrix 4x4 extrinsic matrix from Triton to
+ * Helios.
+ * @param heliosToTritonExtrinsicMatrix 4x4 extrinsic matrix from Helios to
+ * Triton.
  * @return int Returns 0 on success, or a non-zero error code on failure.
  */
 int saveMetrics(const calibration::CalibrationMetrics& colorMetrics,

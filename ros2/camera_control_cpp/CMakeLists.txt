@@ -98,9 +98,10 @@ target_include_directories(calibrate PUBLIC ${ARENA_INCLUDE_DIRS} ${OpenCV_INCLU
 target_link_libraries(calibrate PRIVATE ${ARENA_LIBS} ${OpenCV_LIBS} fmt::fmt)
 ament_target_dependencies(calibrate PUBLIC rclcpp std_msgs OpenCV)
 
-add_executable(test_getPosition src/tools/test_getPosition.cpp)
+add_executable(test_getPosition src/tools/test_getPosition.cpp src/camera/calibrate.cpp)
 target_include_directories(test_getPosition PUBLIC ${ARENA_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS})
-target_link_libraries(test_getPosition PRIVATE ${ARENA_LIBS} ${OpenCV_LIBS} fmt::fmt)
+target_link_libraries(test_getPosition PRIVATE ${ARENA_LIBS} ${OpenCV_LIBS} fmt::fmt camera)
+target_compile_definitions(test_getPosition PRIVATE CALIBRATE_AS_LIBRARY)  # This disables main in calibrate.cpp
 ament_target_dependencies(test_getPosition PUBLIC rclcpp std_msgs OpenCV)
 
 #############

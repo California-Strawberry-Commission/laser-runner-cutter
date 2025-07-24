@@ -53,7 +53,7 @@ cv::Vec3f LucidFrame::transformPosition(const cv::Vec3f& position,
                                         const cv::Mat extrinsic) const {
   cv::Mat homogeneousPosition{
       (cv::Mat_<double>(4, 1) << position[0], position[1], position[2], 1.0)};
-  cv::Mat transformed{homogeneousPosition * extrinsic};
+  cv::Mat transformed{extrinsic * homogeneousPosition};
   return cv::Vec3f(transformed.at<double>(0), transformed.at<double>(1),
                    transformed.at<double>(2));
 }
@@ -73,12 +73,12 @@ cv::Point2i LucidFrame::projectPosition(
 
   std::vector<cv::Point3f> objectPoints{
       {cv::Point3f(position[0], position[1], position[2])}};
-  std::vector<cv::Point3f> imagePoints;
+  std::vector<cv::Point2f> imagePoints;
 
   cv::projectPoints(objectPoints, rvec, tvec, cameraMatrix, distCoeffs,
                     imagePoints);
 
-  return cv::Point2i(cvRound(imagePoints[0].x), cvRound(imagePoints[0].x));
+  return cv::Point2i(cvRound(imagePoints[0].x), cvRound(imagePoints[0].y));
 }
 
 cv::Point2i LucidFrame::adjustPixelToBounds(const cv::Point2i& pixel, int width,
