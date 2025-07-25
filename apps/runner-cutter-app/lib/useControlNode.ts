@@ -160,6 +160,36 @@ export default function useControlNode(nodeName: string) {
     successOutputMapper
   );
 
+  const getCalibrationGridSize = node.useGetParam<number[]>(
+    "calibration_grid_size"
+  );
+  const setCalibrationGridSize = node.useSetParam(
+    "calibration_grid_size",
+    ParamType.INTEGER_ARRAY,
+    useCallback(
+      (numPointsX: number, numPointsY: number) => [numPointsX, numPointsY],
+      []
+    )
+  );
+
+  const getCalibrationXBounds = node.useGetParam<number[]>(
+    "calibration_x_bounds"
+  );
+  const setCalibrationXBounds = node.useSetParam(
+    "calibration_x_bounds",
+    ParamType.DOUBLE_ARRAY,
+    useCallback((min: number, max: number) => [min, max], [])
+  );
+
+  const getCalibrationYBounds = node.useGetParam<number[]>(
+    "calibration_y_bounds"
+  );
+  const setCalibrationYBounds = node.useSetParam(
+    "calibration_y_bounds",
+    ParamType.DOUBLE_ARRAY,
+    useCallback((min: number, max: number) => [min, max], [])
+  );
+
   const getTrackingLaserColor = node.useGetParam<number[]>(
     "tracking_laser_color"
   );
@@ -215,6 +245,12 @@ export default function useControlNode(nodeName: string) {
     startRunnerCutter,
     startCircleFollower,
     stop,
+    getCalibrationGridSize,
+    setCalibrationGridSize,
+    getCalibrationXBounds,
+    setCalibrationXBounds,
+    getCalibrationYBounds,
+    setCalibrationYBounds,
     getTrackingLaserColor,
     setTrackingLaserColor,
     getBurnLaserColor,
