@@ -5,7 +5,7 @@
 #include "spdlog/spdlog.h"
 
 std::string calibration::calibrationParamsDir =
-    std::string(std::getenv("PWD")) + "/camera_control_cpp/calibration_params/";
+    std::string(std::getenv("PWD")) + "/camera_control_cpp/calibration_params/"; // TODO: PROBABLY NOT STABLE
 
 cv::Mat calibration::constructExtrinsicMatrix(const cv::Mat& rvec,
                                               const cv::Mat& tvec) {
@@ -312,19 +312,19 @@ std::optional<calibration::ExtrinsicMetrics> calibration::getExtrinsics(
   cv::Mat scaledFromImage = calibration::scaleGrayscaleImage(fromImage);
   cv::Mat scaledToImage = calibration::scaleGrayscaleImage(toImage);
 
-  std::vector<cv::Point2f> fromCircleCenters;
-  bool fromRetval{cv::findCirclesGrid(
-      scaledFromImage, gridSize, fromCircleCenters, gridType, blobDetector)};
-  if (fromRetval == false) {
-    spdlog::warn("Could not get circle centers from Triton mono image.");
-    return std::nullopt;
-  }
-
   std::vector<cv::Point2f> toCircleCenters;
   bool toRetval{cv::findCirclesGrid(scaledToImage, gridSize, toCircleCenters,
                                     gridType, blobDetector)};
   if (toRetval == false) {
     spdlog::warn("Could not get circle centers from Helios intensity image.");
+    return std::nullopt;
+  }
+
+  std::vector<cv::Point2f> fromCircleCenters;
+  bool fromRetval{cv::findCirclesGrid(
+      scaledFromImage, gridSize, fromCircleCenters, gridType, blobDetector)};
+  if (fromRetval == false) {
+    spdlog::warn("Could not get circle centers from Triton mono image.");
     return std::nullopt;
   }
 
@@ -336,17 +336,7 @@ std::optional<calibration::ExtrinsicMetrics> calibration::getExtrinsics(
   std::vector<cv::Point3f> fromCirclePositions;
   for (const cv::Point& pt : fromPixelCoords) {
     const cv::Vec3f& vec{xyzImage.at<cv::Vec3f>(pt.y, pt.x)};
-    fromCirclePositions.emplace_back(cv::Point3f(vec) * (1.0f/1000.0f));
-  }
-
-
-  // Generate synthetic grid layout (in meters)
-  const float squareSize = 0.05f; // 50 mm or adjust to match your calibration target
-  std::vector<cv::Point3f> objectPoints;
-  for (int i = 0; i < gridSize.height; ++i) {
-    for (int j = 0; j < gridSize.width; ++j) {
-      objectPoints.emplace_back(j * squareSize, i * squareSize, 0.0f);
-    }
+    fromCirclePositions.emplace_back(cv::Point3f(vec));
   }
 
   spdlog::info("solvePnP input:");
@@ -391,7 +381,7 @@ std::optional<calibration::ExtrinsicMetrics> calibration::getExtrinsics(
   std::ostringstream oss_rvec;
   oss_rvec << metrics.rvec;
   spdlog::info("rvec (rotation): {}", oss_rvec.str());
-  spdlog::info("tvec (translation): [{}, {}, {}] meters",
+  spdlog::info("tvec (translation): [{}, {}, {}]",
                metrics.tvec.at<double>(0), metrics.tvec.at<double>(1),
                metrics.tvec.at<double>(2));
   if (pnpRetval) {
@@ -405,8 +395,8 @@ std::optional<calibration::ExtrinsicMetrics> calibration::getExtrinsics(
 int calibration::saveMetrics(
     const calibration::CalibrationMetrics& rgbMetrics,
     const calibration::CalibrationMetrics& depthMetrics,
-    const cv::Mat& tritonToHeliosExtrinsicMatrix,
-    const cv::Mat& heliosToTritonExtrinsicMatrix) {
+    const cv::Mat& xyzToTritonExtrinsicMatrix,
+    const cv::Mat& xyzToHeliosExtrinsicMatrix) {
   if (!std::filesystem::exists(calibration::calibrationParamsDir)) {
     spdlog::warn("Output dir for saving metrics DNE: {}",
                  calibration::calibrationParamsDir);
@@ -463,29 +453,29 @@ int calibration::saveMetrics(
   }
 
   try {
-    cv::FileStorage tritonToHeliosExtrinsicMatrixFile(
+    cv::FileStorage xyzToTritonExtrinsicMatrixFile(
         calibration::calibrationParamsDir +
-            "triton_to_helios_extrinsic_matrix.yml",
+            "xyz_to_triton_extrinsic_matrix.yml",
         cv::FileStorage::WRITE);
-    tritonToHeliosExtrinsicMatrixFile.write("Extrinsic Matrix",
-                                            tritonToHeliosExtrinsicMatrix);
-    tritonToHeliosExtrinsicMatrixFile.release();
+    xyzToTritonExtrinsicMatrixFile.write("Extrinsic Matrix",
+                                            xyzToTritonExtrinsicMatrix);
+    xyzToTritonExtrinsicMatrixFile.release();
   } catch (const cv::Exception& e) {
-    spdlog::error("OpenCV error saving triton to helios extrinsic matrix: {}",
+    spdlog::error("OpenCV error saving xyz to triton extrinsic matrix: {}",
                   e.what());
     return -1;
   }
 
   try {
-    cv::FileStorage heliosToTritonExtrinsicMatrixFile(
+    cv::FileStorage xyzToHeliosExtrinsicMatrixFile(
         calibration::calibrationParamsDir +
-            "helios_to_triton_extrinsic_matrix.yml",
+            "xyz_to_helios_extrinsic_matrix.yml",
         cv::FileStorage::WRITE);
-    heliosToTritonExtrinsicMatrixFile.write("Extrinsic Matrix",
-                                            heliosToTritonExtrinsicMatrix);
-    heliosToTritonExtrinsicMatrixFile.release();
+    xyzToHeliosExtrinsicMatrixFile.write("Extrinsic Matrix",
+                                            xyzToHeliosExtrinsicMatrix);
+    xyzToHeliosExtrinsicMatrixFile.release();
   } catch (const cv::Exception& e) {
-    spdlog::error("OpenCV error saving helios to triton extrinsic matrix: {}",
+    spdlog::error("OpenCV error saving xyz to helios extrinsic matrix: {}",
                   e.what());
     return -1;
   }
@@ -715,6 +705,8 @@ int main(int argc, char* argv[]) {
   calibration::showWithChafa(distorted, "Distorted");
   calibration::showWithChafa(undistorted, "Undistorted");
 
+
+
   int imageIndex{0};
   cv::Mat tritonMonoImage{rgbImages[imageIndex]};
   cv::Mat heliosIntensityImage{boostedIntensityImages[imageIndex]};
@@ -737,54 +729,54 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  std::optional<cv::Mat> tritonToHeliosExtrinsicMatrix{std::nullopt},
-      heliosToTritonExtrinsicMatrix{std::nullopt};
+  std::optional<cv::Mat> xyzToTritonExtrinsicMatrix{std::nullopt},
+      xyzToHeliosExtrinsicMatrix{std::nullopt};
 
-  std::optional<calibration::ExtrinsicMetrics> tritonToHeliosExtrinsicMetrics{
-      calibration::getExtrinsics(
-          tritonMonoImage, heliosIntensityImage, heliosXyzImage,
-          (*depthMetrics).intrinsicMatrix, (*depthMetrics).distCoeffs, gSize,
-          cv::CALIB_CB_SYMMETRIC_GRID, calibration::createBlobDetector())};
-
-  if (tritonToHeliosExtrinsicMetrics == std::nullopt) {
-    spdlog::error("Extrinsic calibration (triton to helios) failed.");
-    return -1;
-  } else {
-    spdlog::info("Extrinsic calibration (triton to helios) successful.");
-    tritonToHeliosExtrinsicMatrix = calibration::constructExtrinsicMatrix(
-        tritonToHeliosExtrinsicMetrics->rvec,
-        tritonToHeliosExtrinsicMetrics->tvec);
-    std::ostringstream osse1;
-    osse1 << *tritonToHeliosExtrinsicMatrix;
-    spdlog::info("Constructed Extrinsic Matrix (triton to helios):\n{}",
-                 osse1.str());
-  }
-
-  std::optional<calibration::ExtrinsicMetrics> heliosToTritonExtrinsicMetrics{
+  std::optional<calibration::ExtrinsicMetrics> xyzToTritonExtrinsicMetrics{
       calibration::getExtrinsics(
           heliosIntensityImage, tritonMonoImage, heliosXyzImage,
           (*rgbMetrics).intrinsicMatrix, (*rgbMetrics).distCoeffs, gSize,
           cv::CALIB_CB_SYMMETRIC_GRID, calibration::createBlobDetector())};
 
-  if (heliosToTritonExtrinsicMetrics == std::nullopt) {
+  if (xyzToTritonExtrinsicMetrics == std::nullopt) {
+    spdlog::error("Extrinsic calibration (triton to helios) failed.");
+    return -1;
+  } else {
+    spdlog::info("Extrinsic calibration (triton to helios) successful.");
+    xyzToTritonExtrinsicMatrix = calibration::constructExtrinsicMatrix(
+        xyzToTritonExtrinsicMetrics->rvec,
+        xyzToTritonExtrinsicMetrics->tvec);
+    std::ostringstream osse1;
+    osse1 << *xyzToTritonExtrinsicMatrix;
+    spdlog::info("Constructed Extrinsic Matrix (triton to helios):\n{}",
+                 osse1.str());
+  }
+
+  std::optional<calibration::ExtrinsicMetrics> xyzToHeliosExtrinsicMetrics{
+      calibration::getExtrinsics(
+          tritonMonoImage, heliosIntensityImage, heliosXyzImage,
+          (*depthMetrics).intrinsicMatrix, (*depthMetrics).distCoeffs, gSize,
+          cv::CALIB_CB_SYMMETRIC_GRID, calibration::createBlobDetector())};
+
+  if (xyzToHeliosExtrinsicMetrics == std::nullopt) {
     spdlog::error("Extrinsic calibration (helios to triton) failed.");
   } else {
     spdlog::info("Extrinsic calibration (helios to triton) successful.");
-    heliosToTritonExtrinsicMatrix = calibration::constructExtrinsicMatrix(
-        heliosToTritonExtrinsicMetrics->rvec,
-        heliosToTritonExtrinsicMetrics->tvec);
+    xyzToHeliosExtrinsicMatrix = calibration::constructExtrinsicMatrix(
+        xyzToHeliosExtrinsicMetrics->rvec,
+        xyzToHeliosExtrinsicMetrics->tvec);
     std::ostringstream osse2;
-    osse2 << *heliosToTritonExtrinsicMatrix;
+    osse2 << *xyzToHeliosExtrinsicMatrix;
     spdlog::info("Constructed Extrinsic Matrix (helios to triton):\n{}",
                  osse2.str());
   }
 
   if (rgbMetrics != std::nullopt && depthMetrics != std::nullopt &&
-      tritonToHeliosExtrinsicMetrics != std::nullopt &&
-      heliosToTritonExtrinsicMetrics != std::nullopt) {
+      xyzToTritonExtrinsicMatrix != std::nullopt &&
+      xyzToHeliosExtrinsicMatrix != std::nullopt) {
     if (calibration::saveMetrics(*rgbMetrics, *depthMetrics,
-                                 *tritonToHeliosExtrinsicMatrix,
-                                 *heliosToTritonExtrinsicMatrix) < 0) {
+                                 *xyzToTritonExtrinsicMatrix,
+                                 *xyzToHeliosExtrinsicMatrix) < 0) {
       spdlog::error("Failed to save Calibration Metrics");
     } else {
       spdlog::info("Successfully saved Calibration Metrics");

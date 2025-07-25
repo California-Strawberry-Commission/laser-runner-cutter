@@ -163,8 +163,8 @@ std::optional<calibration::ExtrinsicMetrics> getExtrinsics(
  */
 int saveMetrics(const calibration::CalibrationMetrics& colorMetrics,
                 const calibration::CalibrationMetrics& depthMetrics,
-                const cv::Mat& tritonToHeliosExtrinsicMatrix,
-                const cv::Mat& heliosToTritonExtrinsicMatrix);
+                const cv::Mat& xyzToTritonExtrinsicMatrix,
+                const cv::Mat& xyzToHeliosExtrinsicMatrix);
 
 /**
  * Enhances the intensity of the input image.
