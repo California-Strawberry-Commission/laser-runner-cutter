@@ -2,6 +2,9 @@
 
 #include <opencv2/opencv.hpp>
 #include <optional>
+#include "spdlog/spdlog.h"
+
+#include "camera_control_cpp/camera/calibrate.hpp"
 
 // General min and max possible depths
 #define DEPTH_MIN_MM 500
@@ -24,6 +27,9 @@ class LucidFrame {
   const cv::Mat& getDepthFrameXyz() const { return depthFrameXyz_; }
   double getTimestampMillis() const { return timestampMillis_; }
 
+
+  cv::Point2i getCorrespondingDepthPixel(const cv::Point2i& colorPixel) const;
+
   /**
    * Given an (x, y) coordinate in the color frame, return the (x, y, z)
    * position with respect to the camera.
@@ -45,13 +51,14 @@ class LucidFrame {
   cv::Mat depthCameraDistortionCoeffs_;
   cv::Mat xyzToColorCameraExtrinsicMatrix_;
   cv::Mat xyzToDepthCameraExtrinsicMatrix_;
+  cv::Mat colorToDepthExtrinsicMatrix_;
   std::pair<int, int> colorFrameOffset_;
 
   cv::Vec3f deprojectPixel(const cv::Point2i& pixel, float depth,
                            const cv::Mat& cameraMatrix,
                            const cv::Mat& distCoeffs) const;
   cv::Vec3f transformPosition(const cv::Vec3f& position,
-                              const cv::Mat extrinsic) const;
+                              const cv::Mat& extrinsic) const;
   cv::Point2i projectPosition(const cv::Vec3f& position,
                               const cv::Mat& cameraMatrix,
                               const cv::Mat& distCoeffs,
@@ -62,5 +69,4 @@ class LucidFrame {
                               const cv::Point2i& end) const;
   bool isPixelInLine(const cv::Point2i& curr, const cv::Point2i& start,
                      const cv::Point2i& end) const;
-  cv::Point2i getCorrespondingDepthPixel(const cv::Point2i& colorPixel) const;
 };

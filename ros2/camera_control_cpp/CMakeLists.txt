@@ -71,12 +71,14 @@ include_directories(third_party/bs_thread_pool/include)
 add_library(camera SHARED
   src/camera/lucid_camera.cpp
   src/camera/lucid_frame.cpp
+  src/camera/calibrate.cpp
 )
 target_include_directories(camera PUBLIC
   ${ARENA_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
 )
 target_link_libraries(camera PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS})
+target_compile_definitions(camera PRIVATE CALIBRATE_AS_LIBRARY) 
 
 # Node executable
 add_executable(camera_control_node

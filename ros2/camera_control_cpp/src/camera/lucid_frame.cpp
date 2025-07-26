@@ -18,7 +18,11 @@ LucidFrame::LucidFrame(const cv::Mat& colorFrame, const cv::Mat& depthFrameXyz,
       depthCameraDistortionCoeffs_(depthCameraDistortionCoeffs),
       xyzToColorCameraExtrinsicMatrix_(xyzToColorCameraExtrinsicMatrix),
       xyzToDepthCameraExtrinsicMatrix_(xyzToDepthCameraExtrinsicMatrix),
-      colorFrameOffset_(colorFrameOffset) {}
+      colorFrameOffset_(colorFrameOffset) {
+        // Compute color_to_depth_extrinsic_matrix
+        cv::Mat inverted = calibration::invertExtrinsicMatrix(xyzToColorCameraExtrinsicMatrix_);
+        colorToDepthExtrinsicMatrix_ = xyzToDepthCameraExtrinsicMatrix_ * inverted;
+      }
 
 LucidFrame::~LucidFrame() {}
 
@@ -50,7 +54,7 @@ cv::Vec3f LucidFrame::deprojectPixel(const cv::Point2i& pixel, float depth,
 }
 
 cv::Vec3f LucidFrame::transformPosition(const cv::Vec3f& position,
-                                        const cv::Mat extrinsic) const {
+                                        const cv::Mat& extrinsic) const {
   cv::Mat homogeneousPosition{
       (cv::Mat_<double>(4, 1) << position[0], position[1], position[2], 1.0)};
   cv::Mat transformed{extrinsic * homogeneousPosition};
@@ -58,13 +62,13 @@ cv::Vec3f LucidFrame::transformPosition(const cv::Vec3f& position,
                    transformed.at<double>(2));
 }
 
-cv::Point2i LucidFrame::projectPosition(
-    const cv::Vec3f& position, const cv::Mat& cameraMatrix,
-    const cv::Mat& distCoeffs,
-    const cv::Mat& extrinsicMatrix) const {
+cv::Point2i LucidFrame::projectPosition(const cv::Vec3f& position,
+                                        const cv::Mat& cameraMatrix,
+                                        const cv::Mat& distCoeffs,
+                                        const cv::Mat& extrinsicMatrix) const {
   cv::Mat rvec, tvec;
   if (extrinsicMatrix.empty()) {
-    rvec = cv::Mat::eye(3, 1, CV_64F);
+    rvec = cv::Mat::zeros(3, 1, CV_64F);
     tvec = cv::Mat::zeros(3, 1, CV_64F);
   } else {
     Rodrigues(extrinsicMatrix(cv::Rect(0, 0, 3, 3)), rvec);
@@ -148,6 +152,11 @@ cv::Point2i LucidFrame::getCorrespondingDepthPixel(
   cv::Point2i fullFrameColorPixel{
       colorPixel +
       cv::Point2i(colorFrameOffset_.first, colorFrameOffset_.second)};
+  std::ostringstream ossr;
+  ossr << colorToDepthExtrinsicMatrix_;
+  spdlog::info("color_to_depth_extrinsic_matrix:\n{}", ossr.str());
+  spdlog::info("Finding corresponding depth pixel for color pixel ({}, {})",
+               colorPixel.x, colorPixel.y);
 
   // Min-depth and max-depth positions in color camera-space
   cv::Vec3f minDepthPositionColorSpace{deprojectPixel(
@@ -156,13 +165,23 @@ cv::Point2i LucidFrame::getCorrespondingDepthPixel(
   cv::Vec3f maxDepthPositionColorSpace{deprojectPixel(
       fullFrameColorPixel, DEPTH_MAX_MM, colorCameraIntrinsicMatrix_,
       colorCameraDistortionCoeffs_)};
-
+  spdlog::info("Min depth position in color space: ({}, {}, {})",
+               minDepthPositionColorSpace[0], minDepthPositionColorSpace[1],
+               minDepthPositionColorSpace[2]);
+  spdlog::info("Max depth position in color space: ({}, {}, {})",
+               maxDepthPositionColorSpace[0], maxDepthPositionColorSpace[1],
+               maxDepthPositionColorSpace[2]);
   // Min-depth and max-depth positions in depth camera-space
   cv::Vec3f minDepthPositionDepthSpace{transformPosition(
-      minDepthPositionColorSpace, xyzToDepthCameraExtrinsicMatrix_)};
+      minDepthPositionColorSpace, colorToDepthExtrinsicMatrix_)};
   cv::Vec3f maxDepthPositionDepthSpace{transformPosition(
-      maxDepthPositionColorSpace, xyzToDepthCameraExtrinsicMatrix_)};
-
+      maxDepthPositionColorSpace, colorToDepthExtrinsicMatrix_)};
+  spdlog::info("Min depth position in depth space: ({}, {}, {})",
+               minDepthPositionDepthSpace[0], minDepthPositionDepthSpace[1],
+               minDepthPositionDepthSpace[2]);
+  spdlog::info("Max depth position in depth space: ({}, {}, {})",
+               maxDepthPositionDepthSpace[0], maxDepthPositionDepthSpace[1],
+               maxDepthPositionDepthSpace[2]);
   // Project depth camera-space positions to depth pixels
   cv::Point2i minDepthPixel{projectPosition(minDepthPositionDepthSpace,
                                             depthCameraIntrinsicMatrix_,
@@ -170,13 +189,17 @@ cv::Point2i LucidFrame::getCorrespondingDepthPixel(
   cv::Point2i maxDepthPixel{projectPosition(maxDepthPositionDepthSpace,
                                             depthCameraIntrinsicMatrix_,
                                             depthCameraDistortionCoeffs_)};
-
+  spdlog::info("Min depth pixel: ({}, {})", minDepthPixel.x, minDepthPixel.y);
+  spdlog::info("Max depth pixel: ({}, {})", maxDepthPixel.x, maxDepthPixel.y);
   // Make sure pixel coords are in boundary
   cv::Point2i minDepthPixelAdjusted{adjustPixelToBounds(
       minDepthPixel, depthFrameXyz_.cols, depthFrameXyz_.rows)};
   cv::Point2i maxDepthPixelAdjusted{adjustPixelToBounds(
       maxDepthPixel, depthFrameXyz_.cols, depthFrameXyz_.rows)};
-
+  spdlog::info("Adjusted min depth pixel: ({}, {})", minDepthPixelAdjusted.x,
+               minDepthPixelAdjusted.y);
+  spdlog::info("Adjusted max depth pixel: ({}, {})", maxDepthPixelAdjusted.x,
+               maxDepthPixelAdjusted.y);
   // Search along the line for the depth pixel for which its corresponding
   // projected color pixel is the closest to the target color pixel
   int minDist{-1};
@@ -217,6 +240,8 @@ std::optional<std::tuple<double, double, double>> LucidFrame::getPosition(
   // Negative depth indicates an invalid position. Depth greater than 2^14 - 1
   // also indicates invalid position.
   if (position[2] < 0.0f || position[2] > ((1 << 14) - 1)) {
+    spdlog::warn("Invalid depth value at pixel ({}, {}): {}", depthPixel.x,
+                 depthPixel.y, position[2]);
     return std::nullopt;
   }
   return std::make_tuple(static_cast<double>(position[0]),

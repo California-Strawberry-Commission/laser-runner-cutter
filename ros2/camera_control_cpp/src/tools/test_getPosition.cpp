@@ -117,7 +117,7 @@ int main(int argc, char const* argv[]) {
       1000.0};
 
   cv::Mat rgbIntrinsic, rgbDistortion, depthIntrinsic, depthDistortion,
-      heliosToTritonExtrinsic, tritonToHeliosExtrinsic;
+      xyzToTritonExtrinsic, xyzToHeliosExtrinsic;
 
   std::string rgbIntrinsicPath =
       calibration::calibrationParamsDir + "triton_intrinsic_matrix.yml";
@@ -127,21 +127,21 @@ int main(int argc, char const* argv[]) {
       calibration::calibrationParamsDir + "helios_intrinsic_matrix.yml";
   std::string depthDistortionPath =
       calibration::calibrationParamsDir + "helios_distortion_coeffs.yml";
-  std::string tritonToHeliosExtrinsicPath =
+  std::string xyzToTritonExtrinsicPath =
       calibration::calibrationParamsDir +
-      "triton_to_helios_extrinsic_matrix.yml";
-  std::string heliosToTritonExtrinsicPath =
+      "xyz_to_triton_extrinsic_matrix.yml";
+  std::string xyzToHeliosExtrinsicPath =
       calibration::calibrationParamsDir +
-      "helios_to_triton_extrinsic_matrix.yml";
+      "xyz_to_helios_extrinsic_matrix.yml";
 
   std::vector<std::tuple<std::string, cv::Mat*, std::string>> paths = {
       {rgbIntrinsicPath, &rgbIntrinsic, "Intrinsic Matrix"},
       {rgbDistortionPath, &rgbDistortion, "Distortion Coefficients"},
       {depthIntrinsicPath, &depthIntrinsic, "Intrinsic Matrix"},
       {depthDistortionPath, &depthDistortion, "Distortion Coefficients"},
-      {tritonToHeliosExtrinsicPath, &tritonToHeliosExtrinsic,
+      {xyzToTritonExtrinsicPath, &xyzToTritonExtrinsic,
        "Extrinsic Matrix"},
-      {heliosToTritonExtrinsicPath, &heliosToTritonExtrinsic,
+      {xyzToHeliosExtrinsicPath, &xyzToHeliosExtrinsic,
        "Extrinsic Matrix"}};
 
   for (const auto& [path, matPtr, key] : paths) {
@@ -172,52 +172,34 @@ int main(int argc, char const* argv[]) {
 
   LucidFrame frame(tritonMonoImage, xyzImage, timestampMillis,
                    rgbIntrinsic, rgbDistortion, depthIntrinsic, depthDistortion,
-                   heliosToTritonExtrinsic, tritonToHeliosExtrinsic);
+                   xyzToTritonExtrinsic, xyzToHeliosExtrinsic);
 
-  std::pair<int, int> originalPoint(200,
-                                    200);  // Example point, adjust as needed
+  cv::Point originalPoint(200, 200);  // Example point, adjust as needed
 
   // Predict corresponding point in the other frame
-  std::optional<std::tuple<double, double, double>> predictedPoint =
-      frame.getPosition(originalPoint);
-  if (!predictedPoint) {
-    spdlog::error("Failed to predict corresponding point.");
-    return -1;
-  } else {
-    auto& [x, y, z] = *predictedPoint;
-    spdlog::info("Predicted corresponding point: ({}, {}, {})", x, y, z);
-  }
+  cv::Point2i predictedPoint = frame.getCorrespondingDepthPixel(originalPoint);
+  spdlog::info("Predicted corresponding point: ({}, {})", predictedPoint.x, predictedPoint.y);
 
   // Clone images for visualization
   cv::Mat tritonVis, heliosVis;
   cv::cvtColor(tritonMonoImage, tritonVis, cv::COLOR_GRAY2BGR);
   cv::cvtColor(heliosIntensityImage, heliosVis, cv::COLOR_GRAY2BGR);
 
-  // Extract (x, y) from tuples for drawing
-  auto [origX, origY] = originalPoint;
-  auto [predX, predY, predZ] = *predictedPoint;
 
   // Draw original and predicted points
-  cv::circle(tritonVis, cv::Point(origX, origY), 5, cv::Scalar(0, 0, 255),
+  cv::circle(tritonVis, cv::Point(originalPoint.x, originalPoint.y), 5, cv::Scalar(0, 0, 255),
              5);  // Red on Triton
-  cv::circle(heliosVis, cv::Point(predX, predY), 5, cv::Scalar(0, 255, 0),
+  cv::circle(heliosVis, cv::Point(predictedPoint.x, predictedPoint.y), 5, cv::Scalar(0, 255, 0),
              2);  // Green on Helios
-
-  // Optionally, mark the predicted point on Triton and original on Helios for
-  // clarity
-  cv::circle(tritonVis, cv::Point(predX, predY), 5, cv::Scalar(0, 255, 0),
-             5);  // Green circle on Triton
-  cv::circle(heliosVis, cv::Point(origX, origY), 5, cv::Scalar(0, 0, 255),
-             2);  // Red circle on Helios
 
   // Show with Chafa
   spdlog::info(
       "Triton frame with original (red) and predicted (green) points:");
-  calibration::showWithChafa(tritonVis, "tritonVis");
+  // calibration::showWithChafa(tritonVis, "tritonVis");
 
   spdlog::info(
       "Helios frame with predicted (green) and original (red) points:");
-  calibration::showWithChafa(heliosVis, "heliosVis");
+  // calibration::showWithChafa(heliosVis, "heliosVis");
 
   return 0;
 }
