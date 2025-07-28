@@ -14,6 +14,7 @@ import RunnerCutterCard, {
   RunnerCutterMode,
   RunnerCutterState,
 } from "@/components/runner-cutter/runner-cutter-card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -35,11 +36,10 @@ import useControlNode, { TrackState } from "@/lib/useControlNode";
 import useLaserNode from "@/lib/useLaserNode";
 import useLifecycleManagerNode from "@/lib/useLifecycleManagerNode";
 import { enumToLabel } from "@/lib/utils";
-import { useCallback, useMemo, useState } from "react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircleIcon } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
 
-const DEVICE_TEMPERATURE_ALERT_THRESHOLD = 60.0;
+const DEVICE_TEMPERATURE_ALERT_THRESHOLD = 70.0;
 
 export default function Controls({
   lifecycleManagerNodeName,
