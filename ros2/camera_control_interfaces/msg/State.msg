@@ -8,3 +8,5 @@ float32 gain_db
 common_interfaces/Vector2 gain_db_range
 string save_directory
 float32 image_capture_interval_secs
+float32 color_device_temperature
+float32 depth_device_temperature

@@ -168,6 +168,12 @@ async def start(node):
     _publish_state()
 
 
+@aioros2.timer(5.0)
+async def device_temperature_publish_timer(node):
+    # Publish device temperatures at a regular interval
+    _publish_state()
+
+
 @aioros2.service("~/start_device", StartDevice)
 async def start_device(node, capture_mode):
     loop = asyncio.get_running_loop()
@@ -704,6 +710,13 @@ def _get_state() -> State:
     state.image_capture_interval_secs = (
         camera_control_params.image_capture_interval_secs
     )
+    if isinstance(shared_state.camera, LucidRgbdCamera):
+        state.color_device_temperature = (
+            shared_state.camera.get_color_device_temperature()
+        )
+        state.depth_device_temperature = (
+            shared_state.camera.get_depth_device_temperature()
+        )
     return state
 
 

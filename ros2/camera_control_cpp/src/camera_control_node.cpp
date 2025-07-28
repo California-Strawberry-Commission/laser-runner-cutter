@@ -157,6 +157,10 @@ class CameraControlNode : public rclcpp::Node {
 
     // Publish initial state
     publishState();
+
+    // Publish device temperatures at a regular interval
+    deviceTemperaturePublishTimer_ = create_wall_timer(
+        std::chrono::duration<double>(5.0), [this]() { publishState(); });
   }
 
  private:
@@ -496,6 +500,10 @@ class CameraControlNode : public rclcpp::Node {
     auto gainDbRange{camera_->getGainDbRange()};
     msg->gain_db_range.x = gainDbRange.first;
     msg->gain_db_range.y = gainDbRange.second;
+    msg->color_device_temperature =
+        static_cast<float>(camera_->getColorDeviceTemperature());
+    msg->depth_device_temperature =
+        static_cast<float>(camera_->getDepthDeviceTemperature());
     return msg;
   }
 
@@ -609,6 +617,7 @@ class CameraControlNode : public rclcpp::Node {
   rclcpp::TimerBase::SharedPtr videoRecordingTimer_;
   cv::VideoWriter videoWriter_;
   std::mutex videoWriterMutex_;
+  rclcpp::TimerBase::SharedPtr deviceTemperaturePublishTimer_;
 };
 
 int main(int argc, char* argv[]) {
