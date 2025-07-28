@@ -36,6 +36,10 @@ import useLaserNode from "@/lib/useLaserNode";
 import useLifecycleManagerNode from "@/lib/useLifecycleManagerNode";
 import { enumToLabel } from "@/lib/utils";
 import { useCallback, useMemo, useState } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertCircleIcon } from "lucide-react";
+
+const DEVICE_TEMPERATURE_ALERT_THRESHOLD = 60.0;
 
 export default function Controls({
   lifecycleManagerNodeName,
@@ -138,6 +142,25 @@ export default function Controls({
       </DialogContent>
     </Dialog>
   );
+
+  const deviceTemperatureAlert =
+    cameraNode.state.colorDeviceTemperature >=
+      DEVICE_TEMPERATURE_ALERT_THRESHOLD ||
+    cameraNode.state.depthDeviceTemperature >=
+      DEVICE_TEMPERATURE_ALERT_THRESHOLD ? (
+      <Alert variant="destructive">
+        <AlertCircleIcon />
+        <AlertTitle>Camera temperatures are high.</AlertTitle>
+        <AlertDescription>
+          <p>
+            Color device: {cameraNode.state.colorDeviceTemperature}°C, depth
+            device: {cameraNode.state.depthDeviceTemperature}°C. Please check
+            that there is sufficient ventilation and/or other means of heat
+            management.
+          </p>
+        </AlertDescription>
+      </Alert>
+    ) : null;
 
   const cameraDeviceState = convertCameraNodeDeviceState(cameraNode);
   const laserDeviceState = convertLaserNodeDeviceState(laserNode);
@@ -276,6 +299,7 @@ export default function Controls({
           />
         </CardContent>
       </Card>
+      {deviceTemperatureAlert}
       <FramePreviewWithOverlay
         className="w-full h-[360px]"
         topicName={`${cameraNodeName}/debug_frame`}

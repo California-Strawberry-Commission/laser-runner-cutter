@@ -207,8 +207,12 @@ class LucidRgbdCamera(RgbdCamera):
         self._exposure_us = 0.0
         self._gain_db = 0.0
 
-        self._cv = threading.Condition() # For syncing acquisition and connection threads
-        self._setup_cv = threading.Condition() # For syncing setup wait to the connection thread
+        self._cv = (
+            threading.Condition()
+        )  # For syncing acquisition and connection threads
+        self._setup_cv = (
+            threading.Condition()
+        )  # For syncing setup wait to the connection thread
         self._is_running = False
         self._connection_thread = None
         self._acquisition_thread = None
@@ -741,6 +745,18 @@ class LucidRgbdCamera(RgbdCamera):
         nodemap = self._color_device.nodemap
         return (nodemap["Gain"].min, nodemap["Gain"].max)
 
+    def get_color_device_temperature(self) -> float:
+        if self.state != State.STREAMING:
+            return 0.0
+
+        return self._color_device.nodemap["DeviceTemperature"].value
+
+    def get_depth_device_temperature(self) -> float:
+        if self.state != State.STREAMING:
+            return 0.0
+
+        return self._depth_device.nodemap["DeviceTemperature"].value
+
     def _get_rgbd_frame(
         self, executor: Optional[concurrent.futures.Executor] = None
     ) -> Optional[LucidFrame]:
@@ -869,18 +885,17 @@ class LucidRgbdCamera(RgbdCamera):
         self._depth_device.requeue_buffer(buffer)
 
         return np_array
-    
+
     def _wait_for_setup(self):
         # Wait for the camera to start streaming
         with self._setup_cv:
             if not self.state == State.STREAMING:
-                self._setup_cv.wait(timeout=10) # Wait 10 seconds for camera
+                self._setup_cv.wait(timeout=10)  # Wait 10 seconds for camera
             if not self.state == State.STREAMING:
                 raise RuntimeError("Camera failed to start streaming")
-        
-        
+
     def _wait_for_frame(self):
-        #Check color AcquisitionMode for SingleFrame
+        # Check color AcquisitionMode for SingleFrame
         if self._color_device.nodemap["AcquisitionMode"].value == "SingleFrame":
             self._color_device.nodemap["AcquisitionStart"].execute()
             # Give 5 seconds to wait for first frame capture
@@ -888,10 +903,10 @@ class LucidRgbdCamera(RgbdCamera):
             while not self._color_device.has_buffer():
                 if time.time() > timeout:
                     raise RuntimeError("Camera failed to capture first frame")
-                time.sleep(0.01) 
+                time.sleep(0.01)
             self._color_device.nodemap["AcquisitionStop"].execute()
-            
-        #Check depth AcquisitionMode for SingleFrame
+
+        # Check depth AcquisitionMode for SingleFrame
         if self._depth_device.nodemap["AcquisitionMode"].value == "SingleFrame":
             self._depth_device.nodemap["AcquisitionStart"].execute()
             # Give 5 seconds to wait for first frame capture
@@ -899,7 +914,7 @@ class LucidRgbdCamera(RgbdCamera):
             while not self._color_device.has_buffer():
                 if time.time() > timeout:
                     raise RuntimeError("Camera failed to capture first frame")
-                time.sleep(0.01) 
+                time.sleep(0.01)
             self._depth_device.nodemap["AcquisitionStop"].execute()
 
 
@@ -1013,41 +1028,44 @@ def _get_heatmap_frame(output_dir):
 
     depth_frame = camera._get_depth_frame()
 
-    if depth_frame is not None:        
+    if depth_frame is not None:
         # Extract depth values (z-component) from the structured array
         depth_values = depth_frame["z"]
-        
+
         # Create a mask for valid depth values (not -1)
         valid_mask = depth_values != -1.0
-        
+
         # Create heatmap visualization
         if np.any(valid_mask):
             # Normalize depth values for visualization
             valid_depths = depth_values[valid_mask]
             min_depth = np.min(valid_depths)
             max_depth = np.max(valid_depths)
-            
+
             # Create normalized depth image
             normalized_depth = np.zeros_like(depth_values, dtype=np.float32)
             if max_depth > min_depth:
-                normalized_depth[valid_mask] = (depth_values[valid_mask] - min_depth) / (max_depth - min_depth)
-            
+                normalized_depth[valid_mask] = (
+                    depth_values[valid_mask] - min_depth
+                ) / (max_depth - min_depth)
+
             # Convert to 8-bit for colormap application
             depth_8bit = (normalized_depth * 255).astype(np.uint8)
-            
+
             # Apply colormap (COLORMAP_JET gives a nice heatmap: blue=far, red=close)
             heatmap = cv2.applyColorMap(depth_8bit, cv2.COLORMAP_JET)
-            
+
             # Set invalid pixels to black
             heatmap[~valid_mask] = [0, 0, 0]
         else:
             # If no valid depth data, create a black image
-            heatmap = np.zeros((depth_values.shape[0], depth_values.shape[1], 3), dtype=np.uint8)
+            heatmap = np.zeros(
+                (depth_values.shape[0], depth_values.shape[1], 3), dtype=np.uint8
+            )
 
         # Save all outputs
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-
 
         # Save depth values as grayscale
         depth_grayscale = (normalized_depth * 255).astype(np.uint8)
@@ -1060,16 +1078,19 @@ def _get_heatmap_frame(output_dir):
             os.path.join(output_dir, "depth_heatmap.png"),
             heatmap,
         )
-        
+
         print(f"Heatmap saved successfully!")
         print(f"Depth range: {min_depth:.1f}mm to {max_depth:.1f}mm")
         print(f"Valid pixels: {np.sum(valid_mask)} / {valid_mask.size}")
-    
+
     camera.stop()
+
 
 def _stream_heatmap_to_terminal():
     if shutil.which("chafa") is None:
-        print("chafa is not installed or not in PATH. Please install chafa to use this feature.")
+        print(
+            "chafa is not installed or not in PATH. Please install chafa to use this feature."
+        )
         return
 
     camera = create_lucid_rgbd_camera()
@@ -1090,12 +1111,17 @@ def _stream_heatmap_to_terminal():
                         max_depth = np.max(valid_depths)
                         normalized_depth = np.zeros_like(depth_values, dtype=np.float32)
                         if max_depth > min_depth:
-                            normalized_depth[valid_mask] = (depth_values[valid_mask] - min_depth) / (max_depth - min_depth)
+                            normalized_depth[valid_mask] = (
+                                depth_values[valid_mask] - min_depth
+                            ) / (max_depth - min_depth)
                         depth_8bit = (normalized_depth * 255).astype(np.uint8)
                         heatmap = cv2.applyColorMap(depth_8bit, cv2.COLORMAP_JET)
                         heatmap[~valid_mask] = [0, 0, 0]
                     else:
-                        heatmap = np.zeros((depth_values.shape[0], depth_values.shape[1], 3), dtype=np.uint8)
+                        heatmap = np.zeros(
+                            (depth_values.shape[0], depth_values.shape[1], 3),
+                            dtype=np.uint8,
+                        )
 
                     # Write heatmap to the persistent temporary PNG file
                     cv2.imwrite(tmpfile.name, heatmap)
@@ -1364,7 +1390,9 @@ if __name__ == "__main__":
         "get_heatmap",
         help="Capture frames and generate a heatmapped depth visualization",
     )
-    get_heatmap_parser.add_argument("--output_dir", type=str, default=None, required=True)
+    get_heatmap_parser.add_argument(
+        "--output_dir", type=str, default=None, required=True
+    )
 
     stream_heatmap_parser = subparsers.add_parser(
         "stream_heatmap",
