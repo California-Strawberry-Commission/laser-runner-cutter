@@ -37,7 +37,9 @@ void Calibration::reset() {
 }
 
 bool Calibration::calibrate(
-    const LaserColor& laserColor, std::pair<int, int> gridSize, bool saveImages,
+    const LaserColor& laserColor, std::pair<int, int> gridSize,
+    std::pair<float, float> xBounds, std::pair<float, float> yBounds,
+    bool saveImages,
     std::optional<std::reference_wrapper<std::atomic<bool>>> stopSignal) {
   reset();
 
@@ -51,12 +53,18 @@ bool Calibration::calibrate(
                       static_cast<int>(colorFrame->height)};
 
   // Get calibration points
-  float xStep{1.0f / (gridSize.first - 1)};
-  float yStep{1.0f / (gridSize.second - 1)};
+  float xMin{xBounds.first};
+  float xMax{xBounds.second};
+  float yMin{yBounds.first};
+  float yMax{yBounds.second};
+  float xStep{(xMax - xMin) / (gridSize.first - 1)};
+  float yStep{(yMax - yMin) / (gridSize.second - 1)};
   std::vector<LaserCoord> pendingLaserCoords;
   for (int i = 0; i < gridSize.first; ++i) {
     for (int j = 0; j < gridSize.second; ++j) {
-      pendingLaserCoords.emplace_back(LaserCoord{i * xStep, j * yStep});
+      float x{xMin + i * xStep};
+      float y{yMin + j * yStep};
+      pendingLaserCoords.emplace_back(LaserCoord{x, y});
     }
   }
 

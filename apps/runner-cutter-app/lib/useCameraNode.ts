@@ -30,6 +30,8 @@ export type State = {
   gainDbRange: [number, number];
   saveDirectory: string;
   imageCaptureIntervalSecs: number;
+  colorDeviceTemperature: number;
+  depthDeviceTemperature: number;
 };
 
 function convertStateMessage(message: any): State {
@@ -49,6 +51,8 @@ function convertStateMessage(message: any): State {
     gainDbRange: [message.gain_db_range.x, message.gain_db_range.y],
     saveDirectory: message.save_directory,
     imageCaptureIntervalSecs: message.image_capture_interval_secs,
+    colorDeviceTemperature: message.color_device_temperature,
+    depthDeviceTemperature: message.depth_device_temperature,
   };
 }
 
@@ -76,6 +80,8 @@ export default function useCameraNode(nodeName: string) {
       gainDbRange: [0.0, 0.0],
       saveDirectory: "",
       imageCaptureIntervalSecs: 0.0,
+      colorDeviceTemperature: 0.0,
+      depthDeviceTemperature: 0.0,
     },
     convertStateMessage
   );

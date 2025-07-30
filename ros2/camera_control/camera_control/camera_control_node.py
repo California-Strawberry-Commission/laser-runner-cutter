@@ -168,6 +168,12 @@ async def start(node):
     _publish_state()
 
 
+@aioros2.timer(5.0)
+async def device_temperature_publish_timer(node):
+    # Publish device temperatures at a regular interval
+    _publish_state()
+
+
 @aioros2.service("~/start_device", StartDevice)
 async def start_device(node, capture_mode):
     loop = asyncio.get_running_loop()
@@ -296,7 +302,7 @@ async def get_detection(node, detection_type, wait_for_next_frame):
         return {}
 
     if detection_type == DetectionType.LASER:
-        laser_points, confs = await shared_state.laser_detector.detect(
+        laser_points, confs = shared_state.laser_detector.detect_simple(
             frame.color_frame
         )
         return {
@@ -517,7 +523,7 @@ async def _detection_task():
         debug_frame = np.copy(frame.color_frame)
 
         if DetectionType.LASER in shared_state.enabled_detections:
-            laser_points, confs = await shared_state.laser_detector.detect(
+            laser_points, confs = shared_state.laser_detector.detect_simple(
                 frame.color_frame
             )
             debug_frame = _debug_draw_lasers(debug_frame, laser_points, confs)
@@ -704,6 +710,13 @@ def _get_state() -> State:
     state.image_capture_interval_secs = (
         camera_control_params.image_capture_interval_secs
     )
+    if isinstance(shared_state.camera, LucidRgbdCamera):
+        state.color_device_temperature = (
+            shared_state.camera.get_color_device_temperature()
+        )
+        state.depth_device_temperature = (
+            shared_state.camera.get_depth_device_temperature()
+        )
     return state
 
 

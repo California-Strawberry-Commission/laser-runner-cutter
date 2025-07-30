@@ -15,7 +15,6 @@ from dotenv import load_dotenv
 import uuid
 from natsort import natsorted
 
-
 load_dotenv()
 CLIENT = lb.Client(os.getenv("LABELBOX_API_KEY"))
 DATASET_NAME = "Lasers"
@@ -39,9 +38,16 @@ def import_images(dataset_name=DATASET_NAME, images_dir=IMAGES_DIR):
         os.path.join(images_dir, "*.png")
     )
     img_paths = natsorted(img_paths)
+    data_rows = []
     for img_path in img_paths:
         _, img_name = os.path.split(img_path)
-        dataset.create_data_row({"row_data": img_path, "global_key": img_name})
+        data_rows.append({"row_data": img_path, "global_key": img_name})
+
+    print(f"Uploading {len(data_rows)} images. This may take a while...")
+    upload_task = dataset.create_data_rows(data_rows)
+    upload_task.wait_till_done()
+    print(f"Errors: {upload_task.errors}")
+    print(f"Result: {len(upload_task.result)} images successfully uploaded")
 
 
 def create_yolo_labels_from_export_ndjson(

@@ -34,15 +34,19 @@ class Calibration {
    * @param laserColor Laser color to shoot while calibrating.
    * @param gridSize Number of points in the x and y directions to use as
    * calibration points.
+   * @param xBounds Min and max x for the calibration points
+   * @param yBounds Min and max y for the calibration points
    * @param saveImages Whether to save an image at each calibration coordinate.
    * @param stopSignal Flag to enable the calibration process to be prematurely
    * terminated when set to true.
    * @return whether calibration was successful or not.
    */
-  bool calibrate(const LaserColor& laserColor,
-                 std::pair<int, int> gridSize = {5, 5}, bool saveImages = false,
-                 std::optional<std::reference_wrapper<std::atomic<bool>>>
-                     stopSignal = std::nullopt);
+  bool calibrate(
+      const LaserColor& laserColor, std::pair<int, int> gridSize = {5, 5},
+      std::pair<float, float> xBounds = {0.0f, 1.0f},
+      std::pair<float, float> yBounds = {0.0f, 1.0f}, bool saveImages = false,
+      std::optional<std::reference_wrapper<std::atomic<bool>>> stopSignal =
+          std::nullopt);
 
   /**
    * Transform a 3D position in camera-space to a laser coord.

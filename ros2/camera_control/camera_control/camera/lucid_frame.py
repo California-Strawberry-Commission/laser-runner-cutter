@@ -155,20 +155,34 @@ class LucidFrame(RgbdFrame):
         self, color_pixel: Tuple[int, int]
     ) -> Tuple[int, int]:
         """
-        Given an (x, y) coordinate in the color frame, return the corresponding (x, y) coordinate in the depth frame.
+        Given an (x, y) coordinate in the color frame, return the corresponding (x, y) coordinate in
+        the depth frame.
 
         The general approach is as follows:
-            1. Deproject the color image pixel coordinate to two positions in the color camera-space: one that corresponds to the
-               position at the minimum depth, and one at the maximum depth.
+            1. Deproject the color image pixel coordinate to two positions in the color
+               camera-space:one that corresponds to the position at the minimum depth, and one at
+               the maximum depth.
             2. Transform the two positions from color camera-space to depth camera-space.
             3. Project the two positions to their respective depth image pixel coordinates.
-            4. The target lies somewhere along the line formed by the two pixel coordinates found in the previous step. We
-               iteratively move pixel by pixel along this line. For each depth image pixel, we grab the xyz data at the pixel,
-               project it onto the color image plane, and see how far it is from the original color pixel coordinate. We find
-               and return the closest match.
+            4. The target lies somewhere along the line formed by the two pixel coordinates found
+               in the previous step. We iteratively move pixel by pixel along this line. For each
+               depth image pixel, we grab the xyz data at the pixel, project it onto the color image
+               plane, and see how far it is from the original color pixel coordinate. We find and
+               return the closest match.
 
-        Note that in order to achieve the above, we require two extrinsic matrices - one for projecting the xyz positions to
-        the color camera image plane, and one for projecting the xyz positions to the depth camera image plane.
+        Note that in order to achieve the above, we require two extrinsic matrices - one for
+        projecting the xyz positions to the color camera image plane, and one for projecting the xyz
+        positions to the depth camera image plane.
+
+        This approach is necessary because, for a given color camera pixel coordinate, there are an
+        infinite number of xyz positions (along the ray formed from the center of the color camera
+        to the pixel on the image plane) associated with it, and thus an infinite number of depth
+        camera pixel coordinates it might correspond to. Hence the approach that attempts to walk
+        along that ray and figure out which depth produces the least error. The error is calculated
+        by transforming the 3D position in color-space to the 3D position in depth-space, which is
+        then projected to depth camera pixel coordinate. Using this coordinate, we get the
+        corresponding xyz, and transform and project that back to color camera pixel coordinate, and
+        compare how far that is from the initial camera pixel.
 
         Args:
             color_pixel (Sequence[int]): (x, y) coordinate in the color frame.

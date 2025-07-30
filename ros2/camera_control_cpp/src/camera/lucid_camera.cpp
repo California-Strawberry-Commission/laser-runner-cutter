@@ -457,6 +457,26 @@ std::pair<double, double> LucidCamera::getGainDbRange() const {
           Arena::GetNodeMax<double>(colorDevice_->GetNodeMap(), "Gain")};
 }
 
+double LucidCamera::getColorDeviceTemperature() const {
+  if (getState() != LucidCamera::State::STREAMING ||
+      !colorDevice_->GetNodeMap()->GetNode("DeviceTemperature")) {
+    return 0.0;
+  }
+
+  return Arena::GetNodeValue<double>(colorDevice_->GetNodeMap(),
+                                     "DeviceTemperature");
+}
+
+double LucidCamera::getDepthDeviceTemperature() const {
+  if (getState() != LucidCamera::State::STREAMING ||
+      !depthDevice_->GetNodeMap()->GetNode("DeviceTemperature")) {
+    return 0.0;
+  }
+
+  return Arena::GetNodeValue<double>(depthDevice_->GetNodeMap(),
+                                     "DeviceTemperature");
+}
+
 void LucidCamera::stopStream() {
   {
     std::lock_guard<std::mutex> lock(deviceMutex_);
