@@ -3,7 +3,10 @@ import concurrent.futures
 import ctypes
 import logging
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 from enum import Enum, auto
@@ -15,14 +18,9 @@ from ament_index_python.packages import get_package_share_directory
 from arena_api.enums import PixelFormat
 from arena_api.system import system
 
-from .calibration import construct_extrinsic_matrix, create_blob_detector
 from .lucid_frame import LucidFrame
 from .rgbd_camera import RgbdCamera, State
 from .rgbd_frame import RgbdFrame
-
-import subprocess
-import shutil
-import tempfile
 
 COLOR_CAMERA_MODEL_PREFIXES = ["ATL", "ATX", "PHX", "TRI", "TRT"]
 DEPTH_CAMERA_MODEL_PREFIXES = ["HTP", "HLT", "HTR", "HTW"]
@@ -38,105 +36,6 @@ class CaptureMode(Enum):
     CONTINUOUS_PTP = (
         auto()
     )  # Continuous capture, with cameras synced using Precision Time Protocol
-
-
-def scale_grayscale_image(mono_image: np.ndarray) -> np.ndarray:
-    """
-    Scale a grayscale image so that it uses the full 8-bit range.
-
-    Args:
-        mono_image: Grayscale image to scale.
-
-    Returns:
-        np.ndarray: Scaled uint8 grayscale image.
-    """
-    # Convert to float to avoid overflow or underflow issues
-    mono_image = np.array(mono_image, dtype=np.float32)
-
-    # Find the minimum and maximum values in the image
-    min_val = np.min(mono_image)
-    max_val = np.max(mono_image)
-
-    # Normalize the image to the range 0 to 1
-    if max_val > min_val:
-        mono_image = (mono_image - min_val) / (max_val - min_val)
-    else:
-        mono_image = mono_image - min_val
-
-    # Scale to 0-255 and convert to uint8
-    mono_image = (mono_image * 255).astype(np.uint8)
-
-    return mono_image
-
-
-def get_extrinsics(
-    triton_mono_image: np.ndarray,
-    helios_intensity_image: np.ndarray,
-    helios_xyz_image: np.ndarray,
-    triton_intrinsic_matrix: np.ndarray,
-    triton_distortion_coeffs: np.ndarray,
-    grid_size: Tuple[int, int],
-    grid_type: int = cv2.CALIB_CB_SYMMETRIC_GRID,
-    blob_detector=None,
-) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
-    """
-    Finds the rotation and translation vectors that describe the conversion from Helios 3D coordinates
-    to the Triton camera's coordinate system.
-
-    Args:
-        triton_mono_image (np.ndarray): Grayscale image from a Triton camera containing the calibration pattern.
-        helios_intensity_image (np.ndarray): Grayscale image from a Helios camera containing the calibration pattern.
-        helios_xyz_image (np.ndarray): 3D data from a Helios camera corresponding to helios_intensity_image
-        triton_intrinsic_matrix (np.ndarray): Intrinsic matrix of the Triton camera.
-        triton_distortion_coeffs: (np.ndarray): Distortion coefficients of the Triton camera.
-        grid_size (Tuple[int, int]): (# cols, # rows) of the calibration pattern.
-        grid_type (int): One of the following:
-            cv2.CALIB_CB_SYMMETRIC_GRID uses symmetric pattern of circles.
-            cv2.CALIB_CB_ASYMMETRIC_GRID uses asymmetric pattern of circles.
-            cv2.CALIB_CB_CLUSTERING uses a special algorithm for grid detection. It is more robust to perspective distortions but much more sensitive to background clutter.
-        blobDetector: Feature detector that finds blobs, like dark circles on light background. If None then a default implementation is used.
-
-    Returns:
-        Tuple[Optional[np.ndarray], Optional[np.ndarray]]: A tuple of (rotation vector, translation vector), or (None, None) if unsuccessful.
-    """
-    # Based on https://support.thinklucid.com/app-note-helios-3d-point-cloud-with-rgb-color/
-
-    # Scale images so that they each use the full 8-bit range
-    triton_mono_image = scale_grayscale_image(triton_mono_image)
-    helios_intensity_image = scale_grayscale_image(helios_intensity_image)
-
-    # Find calibration circle centers on both cameras
-    retval, triton_circle_centers = cv2.findCirclesGrid(
-        triton_mono_image, grid_size, flags=grid_type, blobDetector=blob_detector
-    )
-    if not retval:
-        print("Could not get circle centers from Triton mono image.")
-        return None, None
-    triton_circle_centers = np.squeeze(np.round(triton_circle_centers))
-
-    retval, helios_circle_centers = cv2.findCirclesGrid(
-        helios_intensity_image, grid_size, flags=grid_type, blobDetector=blob_detector
-    )
-    if not retval:
-        print("Could not get circle centers from Helios intensity image.")
-        return None, None
-    helios_circle_centers = np.squeeze(np.round(helios_circle_centers).astype(np.int32))
-
-    # Get XYZ values from the Helios 3D image that match 2D locations on the Triton (corresponding points)
-    helios_circle_positions = helios_xyz_image[
-        helios_circle_centers[:, 1], helios_circle_centers[:, 0]
-    ]
-
-    retval, rvec, tvec = cv2.solvePnP(
-        helios_circle_positions,
-        triton_circle_centers,
-        triton_intrinsic_matrix,
-        triton_distortion_coeffs,
-    )
-    if retval:
-        return rvec, tvec
-    else:
-        return None, None
 
 
 class LucidRgbdCamera(RgbdCamera):
@@ -1211,95 +1110,6 @@ def _get_position(
     cv2.destroyAllWindows()
 
 
-def _get_extrinsic(
-    triton_mono_image_path, helios_intensity_image_path, helios_xyz_path, output_path
-):
-    output_path = os.path.expanduser(output_path)
-    calibration_params_dir = _get_calibration_params_dir()
-    triton_intrinsic_matrix = np.load(
-        os.path.join(calibration_params_dir, "triton_intrinsic_matrix.npy")
-    )
-    triton_distortion_coeffs = np.load(
-        os.path.join(calibration_params_dir, "triton_distortion_coeffs.npy")
-    )
-    triton_mono_image = np.load(os.path.expanduser(triton_mono_image_path))
-    helios_intensity_image = np.load(os.path.expanduser(helios_intensity_image_path))
-    helios_xyz = np.load(os.path.expanduser(helios_xyz_path))
-
-    rvec, tvec = get_extrinsics(
-        triton_mono_image,  # type: ignore
-        helios_intensity_image,  # type: ignore
-        helios_xyz,  # type: ignore
-        triton_intrinsic_matrix,  # type: ignore
-        triton_distortion_coeffs,  # type: ignore
-        (5, 4),
-        grid_type=cv2.CALIB_CB_SYMMETRIC_GRID,
-        blob_detector=create_blob_detector(),
-    )
-
-    rvec = rvec.flatten()
-    tvec = tvec.flatten()
-    helios3d_to_triton_extrinsic_matrix = construct_extrinsic_matrix(rvec, tvec)
-
-    output_dir = os.path.dirname(output_path)
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    np.save(
-        output_path,
-        helios3d_to_triton_extrinsic_matrix,
-    )
-
-
-def _test_project(triton_mono_image_path, helios_intensity_image_path, helios_xyz_path):
-    calibration_params_dir = _get_calibration_params_dir()
-    triton_intrinsic_matrix = np.load(
-        os.path.join(calibration_params_dir, "triton_intrinsic_matrix.npy")
-    )
-    triton_distortion_coeffs = np.load(
-        os.path.join(calibration_params_dir, "triton_distortion_coeffs.npy")
-    )
-    helios3d_to_triton_extrinsic_matrix = np.load(
-        os.path.join(calibration_params_dir, "helios3d_to_triton_extrinsic_matrix.npy")
-    )
-    triton_mono_image = np.load(os.path.expanduser(triton_mono_image_path))
-    helios_xyz = np.load(os.path.expanduser(helios_xyz_path))
-    helios_intensity_image = np.load(os.path.expanduser(helios_intensity_image_path))
-    h, w, c = helios_xyz.shape
-    object_points = helios_xyz.reshape(h * w, c)
-    depths = object_points[:, 2]
-    average_depth = np.mean(depths)
-    print(f"average_depth: {average_depth}")
-    helios_intensity_image = helios_intensity_image.flatten()
-    R = helios3d_to_triton_extrinsic_matrix[:3, :3]
-    t = helios3d_to_triton_extrinsic_matrix[:3, 3]
-    start = time.perf_counter()
-    image_points, jacobian = cv2.projectPoints(
-        object_points, R, t, triton_intrinsic_matrix, triton_distortion_coeffs
-    )  # (x, y), or (col, row)
-    print(f"projectPoints took {time.perf_counter()-start} s")
-    image_points = image_points.reshape(-1, 2)
-    triton_height = 1536
-    triton_width = 2048
-    projected_image = np.zeros((triton_height, triton_width, 3), dtype=np.uint8)
-    projected_image[:, :, 2] = (triton_mono_image < 100) * 128
-    start = time.perf_counter()
-    for point_idx in range(h * w):
-        point = image_points[point_idx]
-        col = round(point[0])
-        row = round(point[1])
-        if 0 <= col and col < triton_width and 0 <= row and row < triton_height:
-            intensity = helios_intensity_image[point_idx]
-            thresh = 1 if intensity < 30 else 0
-            projected_image[row][col][1] = thresh * 255
-    print(f"populate image took {time.perf_counter()-start} s")
-    projected_image = cv2.resize(
-        projected_image, (round(triton_width / 2), round(triton_height / 2))
-    )
-    cv2.imshow("projected", projected_image)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
-
 def _test_transform_depth_pixel_to_color_pixel(
     depth_pixel, triton_mono_image_path, helios_intensity_image_path, helios_xyz_path
 ):
@@ -1310,8 +1120,8 @@ def _test_transform_depth_pixel_to_color_pixel(
     triton_distortion_coeffs = np.load(
         os.path.join(calibration_params_dir, "triton_distortion_coeffs.npy")
     )
-    helios3d_to_triton_extrinsic_matrix = np.load(
-        os.path.join(calibration_params_dir, "helios3d_to_triton_extrinsic_matrix.npy")
+    xyz_to_triton_extrinsic_matrix = np.load(
+        os.path.join(calibration_params_dir, "xyz_to_triton_extrinsic_matrix.npy")
     )
     triton_mono_image = np.load(os.path.expanduser(triton_mono_image_path))
     helios_xyz = np.load(os.path.expanduser(helios_xyz_path))
@@ -1338,7 +1148,7 @@ def _test_transform_depth_pixel_to_color_pixel(
         xyz_mm,
         triton_intrinsic_matrix,
         triton_distortion_coeffs,
-        helios3d_to_triton_extrinsic_matrix,
+        xyz_to_triton_extrinsic_matrix,
     )
     cv2.drawMarker(
         triton_image,
@@ -1399,21 +1209,6 @@ if __name__ == "__main__":
         help="Stream depth heatmap visualization to terminal using chafa",
     )
 
-    get_extrinsic_parser = subparsers.add_parser(
-        "get_extrinsic",
-        help="Calculate extrinsic matrix between Helios2 to Triton cameras",
-    )
-    get_extrinsic_parser.add_argument(
-        "--triton_mono_image", type=str, default=None, required=True
-    )
-    get_extrinsic_parser.add_argument(
-        "--helios_intensity_image", type=str, default=None, required=True
-    )
-    get_extrinsic_parser.add_argument(
-        "--helios_xyz", type=str, default=None, required=True
-    )
-    get_extrinsic_parser.add_argument("--output", type=str, default=None, required=True)
-
     get_position_parser = subparsers.add_parser(
         "get_position",
         help="Given pixel coordinates in the Triton image, calculate the 3D position",
@@ -1426,20 +1221,6 @@ if __name__ == "__main__":
         "--helios_intensity_image", type=str, default=None, required=True
     )
     get_position_parser.add_argument(
-        "--helios_xyz", type=str, default=None, required=True
-    )
-
-    test_project_xyz_to_color_parser = subparsers.add_parser(
-        "test_project_xyz_to_color",
-        help="Verify calibration between Triton and Helios by projecting Helios point cloud onto Triton image",
-    )
-    test_project_xyz_to_color_parser.add_argument(
-        "--triton_mono_image", type=str, default=None, required=True
-    )
-    test_project_xyz_to_color_parser.add_argument(
-        "--helios_intensity_image", type=str, default=None, required=True
-    )
-    test_project_xyz_to_color_parser.add_argument(
         "--helios_xyz", type=str, default=None, required=True
     )
 
@@ -1468,22 +1249,9 @@ if __name__ == "__main__":
         _get_heatmap_frame(args.output_dir)
     elif args.command == "stream_heatmap":
         _stream_heatmap_to_terminal()
-    elif args.command == "get_extrinsic":
-        _get_extrinsic(
-            args.triton_mono_image,
-            args.helios_intensity_image,
-            args.helios_xyz,
-            args.output,
-        )
     elif args.command == "get_position":
         _get_position(
             args.pixel,
-            args.triton_mono_image,
-            args.helios_intensity_image,
-            args.helios_xyz,
-        )
-    elif args.command == "test_project_xyz_to_color":
-        _test_project(
             args.triton_mono_image,
             args.helios_intensity_image,
             args.helios_xyz,
