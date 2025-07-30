@@ -195,11 +195,11 @@ int main(int argc, char const* argv[]) {
   // Show with Chafa
   spdlog::info(
       "Triton frame with original (red) and predicted (green) points:");
-  // calibration::showWithChafa(tritonVis, "tritonVis");
+  calibration::showWithChafa(tritonVis, "tritonVis");
 
   spdlog::info(
       "Helios frame with predicted (green) and original (red) points:");
-  // calibration::showWithChafa(heliosVis, "heliosVis");
+  calibration::showWithChafa(heliosVis, "heliosVis");
 
   return 0;
 }

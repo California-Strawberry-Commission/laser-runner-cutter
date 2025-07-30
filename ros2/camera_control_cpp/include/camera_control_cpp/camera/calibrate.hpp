@@ -2,7 +2,9 @@
 
 #include <opencv2/opencv.hpp>
 #include <optional>
+#include <unordered_map>
 #include <vector>
+#include <cmath>
 
 #include "ArenaApi.h"
 #include "GenApi/GenApi.h"
@@ -153,18 +155,17 @@ std::optional<calibration::ExtrinsicMetrics> getExtrinsics(
  * Saves the calibration metrics for color and depth cameras, along with the
  * extrinsic matrices.
  *
- * @param colorMetrics Calibration metrics for the color camera.
+ * @param rgbMetrics Calibration metrics for the color camera.
  * @param depthMetrics Calibration metrics for the depth camera.
- * @param tritonToHeliosExtrinsicMatrix 4x4 extrinsic matrix from Triton to
- * Helios.
- * @param heliosToTritonExtrinsicMatrix 4x4 extrinsic matrix from Helios to
- * Triton.
+ * @param xyzToTritonExtrinsicMatrix 4x4 extrinsic matrix from xyz to triton
+ * @param xyzToHeliosExtrinsicMatrix 4x4 extrinsic matrix from xyz to helios
  * @return int Returns 0 on success, or a non-zero error code on failure.
  */
-int saveMetrics(const calibration::CalibrationMetrics& colorMetrics,
-                const calibration::CalibrationMetrics& depthMetrics,
-                const cv::Mat& xyzToTritonExtrinsicMatrix,
-                const cv::Mat& xyzToHeliosExtrinsicMatrix);
+int saveMetrics(
+    const calibration::CalibrationMetrics& rgbMetrics,
+    const calibration::CalibrationMetrics& depthMetrics,
+    const cv::Mat& xyzToTritonExtrinsicMatrix,
+    const cv::Mat& xyzToHeliosExtrinsicMatrix);
 
 /**
  * Enhances the intensity of the input image.

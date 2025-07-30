@@ -5,7 +5,8 @@
 #include "spdlog/spdlog.h"
 
 std::string calibration::calibrationParamsDir =
-    std::string(std::getenv("PWD")) + "/camera_control_cpp/calibration_params/"; // TODO: PROBABLY NOT STABLE
+    std::string(std::getenv("PWD")) +
+    "/camera_control_cpp/calibration_params/";  // TODO: PROBABLY NOT STABLE
 
 cv::Mat calibration::constructExtrinsicMatrix(const cv::Mat& rvec,
                                               const cv::Mat& tvec) {
@@ -333,10 +334,41 @@ std::optional<calibration::ExtrinsicMetrics> calibration::getExtrinsics(
     fromPixelCoords.emplace_back(cv::Point(cvRound(pt.x), cvRound(pt.y)));
   }
 
+  int removed{0};
   std::vector<cv::Point3f> fromCirclePositions;
-  for (const cv::Point& pt : fromPixelCoords) {
+  // for (const cv::Point& pt : fromPixelCoords) {
+  for (size_t i = 0; i < fromPixelCoords.size(); ++i) {
+    const cv::Point& pt = fromPixelCoords[i];
     const cv::Vec3f& vec{xyzImage.at<cv::Vec3f>(pt.y, pt.x)};
-    fromCirclePositions.emplace_back(cv::Point3f(vec));
+    if (!std::isfinite(vec[0]) || !std::isfinite(vec[1]) ||
+        !std::isfinite(vec[2])) {
+      toCircleCenters.erase(toCircleCenters.begin() + i - removed);
+      removed++;
+    } else {
+      fromCirclePositions.emplace_back(cv::Point3f(vec));
+    }
+  }
+  if (fromCirclePositions.size() < 4) {
+    spdlog::error("Not enough valid 3D points for solvePnP: {}",
+                  fromCirclePositions.size());
+    return std::nullopt;
+  }
+
+  if (fromCirclePositions.empty()) {
+    spdlog::warn("No circle positions found in xyz image.");
+    return std::nullopt;
+  }
+
+  // Compute average Z value from the selected circle positions
+  float sum_z = 0.0;
+  for (cv::Point3f pt : fromCirclePositions) {
+    sum_z += pt.z;
+  }
+  float avg_z = sum_z / fromCirclePositions.size();
+
+  // Set all Z values to the average
+  for (size_t i = 0; i < fromCirclePositions.size(); ++i) {
+    fromCirclePositions[i].z = avg_z;
   }
 
   spdlog::info("solvePnP input:");
@@ -345,8 +377,8 @@ std::optional<calibration::ExtrinsicMetrics> calibration::getExtrinsics(
   oss_obj << "[";
   for (size_t i = 0; i < fromCirclePositions.size(); ++i) {
     oss_obj << "(" << fromCirclePositions[i].x << ", "
-            << fromCirclePositions[i].y << ", "
-            << fromCirclePositions[i].z << ")";
+            << fromCirclePositions[i].y << ", " << fromCirclePositions[i].z
+            << ")";
     if (i != fromCirclePositions.size() - 1) oss_obj << ", ";
   }
   oss_obj << "]";
@@ -356,8 +388,8 @@ std::optional<calibration::ExtrinsicMetrics> calibration::getExtrinsics(
   std::ostringstream oss_img;
   oss_img << "[";
   for (size_t i = 0; i < toCircleCenters.size(); ++i) {
-    oss_img << "(" << toCircleCenters[i].x << ", "
-            << toCircleCenters[i].y << ")";
+    oss_img << "(" << toCircleCenters[i].x << ", " << toCircleCenters[i].y
+            << ")";
     if (i != toCircleCenters.size() - 1) oss_img << ", ";
   }
   oss_img << "]";
@@ -381,9 +413,8 @@ std::optional<calibration::ExtrinsicMetrics> calibration::getExtrinsics(
   std::ostringstream oss_rvec;
   oss_rvec << metrics.rvec;
   spdlog::info("rvec (rotation): {}", oss_rvec.str());
-  spdlog::info("tvec (translation): [{}, {}, {}]",
-               metrics.tvec.at<double>(0), metrics.tvec.at<double>(1),
-               metrics.tvec.at<double>(2));
+  spdlog::info("tvec (translation): [{}, {}, {}]", metrics.tvec.at<double>(0),
+               metrics.tvec.at<double>(1), metrics.tvec.at<double>(2));
   if (pnpRetval) {
     return metrics;
   } else {
@@ -458,7 +489,7 @@ int calibration::saveMetrics(
             "xyz_to_triton_extrinsic_matrix.yml",
         cv::FileStorage::WRITE);
     xyzToTritonExtrinsicMatrixFile.write("Extrinsic Matrix",
-                                            xyzToTritonExtrinsicMatrix);
+                                         xyzToTritonExtrinsicMatrix);
     xyzToTritonExtrinsicMatrixFile.release();
   } catch (const cv::Exception& e) {
     spdlog::error("OpenCV error saving xyz to triton extrinsic matrix: {}",
@@ -472,7 +503,7 @@ int calibration::saveMetrics(
             "xyz_to_helios_extrinsic_matrix.yml",
         cv::FileStorage::WRITE);
     xyzToHeliosExtrinsicMatrixFile.write("Extrinsic Matrix",
-                                            xyzToHeliosExtrinsicMatrix);
+                                         xyzToHeliosExtrinsicMatrix);
     xyzToHeliosExtrinsicMatrixFile.release();
   } catch (const cv::Exception& e) {
     spdlog::error("OpenCV error saving xyz to helios extrinsic matrix: {}",
@@ -705,20 +736,110 @@ int main(int argc, char* argv[]) {
   calibration::showWithChafa(distorted, "Distorted");
   calibration::showWithChafa(undistorted, "Undistorted");
 
+  std::unordered_map<int, cv::Mat> xyzTritonMatrices, xyzHeliosMatrices;
 
+  for (int i = 0; i < 9; i++) {
+    cv::Mat tritonMonoImage{rgbImages[i]};
+    cv::Mat heliosIntensityImage{boostedIntensityImages[i]};
+    cv::Mat heliosXyzImage{xyzImages[i]};
 
-  int imageIndex{0};
-  cv::Mat tritonMonoImage{rgbImages[imageIndex]};
-  cv::Mat heliosIntensityImage{boostedIntensityImages[imageIndex]};
-  cv::Mat heliosXyzImage{xyzImages[imageIndex]};
+    spdlog::info("========== IMAGE INDEX: {} ==========", i);
 
-  calibration::showWithChafa(tritonMonoImage, "triton_mono");
-  calibration::showWithChafa(heliosIntensityImage, "helios_intensity");
+    std::optional<calibration::ExtrinsicMetrics> xyzToTritonExtrinsicMetrics{
+        calibration::getExtrinsics(
+            heliosIntensityImage, tritonMonoImage, heliosXyzImage,
+            (*rgbMetrics).intrinsicMatrix, (*rgbMetrics).distCoeffs, gSize,
+            cv::CALIB_CB_SYMMETRIC_GRID, calibration::createBlobDetector())};
+    if (xyzToTritonExtrinsicMetrics == std::nullopt) {
+      spdlog::error(
+          "Extrinsic calibration (triton to helios) failed on index {}.", i);
+    } else {
+      cv::Mat xyzToTritonExtrinsicMatrix{calibration::constructExtrinsicMatrix(
+          xyzToTritonExtrinsicMetrics->rvec,
+          xyzToTritonExtrinsicMetrics->tvec)};
+      std::ostringstream osse1;
+      osse1 << xyzToTritonExtrinsicMatrix;
+      spdlog::info("Constructed Extrinsic Matrix (triton to helios):\n{}",
+                   osse1.str());
+      xyzTritonMatrices[i] = xyzToTritonExtrinsicMatrix;
+    }
+
+    std::optional<calibration::ExtrinsicMetrics> xyzToHeliosExtrinsicMetrics{
+        calibration::getExtrinsics(
+            tritonMonoImage, heliosIntensityImage, heliosXyzImage,
+            (*depthMetrics).intrinsicMatrix, (*depthMetrics).distCoeffs, gSize,
+            cv::CALIB_CB_SYMMETRIC_GRID, calibration::createBlobDetector())};
+    if (xyzToHeliosExtrinsicMetrics == std::nullopt) {
+      spdlog::error(
+          "Extrinsic calibration (helios to triton) failed on index {}.", i);
+    } else {
+      cv::Mat xyzToHeliosExtrinsicMatrix{calibration::constructExtrinsicMatrix(
+          xyzToHeliosExtrinsicMetrics->rvec,
+          xyzToHeliosExtrinsicMetrics->tvec)};
+      std::ostringstream osse2;
+      osse2 << xyzToHeliosExtrinsicMatrix;
+      spdlog::info("Constructed Extrinsic Matrix (helios to triton):\n{}",
+                   osse2.str());
+      xyzHeliosMatrices[i] = xyzToHeliosExtrinsicMatrix;
+    }
+  }
+
+  spdlog::info("========== Final Decisions ==========");
+
+  std::vector<int> keysToRemove;
+  for (const auto& [key, _] : xyzTritonMatrices) {
+    if (xyzHeliosMatrices.find(key) == xyzHeliosMatrices.end()) {
+      keysToRemove.push_back(key);
+    }
+  }
+  for (const auto& [key, _] : xyzHeliosMatrices) {
+    if (xyzTritonMatrices.find(key) == xyzTritonMatrices.end()) {
+      keysToRemove.push_back(key);
+    }
+  }
+  for (int key : keysToRemove) {
+    xyzTritonMatrices.erase(key);
+    xyzHeliosMatrices.erase(key);
+  }
+
+  if (xyzTritonMatrices.size() == 0 || xyzHeliosMatrices.size() == 0) {
+    spdlog::error("Complete failure of extrinsic calibrations.");
+    return -1;
+  } else {
+    std::ostringstream validIndices;
+    validIndices << "Valid extrinsic calibration images: ";
+    for (const auto& [key, _] : xyzTritonMatrices) {
+      validIndices << key << " ";
+    }
+    spdlog::info("{}", validIndices.str());
+  }
+
+  int bestIndex{xyzTritonMatrices.begin()->first};
+  for (const auto& [index, matrix] : xyzTritonMatrices) {
+    if (matrix.at<double>(0, 3) < xyzTritonMatrices[bestIndex].at<double>(0, 3) && std::abs(matrix.at<double>(1, 3)) > 10) {
+      bestIndex = index;
+    }
+  }
+
+  cv::Mat bestXyzTriton{xyzTritonMatrices[bestIndex]};
+  cv::Mat bestXyzHelios{calibration::invertExtrinsicMatrix(bestXyzTriton)};
+
+  spdlog::info("Best index: {}", bestIndex);
+  std::ostringstream oss_best_triton, oss_best_helios;
+  oss_best_triton << bestXyzTriton;
+  oss_best_helios << bestXyzHelios;
+  spdlog::info("Best xyzToTriton matrix:\n{}", oss_best_triton.str());
+  spdlog::info("Best xyzToHelios matrix (inverted):\n{}", oss_best_helios.str());
+
+  calibration::showWithChafa(rgbImages[bestIndex], "triton_mono");
+  calibration::showWithChafa(boostedIntensityImages[bestIndex],
+                             "helios_intensity");
 
   // For xyz image, visualize the Z channel as grayscale
-  if (!heliosXyzImage.empty() && heliosXyzImage.type() == CV_32FC3) {
+  if (!xyzImages[bestIndex].empty() &&
+      xyzImages[bestIndex].type() == CV_32FC3) {
     std::vector<cv::Mat> xyz_channels;
-    cv::split(heliosXyzImage, xyz_channels);
+    cv::split(xyzImages[bestIndex], xyz_channels);
     cv::Mat z_vis;
     double minz, maxz;
     cv::minMaxLoc(xyz_channels[2], &minz, &maxz);
@@ -729,54 +850,10 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  std::optional<cv::Mat> xyzToTritonExtrinsicMatrix{std::nullopt},
-      xyzToHeliosExtrinsicMatrix{std::nullopt};
-
-  std::optional<calibration::ExtrinsicMetrics> xyzToTritonExtrinsicMetrics{
-      calibration::getExtrinsics(
-          heliosIntensityImage, tritonMonoImage, heliosXyzImage,
-          (*rgbMetrics).intrinsicMatrix, (*rgbMetrics).distCoeffs, gSize,
-          cv::CALIB_CB_SYMMETRIC_GRID, calibration::createBlobDetector())};
-
-  if (xyzToTritonExtrinsicMetrics == std::nullopt) {
-    spdlog::error("Extrinsic calibration (triton to helios) failed.");
-    return -1;
-  } else {
-    spdlog::info("Extrinsic calibration (triton to helios) successful.");
-    xyzToTritonExtrinsicMatrix = calibration::constructExtrinsicMatrix(
-        xyzToTritonExtrinsicMetrics->rvec,
-        xyzToTritonExtrinsicMetrics->tvec);
-    std::ostringstream osse1;
-    osse1 << *xyzToTritonExtrinsicMatrix;
-    spdlog::info("Constructed Extrinsic Matrix (triton to helios):\n{}",
-                 osse1.str());
-  }
-
-  std::optional<calibration::ExtrinsicMetrics> xyzToHeliosExtrinsicMetrics{
-      calibration::getExtrinsics(
-          tritonMonoImage, heliosIntensityImage, heliosXyzImage,
-          (*depthMetrics).intrinsicMatrix, (*depthMetrics).distCoeffs, gSize,
-          cv::CALIB_CB_SYMMETRIC_GRID, calibration::createBlobDetector())};
-
-  if (xyzToHeliosExtrinsicMetrics == std::nullopt) {
-    spdlog::error("Extrinsic calibration (helios to triton) failed.");
-  } else {
-    spdlog::info("Extrinsic calibration (helios to triton) successful.");
-    xyzToHeliosExtrinsicMatrix = calibration::constructExtrinsicMatrix(
-        xyzToHeliosExtrinsicMetrics->rvec,
-        xyzToHeliosExtrinsicMetrics->tvec);
-    std::ostringstream osse2;
-    osse2 << *xyzToHeliosExtrinsicMatrix;
-    spdlog::info("Constructed Extrinsic Matrix (helios to triton):\n{}",
-                 osse2.str());
-  }
-
-  if (rgbMetrics != std::nullopt && depthMetrics != std::nullopt &&
-      xyzToTritonExtrinsicMatrix != std::nullopt &&
-      xyzToHeliosExtrinsicMatrix != std::nullopt) {
+  if (rgbMetrics != std::nullopt && depthMetrics != std::nullopt) {
     if (calibration::saveMetrics(*rgbMetrics, *depthMetrics,
-                                 *xyzToTritonExtrinsicMatrix,
-                                 *xyzToHeliosExtrinsicMatrix) < 0) {
+                                 bestXyzTriton,
+                                 bestXyzHelios) < 0) {
       spdlog::error("Failed to save Calibration Metrics");
     } else {
       spdlog::info("Successfully saved Calibration Metrics");
