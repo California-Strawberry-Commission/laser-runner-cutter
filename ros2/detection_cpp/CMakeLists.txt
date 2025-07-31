@@ -21,6 +21,7 @@ find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(cv_bridge REQUIRED)
+find_package(CUDA REQUIRED)
 
 ###########
 ## Build ##
@@ -83,7 +84,8 @@ ament_target_dependencies(detection_node PUBLIC
 
 # Tools
 add_executable(test_singleFrame src/tools/test_singleFrame.cpp)
-target_link_libraries(test_singleFrame PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS} fmt::fmt)
+target_include_directories(test_singleFrame PRIVATE /usr/include/aarch64-linux-gnu /usr/local/cuda/include)
+target_link_libraries(test_singleFrame PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS} fmt::fmt nvinfer)
 ament_target_dependencies(test_singleFrame PUBLIC rclcpp std_msgs OpenCV)
 
 #############

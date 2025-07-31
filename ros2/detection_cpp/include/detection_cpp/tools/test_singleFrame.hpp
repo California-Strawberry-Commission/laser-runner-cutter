@@ -6,3 +6,4 @@
 #include <filesystem>
 
 #include "spdlog/spdlog.h"
+#include "NvInfer.h"
