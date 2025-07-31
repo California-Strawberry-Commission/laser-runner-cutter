@@ -89,6 +89,16 @@ class LucidCamera {
    */
   std::pair<double, double> getGainDbRange() const;
 
+  /**
+   * @return Color device temperature, in Celsius
+   */
+  double getColorDeviceTemperature() const;
+
+  /**
+   * @return Depth device temperature, in Celsius
+   */
+  double getDepthDeviceTemperature() const;
+
  private:
   std::condition_variable cv_;
   std::mutex cvMutex_;

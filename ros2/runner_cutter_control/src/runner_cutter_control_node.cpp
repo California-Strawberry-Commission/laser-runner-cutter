@@ -94,6 +94,9 @@ class RunnerCutterControlNode : public rclcpp::Node {
     /////////////
     declare_parameter<std::string>("laser_control_node_name", "laser0");
     declare_parameter<std::string>("camera_control_node_name", "camera0");
+    declare_parameter<std::vector<int>>("calibration_grid_size", {11, 11});
+    declare_parameter<std::vector<float>>("calibration_x_bounds", {0.0f, 1.0f});
+    declare_parameter<std::vector<float>>("calibration_y_bounds", {0.0f, 1.0f});
     declare_parameter<std::vector<float>>("tracking_laser_color",
                                           {0.15f, 0.0f, 0.0f, 0.0f});
     declare_parameter<std::vector<float>>("burn_laser_color",
@@ -240,6 +243,21 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
   std::string getParamCameraControlNodeName() {
     return get_parameter("camera_control_node_name").as_string();
+  }
+
+  std::pair<int, int> getParamCalibrationGridSize() {
+    auto param{get_parameter("calibration_grid_size").as_integer_array()};
+    return {static_cast<int>(param[0]), static_cast<int>(param[1])};
+  }
+
+  std::pair<float, float> getParamCalibrationXBounds() {
+    auto param{get_parameter("calibration_x_bounds").as_double_array()};
+    return {static_cast<float>(param[0]), static_cast<float>(param[1])};
+  }
+
+  std::pair<float, float> getParamCalibrationYBounds() {
+    auto param{get_parameter("calibration_y_bounds").as_double_array()};
+    return {static_cast<float>(param[0]), static_cast<float>(param[1])};
   }
 
   LaserColor getParamTrackingLaserColor() {
@@ -686,8 +704,10 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
   void calibrationTask(bool saveImages = false) {
     publishNotification("Calibration started");
-    calibration_->calibrate(getParamTrackingLaserColor(), {11, 11}, saveImages,
-                            taskStopSignal_);
+    calibration_->calibrate(
+        getParamTrackingLaserColor(), getParamCalibrationGridSize(),
+        getParamCalibrationXBounds(), getParamCalibrationYBounds(), saveImages,
+        taskStopSignal_);
     publishNotification(
         fmt::format("Calibration complete with {} point correspondences",
                     calibration_->getPointCorrespondencesCount()));
@@ -990,7 +1010,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
    */
   std::optional<LaserCoord> correctLaser(const LaserCoord& initialLaserCoord,
                                          const PixelCoord& targetCameraPixel,
-                                         float pixelDistanceThreshold = 3.0f,
+                                         float pixelDistanceThreshold = 6.0f,
                                          int maxAttempts = 10) {
     LaserCoord currentLaserCoord{initialLaserCoord};
     int attempt{0};

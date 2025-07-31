@@ -19,6 +19,7 @@ if [ ! -f "$installed_file" ]; then
     sudo apt-get -y install git-lfs
     git lfs pull
 
+    bash ./set_jetson_power_mode.sh
     bash ./install_python_venv.sh
     bash ./install_cuda.sh
     bash ./install_arena_sdk.sh
