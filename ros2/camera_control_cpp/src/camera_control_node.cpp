@@ -500,10 +500,10 @@ class CameraControlNode : public rclcpp::Node {
     auto gainDbRange{camera_->getGainDbRange()};
     msg->gain_db_range.x = gainDbRange.first;
     msg->gain_db_range.y = gainDbRange.second;
-    msg->color_device_temperature =
-        static_cast<float>(camera_->getColorDeviceTemperature());
-    msg->depth_device_temperature =
-        static_cast<float>(camera_->getDepthDeviceTemperature());
+    // msg->color_device_temperature =
+    //     static_cast<float>(camera_->getColorDeviceTemperature());
+    // msg->depth_device_temperature =
+    //     static_cast<float>(camera_->getDepthDeviceTemperature());
     return msg;
   }
 

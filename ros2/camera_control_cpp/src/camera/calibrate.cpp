@@ -729,9 +729,9 @@ int main(int argc, char* argv[]) {
     spdlog::info("Depth Distortion Coeffs: \n{}", ossd2.str());
   }
 
-  cv::Mat distorted{rgbImages[5]};
+  cv::Mat distorted{boostedIntensityImages[5]};
   cv::Mat undistorted{calibration::testUndistortion(
-      (*rgbMetrics).intrinsicMatrix, (*rgbMetrics).distCoeffs, distorted)};
+      (*depthMetrics).intrinsicMatrix, (*depthMetrics).distCoeffs, distorted)};
 
   calibration::showWithChafa(distorted, "Distorted");
   calibration::showWithChafa(undistorted, "Undistorted");
