@@ -21,7 +21,7 @@ find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(cv_bridge REQUIRED)
-find_package(CUDA REQUIRED)
+
 
 ###########
 ## Build ##
@@ -65,6 +65,12 @@ set(ARENA_INCLUDE_DIRS
   ${ARENA_SDK_PATH}/GenICam/library/CPP/include
 )
 
+# Add CUDA libraries (Includes TensorRT)
+set(CUDA_PATH "/usr/local/cuda-12.4")
+link_directories(${CUDA_PATH}/lib64)
+include_directories(${CUDA_PATH}/include)
+
+
 # Add BS Thread Pool
 include_directories(third_party/bs_thread_pool/include)
 
@@ -84,8 +90,7 @@ ament_target_dependencies(detection_node PUBLIC
 
 # Tools
 add_executable(test_singleFrame src/tools/test_singleFrame.cpp)
-target_include_directories(test_singleFrame PRIVATE /usr/include/aarch64-linux-gnu /usr/local/cuda/include)
-target_link_libraries(test_singleFrame PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS} fmt::fmt nvinfer)
+target_link_libraries(test_singleFrame PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS} fmt::fmt nvinfer nvonnxparser cudart)
 ament_target_dependencies(test_singleFrame PUBLIC rclcpp std_msgs OpenCV)
 
 #############
