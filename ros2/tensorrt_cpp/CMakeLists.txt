@@ -60,12 +60,18 @@ target_link_libraries(yolov8_trt PUBLIC tensorrt_cpp_api ${OpenCV_LIBS})
 target_include_directories(yolov8_trt PUBLIC ${TENSORRT_CPP_API_DIR}/src)
 set(YOLOV8_TRT_INCLUDE_DIRS ${YOLOV8_TRT_DIR}/src)
 
-# Tools
-add_executable(detect_laser
-  src/tools/detect_laser.cpp
+# detector
+add_library(detector SHARED
+  src/detector/circle_detector.cpp
 )
-target_include_directories(detect_laser PUBLIC ${YOLOV8_TRT_INCLUDE_DIRS})
-target_link_libraries(detect_laser PRIVATE detector spdlog::spdlog yolov8_trt)
+target_link_libraries(detector PUBLIC ${OpenCV_LIBS})
+
+# Tools
+add_executable(detect_runner
+  src/tools/detect_runner.cpp
+)
+target_include_directories(detect_runner PUBLIC ${YOLOV8_TRT_INCLUDE_DIRS})
+target_link_libraries(detect_runner PRIVATE detector spdlog::spdlog yolov8_trt)
 
 #############
 ## Install ##

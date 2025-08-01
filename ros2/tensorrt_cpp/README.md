@@ -1,0 +1,1 @@
+- third_party/tensorrt-cpp-api requires OpenCV with CUDA support. This requires us to build OpenCV from source. Run `scripts/build_opencv.sh`.
