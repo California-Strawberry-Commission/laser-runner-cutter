@@ -10,5 +10,11 @@
 #include "spdlog/spdlog.h"
 #include "NvInfer.h"
 
-#define DEFAULT_INPUT_IMAGE_WIDTH 1024
-#define DEFAULT_INPUT_IMAGE_HEIGHT 768
+class Logger : public nvinfer1::ILogger {
+  void log(nvinfer1::ILogger::Severity severity,
+           const char *msg) noexcept override {
+    // suppress info-level messages
+    if (severity <= nvinfer1::ILogger::Severity::kWARNING)
+      std::cout << msg << std::endl;
+  }
+} logger;

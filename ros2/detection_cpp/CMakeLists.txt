@@ -11,6 +11,9 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-fpermissive -Wall -Wextra -Wpedantic -Wno-unknown-pragmas)
 endif()
 
+# Add CMake module path
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
+
 # Find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -21,6 +24,7 @@ find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(cv_bridge REQUIRED)
+find_package(TensorRT REQUIRED)
 
 
 ###########
@@ -90,7 +94,8 @@ ament_target_dependencies(detection_node PUBLIC
 
 # Tools
 add_executable(test_singleFrame src/tools/test_singleFrame.cpp)
-target_link_libraries(test_singleFrame PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS} fmt::fmt nvinfer nvonnxparser cudart)
+target_include_directories(test_singleFrame PRIVATE ${TensorRT_INCLUDE_DIRS})
+target_link_libraries(test_singleFrame PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS} ${TensorRT_LIBRARIES} fmt::fmt nvinfer nvonnxparser cudart)
 ament_target_dependencies(test_singleFrame PUBLIC rclcpp std_msgs OpenCV)
 
 #############

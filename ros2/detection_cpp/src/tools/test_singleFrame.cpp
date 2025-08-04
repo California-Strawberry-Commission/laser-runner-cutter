@@ -1,17 +1,12 @@
 #include "detection_cpp/tools/test_singleFrame.hpp"
 
-class Logger : public nvinfer1::ILogger {
-  void log(nvinfer1::ILogger::Severity severity,
-           const char *msg) noexcept override {
-    // suppress info-level messages
-    if (severity <= nvinfer1::ILogger::Severity::kWARNING)
-      std::cout << msg << std::endl;
-  }
-} logger;
-
 int main(int argc, char const *argv[]) {
-  spdlog::info("Working");
+  /*====================================*/
+  #pragma region Setup
+  /*====================================*/
+  
 
+  spdlog::info("Working");
   if (argc > 0) {
     std::stringstream ss;
     for (int i = 0; i < argc; ++i) {
@@ -23,11 +18,40 @@ int main(int argc, char const *argv[]) {
 
   spdlog::info("TensorRT Version: {}.{}.{}.{}", NV_TENSORRT_MAJOR, NV_TENSORRT_MINOR, NV_TENSORRT_PATCH, NV_TENSORRT_BUILD);
 
-  // Fix the missing slash in the path
   std::string inputDir = std::string(getenv("HOME")) + "/Documents/testing/Images/runnerExamples";
-  std::string enginefile = std::string(getenv("HOME")) + "/Documents/laser-runner-cutter/ros2/camera_control/models/RunnerSegYoloV8l.engine.new.two";
+  std::string enginefile = std::string(getenv("HOME")) + "/Documents/laser-runner-cutter/ros2/camera_control/models/RunnerSegYoloV8l.engine.pygen";
 
-  // Check if file exists first
+
+  /*====================================*/
+  #pragma endregion Setup
+  #pragma region File Loading
+  /*====================================*/
+
+
+  std::vector<cv::Mat> images;
+  for (const auto& entry : std::filesystem::directory_iterator(inputDir)) {
+    if (entry.is_regular_file()) {
+      auto ext = entry.path().extension().string();
+      std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+      if (ext == ".png" || ext == ".jpg" || ext == ".jpeg") {
+        cv::Mat img{cv::imread(entry.path().string())};
+        if (!img.empty()) {
+          images.push_back(img);
+          spdlog::info("Loaded RGB image: {}", entry.path().filename().string());
+          spdlog::info("Image {}: size = {} x {}, channels = {}", images.size()-1, img.cols, img.rows, img.channels());
+        }
+      }
+    }
+  }
+
+  if (images.size() < 1) {
+    spdlog::error("Not enough images loaded from: {}", inputDir);
+    return -1;
+  } else {
+    spdlog::info("Total images loaded: {}", images.size());
+  }
+
+    // Check if engine file exists
   if (!std::filesystem::exists(enginefile)) {
     spdlog::error("Engine file does not exist: {}", enginefile);
     return -1;
@@ -48,6 +72,49 @@ int main(int argc, char const *argv[]) {
   std::vector<char> engineData(fsize);
   file.read(engineData.data(), fsize);
   file.close();
+
+  /*====================================*/
+  #pragma endregion File Loading
+  #pragma region Image Preprocess
+  /*====================================*/
+
+
+  // OpenCV loads images as HWC (height, width, channels)
+  spdlog::info("Original image shape (HWC): ({}, {}, {})", images[0].size[0], images[0].size[1], images[0].channels());
+
+
+  // Resize images for smaller tensor
+  cv::Size resultSize(1024, 768);
+  std::vector<cv::Mat> resizedImages(images.size());
+  for (size_t i = 0; i < images.size(); i++) {
+    cv::resize(images[i], resizedImages[i], resultSize, 0.0, 0.0, cv::INTER_LINEAR);
+  }
+  spdlog::info("Resized image shape (HWC): ({}, {}, {})", resizedImages[0].rows, resizedImages[0].cols, resizedImages[0].channels());
+
+  //Convert HWC to NCHW
+  int nchwShape[] = {1, resizedImages[0].channels(), resizedImages[0].size[0], resizedImages[0].size[1]};
+  std::vector<cv::Mat> nchwImages;
+  for (cv::Mat& img : resizedImages) {
+    // Split HWC to 3 single-channel HW
+    std::vector<cv::Mat> channels(3);
+    cv::split(img, channels);
+
+    // Stack into NCHW (1, 3, 768, 1024)
+    cv::Mat chw;
+    cv::vconcat(channels, chw);  // Shape: (3*768) x 1024
+
+    nchwImages.emplace_back(4, nchwShape, img.type(), chw.data);
+  }
+  
+  spdlog::info("New NCHW shape: ({}, {}, {}, {})", nchwImages[0].size[0], nchwImages[0].size[1], nchwImages[0].size[2], nchwImages[0].size[3]);
+  spdlog::info("Image matrix type: {}", cv::typeToString(nchwImages[0].type()));
+
+
+  /*====================================*/
+  #pragma endregion Image Preprocess
+  #pragma region Engine Creation
+  /*====================================*/
+
 
   nvinfer1::IRuntime *mRuntime{nvinfer1::createInferRuntime(logger)};
   if (!mRuntime) {
@@ -76,7 +143,21 @@ int main(int argc, char const *argv[]) {
   } else {
     spdlog::info("TensorRT engine created successfully.");
   }
-  
+
+  nvinfer1::IExecutionContext *mContext = mEngine->createExecutionContext();
+  if (!mContext) {
+    spdlog::error("Failed to create inference context");
+    return -1;
+  } else {
+    spdlog::info("TensorRT context created successfully.");
+  }
+
+
+  /*====================================*/
+  #pragma endregion Engine Creation
+  #pragma region Inference
+  /*====================================*/
+
 
   char const *input_name = "images";
   assert(mEngine->getTensorDataType(input_name) == nvinfer1::DataType::kFLOAT);
@@ -90,14 +171,19 @@ int main(int argc, char const *argv[]) {
   }
   spdlog::info(dims_ss.str());
 
-  // Check if the input tensor has 3 channels (e.g., for RGB images)
-  if (input_dims.nbDims >= 3) {
-    int channels = input_dims.d[input_dims.nbDims - 3];
-    int height = input_dims.d[input_dims.nbDims - 2];
-    int width = input_dims.d[input_dims.nbDims - 1];
-    spdlog::info("Channels: {}, Height: {}, Width: {}", channels, height,
-                 width);
+  if (nchwImages[0].size[0] != input_dims.d[0] || 
+      nchwImages[0].size[1] != input_dims.d[1] || 
+      nchwImages[0].size[2] != input_dims.d[2] || 
+      nchwImages[0].size[3] != input_dims.d[3]) {
+    spdlog::error("Image shape does NOT match model input shape. You may need to preprocess/reshape.");
+    return -1;
   }
+
+
+  /*====================================*/
+  #pragma endregion Inference
+  /*====================================*/
+
 
   spdlog::info("Done.");
   return 0;
