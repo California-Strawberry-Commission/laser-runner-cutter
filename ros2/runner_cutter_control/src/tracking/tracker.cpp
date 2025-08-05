@@ -114,6 +114,11 @@ void Tracker::processTrack(uint32_t trackId, Track::State newState) {
   if (newState == Track::State::PENDING) {
     pendingTracks_.push_back(track);
   }
+
+  // Reset the predictor if the track is COMPLETED or FAILED
+  if (newState == Track::State::COMPLETED || newState == Track::State::FAILED) {
+    track->getPredictor().reset();
+  }
 }
 
 void Tracker::clear() {

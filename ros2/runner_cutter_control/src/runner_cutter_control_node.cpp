@@ -948,19 +948,15 @@ class RunnerCutterControlNode : public rclcpp::Node {
       auto track{trackOpt.value()};
 
       // Fire tracking laser at target using predicted future position
-      // TODO: Determine actual latency
-      double estimatedCameraLatencyMs{100.0};
       double timestampMillis{
           std::chrono::duration<double, std::milli>(
               std::chrono::high_resolution_clock::now().time_since_epoch())
               .count()};
-      Position predictedPosition{track->getPredictor().predict(
-          timestampMillis + estimatedCameraLatencyMs)};
-      LaserCoord laserCoord{
+      Position predictedPosition{
+          track->getPredictor().predict(timestampMillis)};
+      LaserCoord predictedLaserCoord{
           calibration_->cameraPositionToLaserCoord(predictedPosition)};
-      track->getPredictor().reset();
-
-      laser_->setPoint(laserCoord);
+      laser_->setPoint(predictedLaserCoord);
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
       laser_->clearPoint();
     }
