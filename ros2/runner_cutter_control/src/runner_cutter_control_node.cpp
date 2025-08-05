@@ -601,7 +601,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
     bool res{startTask("circle_follower",
-                       &RunnerCutterControlNode::circleFollowerTask, 0.5f)};
+                       &RunnerCutterControlNode::circleFollowerTask, 0.25f)};
     response->success = res;
   }
 
@@ -929,7 +929,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
     RCLCPP_INFO(get_logger(), "Burn complete on track %u...", targetTrackId);
   }
 
-  void circleFollowerTask(float laserIntervalSecs = 0.5f) {
+  void circleFollowerTask(float laserIntervalSecs = 0.25f) {
     laser_->clearPoint();
     laser_->setColor(getParamTrackingLaserColor());
     laser_->play();
@@ -948,17 +948,20 @@ class RunnerCutterControlNode : public rclcpp::Node {
       auto track{trackOpt.value()};
 
       // Fire tracking laser at target using predicted future position
-      double timestampMillis{
-          std::chrono::duration<double, std::milli>(
-              std::chrono::high_resolution_clock::now().time_since_epoch())
-              .count()};
-      Position predictedPosition{
-          track->getPredictor().predict(timestampMillis)};
-      LaserCoord predictedLaserCoord{
-          calibration_->cameraPositionToLaserCoord(predictedPosition)};
-      laser_->setPoint(predictedLaserCoord);
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-      laser_->clearPoint();
+      if (track->getState() == Track::State::PENDING) {
+        double timestampMillis{
+            std::chrono::duration<double, std::milli>(
+                std::chrono::high_resolution_clock::now().time_since_epoch())
+                .count()};
+        Position predictedPosition{
+            track->getPredictor().predict(timestampMillis)};
+        LaserCoord predictedLaserCoord{
+            calibration_->cameraPositionToLaserCoord(predictedPosition)};
+
+        laser_->setPoint(predictedLaserCoord);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        laser_->clearPoint();
+      }
     }
 
     laser_->clearPoint();
