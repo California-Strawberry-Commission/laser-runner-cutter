@@ -153,7 +153,7 @@ class LucidFrame(RgbdFrame):
 
     def get_corresponding_depth_pixel(
         self, color_pixel: Tuple[int, int]
-    ) -> Tuple[int, int]:
+    ) -> Optional[Tuple[int, int]]:
         """
         Given an (x, y) coordinate in the color frame, return the corresponding (x, y) coordinate in
         the depth frame.
@@ -188,10 +188,13 @@ class LucidFrame(RgbdFrame):
             color_pixel (Sequence[int]): (x, y) coordinate in the color frame.
 
         Returns:
-            Tuple[int, int]: (x, y) coordinate in the depth frame.
+            Optional[Tuple[int, int]]: (x, y) coordinate in the depth frame, or None if the
+            corresponding depth pixel could not be determined.
         """
 
-        def deproject_pixel(pixel, depth, camera_matrix, distortion_coeffs):
+        def deproject_pixel(
+            pixel, depth, camera_matrix, distortion_coeffs
+        ) -> Optional[Tuple[float, float, float]]:
             # Normalized, undistorted pixel coord
             pixel = np.array([[[pixel[0], pixel[1]]]], dtype=np.float32)
             pixel_undistorted = cv2.undistortPoints(
@@ -199,13 +202,18 @@ class LucidFrame(RgbdFrame):
                 camera_matrix,
                 distortion_coeffs,
             )
-            return np.array(
-                [
-                    pixel_undistorted[0][0][0] * depth,
-                    pixel_undistorted[0][0][1] * depth,
-                    depth,
-                ]
-            )
+
+            # cv2.undistortPoints can return nan or inf values
+            if np.any(np.isnan(pixel_undistorted)) or np.any(
+                np.isinf(pixel_undistorted)
+            ):
+                return None
+
+            return [
+                pixel_undistorted[0][0][0] * depth,
+                pixel_undistorted[0][0][1] * depth,
+                depth,
+            ]
 
         def transform_position(position, extrinsic_matrix):
             position = np.array(position)
@@ -214,7 +222,7 @@ class LucidFrame(RgbdFrame):
 
         def project_position(
             position, camera_matrix, distortion_coeffs, extrinsic_matrix=None
-        ):
+        ) -> Optional[Tuple[int, int]]:
             R = extrinsic_matrix[:3, :3] if extrinsic_matrix is not None else np.eye(3)
             t = extrinsic_matrix[:3, 3] if extrinsic_matrix is not None else np.zeros(3)
             pixels, _ = cv2.projectPoints(
@@ -224,6 +232,11 @@ class LucidFrame(RgbdFrame):
                 camera_matrix,
                 distortion_coeffs,
             )
+
+            # cv2.projectPoints can return nan or inf values
+            if np.any(np.isnan(pixels)) or np.any(np.isinf(pixels)):
+                return None
+
             pixel = pixels[0].flatten()
             return (round(pixel[0]), round(pixel[1]))
 
@@ -232,7 +245,7 @@ class LucidFrame(RgbdFrame):
             y = max(0, min(round(pixel[1]), height - 1))
             return (x, y)
 
-        def next_pixel_in_line(curr, start, end):
+        def next_pixel_in_line(curr, start, end) -> Tuple[int, int]:
             # Move one pixel from curr to end
             curr = np.array(curr)
             end = np.array(end)
@@ -264,12 +277,16 @@ class LucidFrame(RgbdFrame):
             self._color_camera_intrinsic_matrix,
             self._color_camera_distortion_coeffs,
         )
+        if min_depth_position_color_space is None:
+            return None
         max_depth_position_color_space = deproject_pixel(
             full_frame_color_pixel,
             DEPTH_MAX_MM,
             self._color_camera_intrinsic_matrix,
             self._color_camera_distortion_coeffs,
         )
+        if max_depth_position_color_space is None:
+            return None
 
         # Min-depth and max-depth positions in depth camera-space
         min_depth_position_depth_space = transform_position(
@@ -285,11 +302,15 @@ class LucidFrame(RgbdFrame):
             self._depth_camera_intrinsic_matrix,
             self._depth_camera_distortion_coeffs,
         )
+        if min_depth_pixel is None:
+            return None
         max_depth_pixel = project_position(
             max_depth_position_depth_space,
             self._depth_camera_intrinsic_matrix,
             self._depth_camera_distortion_coeffs,
         )
+        if max_depth_pixel is None:
+            return None
 
         # Make sure pixel coords are in boundary
         depth_frame_height, depth_frame_width, depth_channels = (
@@ -315,6 +336,8 @@ class LucidFrame(RgbdFrame):
                 self._color_camera_distortion_coeffs,
                 self._xyz_to_color_camera_extrinsic_matrix,
             )
+            if curr_color_pixel is None:
+                return None
             distance = np.linalg.norm(
                 np.array(curr_color_pixel).astype(float)
                 - np.array(full_frame_color_pixel).astype(float)
@@ -352,6 +375,9 @@ class LucidFrame(RgbdFrame):
             Optional[Tuple[float, float, float]]: (x, y, z) position with respect to the camera, or None if the position could not be determined.
         """
         depth_pixel = self.get_corresponding_depth_pixel(color_pixel)
+        if depth_pixel is None:
+            return None
+
         position = self._depth_frame_xyz[depth_pixel[1]][depth_pixel[0]]
         # Negative depth indicates an invalid position. Depth greater than 2^14 - 1 also indicates
         # invalid position.

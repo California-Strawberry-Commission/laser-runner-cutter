@@ -58,11 +58,12 @@ std::shared_ptr<Track> Tracker::addTrack(uint32_t trackId,
     track = tracks_[trackId];
     track->setPixel(pixel);
     track->setPosition(position);
+    track->setTimestampMs(timestampMs);
   } else {
     // Create a new track and set as PENDING
-    track =
-        std::make_shared<Track>(trackId, pixel, position, Track::State::PENDING,
-                                std::make_unique<KalmanFilterPredictor>());
+    track = std::make_shared<Track>(trackId, pixel, position, timestampMs,
+                                    Track::State::PENDING,
+                                    std::make_unique<KalmanFilterPredictor>());
     tracks_[trackId] = track;
     pendingTracks_.push_back(track);
   }
@@ -112,6 +113,11 @@ void Tracker::processTrack(uint32_t trackId, Track::State newState) {
   // If the track is entering the PENDING state, add it to pendingTracks_
   if (newState == Track::State::PENDING) {
     pendingTracks_.push_back(track);
+  }
+
+  // Reset the predictor if the track is COMPLETED or FAILED
+  if (newState == Track::State::COMPLETED || newState == Track::State::FAILED) {
+    track->getPredictor().reset();
   }
 }
 
