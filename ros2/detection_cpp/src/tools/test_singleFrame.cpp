@@ -16,10 +16,24 @@ int main(int argc, char const *argv[]) {
     spdlog::info("argv: {}", ss.str());
   }
 
+  spdlog::info("OpenCV Version: {}.{}.{}", CV_MAJOR_VERSION, CV_MINOR_VERSION, CV_SUBMINOR_VERSION);
   spdlog::info("TensorRT Version: {}.{}.{}.{}", NV_TENSORRT_MAJOR, NV_TENSORRT_MINOR, NV_TENSORRT_PATCH, NV_TENSORRT_BUILD);
 
   std::string inputDir = std::string(getenv("HOME")) + "/Documents/testing/Images/runnerExamples";
   std::string enginefile = std::string(getenv("HOME")) + "/Documents/laser-runner-cutter/ros2/camera_control/models/RunnerSegYoloV8l.engine.pygen";
+
+  int numGPUs;
+  cudaGetDeviceCount(&numGPUs);
+  int deviceNum = 0;
+  auto ret = cudaSetDevice(deviceNum);
+  if (ret != 0) {
+    spdlog::error("Unable to set GPU device index to: {}. Note, your device has {} CUDA-capable GPU(s).", deviceNum, numGPUs);
+    return -1;
+  } else {
+    cudaDeviceProp deviceProp;
+    cudaGetDeviceProperties(&deviceProp, deviceNum);
+    spdlog::info("CUDA device set to: {}. Note, your device has {} CUDA-capable GPU(s).", deviceProp.name, numGPUs);
+  }
 
 
   /*====================================*/
@@ -37,8 +51,7 @@ int main(int argc, char const *argv[]) {
         cv::Mat img{cv::imread(entry.path().string())};
         if (!img.empty()) {
           images.push_back(img);
-          spdlog::info("Loaded RGB image: {}", entry.path().filename().string());
-          spdlog::info("Image {}: size = {} x {}, channels = {}", images.size()-1, img.cols, img.rows, img.channels());
+          spdlog::info("Loaded RGB image: {} || size = {} x {}, channels = {}", entry.path().filename().string(), img.cols, img.rows, img.channels());
         }
       }
     }
@@ -124,18 +137,6 @@ int main(int argc, char const *argv[]) {
     spdlog::info("TensorRT runtime created successfully.");
   }
 
-  int numGPUs;
-  cudaGetDeviceCount(&numGPUs);
-  auto ret = cudaSetDevice(0);
-  if (ret != 0) {
-    spdlog::error("Unable to set GPU device index to: " + std::to_string(0) + ". Note, your device has " + std::to_string(numGPUs) + " CUDA-capable GPU(s).");
-    return -1;
-  } else {
-    int device;
-    cudaGetDevice(&device);
-    spdlog::info("CUDA device set to: {}. Note, your device has " + std::to_string(numGPUs) + " CUDA-capable GPU(s).", device);
-  }
-
   nvinfer1::ICudaEngine *mEngine = mRuntime->deserializeCudaEngine(engineData.data(), fsize);
   if (!mEngine) {
     spdlog::error("Failed to deserialize CUDA engine.");
@@ -177,7 +178,11 @@ int main(int argc, char const *argv[]) {
       nchwImages[0].size[3] != input_dims.d[3]) {
     spdlog::error("Image shape does NOT match model input shape. You may need to preprocess/reshape.");
     return -1;
+  } else {
+    spdlog::info("Image and model input shapes match.");
   }
+
+
 
 
   /*====================================*/

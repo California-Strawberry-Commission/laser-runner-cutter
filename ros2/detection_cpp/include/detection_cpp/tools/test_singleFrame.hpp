@@ -1,14 +1,16 @@
 #pragma once
 
-#include <opencv2/opencv.hpp>
+// #include <opencv2/opencv.hpp>
+#include <opencv4/opencv2/opencv.hpp>
+#include <opencv4/opencv2/cudawarping.hpp>
 #include <optional>
 #include <vector>
 #include <filesystem>
 #include <fstream>
 
-
 #include "spdlog/spdlog.h"
 #include "NvInfer.h"
+
 
 class Logger : public nvinfer1::ILogger {
   void log(nvinfer1::ILogger::Severity severity,
