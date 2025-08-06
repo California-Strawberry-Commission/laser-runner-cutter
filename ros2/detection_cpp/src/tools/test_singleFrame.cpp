@@ -42,7 +42,7 @@ int main(int argc, char const *argv[]) {
   /*====================================*/
 
 
-  std::vector<cv::Mat> images;
+  std::vector<cv::cuda::GpuMat> images;
   for (const auto& entry : std::filesystem::directory_iterator(inputDir)) {
     if (entry.is_regular_file()) {
       auto ext = entry.path().extension().string();
@@ -50,7 +50,9 @@ int main(int argc, char const *argv[]) {
       if (ext == ".png" || ext == ".jpg" || ext == ".jpeg") {
         cv::Mat img{cv::imread(entry.path().string())};
         if (!img.empty()) {
-          images.push_back(img);
+          cv::cuda::GpuMat gpuImg;
+          gpuImg.upload(img);
+          images.push_back(gpuImg);
           spdlog::info("Loaded RGB image: {} || size = {} x {}, channels = {}", entry.path().filename().string(), img.cols, img.rows, img.channels());
         }
       }
@@ -93,34 +95,39 @@ int main(int argc, char const *argv[]) {
 
 
   // OpenCV loads images as HWC (height, width, channels)
-  spdlog::info("Original image shape (HWC): ({}, {}, {})", images[0].size[0], images[0].size[1], images[0].channels());
-
+  spdlog::info("Original image shape (HWC): ({}, {}, {})", images[0].rows, images[0].cols, images[0].channels());
 
   // Resize images for smaller tensor
   cv::Size resultSize(1024, 768);
-  std::vector<cv::Mat> resizedImages(images.size());
+  std::vector<cv::cuda::GpuMat> resizedImages(images.size());
   for (size_t i = 0; i < images.size(); i++) {
-    cv::resize(images[i], resizedImages[i], resultSize, 0.0, 0.0, cv::INTER_LINEAR);
+    cv::cuda::resize(images[i], resizedImages[i], resultSize, 0.0, 0.0, cv::INTER_LINEAR);
   }
   spdlog::info("Resized image shape (HWC): ({}, {}, {})", resizedImages[0].rows, resizedImages[0].cols, resizedImages[0].channels());
 
   //Convert HWC to NCHW
-  int nchwShape[] = {1, resizedImages[0].channels(), resizedImages[0].size[0], resizedImages[0].size[1]};
-  std::vector<cv::Mat> nchwImages;
-  for (cv::Mat& img : resizedImages) {
-    // Split HWC to 3 single-channel HW
-    std::vector<cv::Mat> channels(3);
-    cv::split(img, channels);
-
-    // Stack into NCHW (1, 3, 768, 1024)
-    cv::Mat chw;
-    cv::vconcat(channels, chw);  // Shape: (3*768) x 1024
-
-    nchwImages.emplace_back(4, nchwShape, img.type(), chw.data);
+  std::vector<cv::cuda::GpuMat> nchwImages;
+  for (const cv::cuda::GpuMat& img : resizedImages) {
+    // Split HWC to 3 single-channel HW on GPU
+    std::vector<cv::cuda::GpuMat> channels(3);
+    cv::cuda::split(img, channels);
+    // Concatenate channels along rows (simulate vconcat on GPU)
+    cv::cuda::GpuMat chw(channels[0].rows * 3, channels[0].cols, channels[0].type());
+    for (int c = 0; c < 3; c++) {
+      cv::cuda::GpuMat roi(chw, cv::Rect(0, c * channels[0].rows, channels[0].cols, channels[0].rows));
+      channels[c].copyTo(roi);
+    }
+    // Create a GpuMat with NCHW shape (1, 3, 768, 1024)
+    // Note: OpenCV GpuMat does not support 4D shapes directly, so we keep as (3*768, 1024)
+    nchwImages.push_back(chw);
   }
-  
-  spdlog::info("New NCHW shape: ({}, {}, {}, {})", nchwImages[0].size[0], nchwImages[0].size[1], nchwImages[0].size[2], nchwImages[0].size[3]);
+  spdlog::info("New NCHW shape: ({}, {}, {}, {})", 1, 3, nchwImages[0].rows / 3, nchwImages[0].cols);
+
   spdlog::info("Image matrix type: {}", cv::typeToString(nchwImages[0].type()));
+  for (cv::cuda::GpuMat& img : nchwImages) {
+    img.convertTo(img, CV_32FC1, 1.0 / 255.0);
+  }
+  spdlog::info("Matrix types converted to : {}", cv::typeToString(nchwImages[0].type()));
 
 
   /*====================================*/
@@ -161,7 +168,6 @@ int main(int argc, char const *argv[]) {
 
 
   char const *input_name = "images";
-  assert(mEngine->getTensorDataType(input_name) == nvinfer1::DataType::kFLOAT);
 
   // Get input tensor dimensions
   nvinfer1::Dims input_dims = mEngine->getTensorShape(input_name);
@@ -172,14 +178,22 @@ int main(int argc, char const *argv[]) {
   }
   spdlog::info(dims_ss.str());
 
-  if (nchwImages[0].size[0] != input_dims.d[0] || 
-      nchwImages[0].size[1] != input_dims.d[1] || 
-      nchwImages[0].size[2] != input_dims.d[2] || 
-      nchwImages[0].size[3] != input_dims.d[3]) {
+  if (nchwImages[0].channels() != input_dims.d[0] || 
+      3 != input_dims.d[1] || 
+      nchwImages[0].rows / 3 != input_dims.d[2] || 
+      nchwImages[0].cols != input_dims.d[3]) {
     spdlog::error("Image shape does NOT match model input shape. You may need to preprocess/reshape.");
     return -1;
   } else {
     spdlog::info("Image and model input shapes match.");
+  }
+
+  assert(mEngine->getTensorDataType(input_name) == nvinfer1::DataType::kFLOAT);
+  if (nchwImages[0].type() != CV_32FC1) {
+    spdlog::error("NCHW image type is not CV_32FC1 (float). Actual type: {}", cv::typeToString(nchwImages[0].type()));
+    return -1;
+  } else {
+    spdlog::info("NCHW image type valid: {}", cv::typeToString(nchwImages[0].type()));
   }
 
 

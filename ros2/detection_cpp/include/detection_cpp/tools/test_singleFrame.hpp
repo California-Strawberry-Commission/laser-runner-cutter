@@ -3,6 +3,7 @@
 // #include <opencv2/opencv.hpp>
 #include <opencv4/opencv2/opencv.hpp>
 #include <opencv4/opencv2/cudawarping.hpp>
+#include <opencv4/opencv2/cudaarithm.hpp>
 #include <optional>
 #include <vector>
 #include <filesystem>
