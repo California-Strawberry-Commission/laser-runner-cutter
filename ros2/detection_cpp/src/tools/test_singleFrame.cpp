@@ -301,6 +301,7 @@ int main(int argc, char const *argv[]) {
     bindings[2] = outputMem1;  // Output1 binding
 
     // Run inference
+    auto start = std::chrono::high_resolution_clock::now();
     bool success = mContext->executeV2(bindings);
     if (!success) {
         spdlog::error("TensorRT inference failed for image {}", img_idx + 1);
@@ -308,7 +309,9 @@ int main(int argc, char const *argv[]) {
         cudaFree(outputMem1);
         continue;
     }
-    spdlog::info("Inference completed successfully for image {}", img_idx + 1);
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    spdlog::info("Inference completed successfully for image {} in {} ms", img_idx + 1, duration);
     successCount++;
 
     // Copy results back to host
@@ -328,32 +331,39 @@ int main(int argc, char const *argv[]) {
   #pragma region Display Results
   /*====================================*/
 
-  system("figlet IMAGE");
-  // Display the first example image using chafa
-  // Save the first image in the array to a temporary PNG file and display it with chafa
-  std::string first_image_path = "/tmp/first_image.png";
-  cv::Mat first_img_host;
-  images[0].download(first_img_host); // Download from GPU to host
-  cv::imwrite(first_image_path, first_img_host);
-  system(("chafa " + first_image_path).c_str());
+  std::string first_image_path, mask_path;
 
-  std::string mask_path = "/tmp/output_mask.png";
-  for (int chnl=0; chnl<32; chnl++) {
-    try {
-      system(("figlet MASK" + std::to_string(chnl)).c_str());
-      // Save the first output mask to a temporary PNG file and display it with chafa
-      cv::Mat mask;
-      // Reshape outputMasks[0] to (32, 192, 256) and select the first channel (mask)
-      mask = outputMasks[0].rowRange(chnl, 192).clone(); // Take first channel (assuming row-major)
-      mask = mask.reshape(1, 192); // Reshape to 192x256
-      cv::normalize(mask, mask, 0, 255, cv::NORM_MINMAX);
-      mask.convertTo(mask, CV_8UC1);
-      cv::imwrite(mask_path, mask);
-      system(("chafa " + mask_path).c_str());
-    } catch (const cv::Exception& e) {
-      spdlog::error("OpenCV error displaying mask channel {}:\n{}", chnl, e.what());
+  bool testDisplay = false;
+  if (testDisplay) {
+    system("figlet IMAGE");
+    // Display the first example image using chafa
+    // Save the first image in the array to a temporary PNG file and display it with chafa
+    first_image_path = "/tmp/first_image.png";
+    cv::Mat first_img_host;
+    images[0].download(first_img_host); // Download from GPU to host
+    cv::imwrite(first_image_path, first_img_host);
+    system(("chafa " + first_image_path).c_str());
+
+    mask_path = "/tmp/output_mask.png";
+    for (int chnl=0; chnl<32; chnl++) {
+      try {
+        system(("figlet MASK" + std::to_string(chnl)).c_str());
+        // Save the first output mask to a temporary PNG file and display it with chafa
+        cv::Mat mask;
+        // Reshape outputMasks[0] to (32, 192, 256) and select the first channel (mask)
+        mask = outputMasks[0].rowRange(chnl, 192).clone(); // Take first channel (assuming row-major)
+        mask = mask.reshape(1, 192); // Reshape to 192x256
+        cv::normalize(mask, mask, 0, 255, cv::NORM_MINMAX);
+        mask.convertTo(mask, CV_8UC1);
+        cv::imwrite(mask_path, mask);
+        system(("chafa " + mask_path).c_str());
+      } catch (const cv::Exception& e) {
+        spdlog::error("OpenCV error displaying mask channel {}:\n{}", chnl, e.what());
+      }
     }
   }
+
+
 
 
   /*====================================*/
@@ -363,8 +373,10 @@ int main(int argc, char const *argv[]) {
 
 
   // Cleanup tmp files
-  std::remove(first_image_path.c_str());
-  std::remove(mask_path.c_str());
+  if (testDisplay) {
+    std::remove(first_image_path.c_str());
+    std::remove(mask_path.c_str());
+  }
 
   // Cleanup TensorRT objects
   delete mContext;
