@@ -19,11 +19,11 @@ class Predictor {
                    float confidence = 1.0f) = 0;
 
   /**
-   * Predict a future position.
+   * Predict the position at the given timestamp.
    *
    * @param timestampMs Timestamp (in ms) to predict the measurement for.
    */
-  virtual Position predict(double timestampMs) = 0;
+  virtual Position predict(double timestampMs) const = 0;
 
   /**
    * Clear the predictor's state.
