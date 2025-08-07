@@ -39,7 +39,7 @@ int main() {
   std::vector<float> measX, measY, predX, predY;
 
   for (const auto& [ts, pos] : data) {
-    predictor.add(pos, ts);
+    predictor.add(ts, {pos, 1.0f});
     measX.push_back(pos.x);
     measY.push_back(pos.y);
   }

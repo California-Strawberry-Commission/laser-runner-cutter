@@ -17,6 +17,10 @@
 #include "runner_cutter_control/clients/laser_control_client.hpp"
 #include "runner_cutter_control/clients/laser_detection_context.hpp"
 #include "runner_cutter_control/common_types.hpp"
+#include "runner_cutter_control/prediction/average_velocity_predictor.hpp"
+#include "runner_cutter_control/prediction/kalman_filter_predictor.hpp"
+#include "runner_cutter_control/prediction/last_known_predictor.hpp"
+#include "runner_cutter_control/tools/prediction_evaluator.hpp"
 #include "runner_cutter_control/tracking/tracker.hpp"
 #include "runner_cutter_control_interfaces/msg/state.hpp"
 #include "runner_cutter_control_interfaces/msg/track.hpp"
@@ -947,20 +951,62 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
       auto track{trackOpt.value()};
 
-      // Fire tracking laser at target using predicted future position
-      if (track->getState() == Track::State::PENDING) {
-        double timestampMillis{
-            std::chrono::duration<double, std::milli>(
-                std::chrono::high_resolution_clock::now().time_since_epoch())
-                .count()};
-        Position predictedPosition{
-            track->getPredictor().predict(timestampMillis)};
-        LaserCoord predictedLaserCoord{
-            calibration_->cameraPositionToLaserCoord(predictedPosition)};
+      if (track->getState() != Track::State::PENDING) {
+        continue;
+      }
 
-        laser_->setPoint(predictedLaserCoord);
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        laser_->clearPoint();
+      // Fire tracking laser at target using predicted future position
+      double timestampMillis{
+          std::chrono::duration<double, std::milli>(
+              std::chrono::high_resolution_clock::now().time_since_epoch())
+              .count()};
+      Position predictedPosition{
+          track->getPredictor().predict(timestampMillis)};
+      LaserCoord predictedLaserCoord{
+          calibration_->cameraPositionToLaserCoord(predictedPosition)};
+
+      laser_->setPoint(predictedLaserCoord);
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+      laser_->clearPoint();
+
+      RCLCPP_INFO(get_logger(), "Evaluating predictors...");
+
+      // Evaluate predictor
+      std::vector<double> timestampsMs;
+      std::vector<Position> positions;
+      std::vector<float> confidences;
+      for (const auto& [ts, entry] : track->getPredictor().getHistory()) {
+        timestampsMs.push_back(ts);
+        positions.push_back(entry.position);
+        confidences.push_back(entry.confidence);
+      }
+      for (double predictionOffsetMs : {100, 200, 500}) {
+        RCLCPP_INFO(get_logger(), "  Prediction offset: %f ms",
+                    predictionOffsetMs);
+        auto lastKnownPredictor{std::make_unique<LastKnownPredictor>()};
+        double lastKnownPredictorMeanError{
+            prediction_evaluator::evaluatePredictor(
+                std::move(lastKnownPredictor), timestampsMs, positions,
+                confidences, predictionOffsetMs)};
+        RCLCPP_INFO(get_logger(), "    LastKnownPredictor mean error: %f",
+                    lastKnownPredictorMeanError);
+
+        auto averageVelocityPredictor{
+            std::make_unique<AverageVelocityPredictor>()};
+        double averageVelocityPredictorMeanError{
+            prediction_evaluator::evaluatePredictor(
+                std::move(averageVelocityPredictor), timestampsMs, positions,
+                confidences, predictionOffsetMs)};
+        RCLCPP_INFO(get_logger(), "    AverageVelocityPredictor mean error: %f",
+                    averageVelocityPredictorMeanError);
+
+        auto kalmanFilterPredictor{std::make_unique<KalmanFilterPredictor>()};
+        double kalmanFilterPredictorMeanError{
+            prediction_evaluator::evaluatePredictor(
+                std::move(kalmanFilterPredictor), timestampsMs, positions,
+                confidences, predictionOffsetMs)};
+        RCLCPP_INFO(get_logger(), "    KalmanFilterPredictor mean error: %f",
+                    kalmanFilterPredictorMeanError);
       }
     }
 

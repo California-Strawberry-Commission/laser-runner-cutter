@@ -5,8 +5,6 @@
 
 #include "runner_cutter_control/prediction/kalman_filter_predictor.hpp"
 
-Tracker::Tracker() {}
-
 bool Tracker::hasTrackWithState(Track::State state) const {
   std::lock_guard<std::mutex> lock(tracksMutex_);
   return std::any_of(
@@ -69,7 +67,7 @@ std::shared_ptr<Track> Tracker::addTrack(uint32_t trackId,
   }
 
   // Update predictor for the track
-  track->getPredictor().add(position, timestampMs, confidence);
+  track->getPredictor().add(timestampMs, {position, confidence});
 
   return track;
 }

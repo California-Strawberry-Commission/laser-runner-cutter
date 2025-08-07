@@ -1,25 +1,28 @@
 #pragma once
 
 #include <Eigen/Dense>
-#include <map>
 
 #include "runner_cutter_control/prediction/predictor.hpp"
 
+/**
+ * Predictor that uses a Kalman Filter in order to predict future
+ * measurements.
+ */
 class KalmanFilterPredictor final : public Predictor {
  public:
   KalmanFilterPredictor();
+  ~KalmanFilterPredictor() = default;
 
   /**
    * Add a new position measurement to the predictor. Calls to `add` for
    * measurements must be done in sequential order with respect to their
-   * timestamps. Non-sequential measurements will be ignored.
+   * timestamps.
    *
-   * @param position Position measurement (x, y, z).
    * @param timestampMs Timestamp (in ms) associated with the measurement.
-   * @param confidence Confidence score associated with the measurement.
+   * @param measurement Measurement taken at the timestamp, which consists
+   * of (x, y, z) position and confidence score.
    */
-  void add(const Position& position, double timestampMs,
-           float confidence = 1.0f) override;
+  void add(double timestampMs, const Measurement& measurement) override;
 
   /**
    * Predict the position at the given timestamp. If the timestamp provided
@@ -38,18 +41,7 @@ class KalmanFilterPredictor final : public Predictor {
  private:
   Eigen::MatrixXd lerpR(float confidence, float min, float max);
 
-  /**
-   * Get linearly interpolated position at a given timestamp.
-   * If timestamp is outside the historical range, returns the nearest stored
-   * value.
-   *
-   * @param timestampMs Timestamp (in ms) to get the measurement for.
-   */
-  Position interpolated(double timestampMs) const;
-
   Eigen::MatrixXd F_, H_, P_, R_, Q_;
   Eigen::VectorXd x_;
-  double lastTimestampMs_{0.0f};
   bool initialized_{false};
-  std::map<double, Position> history_;
 };

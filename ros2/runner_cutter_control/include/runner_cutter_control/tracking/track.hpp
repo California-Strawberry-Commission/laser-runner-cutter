@@ -18,6 +18,7 @@ class Track {
   explicit Track(uint32_t id, const PixelCoord& pixel, const Position& position,
                  double timestampMs, State state = State::PENDING,
                  std::unique_ptr<Predictor> predictor = nullptr);
+  ~Track() = default;
 
   uint32_t getId() const { return id_; };
   PixelCoord getPixel() const { return pixel_; };
