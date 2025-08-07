@@ -2,13 +2,16 @@
 
 KalmanFilterPredictor::KalmanFilterPredictor() { reset(); }
 
-void KalmanFilterPredictor::add(const Position& position, double timestampMs,
-                                float confidence) {
+void KalmanFilterPredictor::add(double timestampMs,
+                                const Measurement& measurement) {
+  double dt{timestampMs - getLastTimestampMs()};
+  Predictor::add(timestampMs, measurement);
+
   if (!initialized_) {
-    x_.head<3>() = Eigen::Vector3d(position.x, position.y, position.z);
+    x_.head<3>() = Eigen::Vector3d(
+        measurement.position.x, measurement.position.y, measurement.position.z);
     initialized_ = true;
   } else {
-    double dt{timestampMs - lastTimestampMs_};
     if (dt <= 0.0) {
       // Ignore out-of-order measurements
       return;
@@ -22,23 +25,22 @@ void KalmanFilterPredictor::add(const Position& position, double timestampMs,
     P_ = F_ * P_ * F_.transpose() + Q_;  // P = FPF' + Q
 
     // Update step
-    R_ = lerpR(confidence, 10.0f, 50.0f);
-    Eigen::Vector3d z{position.x, position.y, position.z};
+    R_ = lerpR(measurement.confidence, 10.0f, 50.0f);
+    Eigen::Vector3d z{measurement.position.x, measurement.position.y,
+                      measurement.position.z};
     Eigen::VectorXd y{z - H_ * x_};
     Eigen::MatrixXd S{H_ * P_ * H_.transpose() + R_};
     Eigen::MatrixXd K{P_ * H_.transpose() * S.inverse()};
     x_ = x_ + K * y;
     P_ = (Eigen::MatrixXd::Identity(6, 6) - K * H_) * P_;
   }
-
-  lastTimestampMs_ = timestampMs;
 }
 
-Position KalmanFilterPredictor::predict(double timestampMs) {
-  double dt{timestampMs - lastTimestampMs_};
+Position KalmanFilterPredictor::predict(double timestampMs) const {
+  double dt{timestampMs - getLastTimestampMs()};
+
   if (dt <= 0.0) {
-    return {static_cast<float>(x_[0]), static_cast<float>(x_[1]),
-            static_cast<float>(x_[2])};
+    return interpolated(timestampMs);
   }
 
   Eigen::MatrixXd F_future{Eigen::MatrixXd::Identity(6, 6)};
@@ -50,6 +52,8 @@ Position KalmanFilterPredictor::predict(double timestampMs) {
 }
 
 void KalmanFilterPredictor::reset() {
+  Predictor::reset();
+
   // Initialize Kalman filter with 6D state (x, y, z, vx, vy, vz)
 
   // State transition matrix (F) - will be updated later with dt
@@ -78,7 +82,6 @@ void KalmanFilterPredictor::reset() {
   // Initial state [x, y, z, vx, vy, vz]
   x_ = Eigen::VectorXd::Zero(6);
 
-  lastTimestampMs_ = 0.0f;
   initialized_ = false;
 }
 

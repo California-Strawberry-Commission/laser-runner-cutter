@@ -78,6 +78,9 @@ target_link_libraries(calibration PUBLIC Eigen3::Eigen clients)
 
 # prediction
 add_library(prediction SHARED
+  src/prediction/predictor.cpp
+  src/prediction/last_known_predictor.cpp
+  src/prediction/average_velocity_predictor.cpp
   src/prediction/kalman_filter_predictor.cpp
 )
 target_link_libraries(prediction PUBLIC Eigen3::Eigen)
