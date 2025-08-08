@@ -287,7 +287,9 @@ int main(int argc, char const *argv[]) {
     spdlog::info("Processing image {} of {}", img_idx + 1, nchwImages.size());
     void* inputMem = nchwImages[img_idx].ptr<void>();
     cudaMalloc(&outputMem0, output0_size);
+    cudaMemset(outputMem0, 0, output0_size);
     cudaMalloc(&outputMem1, output1_size);
+    cudaMemset(outputMem1, 0, output1_size);
 
     // Set tensor addresses
     mContext->setTensorAddress(input_name, inputMem);
@@ -368,6 +370,63 @@ int main(int argc, char const *argv[]) {
 
   /*====================================*/
   #pragma endregion Display Results
+  #pragma region Post-Process
+  /*====================================*/
+
+  // output0: [1, 37, 16128] - detections
+  // output1: [1, 32, 192, 256] - mask prototypes
+
+  // output0 shape: [batch=1, features=37, anchors=16128]
+  // Each of the 16128 anchor points has 37 values:
+
+  // For each anchor point (16128 total):
+  // [0-3]:   Bounding box (x_center, y_center, width, height)
+  // [4]:     Object confidence score
+  // [5-36]:  32 mask coefficients (used to combine the 32 prototype masks)
+
+  
+  float confidence_threshold = 0.1f;
+  std::vector<cv::Rect> boxes;
+  std::vector<float> confidences;
+  std::vector<std::vector<float>> mask_coefficients;
+  
+  for (const cv::Mat& output0 : output0Tensors) {
+    boxes.clear();
+    confidences.clear();
+    mask_coefficients.clear();
+    // Process each anchor point
+    for (int i = 0; i < 16128; ++i) {
+        // Extract confidence score (index 4)
+        float confidence = output0.at<float>(4, i);
+        
+        if (confidence > confidence_threshold) {
+            // Extract bounding box (indices 0-3)
+            float x = output0.at<float>(0, i);
+            float y = output0.at<float>(1, i);
+            float w = output0.at<float>(2, i);
+            float h = output0.at<float>(3, i);
+            
+            boxes.push_back(cv::Rect(x, y, w, h));
+            confidences.push_back(confidence);
+            
+            // Extract mask coefficients (indices 5-36)
+            std::vector<float> coeffs;
+            for (int j = 5; j < 37; ++j) {
+                coeffs.push_back(output0.at<float>(j, i));
+            }
+            mask_coefficients.push_back(coeffs);
+        }
+    }
+    
+    spdlog::info("Found {} runners", boxes.size());
+    for (size_t i=0; i<boxes.size(); i++) {
+        spdlog::info("Runner {}: Box=({},{},{},{}), Confidence={:.3f}", 
+                      i, boxes[i].x, boxes[i].y, boxes[i].width, boxes[i].height, confidences[i]);
+    }
+  }
+
+  /*====================================*/
+  #pragma endregion Post-Process
   #pragma region Cleanup
   /*====================================*/
 
