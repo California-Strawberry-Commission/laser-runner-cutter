@@ -960,8 +960,11 @@ class RunnerCutterControlNode : public rclcpp::Node {
           std::chrono::duration<double, std::milli>(
               std::chrono::high_resolution_clock::now().time_since_epoch())
               .count()};
-      Position predictedPosition{
-          track->getPredictor().predict(timestampMillis / 1000.0)};
+      // TODO: measure camera latency
+      double cameraLatencyMillis{
+          50.0};  // photon-to-frame latency (camera firmware + hardware)
+      Position predictedPosition{track->getPredictor().predict(
+          (timestampMillis + cameraLatencyMillis) / 1000.0)};
       LaserCoord predictedLaserCoord{
           calibration_->cameraPositionToLaserCoord(predictedPosition)};
 
@@ -969,9 +972,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
       std::this_thread::sleep_for(std::chrono::milliseconds(5));
       laser_->clearPoint();
 
-      RCLCPP_INFO(get_logger(), "Evaluating predictors...");
-
       // Evaluate predictor
+      RCLCPP_INFO(get_logger(), "Evaluating predictors...");
       std::vector<double> timestampsSec;
       std::vector<Position> positions;
       std::vector<float> confidences;

@@ -45,7 +45,6 @@ class KalmanFilterPredictor final : public Predictor {
 
   void predictStep(double dt);
   void updateStep(const Eigen::Vector3d& z, float confidence);
-  Eigen::Matrix3d lerpR(float confidence, double min, double max);
 
   // State vector (x): x, y, z, vx, vy, vz
   Vector6d x_;
