@@ -1,10 +1,10 @@
 #include "runner_cutter_control/prediction/last_known_predictor.hpp"
 
-Position LastKnownPredictor::predict(double timestampMs) const {
-  double dt{timestampMs - getLastTimestampMs()};
+Position LastKnownPredictor::predict(double timestampSec) const {
+  double dt{timestampSec - getLastTimestampSec()};
 
   if (dt <= 0.0) {
-    return interpolated(timestampMs);
+    return interpolated(timestampSec);
   }
 
   const auto& history{getHistory()};

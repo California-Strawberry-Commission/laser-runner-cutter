@@ -16,32 +16,32 @@ class Predictor {
    * measurements must be done in sequential order with respect to their
    * timestamps.
    *
-   * @param timestampMs Timestamp (in ms) associated with the measurement.
+   * @param timestampSec Timestamp (in seconds) associated with the measurement.
    * @param measurement Measurement taken at the timestamp, which consists
    * of (x, y, z) position and confidence score.
    */
-  virtual void add(double timestampMs, const Measurement& measurement) {
-    history_[timestampMs] = measurement;
-    lastTimestampMs_ = timestampMs;
+  virtual void add(double timestampSec, const Measurement& measurement) {
+    history_[timestampSec] = measurement;
+    lastTimestampSec_ = timestampSec;
   }
 
   /**
    * Predict the position at the given timestamp.
    *
-   * @param timestampMs Timestamp (in ms) to predict the measurement for.
+   * @param timestampSec Timestamp (in seconds) to predict the measurement for.
    */
-  virtual Position predict(double timestampMs) const = 0;
+  virtual Position predict(double timestampSec) const = 0;
 
   /**
    * Clear the predictor's state.
    */
   virtual void reset() {
     history_.clear();
-    lastTimestampMs_ = 0.0;
+    lastTimestampSec_ = 0.0;
   }
 
   const std::map<double, Measurement>& getHistory() const { return history_; }
-  double getLastTimestampMs() const { return lastTimestampMs_; }
+  double getLastTimestampSec() const { return lastTimestampSec_; }
 
  protected:
   /**
@@ -49,10 +49,10 @@ class Predictor {
    * If timestamp is outside the historical range, returns the nearest stored
    * value.
    *
-   * @param timestampMs Timestamp (in ms) to get the measurement for.
+   * @param timestampSec Timestamp (in seconds) to get the measurement for.
    */
-  Position interpolated(double timestampMs) const;
+  Position interpolated(double timestampSec) const;
 
   std::map<double, Measurement> history_;
-  double lastTimestampMs_{0.0};
+  double lastTimestampSec_{0.0};
 };

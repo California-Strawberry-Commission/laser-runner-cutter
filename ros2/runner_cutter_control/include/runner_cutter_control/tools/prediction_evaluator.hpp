@@ -6,36 +6,36 @@
 namespace prediction_evaluator {
 
 double evaluatePredictor(std::unique_ptr<Predictor> predictor,
-                         const std::vector<double>& timestampsMs,
+                         const std::vector<double>& timestampsSec,
                          const std::vector<Position>& positions,
                          const std::vector<float>& confidences,
-                         double predictionOffsetMs) {
-  if (timestampsMs.empty() || timestampsMs.size() != positions.size() ||
-      timestampsMs.size() != confidences.size()) {
+                         double predictionOffsetSec) {
+  if (timestampsSec.empty() || timestampsSec.size() != positions.size() ||
+      timestampsSec.size() != confidences.size()) {
     return -1.0;
   }
 
   predictor->reset();
   std::vector<double> errors;
-  for (size_t i = 0; i < timestampsMs.size(); ++i) {
-    double t{timestampsMs[i]};
-    const Position& pos{positions[i]};
+  for (size_t i = 0; i < timestampsSec.size(); ++i) {
+    double timestampSec{timestampsSec[i]};
+    const Position& position{positions[i]};
     float confidence{confidences[i]};
 
-    predictor->add(t, {pos, confidence});
+    predictor->add(timestampSec, {position, confidence});
 
-    double predictTime{t + predictionOffsetMs};
+    double predictTime{timestampSec + predictionOffsetSec};
 
     // Find interval [t_i, t_{i+1}] that contains predictTime
-    auto it{std::upper_bound(timestampsMs.begin(), timestampsMs.end(),
+    auto it{std::upper_bound(timestampsSec.begin(), timestampsSec.end(),
                              predictTime)};
-    if (it == timestampsMs.begin() || it == timestampsMs.end()) {
+    if (it == timestampsSec.begin() || it == timestampsSec.end()) {
       continue;
     }
-    size_t idx2{static_cast<size_t>(std::distance(timestampsMs.begin(), it))};
+    size_t idx2{static_cast<size_t>(std::distance(timestampsSec.begin(), it))};
     size_t idx1{idx2 - 1};
-    double t1{timestampsMs[idx1]};
-    double t2{timestampsMs[idx2]};
+    double t1{timestampsSec[idx1]};
+    double t2{timestampsSec[idx2]};
     const Position& p1{positions[idx1]};
     const Position& p2{positions[idx2]};
 
