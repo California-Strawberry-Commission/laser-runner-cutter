@@ -1,10 +1,10 @@
 #include "runner_cutter_control/prediction/average_velocity_predictor.hpp"
 
-Position AverageVelocityPredictor::predict(double timestampMs) const {
-  double dt{timestampMs - getLastTimestampMs()};
+Position AverageVelocityPredictor::predict(double timestampSec) const {
+  double dt{timestampSec - getLastTimestampSec()};
 
   if (dt <= 0.0) {
-    return interpolated(timestampMs);
+    return interpolated(timestampSec);
   }
 
   const auto& history{getHistory()};
@@ -25,9 +25,9 @@ Position AverageVelocityPredictor::predict(double timestampMs) const {
   }
 
   return {m1.position.x + static_cast<float>((m1.position.x - m0.position.x) /
-                                             (t1 - t0) * (timestampMs - t1)),
+                                             (t1 - t0) * (timestampSec - t1)),
           m1.position.y + static_cast<float>((m1.position.y - m0.position.y) /
-                                             (t1 - t0) * (timestampMs - t1)),
+                                             (t1 - t0) * (timestampSec - t1)),
           m1.position.z + static_cast<float>((m1.position.z - m0.position.z) /
-                                             (t1 - t0) * (timestampMs - t1))};
+                                             (t1 - t0) * (timestampSec - t1))};
 }

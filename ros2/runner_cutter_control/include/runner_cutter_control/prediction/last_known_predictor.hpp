@@ -15,7 +15,7 @@ class LastKnownPredictor final : public Predictor {
    * is earlier than that of the last measurement, interpolate based on the
    * historical measurements.
    *
-   * @param timestampMs Timestamp (in ms) to predict the measurement for.
+   * @param timestampSec Timestamp (in seconds) associated with the measurement.
    */
-  Position predict(double timestampMs) const override;
+  Position predict(double timestampSec) const override;
 };

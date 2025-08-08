@@ -961,7 +961,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
               std::chrono::high_resolution_clock::now().time_since_epoch())
               .count()};
       Position predictedPosition{
-          track->getPredictor().predict(timestampMillis)};
+          track->getPredictor().predict(timestampMillis / 1000.0)};
       LaserCoord predictedLaserCoord{
           calibration_->cameraPositionToLaserCoord(predictedPosition)};
 
@@ -972,22 +972,22 @@ class RunnerCutterControlNode : public rclcpp::Node {
       RCLCPP_INFO(get_logger(), "Evaluating predictors...");
 
       // Evaluate predictor
-      std::vector<double> timestampsMs;
+      std::vector<double> timestampsSec;
       std::vector<Position> positions;
       std::vector<float> confidences;
       for (const auto& [ts, entry] : track->getPredictor().getHistory()) {
-        timestampsMs.push_back(ts);
+        timestampsSec.push_back(ts);
         positions.push_back(entry.position);
         confidences.push_back(entry.confidence);
       }
-      for (double predictionOffsetMs : {100, 200, 500}) {
-        RCLCPP_INFO(get_logger(), "  Prediction offset: %f ms",
-                    predictionOffsetMs);
+      for (double predictionOffsetSec : {0.1, 0.2, 0.5}) {
+        RCLCPP_INFO(get_logger(), "  Prediction offset: %fs",
+                    predictionOffsetSec);
         auto lastKnownPredictor{std::make_unique<LastKnownPredictor>()};
         double lastKnownPredictorMeanError{
             prediction_evaluator::evaluatePredictor(
-                std::move(lastKnownPredictor), timestampsMs, positions,
-                confidences, predictionOffsetMs)};
+                std::move(lastKnownPredictor), timestampsSec, positions,
+                confidences, predictionOffsetSec)};
         RCLCPP_INFO(get_logger(), "    LastKnownPredictor mean error: %f",
                     lastKnownPredictorMeanError);
 
@@ -995,16 +995,16 @@ class RunnerCutterControlNode : public rclcpp::Node {
             std::make_unique<AverageVelocityPredictor>()};
         double averageVelocityPredictorMeanError{
             prediction_evaluator::evaluatePredictor(
-                std::move(averageVelocityPredictor), timestampsMs, positions,
-                confidences, predictionOffsetMs)};
+                std::move(averageVelocityPredictor), timestampsSec, positions,
+                confidences, predictionOffsetSec)};
         RCLCPP_INFO(get_logger(), "    AverageVelocityPredictor mean error: %f",
                     averageVelocityPredictorMeanError);
 
         auto kalmanFilterPredictor{std::make_unique<KalmanFilterPredictor>()};
         double kalmanFilterPredictorMeanError{
             prediction_evaluator::evaluatePredictor(
-                std::move(kalmanFilterPredictor), timestampsMs, positions,
-                confidences, predictionOffsetMs)};
+                std::move(kalmanFilterPredictor), timestampsSec, positions,
+                confidences, predictionOffsetSec)};
         RCLCPP_INFO(get_logger(), "    KalmanFilterPredictor mean error: %f",
                     kalmanFilterPredictorMeanError);
       }

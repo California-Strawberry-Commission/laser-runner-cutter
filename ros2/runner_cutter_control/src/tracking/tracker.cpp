@@ -67,7 +67,7 @@ std::shared_ptr<Track> Tracker::addTrack(uint32_t trackId,
   }
 
   // Update predictor for the track
-  track->getPredictor().add(timestampMs, {position, confidence});
+  track->getPredictor().add(timestampMs / 1000.0, {position, confidence});
 
   return track;
 }
