@@ -277,6 +277,9 @@ int main(int argc, char const *argv[]) {
   /*====================================*/
 
 
+
+  // output0: [1, 37, 16128] - detections
+  // output1: [1, 32, 192, 256] - mask prototypes
   // Allocate output tensor sizes
   size_t output0_size = output0_dims.d[0] * output0_dims.d[1] * output0_dims.d[2] * sizeof(float);
   size_t output1_size = output1_dims.d[0] * output1_dims.d[1] * output1_dims.d[2] * output1_dims.d[3] * sizeof(float);
@@ -330,67 +333,40 @@ int main(int argc, char const *argv[]) {
 
   /*====================================*/
   #pragma endregion Inferencing
-  #pragma region Display Results
-  /*====================================*/
-
-  std::string first_image_path, mask_path;
-
-  bool testDisplay = false;
-  if (testDisplay) {
-    system("figlet IMAGE");
-    // Display the first example image using chafa
-    // Save the first image in the array to a temporary PNG file and display it with chafa
-    first_image_path = "/tmp/first_image.png";
-    cv::Mat first_img_host;
-    images[0].download(first_img_host); // Download from GPU to host
-    cv::imwrite(first_image_path, first_img_host);
-    system(("chafa " + first_image_path).c_str());
-
-    mask_path = "/tmp/output_mask.png";
-    for (int chnl=0; chnl<32; chnl++) {
-      try {
-        system(("figlet MASK" + std::to_string(chnl)).c_str());
-        // Save the first output mask to a temporary PNG file and display it with chafa
-        cv::Mat mask;
-        // Reshape outputMasks[0] to (32, 192, 256) and select the first channel (mask)
-        mask = outputMasks[0].rowRange(chnl, 192).clone(); // Take first channel (assuming row-major)
-        mask = mask.reshape(1, 192); // Reshape to 192x256
-        cv::normalize(mask, mask, 0, 255, cv::NORM_MINMAX);
-        mask.convertTo(mask, CV_8UC1);
-        cv::imwrite(mask_path, mask);
-        system(("chafa " + mask_path).c_str());
-      } catch (const cv::Exception& e) {
-        spdlog::error("OpenCV error displaying mask channel {}:\n{}", chnl, e.what());
-      }
-    }
-  }
-
-
-
-
-  /*====================================*/
-  #pragma endregion Display Results
   #pragma region Post-Process
   /*====================================*/
 
-  // output0: [1, 37, 16128] - detections
-  // output1: [1, 32, 192, 256] - mask prototypes
 
   // output0 shape: [batch=1, features=37, anchors=16128]
   // Each of the 16128 anchor points has 37 values:
-
   // For each anchor point (16128 total):
   // [0-3]:   Bounding box (x_center, y_center, width, height)
   // [4]:     Object confidence score
   // [5-36]:  32 mask coefficients (used to combine the 32 prototype masks)
-
   
   float confidence_threshold = 0.1f;
+  float nms_threshold = 0.2f;
+
+  // Vectors to store all results across all images
+  std::vector<std::vector<cv::Rect>> all_bounding_boxes;      // [image_idx][detection_idx]
+  std::vector<std::vector<float>> all_confidences;           // [image_idx][detection_idx]
+  std::vector<std::vector<cv::Mat>> all_masks;               // [image_idx][detection_idx]
+  std::vector<int> detection_counts;                         // Number of detections per image
+
+
   std::vector<cv::Rect> boxes;
   std::vector<float> confidences;
   std::vector<std::vector<float>> mask_coefficients;
+
+  std::vector<cv::Rect> final_boxes;
+  std::vector<float> final_confidences;
+  std::vector<cv::Mat> final_masks;
   
-  for (const cv::Mat& output0 : output0Tensors) {
+  for (size_t img_idx = 0; img_idx < output0Tensors.size(); img_idx++) {
+    spdlog::info("Processing image {} results...", img_idx);
+    const cv::Mat& output0 = output0Tensors[img_idx];
+    const cv::Mat& prototypes = outputMasks[img_idx];
+
     boxes.clear();
     confidences.clear();
     mask_coefficients.clear();
@@ -418,23 +394,129 @@ int main(int argc, char const *argv[]) {
         }
     }
     
-    spdlog::info("Found {} runners", boxes.size());
+    spdlog::info("Found {} potential detections before NMS", boxes.size());
     for (size_t i=0; i<boxes.size(); i++) {
-        spdlog::info("Runner {}: Box=({},{},{},{}), Confidence={:.3f}", 
+        spdlog::info("\tRunner {}: Box=({},{},{},{}), Confidence={:.3f}", 
                       i, boxes[i].x, boxes[i].y, boxes[i].width, boxes[i].height, confidences[i]);
     }
+
+    std::vector<int> nms_indices;
+    cv::dnn::NMSBoxes(boxes, confidences, confidence_threshold, nms_threshold, nms_indices);
+    spdlog::info("--Found {} runners after NMS", nms_indices.size());
+
+    final_boxes.clear();
+    final_confidences.clear();
+    final_masks.clear();
+
+    for (int idx : nms_indices) {
+        final_boxes.push_back(boxes[idx]);
+        final_confidences.push_back(confidences[idx]);
+        
+        // Generate mask for this detection
+        const std::vector<float>& coeffs = mask_coefficients[idx];
+        
+        // Combine prototype masks using coefficients
+        cv::Mat final_mask = cv::Mat::zeros(192, 256, CV_32F);
+        for (int c = 0; c < 32; ++c) {
+            cv::Mat prototype = prototypes.rowRange(c * 192, (c + 1) * 192).clone();
+            prototype = prototype.reshape(1, 192);
+            final_mask += coeffs[c] * prototype;
+        }
+        
+        // Apply sigmoid and threshold
+        cv::Mat sigmoid_mask;
+        cv::exp(-final_mask, sigmoid_mask);
+        sigmoid_mask = 1.0 / (1.0 + sigmoid_mask);
+        
+        // Resize to input image size and binarize
+        cv::Mat resized_mask, binary_mask;
+        cv::resize(sigmoid_mask, resized_mask, cv::Size(1024, 768));
+        cv::threshold(resized_mask, binary_mask, 0.5, 255, cv::THRESH_BINARY);
+        binary_mask.convertTo(binary_mask, CV_8UC1);
+        
+        final_masks.push_back(binary_mask);
+    }
+
+    // Store results for this image
+    all_bounding_boxes.push_back(final_boxes);
+    all_confidences.push_back(final_confidences);
+    all_masks.push_back(final_masks);
+    detection_counts.push_back(final_boxes.size());
+    
+    // spdlog::info("Image {}: Found {} runners", img_idx, final_boxes.size());
   }
+
+  // Summary results
+  spdlog::info("=== DETECTION SUMMARY ===");
+  for (size_t img_idx = 0; img_idx < detection_counts.size(); ++img_idx) {
+      spdlog::info("Image {}: {} detections", img_idx, detection_counts[img_idx]);
+      
+      // Optionally log individual detection details
+      for (size_t det_idx = 0; det_idx < all_bounding_boxes[img_idx].size(); ++det_idx) {
+          const cv::Rect& box = all_bounding_boxes[img_idx][det_idx];
+          float conf = all_confidences[img_idx][det_idx];
+          spdlog::info("  Runner {}: Box=({},{},{},{}), Confidence={:.3f}", 
+                      det_idx, box.x, box.y, box.width, box.height, conf);
+      }
+  }
+
 
   /*====================================*/
   #pragma endregion Post-Process
+  #pragma region Observe Results
+  /*====================================*/
+  
+  
+  bool sendResults = true;
+
+  std::string masks_dir = "/tmp/masks/";
+  std::string overlays_dir = "/tmp/overlays/";
+  std::string laptop_address = "paul@10.42.0.1:/home/paul/Desktop/testing/";
+  
+  std::vector<cv::Mat> images_with_boxes;
+  for (size_t img_idx = 0; img_idx < all_bounding_boxes.size(); ++img_idx) {
+    // Download original image from GPU to CPU
+    cv::Mat img_cpu;
+    images[img_idx].download(img_cpu);
+
+    // Draw boxes
+    for (const auto& box : all_bounding_boxes[img_idx]) {
+      cv::rectangle(img_cpu, box, cv::Scalar(0, 255, 0), 2);
+    }
+    images_with_boxes.push_back(img_cpu);
+  }
+
+  if (sendResults) {
+    std::filesystem::create_directories(masks_dir);
+    for (size_t img_idx = 0; img_idx < all_masks.size(); ++img_idx) {
+      for (size_t det_idx = 0; det_idx < all_masks[img_idx].size(); ++det_idx) {
+        std::string mask_filename = masks_dir + "mask_img" + std::to_string(img_idx) + "_det" + std::to_string(det_idx) + ".png";
+        cv::imwrite(mask_filename, all_masks[img_idx][det_idx]);
+        spdlog::info("Wrote mask: {}", mask_filename);
+      }
+    }
+    system(("rsync -avz --progress " + masks_dir + " " + laptop_address).c_str());
+
+    std::filesystem::create_directories(overlays_dir);
+    for (size_t img_idx = 0; img_idx < images_with_boxes.size(); ++img_idx) {
+      std::string img_filename = overlays_dir + "img_with_boxes_" + std::to_string(img_idx) + ".png";
+      cv::imwrite(img_filename, images_with_boxes[img_idx]);
+      spdlog::info("Wrote image with boxes: {}", img_filename);
+    }
+    system(("rsync -avz --progress " + overlays_dir + " " + laptop_address).c_str());
+  }
+
+
+  /*====================================*/
+  #pragma endregion Display Results
   #pragma region Cleanup
   /*====================================*/
 
 
   // Cleanup tmp files
-  if (testDisplay) {
-    std::remove(first_image_path.c_str());
-    std::remove(mask_path.c_str());
+  if (sendResults) {
+    std::filesystem::remove_all(masks_dir);
+    std::filesystem::remove_all(overlays_dir);
   }
 
   // Cleanup TensorRT objects
