@@ -1,17 +1,16 @@
 from launch import LaunchDescription
-
-from aioros2 import LaunchNode
-from gstreamer_webrtc import gstreamer_node
+from launch_ros.actions import Node
 
 
 def generate_launch_description():
     return LaunchDescription(
         [
-            LaunchNode(
-                gstreamer_node,
-                name="gstreamer",
-                respawn=True,
-                respawn_delay=2.0,
+            Node(
+                package="gstreamer_webrtc",
+                executable="gstreamer_node",
+                name="gstreamer_ros_webrtc_node",
+                output="screen",
+                emulate_tty=True,
             )
         ]
     )
