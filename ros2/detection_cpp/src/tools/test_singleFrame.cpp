@@ -20,7 +20,7 @@ int main(int argc, char const *argv[]) {
   spdlog::info("TensorRT Version: {}.{}.{}.{}", NV_TENSORRT_MAJOR, NV_TENSORRT_MINOR, NV_TENSORRT_PATCH, NV_TENSORRT_BUILD);
 
   std::string inputDir = std::string(getenv("HOME")) + "/Documents/testing/Images/runnerExamples";
-  std::string enginefile = std::string(getenv("HOME")) + "/Documents/laser-runner-cutter/ros2/camera_control/models/RunnerSegYoloV8l.engine.pygen";
+  std::string enginefile = std::string(getenv("HOME")) + "/Documents/laser-runner-cutter/ros2/camera_control/models/RunnerSegYoloV8l.trtexec.nonhalf.engine";
 
   int numGPUs;
   cudaGetDeviceCount(&numGPUs);
@@ -52,6 +52,7 @@ int main(int argc, char const *argv[]) {
         if (!img.empty()) {
           cv::cuda::GpuMat gpuImg;
           gpuImg.upload(img);
+          cv::cuda::cvtColor(gpuImg, gpuImg, cv::COLOR_BGR2RGB);
           images.push_back(gpuImg);
           spdlog::info("Loaded RGB image: {} || size = {} x {}, channels = {}", entry.path().filename().string(), img.cols, img.rows, img.channels());
         }
@@ -105,6 +106,7 @@ int main(int argc, char const *argv[]) {
   }
   spdlog::info("Resized image shape (HWC): ({}, {}, {})", resizedImages[0].rows, resizedImages[0].cols, resizedImages[0].channels());
 
+  
   //Convert HWC to NCHW
   std::vector<cv::cuda::GpuMat> nchwImages;
   for (const cv::cuda::GpuMat& img : resizedImages) {
@@ -218,9 +220,9 @@ int main(int argc, char const *argv[]) {
   spdlog::info(out0_dims_ss.str());
 
   if (output0Tensors[0].channels() != output0_dims.d[0] || 
-      output0Tensors[1].rows != output0_dims.d[1] || 
-      output0Tensors[2].cols != output0_dims.d[2]) {
-    spdlog::error("output0Tensors shape does NOT match model input shape: ({}, {}, {})", output0Tensors[0].channels(), output0Tensors[0].rows, output0Tensors[0].cols);
+      output0Tensors[0].rows != output0_dims.d[1] || 
+      output0Tensors[0].cols != output0_dims.d[2]) {
+    spdlog::error("output0Tensors shape does NOT match model output0 shape: ({}, {}, {})", output0Tensors[0].channels(), output0Tensors[0].rows, output0Tensors[0].cols);
     return -1;
   } else {
     spdlog::info("Allocated output0Tensors and model output0 shapes match.");
@@ -238,9 +240,9 @@ int main(int argc, char const *argv[]) {
 
   if (outputMasks[0].channels() != output1_dims.d[0] || 
       32 != output1_dims.d[1] || 
-      outputMasks[2].rows / 32 != output1_dims.d[2] || 
-      outputMasks[3].cols != output1_dims.d[3]) {
-    spdlog::error("outMasks shape does NOT match model input shape: ({}, {}, {}, {})", outputMasks[0].channels(), 32, outputMasks[0].rows / 32, outputMasks[0].cols);
+      outputMasks[0].rows / 32 != output1_dims.d[2] || 
+      outputMasks[0].cols != output1_dims.d[3]) {
+    spdlog::error("outMasks shape does NOT match model output1 shape: ({}, {}, {}, {})", outputMasks[0].channels(), 32, outputMasks[0].rows / 32, outputMasks[0].cols);
     return -1;
   } else {
     spdlog::info("Allocated outMasks and model output1 shapes match.");
@@ -277,7 +279,6 @@ int main(int argc, char const *argv[]) {
   /*====================================*/
 
 
-
   // output0: [1, 37, 16128] - detections
   // output1: [1, 32, 192, 256] - mask prototypes
   // Allocate output tensor sizes
@@ -294,13 +295,8 @@ int main(int argc, char const *argv[]) {
     cudaMalloc(&outputMem1, output1_size);
     cudaMemset(outputMem1, 0, output1_size);
 
-    // Set tensor addresses
-    mContext->setTensorAddress(input_name, inputMem);
-    mContext->setTensorAddress(output0_name, outputMem0);
-    mContext->setTensorAddress(output1_name, outputMem1);
-
     // Create bindings
-    void* bindings[2];
+    void* bindings[3];
     bindings[0] = inputMem;   // Input binding
     bindings[1] = outputMem0;  // Output0 binding
     bindings[2] = outputMem1;  // Output1 binding
@@ -344,8 +340,8 @@ int main(int argc, char const *argv[]) {
   // [4]:     Object confidence score
   // [5-36]:  32 mask coefficients (used to combine the 32 prototype masks)
   
-  float confidence_threshold = 0.1f;
-  float nms_threshold = 0.2f;
+  float confidence_threshold = 0.5;
+  float nms_threshold = 0.45f;
 
   // Vectors to store all results across all images
   std::vector<std::vector<cv::Rect>> all_bounding_boxes;      // [image_idx][detection_idx]
@@ -377,10 +373,16 @@ int main(int argc, char const *argv[]) {
         
         if (confidence > confidence_threshold) {
             // Extract bounding box (indices 0-3)
-            float x = output0.at<float>(0, i);
-            float y = output0.at<float>(1, i);
-            float w = output0.at<float>(2, i);
-            float h = output0.at<float>(3, i);
+            float x_center = output0.at<float>(0, i);
+            float y_center = output0.at<float>(1, i);
+            float width = output0.at<float>(2, i);
+            float height = output0.at<float>(3, i);
+
+            // Convert center format to corner format
+            int x = static_cast<int>(x_center - width/2) * 2;   // Top-left x
+            int y = static_cast<int>(y_center - height/2) * 2;  // Top-left y
+            int w = static_cast<int>(width) * 2;
+            int h = static_cast<int>(height) * 2;
             
             boxes.push_back(cv::Rect(x, y, w, h));
             confidences.push_back(confidence);
@@ -393,12 +395,7 @@ int main(int argc, char const *argv[]) {
             mask_coefficients.push_back(coeffs);
         }
     }
-    
     spdlog::info("Found {} potential detections before NMS", boxes.size());
-    for (size_t i=0; i<boxes.size(); i++) {
-        spdlog::info("\tRunner {}: Box=({},{},{},{}), Confidence={:.3f}", 
-                      i, boxes[i].x, boxes[i].y, boxes[i].width, boxes[i].height, confidences[i]);
-    }
 
     std::vector<int> nms_indices;
     cv::dnn::NMSBoxes(boxes, confidences, confidence_threshold, nms_threshold, nms_indices);
@@ -469,7 +466,6 @@ int main(int argc, char const *argv[]) {
   
   bool sendResults = true;
 
-  std::string masks_dir = "/tmp/masks/";
   std::string overlays_dir = "/tmp/overlays/";
   std::string laptop_address = "paul@10.42.0.1:/home/paul/Desktop/testing/";
   
@@ -478,25 +474,26 @@ int main(int argc, char const *argv[]) {
     // Download original image from GPU to CPU
     cv::Mat img_cpu;
     images[img_idx].download(img_cpu);
+    cv::cvtColor(img_cpu, img_cpu, cv::COLOR_RGB2BGR);
 
     // Draw boxes
     for (const auto& box : all_bounding_boxes[img_idx]) {
       cv::rectangle(img_cpu, box, cv::Scalar(0, 255, 0), 2);
+      // Draw confidence label
+      std::string label = cv::format("%.2f", all_confidences[img_idx][&box - &all_bounding_boxes[img_idx][0]]);
+      int baseLine = 0;
+      cv::Size labelSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
+      int top = std::max(box.y, labelSize.height);
+      cv::rectangle(img_cpu, cv::Point(box.x, top - labelSize.height),
+            cv::Point(box.x + labelSize.width, top + baseLine),
+            cv::Scalar(0, 255, 0), cv::FILLED);
+      cv::putText(img_cpu, label, cv::Point(box.x, top),
+          cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0), 1);
     }
     images_with_boxes.push_back(img_cpu);
   }
 
   if (sendResults) {
-    std::filesystem::create_directories(masks_dir);
-    for (size_t img_idx = 0; img_idx < all_masks.size(); ++img_idx) {
-      for (size_t det_idx = 0; det_idx < all_masks[img_idx].size(); ++det_idx) {
-        std::string mask_filename = masks_dir + "mask_img" + std::to_string(img_idx) + "_det" + std::to_string(det_idx) + ".png";
-        cv::imwrite(mask_filename, all_masks[img_idx][det_idx]);
-        spdlog::info("Wrote mask: {}", mask_filename);
-      }
-    }
-    system(("rsync -avz --progress " + masks_dir + " " + laptop_address).c_str());
-
     std::filesystem::create_directories(overlays_dir);
     for (size_t img_idx = 0; img_idx < images_with_boxes.size(); ++img_idx) {
       std::string img_filename = overlays_dir + "img_with_boxes_" + std::to_string(img_idx) + ".png";
@@ -508,14 +505,13 @@ int main(int argc, char const *argv[]) {
 
 
   /*====================================*/
-  #pragma endregion Display Results
+  #pragma endregion Observe Results
   #pragma region Cleanup
   /*====================================*/
 
 
   // Cleanup tmp files
   if (sendResults) {
-    std::filesystem::remove_all(masks_dir);
     std::filesystem::remove_all(overlays_dir);
   }
 
