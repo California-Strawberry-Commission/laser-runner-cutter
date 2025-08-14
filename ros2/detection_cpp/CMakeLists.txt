@@ -101,6 +101,11 @@ target_include_directories(test_singleFrame PRIVATE ${TensorRT_INCLUDE_DIRS})
 target_link_libraries(test_singleFrame PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS} ${TensorRT_LIBRARIES} fmt::fmt nvinfer nvonnxparser cudart)
 ament_target_dependencies(test_singleFrame PUBLIC rclcpp std_msgs OpenCV)
 
+add_executable(test_loop src/tools/test_loop.cpp)
+target_include_directories(test_loop PRIVATE ${TensorRT_INCLUDE_DIRS})
+target_link_libraries(test_loop PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS} ${TensorRT_LIBRARIES} fmt::fmt nvinfer nvonnxparser cudart)
+ament_target_dependencies(test_loop PUBLIC rclcpp std_msgs OpenCV)
+
 #############
 ## Install ##
 #############
@@ -108,6 +113,7 @@ ament_target_dependencies(test_singleFrame PUBLIC rclcpp std_msgs OpenCV)
 install(TARGETS
   detection_node
   test_singleFrame
+  test_loop
   DESTINATION lib/${PROJECT_NAME})
 
 # Install launch files

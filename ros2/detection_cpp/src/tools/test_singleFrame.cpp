@@ -15,12 +15,12 @@ int main(int argc, char const *argv[]) {
     }
     spdlog::info("argv: {}", ss.str());
   }
-
-  spdlog::info("OpenCV Version: {}.{}.{}", CV_MAJOR_VERSION, CV_MINOR_VERSION, CV_SUBMINOR_VERSION);
-  spdlog::info("TensorRT Version: {}.{}.{}.{}", NV_TENSORRT_MAJOR, NV_TENSORRT_MINOR, NV_TENSORRT_PATCH, NV_TENSORRT_BUILD);
-
+  
   std::string inputDir = std::string(getenv("HOME")) + "/Documents/testing/Images/runnerExamples";
   std::string enginefile = std::string(getenv("HOME")) + "/Documents/laser-runner-cutter/ros2/camera_control/models/RunnerSegYoloV8l.trtexec.nonhalf.engine";
+  
+  spdlog::info("OpenCV Version: {}.{}.{}", CV_MAJOR_VERSION, CV_MINOR_VERSION, CV_SUBMINOR_VERSION);
+  spdlog::info("TensorRT Version: {}.{}.{}.{}", NV_TENSORRT_MAJOR, NV_TENSORRT_MINOR, NV_TENSORRT_PATCH, NV_TENSORRT_BUILD);
 
   int numGPUs;
   cudaGetDeviceCount(&numGPUs);
@@ -188,8 +188,8 @@ int main(int argc, char const *argv[]) {
 
 
   char const *input_name = "images";
-  char const *output0_name = "output0";  // TODO: CLARIFY WHAT THIS IS
-  char const *output1_name = "output1";  // Looking for mask output
+  char const *output0_name = "output0";  // Bounding Boxes and Confidences
+  char const *output1_name = "output1";  // Masks
 
   // Get input tensor dimensions
   nvinfer1::Dims input_dims = mEngine->getTensorShape(input_name);
