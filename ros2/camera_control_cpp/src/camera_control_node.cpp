@@ -8,6 +8,7 @@
 #include "camera_control_cpp/camera/lucid_camera.hpp"
 #include "camera_control_interfaces/msg/device_state.hpp"
 #include "camera_control_interfaces/msg/state.hpp"
+#include "camera_control_interfaces/srv/acquire_single_frame.hpp"
 #include "camera_control_interfaces/srv/get_frame.hpp"
 #include "camera_control_interfaces/srv/get_state.hpp"
 #include "camera_control_interfaces/srv/start_device.hpp"
@@ -16,15 +17,16 @@
 #include "rcl_interfaces/msg/log.hpp"
 #include "rclcpp/qos.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/msg/compressed_image.hpp"
 #include "sensor_msgs/msg/image.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
 std::pair<int, int> millisecondsToRosTime(double milliseconds) {
   // ROS timestamps consist of two integers, one for seconds and one for
   // nanoseconds
-  int seconds = static_cast<int>(milliseconds / 1000);
-  int nanoseconds =
-      static_cast<int>((static_cast<int>(milliseconds) % 1000) * 1e6);
+  int seconds{static_cast<int>(milliseconds / 1000)};
+  int nanoseconds{
+      static_cast<int>((static_cast<int>(milliseconds) % 1000) * 1e6)};
   return {seconds, nanoseconds};
 }
 
@@ -33,7 +35,7 @@ std::string expandUser(const std::string& path) {
     return path;
   }
 
-  const char* home = std::getenv("HOME");
+  const char* home{std::getenv("HOME")};
   if (!home) {
     throw std::runtime_error("HOME environment variable not set");
   }
@@ -82,6 +84,7 @@ class CameraControlNode : public rclcpp::Node {
     latchedQos.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
     statePublisher_ = create_publisher<camera_control_interfaces::msg::State>(
         "~/state", latchedQos);
+    // TODO: move debug frame topic publishing to detection node
     debugFramePublisher_ = create_publisher<sensor_msgs::msg::Image>(
         "~/debug_frame", rclcpp::SensorDataQoS());
     notificationsPublisher_ =
@@ -113,6 +116,12 @@ class CameraControlNode : public rclcpp::Node {
         std::bind(&CameraControlNode::onGetFrame, this, std::placeholders::_1,
                   std::placeholders::_2),
         rmw_qos_profile_services_default, serviceCallbackGroup_);
+    acquireSingleFrameService_ =
+        create_service<camera_control_interfaces::srv::AcquireSingleFrame>(
+            "~/acquire_single_frame",
+            std::bind(&CameraControlNode::onAcquireSingleFrame, this,
+                      std::placeholders::_1, std::placeholders::_2),
+            rmw_qos_profile_services_default, serviceCallbackGroup_);
     startRecordingVideoService_ = create_service<std_srvs::srv::Trigger>(
         "~/start_recording_video",
         std::bind(&CameraControlNode::onStartRecordingVideo, this,
@@ -245,11 +254,11 @@ class CameraControlNode : public rclcpp::Node {
           }
 
           sensor_msgs::msg::Image::SharedPtr debugFrameMsg{
-              getColorFrameMsg(debugFrame, frame->getTimestampMillis())};
+              getColorImageMsg(debugFrame, frame->getTimestampMillis())};
           debugFramePublisher_->publish(*debugFrameMsg);
         };
-    // TODO: support capture mode
-    camera_->start(getParamExposureUs(), getParamGainDb(), frameCallback);
+    camera_->start(static_cast<LucidCamera::CaptureMode>(request->capture_mode),
+                   getParamExposureUs(), getParamGainDb(), frameCallback);
 
     cameraStarted_ = true;
     response->success = true;
@@ -294,12 +303,31 @@ class CameraControlNode : public rclcpp::Node {
       frame = currentFrame_;
     }
 
-    auto colorFrameMsg =
-        getColorFrameMsg(frame->getColorFrame(), frame->getTimestampMillis());
-    response->color_frame = *colorFrameMsg;
-    auto depthFrameMsg =
-        getDepthFrameMsg(frame->getDepthFrame(), frame->getTimestampMillis());
-    response->depth_frame = *depthFrameMsg;
+    auto colorImageMsg{
+        getColorImageMsg(frame->getColorFrame(), frame->getTimestampMillis())};
+    response->color_frame = *colorImageMsg;
+    auto depthImageMsg{
+        getDepthImageMsg(frame->getDepthFrame(), frame->getTimestampMillis())};
+    response->depth_frame = *depthImageMsg;
+  }
+
+  void onAcquireSingleFrame(
+      const std::shared_ptr<
+          camera_control_interfaces::srv::AcquireSingleFrame::Request>,
+      std::shared_ptr<
+          camera_control_interfaces::srv::AcquireSingleFrame::Response>
+          response) {
+    std::optional<LucidFrame> frame{camera_->getNextFrame()};
+    if (!frame) {
+      publishNotification("Failed to acquire frame",
+                          rclcpp::Logger::Level::Error);
+      return;
+    }
+
+    publishNotification("Successfully acquired frame");
+    auto colorImageMsg{getColorCompressedImageMsg(frame->getColorFrame(),
+                                                  frame->getTimestampMillis())};
+    response->preview_image = *colorImageMsg;
   }
 
   void onStartRecordingVideo(
@@ -353,7 +381,7 @@ class CameraControlNode : public rclcpp::Node {
 
   void onSaveImage(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
                    std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-    auto res = saveImage();
+    auto res{saveImage()};
     response->success = res.has_value();
   }
 
@@ -512,7 +540,7 @@ class CameraControlNode : public rclcpp::Node {
   void publishNotification(
       const std::string& msg,
       rclcpp::Logger::Level level = rclcpp::Logger::Level::Info) {
-    uint8_t logMsgLevel = 0;
+    uint8_t logMsgLevel{0};
     switch (level) {
       case rclcpp::Logger::Level::Debug:
         RCLCPP_DEBUG(get_logger(), msg.c_str());
@@ -559,7 +587,7 @@ class CameraControlNode : public rclcpp::Node {
 
 #pragma region Message builders
 
-  sensor_msgs::msg::Image::SharedPtr getColorFrameMsg(const cv::Mat& colorFrame,
+  sensor_msgs::msg::Image::SharedPtr getColorImageMsg(const cv::Mat& colorFrame,
                                                       double timestampMillis) {
     auto [sec, nanosec]{millisecondsToRosTime(timestampMillis)};
     auto header{std_msgs::msg::Header()};
@@ -568,13 +596,23 @@ class CameraControlNode : public rclcpp::Node {
     return cv_bridge::CvImage(header, "bgr8", colorFrame).toImageMsg();
   }
 
-  sensor_msgs::msg::Image::SharedPtr getDepthFrameMsg(const cv::Mat& depthFrame,
+  sensor_msgs::msg::Image::SharedPtr getDepthImageMsg(const cv::Mat& depthFrame,
                                                       double timestampMillis) {
     auto [sec, nanosec]{millisecondsToRosTime(timestampMillis)};
     auto header{std_msgs::msg::Header()};
     header.stamp.sec = sec;
     header.stamp.nanosec = nanosec;
     return cv_bridge::CvImage(header, "mono16", depthFrame).toImageMsg();
+  }
+
+  sensor_msgs::msg::CompressedImage::SharedPtr getColorCompressedImageMsg(
+      const cv::Mat& colorFrame, double timestampMillis) {
+    auto [sec, nanosec]{millisecondsToRosTime(timestampMillis)};
+    auto header{std_msgs::msg::Header()};
+    header.stamp.sec = sec;
+    header.stamp.nanosec = nanosec;
+    return cv_bridge::CvImage(header, "bgr8", colorFrame)
+        .toCompressedImageMsg(cv_bridge::JPG);
   }
 
 #pragma endregion
@@ -594,6 +632,8 @@ class CameraControlNode : public rclcpp::Node {
   rclcpp::Service<common_interfaces::srv::GetBool>::SharedPtr hasFramesService_;
   rclcpp::Service<camera_control_interfaces::srv::GetFrame>::SharedPtr
       getFrameService_;
+  rclcpp::Service<camera_control_interfaces::srv::AcquireSingleFrame>::SharedPtr
+      acquireSingleFrameService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr
       startRecordingVideoService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr stopRecordingVideoService_;
@@ -624,7 +664,7 @@ int main(int argc, char* argv[]) {
   rclcpp::init(argc, argv);
   // MultiThreadedExecutor allows callbacks to run in parallel
   rclcpp::executors::MultiThreadedExecutor executor;
-  auto node = std::make_shared<CameraControlNode>();
+  auto node{std::make_shared<CameraControlNode>()};
   executor.add_node(node);
   executor.spin();
   rclcpp::shutdown();
