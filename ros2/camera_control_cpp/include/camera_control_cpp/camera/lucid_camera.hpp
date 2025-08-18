@@ -20,6 +20,7 @@ class LucidCamera {
                                                              "HTR", "HTW"};
 
   enum class State { STREAMING, CONNECTING, DISCONNECTED };
+  enum class CaptureMode { CONTINUOUS, SINGLE_FRAME };
 
   using StateChangeCallback = std::function<void(State)>;
   LucidCamera(const cv::Mat& colorCameraIntrinsicMatrix,
@@ -46,13 +47,19 @@ class LucidCamera {
    * available.
    */
   using FrameCallback = std::function<void(std::shared_ptr<LucidFrame>)>;
-  void start(double exposureUs = -1.0, double gainDb = -1.0,
+  void start(CaptureMode captureMode = CaptureMode::CONTINUOUS,
+             double exposureUs = -1.0, double gainDb = -1.0,
              FrameCallback frameCallback = nullptr);
 
   /**
    * Stops streaming and disconnects device.
    */
   void stop();
+
+  /**
+   * @return Capture mode of the cameras.
+   */
+  CaptureMode getCaptureMode() const;
 
   /**
    * @return Exposure time of the color camera in microseconds.
@@ -90,14 +97,22 @@ class LucidCamera {
   std::pair<double, double> getGainDbRange() const;
 
   /**
-   * @return Color device temperature, in Celsius
+   * @return Color device temperature, in Celsius.
    */
   double getColorDeviceTemperature() const;
 
   /**
-   * @return Depth device temperature, in Celsius
+   * @return Depth device temperature, in Celsius.
    */
   double getDepthDeviceTemperature() const;
+
+  /**
+   * Get the next available frame. Call this method to trigger frame acquisition
+   * when in SingleFrame mode.
+   *
+   * @return The next available frame.
+   */
+  std::optional<LucidFrame> getNextFrame();
 
  private:
   std::condition_variable cv_;
@@ -123,10 +138,12 @@ class LucidCamera {
   std::pair<int, int> depthFrameSize_{0, 0};
   double xyzScale_{0.0};
   std::tuple<double, double, double> xyzOffset_{0.0, 0.0, 0.0};
+  CaptureMode captureMode_{CaptureMode::CONTINUOUS};
   std::atomic<double> exposureUs_{0.0};
   std::atomic<double> gainDb_{0.0};
 
-  void connectionThreadFn(double exposureUs, double gainDb);
+  void connectionThreadFn(CaptureMode captureMode, double exposureUs,
+                          double gainDb);
   std::optional<Arena::DeviceInfo> findFirstDeviceWithModelPrefix(
       std::vector<Arena::DeviceInfo>& deviceInfos,
       const std::vector<std::string>& modelPrefixes);
@@ -135,6 +152,7 @@ class LucidCamera {
       const std::string& serialNumber);
   void startStream(const Arena::DeviceInfo& colorDeviceInfo,
                    const Arena::DeviceInfo& depthDeviceInfo,
+                   CaptureMode captureMode = CaptureMode::CONTINUOUS,
                    std::optional<double> exposureUs = std::nullopt,
                    std::optional<double> gainDb = std::nullopt);
   void setNetworkSettings(Arena::IDevice* device);
@@ -147,6 +165,6 @@ class LucidCamera {
     cv::Mat intensity;
   };
   std::optional<GetDepthFrameResult> getDepthFrame();
-  LucidFrame getRgbdFrame(const cv::Mat& colorFrame,
-                          const cv::Mat& depthFrameXyz);
+  LucidFrame createRgbdFrame(const cv::Mat& colorFrame,
+                             const cv::Mat& depthFrameXyz);
 };

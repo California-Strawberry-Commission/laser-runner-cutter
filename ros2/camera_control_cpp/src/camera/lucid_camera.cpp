@@ -43,8 +43,8 @@ LucidCamera::State LucidCamera::getState() const {
   }
 }
 
-void LucidCamera::start(double exposureUs, double gainDb,
-                        FrameCallback frameCallback) {
+void LucidCamera::start(CaptureMode captureMode, double exposureUs,
+                        double gainDb, FrameCallback frameCallback) {
   if (isRunning_) {
     return;
   }
@@ -53,10 +53,13 @@ void LucidCamera::start(double exposureUs, double gainDb,
   callStateChangeCallback();
 
   // Start connection thread and acquisition thread
-  connectionThread_ =
-      std::thread(&LucidCamera::connectionThreadFn, this, exposureUs, gainDb);
-  acquisitionThread_ =
-      std::thread(&LucidCamera::acquisitionThreadFn, this, frameCallback);
+  connectionThread_ = std::thread(&LucidCamera::connectionThreadFn, this,
+                                  captureMode, exposureUs, gainDb);
+  // We don't use an acquisition loop when doing single frame captures
+  if (captureMode != CaptureMode::SINGLE_FRAME) {
+    acquisitionThread_ =
+        std::thread(&LucidCamera::acquisitionThreadFn, this, frameCallback);
+  }
 }
 
 void LucidCamera::stop() {
@@ -82,7 +85,8 @@ void LucidCamera::stop() {
   }
 }
 
-void LucidCamera::connectionThreadFn(double exposureUs, double gainDb) {
+void LucidCamera::connectionThreadFn(CaptureMode captureMode, double exposureUs,
+                                     double gainDb) {
   bool deviceConnected{false};
   bool deviceWasEverConnected{false};
 
@@ -146,10 +150,11 @@ void LucidCamera::connectionThreadFn(double exposureUs, double gainDb) {
         // Start the stream. Only set exposure/gain if this is the first time
         // the device is connected
         if (deviceWasEverConnected) {
-          startStream(colorDeviceInfo.value(), depthDeviceInfo.value());
+          startStream(colorDeviceInfo.value(), depthDeviceInfo.value(),
+                      captureMode);
         } else {
           startStream(colorDeviceInfo.value(), depthDeviceInfo.value(),
-                      exposureUs, gainDb);
+                      captureMode, exposureUs, gainDb);
         }
         deviceWasEverConnected = true;
         deviceConnected = true;
@@ -203,6 +208,7 @@ std::optional<Arena::DeviceInfo> LucidCamera::findDeviceWithSerial(
 
 void LucidCamera::startStream(const Arena::DeviceInfo& colorDeviceInfo,
                               const Arena::DeviceInfo& depthDeviceInfo,
+                              CaptureMode captureMode,
                               std::optional<double> exposureUs,
                               std::optional<double> gainDb) {
   {
@@ -301,6 +307,11 @@ void LucidCamera::startStream(const Arena::DeviceInfo& colorDeviceInfo,
                                          "AcquisitionStartMode", "Normal");
   Arena::SetNodeValue<GenICam::gcstring>(depthDevice_->GetNodeMap(),
                                          "AcquisitionStartMode", "Normal");
+  // TODO: Once cameras are hardware synced via trigger signals, set appropriate
+  // packet delay and frame transmission delay. See
+  // https://support.thinklucid.com/app-note-bandwidth-sharing-in-multi-camera-systems/
+  // With packet size of 9000 bytes on a 1 Gbps link, the packet delay is:
+  // (9000 bytes * 8 ns/byte) * 1.1 buffer = 79200 ns
   Arena::SetNodeValue<int64_t>(colorDevice_->GetNodeMap(), "GevSCFTD", 0);
   Arena::SetNodeValue<int64_t>(depthDevice_->GetNodeMap(), "GevSCFTD", 0);
   Arena::SetNodeValue<int64_t>(colorDevice_->GetNodeMap(), "GevSCPD", 80);
@@ -324,10 +335,13 @@ void LucidCamera::startStream(const Arena::DeviceInfo& colorDeviceInfo,
   // TODO: Enable trigger mode on depth camera. See
   // https://support.thinklucid.com/app-note-using-gpio-on-lucid-cameras/#config
 
-  Arena::SetNodeValue<GenICam::gcstring>(colorDevice_->GetNodeMap(),
-                                         "AcquisitionMode", "Continuous");
-  Arena::SetNodeValue<GenICam::gcstring>(depthDevice_->GetNodeMap(),
-                                         "AcquisitionMode", "Continuous");
+  captureMode_ = captureMode;
+  Arena::SetNodeValue<GenICam::gcstring>(
+      colorDevice_->GetNodeMap(), "AcquisitionMode",
+      captureMode == CaptureMode::SINGLE_FRAME ? "SingleFrame" : "Continuous");
+  Arena::SetNodeValue<GenICam::gcstring>(
+      depthDevice_->GetNodeMap(), "AcquisitionMode",
+      captureMode == CaptureMode::SINGLE_FRAME ? "SingleFrame" : "Continuous");
 
   ////////////////////////
   // Set exposure and gain
@@ -342,12 +356,14 @@ void LucidCamera::startStream(const Arena::DeviceInfo& colorDeviceInfo,
   ////////////////
   // Start streams
   ////////////////
-  colorDevice_->StartStream();
+  size_t numBuffers{
+      static_cast<size_t>(captureMode == CaptureMode::SINGLE_FRAME ? 1 : 10)};
+  colorDevice_->StartStream(numBuffers);
   spdlog::info(
       "Device (color, serial={}) is now streaming with resolution ({}, {})",
       colorCameraSerialNumber_.value(), colorFrameSize_.first,
       colorFrameSize_.second);
-  depthDevice_->StartStream();
+  depthDevice_->StartStream(numBuffers);
   spdlog::info(
       "Device (depth, serial={}) is now streaming with resolution ({}, {})",
       depthCameraSerialNumber_.value(), depthFrameSize_.first,
@@ -372,6 +388,10 @@ void LucidCamera::setNetworkSettings(Arena::IDevice* device) {
   // Set the following when Persistent IP is set on the camera
   Arena::SetNodeValue<bool>(device->GetNodeMap(),
                             "GevPersistentARPConflictDetectionEnable", false);
+}
+
+LucidCamera::CaptureMode LucidCamera::getCaptureMode() const {
+  return captureMode_;
 }
 
 double LucidCamera::getExposureUs() const {
@@ -477,6 +497,50 @@ double LucidCamera::getDepthDeviceTemperature() const {
                                      "DeviceTemperature");
 }
 
+std::optional<LucidFrame> LucidCamera::getNextFrame() {
+  if (getState() != LucidCamera::State::STREAMING) {
+    return std::nullopt;
+  }
+
+  // When in SingleFrame mode, manually fire AcquisitionStart and
+  // AcquisitionStop signals
+  if (captureMode_ == CaptureMode::SINGLE_FRAME) {
+    Arena::ExecuteNode(colorDevice_->GetNodeMap(), "AcquisitionStart");
+    Arena::ExecuteNode(depthDevice_->GetNodeMap(), "AcquisitionStart");
+    // Sleep a bit to let the acquisition signal propagate
+    using namespace std::chrono_literals;
+    std::this_thread::sleep_for(100ms);
+  }
+
+  std::optional<LucidFrame> frame;
+  try {
+    std::optional<cv::Mat> colorFrame{getColorFrame()};
+    std::optional<LucidCamera::GetDepthFrameResult> depthFrame{getDepthFrame()};
+    if (colorFrame && depthFrame) {
+      frame = createRgbdFrame(colorFrame.value(), depthFrame.value().xyz);
+    }
+  } catch (const std::exception& e) {
+    spdlog::error(
+        "There was an issue with the camera: {}. Signaling connection thread",
+        e.what());
+    cv_.notify_one();
+    return std::nullopt;
+  }
+
+  if (!frame.has_value()) {
+    spdlog::error("No frame available. Signaling connection thread");
+    cv_.notify_one();
+    return std::nullopt;
+  }
+
+  if (captureMode_ == CaptureMode::SINGLE_FRAME) {
+    Arena::ExecuteNode(colorDevice_->GetNodeMap(), "AcquisitionStop");
+    Arena::ExecuteNode(depthDevice_->GetNodeMap(), "AcquisitionStop");
+  }
+
+  return frame;
+}
+
 void LucidCamera::stopStream() {
   {
     std::lock_guard<std::mutex> lock(deviceMutex_);
@@ -522,7 +586,7 @@ void LucidCamera::acquisitionThreadFn(FrameCallback frameCallback) {
       }
 
       auto frame{std::make_shared<LucidFrame>(
-          getRgbdFrame(colorFrame.value(), depthFrame.value().xyz))};
+          createRgbdFrame(colorFrame.value(), depthFrame.value().xyz))};
       if (frameCallback) {
         frameCallback(frame);
       }
@@ -615,8 +679,8 @@ std::optional<LucidCamera::GetDepthFrameResult> LucidCamera::getDepthFrame() {
   return GetDepthFrameResult{xyzMm, intensityImage};
 }
 
-LucidFrame LucidCamera::getRgbdFrame(const cv::Mat& colorFrame,
-                                     const cv::Mat& depthFrameXyz) {
+LucidFrame LucidCamera::createRgbdFrame(const cv::Mat& colorFrame,
+                                        const cv::Mat& depthFrameXyz) {
   double timestampMillis{
       static_cast<double>(
           std::chrono::duration_cast<std::chrono::microseconds>(
