@@ -158,6 +158,10 @@ void LucidCamera::connectionThreadFn(CaptureMode captureMode, double exposureUs,
         }
         deviceWasEverConnected = true;
         deviceConnected = true;
+        {
+          std::lock_guard<std::mutex> lock(streamingStateCvMutex_);
+          streamingStateCv_.notify_all();
+        }
       } else {
         spdlog::warn("Either color device or depth device was not found");
         std::this_thread::sleep_for(std::chrono::seconds(5));
@@ -495,6 +499,20 @@ double LucidCamera::getDepthDeviceTemperature() const {
 
   return Arena::GetNodeValue<double>(depthDevice_->GetNodeMap(),
                                      "DeviceTemperature");
+}
+
+void LucidCamera::waitForStreaming() {
+  std::unique_lock<std::mutex> lock(streamingStateCvMutex_);
+  if (getState() != State::STREAMING) {
+    // Wait up to 10 seconds
+    streamingStateCv_.wait_for(lock, std::chrono::seconds(10), [this]() {
+      return getState() == State::STREAMING;
+    });
+  }
+
+  if (getState() != State::STREAMING) {
+    throw std::runtime_error("Camera failed to start streaming");
+  }
 }
 
 std::optional<LucidFrame> LucidCamera::getNextFrame() {

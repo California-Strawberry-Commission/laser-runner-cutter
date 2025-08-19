@@ -123,6 +123,8 @@ target_link_libraries(test_predictor PRIVATE prediction matplotlib_cpp)
 
 install(TARGETS
   runner_cutter_control_node
+  test_calibration
+  test_predictor
   DESTINATION lib/${PROJECT_NAME})
 
 # Install launch files

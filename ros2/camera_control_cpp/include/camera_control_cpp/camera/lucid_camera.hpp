@@ -107,6 +107,11 @@ class LucidCamera {
   double getDepthDeviceTemperature() const;
 
   /**
+   * Wait until the cameras are streaming.
+   */
+  void waitForStreaming();
+
+  /**
    * Get the next available frame. Call this method to trigger frame acquisition
    * when in SingleFrame mode.
    *
@@ -115,10 +120,14 @@ class LucidCamera {
   std::optional<LucidFrame> getNextFrame();
 
  private:
-  std::condition_variable cv_;
+  std::condition_variable
+      cv_;  // Used for syncing acquisition and connection threads
   std::mutex cvMutex_;
   std::thread connectionThread_;
   std::thread acquisitionThread_;
+  std::condition_variable
+      streamingStateCv_;  // Used for notifying that cameras are streaming
+  std::mutex streamingStateCvMutex_;
   Arena::ISystem* arena_{nullptr};
   std::atomic<bool> isRunning_{false};
   cv::Mat colorCameraIntrinsicMatrix_;

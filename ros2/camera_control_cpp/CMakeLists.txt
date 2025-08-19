@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.11)
 project(camera_control_cpp)
 
 # Default to C++17
@@ -21,6 +21,16 @@ find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(cv_bridge REQUIRED)
+
+include(FetchContent)
+
+# CLI11 (header-only)
+FetchContent_Declare(
+    CLI11
+    GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
+    GIT_TAG v2.5.0
+)
+FetchContent_MakeAvailable(CLI11)
 
 ###########
 ## Build ##
@@ -69,6 +79,7 @@ include_directories(third_party/bs_thread_pool/include)
 
 # camera
 add_library(camera SHARED
+  src/camera/calibration.cpp
   src/camera/lucid_camera.cpp
   src/camera/lucid_frame.cpp
 )
@@ -93,9 +104,8 @@ ament_target_dependencies(camera_control_node PUBLIC
 )
 
 # Tools
-add_executable(calibrate src/camera/calibrate.cpp)
-target_link_libraries(calibrate PRIVATE ${OpenCV_LIBS} fmt::fmt)
-ament_target_dependencies(calibrate PUBLIC rclcpp std_msgs OpenCV)
+add_executable(lucid_calibrate src/tools/lucid_calibrate.cpp)
+target_link_libraries(lucid_calibrate PRIVATE camera CLI11::CLI11 spdlog::spdlog ${OpenCV_LIBS})
 
 #############
 ## Install ##
@@ -103,7 +113,7 @@ ament_target_dependencies(calibrate PUBLIC rclcpp std_msgs OpenCV)
 
 install(TARGETS
   camera_control_node
-  calibrate
+  lucid_calibrate
   DESTINATION lib/${PROJECT_NAME})
 
 # Install launch files
