@@ -11,10 +11,32 @@ struct ReprojectErrors {
   std::vector<float> perImageErrors;
 };
 
-struct CalibrationMetrics {
+struct CalculateIntrinsicsResult {
   cv::Mat intrinsicMatrix;
   cv::Mat distCoeffs;
 };
+
+/**
+ * Finds the camera intrinsic parameters and distortion coefficients from
+ * several views of a calibration pattern.
+ *
+ * @param monoImages Grayscale images, each containing the calibration pattern.
+ * @param gridSize Size of the calibration pattern (columns, rows).
+ * @param gridType One of:
+ *        cv::CALIB_CB_SYMMETRIC_GRID - symmetric pattern of circles,
+ *        cv::CALIB_CB_ASYMMETRIC_GRID - asymmetric pattern of circles,
+ *        cv::CALIB_CB_CLUSTERING - robust to perspective distortions but
+ * sensitive to clutter.
+ * @param blobDetector Feature detector for blobs (e.g., dark circles on light
+ * background). If nullptr, a default implementation is used.
+ * @return std::optional<calibration::CalibrationMetrics> Struct containing
+ * (camera intrinsic matrix, distortion coefficients), or std::nullopt if
+ * calibration was unsuccessful.
+ */
+std::optional<calibration::CalculateIntrinsicsResult> calculateIntrinsics(
+    const std::vector<cv::Mat>& monoImages, const cv::Size& gridSize,
+    const int gridType = cv::CALIB_CB_SYMMETRIC_GRID,
+    const cv::Ptr<cv::FeatureDetector> blobDetector = NULL);
 
 /**
  * Constructs a 4x4 extrinsic transformation matrix from rotation
@@ -25,6 +47,15 @@ struct CalibrationMetrics {
  * @return cv::Mat The resulting 4x4 extrinsic transformation matrix.
  */
 cv::Mat constructExtrinsicMatrix(const cv::Mat& rvec, const cv::Mat& tvec);
+
+/**
+ * Extract rotation and translation vectors from a 4x4 extrinsic matrix.
+ *
+ * @param extrinsicMatrix 4x4 extrinsic matrix.
+ * @return {rvec, tvec}
+ */
+std::pair<cv::Mat, cv::Mat> extractPoseFromExtrinsic(
+    const cv::Mat& extrinsicMatrix);
 
 /**
  * Inverts a 4x4 extrinsic transformation matrix.
@@ -47,6 +78,14 @@ cv::Mat invertExtrinsicMatrix(const cv::Mat& extrinsic);
 std::optional<cv::Point2f> distortPixelCoords(
     const cv::Point2f& undistortedPixelCoords, const cv::Mat& intrinsicMatrix,
     const cv::Mat& distCoeffs);
+
+/**
+ * Scale a grayscale image so that it uses the full 8-bit range.
+ *
+ * @param monoImage The grayscale image.
+ * @return Scaled uint8 grayscale image.
+ */
+cv::Mat scaleGrayscaleImage(const cv::Mat& monoImage);
 
 /**
  * Creates and returns a pointer to a configured SimpleBlobDetector.
@@ -73,39 +112,5 @@ ReprojectErrors _calcReprojectionError(
     const std::vector<std::vector<cv::Point2f>>& imagePoints,
     const std::vector<cv::Mat>& rvecs, const std::vector<cv::Mat>& tvecs,
     const cv::Mat& cameraMatrix, const cv::Mat& distCoeffs);
-
-/**
- * Finds the camera intrinsic parameters and distortion coefficients from
- * several views of a calibration pattern.
- *
- * @param monoImages Grayscale images, each containing the calibration pattern.
- * @param gridSize Size of the calibration pattern (columns, rows).
- * @param gridType One of:
- *        cv::CALIB_CB_SYMMETRIC_GRID - symmetric pattern of circles,
- *        cv::CALIB_CB_ASYMMETRIC_GRID - asymmetric pattern of circles,
- *        cv::CALIB_CB_CLUSTERING - robust to perspective distortions but
- * sensitive to clutter.
- * @param blobDetector Feature detector for blobs (e.g., dark circles on light
- * background). If nullptr, a default implementation is used.
- * @return std::optional<calibration::CalibrationMetrics> Struct containing
- * (camera intrinsic matrix, distortion coefficients), or std::nullopt if
- * calibration was unsuccessful.
- */
-std::optional<calibration::CalibrationMetrics> calibrateCamera(
-    const std::vector<cv::Mat>& monoImages, const cv::Size& gridSize,
-    const int gridType = cv::CALIB_CB_SYMMETRIC_GRID,
-    const cv::Ptr<cv::FeatureDetector> blobDetector = NULL);
-
-/**
- * Tests the undistortion of an image using the provided camera matrix and
- * distortion coefficients.
- *
- * @param cameraMatrix The camera intrinsic matrix (3x3) used for undistortion.
- * @param distCoeffs The distortion coefficients vector (typically 1x5 or 1x8)
- * for the camera.
- * @param img The input distorted image to be undistorted.
- */
-void testUndistortion(const cv::Mat& cameraMatrix, const cv::Mat& distCoeffs,
-                      const cv::Mat& img);
 
 }  // namespace calibration
