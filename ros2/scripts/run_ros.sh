@@ -14,11 +14,11 @@ start_rosbridge() {
   ros2 launch runner_cutter_control rosbridge_websocket_launch.xml
 }
 
-start_web_video_server() {
-  cd $script_dir
-  source setup.sh
-  ros2 launch runner_cutter_control web_video_server_launch.py
-}
+#start_web_video_server() {
+#  cd $script_dir
+#  source setup.sh
+#  ros2 launch runner_cutter_control web_video_server_launch.py
+#}
 
 start_runner_cutter() {
   cd $script_dir
