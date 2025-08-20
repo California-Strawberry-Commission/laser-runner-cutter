@@ -24,10 +24,37 @@ export default function useWebRTCStream(
       socket.onmessage = async (event) => {
         const data = JSON.parse(event.data);
 
-        if (data.answer) {
-          await pc.setRemoteDescription(data.answer);
-        } else if (data.candidate) {
-          await pc.addIceCandidate(data.candidate);
+        // Handle offer from GStreamer
+        if (data.sdp && data.sdp.type === "offer") {
+          console.log("Received offer from GStreamer");
+          
+          // Set remote description (the offer)
+          await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+          
+          // Create answer
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          
+          // Send answer back using the 'sdp' key
+          socket.send(JSON.stringify({ sdp: pc.localDescription }));
+          console.log("Sent answer to GStreamer");
+
+        } 
+        // Handle ICE candidates from GStreamer
+        else if (data.candidate) {
+          await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+          console.log("Added ICE candidate from GStreamer");
+        }
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.send(JSON.stringify({ 
+            ice: { 
+              candidate: event.candidate.candidate,
+              sdpMLineIndex: event.candidate.sdpMLineIndex
+            }
+          }));
         }
       };
 

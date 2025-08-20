@@ -1,6 +1,7 @@
 "use client";
 
-import FramePreviewWithOverlay from "@/components/camera/frame-preview-with-overlay";
+//import FramePreviewWithOverlay from "@/components/camera/frame-preview-with-overlay";
+import FramePreviewWebRTC from "@/components/camera/frame-preview-webrtc";
 import CalibrationCard, {
   CalibrationState,
 } from "@/components/runner-cutter/calibration-card";
@@ -276,7 +277,7 @@ export default function Controls({
           />
         </CardContent>
       </Card>
-      <FramePreviewWithOverlay
+      <FramePreviewWebRTC //FramePreviewWithOverlay
         className="w-full h-[360px]"
         topicName={`${cameraNodeName}/debug_frame`}
         enableStream={

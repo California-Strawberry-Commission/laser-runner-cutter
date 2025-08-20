@@ -72,6 +72,7 @@ export default function FramePreviewWebRTC({
     top: 0,
     left: 0,
   });
+  console.log("FramePreviewWebRTC is being rendered. enableStream:", enableStream)
   const [rotate180, setRotate180] = useState(false);
 
   const { videoRef, connected } = useWebRTCStream(topicName, enableStream);
@@ -226,7 +227,7 @@ export default function FramePreviewWebRTC({
         )}
         autoPlay
         playsInline
-        muted
+        //muted
         onWaiting={() => {
           setIsLoading(true);
         }}
