@@ -7,7 +7,6 @@ if len(sys.argv) < 2:
 
 model_path = sys.argv[1]
 model = YOLO(model_path)
-model.export(format="onnx", device=0, imgsz=(768, 1024))
-# model.export(format="onnx", device=0, imgsz=(768, 1024), half=True, simplify=True)
+model.export(format="onnx", device=0, imgsz=(768, 1024), half=True, simplify=True)
 
 
