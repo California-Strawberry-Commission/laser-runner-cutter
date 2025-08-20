@@ -65,8 +65,10 @@ class CameraControlNode : public rclcpp::Node {
     // Parameters
     /////////////
     declare_parameter<int>("camera_index", 0);
-    declare_parameter<std::string>("calibration_id",
-                                   "1c0faf4b115d1c0faf4d17ce");
+    declare_parameter<std::string>(
+        "calibration_id",
+        "1c0faf4b115d1c0faf4d17ce");  // calibration ID is <Triton MAC><Helios
+                                      // MAC>
     declare_parameter<double>("exposure_us", -1.0);
     declare_parameter<double>("gain_db", -1.0);
     declare_parameter<std::string>("save_dir", "~/runner_cutter/camera");

@@ -67,7 +67,9 @@ def get_current_time_str():
 class CameraControlParams:
     camera_type: str = "lucid"  # "realsense" or "lucid"
     camera_index: int = 0
-    lucid_calibration_id: str = "1c0faf4b115d1c0faf4d17ce"
+    lucid_calibration_id: str = (
+        "1c0faf4b115d1c0faf4d17ce"  # calibration ID is <Triton MAC><Helios MAC>
+    )
     exposure_us: float = -1.0
     gain_db: float = -1.0
     save_dir: str = "~/runner_cutter/camera"
