@@ -82,18 +82,18 @@ include_directories(${CUDA_PATH}/include)
 cuda_add_library(fp16_utils src/tools/fp16_utils.cu)
 
 # Add ByteTrack
-include_directories(third_party/ByteTrackC++/include)
+include_directories(third_party/ByteTrack/include)
 set(BYTETRACK_SOURCES
-    third_party/ByteTrackC++/src/BYTETracker.cpp
-    third_party/ByteTrackC++/src/kalmanFilter.cpp
-    third_party/ByteTrackC++/src/lapjv.cpp
-    third_party/ByteTrackC++/src/STrack.cpp
-    third_party/ByteTrackC++/src/utils.cpp
+    third_party/ByteTrack/src/BYTETracker.cpp
+    third_party/ByteTrack/src/kalmanFilter.cpp
+    third_party/ByteTrack/src/lapjv.cpp
+    third_party/ByteTrack/src/STrack.cpp
+    third_party/ByteTrack/src/utils.cpp
 )
 
 add_library(bytetrack STATIC ${BYTETRACK_SOURCES})
 target_include_directories(bytetrack PUBLIC 
-    third_party/ByteTrackC++/include
+    third_party/ByteTrack/include
     ${EIGEN3_INCLUDE_DIR}
 )
 
