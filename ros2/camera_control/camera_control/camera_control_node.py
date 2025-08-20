@@ -67,6 +67,7 @@ def get_current_time_str():
 class CameraControlParams:
     camera_type: str = "lucid"  # "realsense" or "lucid"
     camera_index: int = 0
+    lucid_calibration_id: str = "1c0faf4b115d1c0faf4d17ce"
     exposure_us: float = -1.0
     gain_db: float = -1.0
     save_dir: str = "~/runner_cutter/camera"
@@ -153,6 +154,7 @@ async def start(node):
         )
     elif camera_control_params.camera_type == "lucid":
         shared_state.camera = create_lucid_rgbd_camera(
+            calibration_id=camera_control_params.lucid_calibration_id,
             state_change_callback=state_change_callback,
             logger=shared_state.logger,
         )

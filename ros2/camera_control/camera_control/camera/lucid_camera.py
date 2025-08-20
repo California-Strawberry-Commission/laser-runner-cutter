@@ -818,6 +818,7 @@ class LucidRgbdCamera(RgbdCamera):
 
 
 def create_lucid_rgbd_camera(
+    calibration_id: str = "1c0faf4b115d1c0faf4d17ce",
     color_camera_serial_number: Optional[str] = None,
     depth_camera_serial_number: Optional[str] = None,
     color_frame_size: Tuple[int, int] = (2048, 1536),
@@ -834,7 +835,7 @@ def create_lucid_rgbd_camera(
         helios_distortion_coeffs,
         xyz_to_triton_extrinsic_matrix,
         xyz_to_helios_extrinsic_matrix,
-    ) = _get_calibration_params()
+    ) = _get_calibration_params(calibration_id)
 
     return LucidRgbdCamera(
         triton_intrinsic_matrix,  # type: ignore
