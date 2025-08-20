@@ -13,6 +13,8 @@
 #include "spdlog/spdlog.h"
 #include "NvInfer.h"
 
+#include "detection_cpp/tools/fp16_utils.hpp"
+
 
 class Logger : public nvinfer1::ILogger {
   void log(nvinfer1::ILogger::Severity severity,
@@ -22,3 +24,4 @@ class Logger : public nvinfer1::ILogger {
       std::cout << msg << std::endl;
   }
 } logger;
+

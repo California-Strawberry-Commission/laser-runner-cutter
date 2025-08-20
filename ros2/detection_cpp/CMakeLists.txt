@@ -77,6 +77,7 @@ set(CUDA_PATH "/usr/local/cuda-12.4")
 link_directories(${CUDA_PATH}/lib64)
 include_directories(${CUDA_PATH}/include)
 
+cuda_add_library(fp16_utils src/tools/fp16_utils.cu)
 
 # Add BS Thread Pool
 include_directories(third_party/bs_thread_pool/include)
@@ -103,7 +104,7 @@ ament_target_dependencies(test_singleFrame PUBLIC rclcpp std_msgs OpenCV)
 
 add_executable(test_loop src/tools/test_loop.cpp)
 target_include_directories(test_loop PRIVATE ${TensorRT_INCLUDE_DIRS})
-target_link_libraries(test_loop PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS} ${TensorRT_LIBRARIES} fmt::fmt nvinfer nvonnxparser cudart)
+target_link_libraries(test_loop PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS} ${TensorRT_LIBRARIES} fmt::fmt nvinfer nvonnxparser cudart fp16_utils)
 ament_target_dependencies(test_loop PUBLIC rclcpp std_msgs OpenCV)
 
 #############
