@@ -6,11 +6,6 @@
 
 namespace calibration {
 
-struct ReprojectErrors {
-  float meanError;
-  std::vector<float> perImageErrors;
-};
-
 struct IntrinsicsResult {
   cv::Mat intrinsicMatrix;
   cv::Mat distCoeffs;
@@ -94,24 +89,6 @@ cv::Mat scaleGrayscaleImage(const cv::Mat& monoImage);
  * SimpleBlobDetector instance.
  */
 cv::Ptr<cv::Feature2D> createBlobDetector();
-
-/**
- * Compute the reprojection error.
- *
- * @param objectPoints List of object points in real-world space.
- * @param imagePoints List of corresponding image points detected in images.
- * @param rvecs List of rotation vectors returned by cv::calibrateCamera.
- * @param tvecs List of translation vectors returned by cv::calibrateCamera.
- * @param cameraMatrix Camera matrix.
- * @param distCoeffs Distortion coefficients.
- * @return ReprojectErrors struct containing mean reprojection error and
- * per-image errors.
- */
-ReprojectErrors _calcReprojectionError(
-    const std::vector<std::vector<cv::Point3f>>& objectPoints,
-    const std::vector<std::vector<cv::Point2f>>& imagePoints,
-    const std::vector<cv::Mat>& rvecs, const std::vector<cv::Mat>& tvecs,
-    const cv::Mat& cameraMatrix, const cv::Mat& distCoeffs);
 
 /**
  * Performs tilde expansion for a file path.

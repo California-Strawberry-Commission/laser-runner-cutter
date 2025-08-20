@@ -28,10 +28,12 @@ class LucidFrame {
    * @return (x, y, z) position with respect to the camera, or nullopt if
    * the position could not be determined.
    */
-  std::optional<std::tuple<double, double, double>> getPosition(
-      std::pair<int, int> colorPixel) const;
+  std::optional<cv::Vec3f> getPosition(const cv::Point2i& colorPixel) const;
 
  private:
+  static constexpr float DEPTH_MIN_MM{500};
+  static constexpr float DEPTH_MAX_MM{10000};
+
   cv::Mat colorFrame_;
   cv::Mat depthFrameXyz_;
   double timestampMillis_{0.0};
@@ -41,5 +43,9 @@ class LucidFrame {
   cv::Mat depthCameraDistortionCoeffs_;
   cv::Mat xyzToColorCameraExtrinsicMatrix_;
   cv::Mat xyzToDepthCameraExtrinsicMatrix_;
+  cv::Mat colorToDepthExtrinsicMatrix_;
   std::pair<int, int> colorFrameOffset_;
+
+  std::optional<cv::Point2i> getCorrespondingDepthPixel(
+      const cv::Point2i& colorPixel) const;
 };
