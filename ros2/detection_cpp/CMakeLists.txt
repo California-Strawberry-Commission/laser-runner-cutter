@@ -28,6 +28,8 @@ find_package(OpenCV REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(TensorRT REQUIRED)
+set(Eigen3_DIR "third_party/eigen-3.3.9/cmake")
+find_package(Eigen3 REQUIRED)
 
 
 ###########
@@ -79,6 +81,22 @@ include_directories(${CUDA_PATH}/include)
 
 cuda_add_library(fp16_utils src/tools/fp16_utils.cu)
 
+# Add ByteTrack
+include_directories(third_party/ByteTrackC++/include)
+set(BYTETRACK_SOURCES
+    third_party/ByteTrackC++/src/BYTETracker.cpp
+    third_party/ByteTrackC++/src/kalmanFilter.cpp
+    third_party/ByteTrackC++/src/lapjv.cpp
+    third_party/ByteTrackC++/src/STrack.cpp
+    third_party/ByteTrackC++/src/utils.cpp
+)
+
+add_library(bytetrack STATIC ${BYTETRACK_SOURCES})
+target_include_directories(bytetrack PUBLIC 
+    third_party/ByteTrackC++/include
+    ${EIGEN3_INCLUDE_DIR}
+)
+
 # Add BS Thread Pool
 include_directories(third_party/bs_thread_pool/include)
 
@@ -104,7 +122,7 @@ ament_target_dependencies(test_singleFrame PUBLIC rclcpp std_msgs OpenCV)
 
 add_executable(test_loop src/tools/test_loop.cpp)
 target_include_directories(test_loop PRIVATE ${TensorRT_INCLUDE_DIRS})
-target_link_libraries(test_loop PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS} ${TensorRT_LIBRARIES} fmt::fmt nvinfer nvonnxparser cudart fp16_utils)
+target_link_libraries(test_loop PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS} ${TensorRT_LIBRARIES} fmt::fmt nvinfer nvonnxparser cudart fp16_utils bytetrack)
 ament_target_dependencies(test_loop PUBLIC rclcpp std_msgs OpenCV)
 
 #############
