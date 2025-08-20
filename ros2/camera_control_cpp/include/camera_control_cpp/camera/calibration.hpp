@@ -11,7 +11,7 @@ struct ReprojectErrors {
   std::vector<float> perImageErrors;
 };
 
-struct CalculateIntrinsicsResult {
+struct IntrinsicsResult {
   cv::Mat intrinsicMatrix;
   cv::Mat distCoeffs;
 };
@@ -29,11 +29,11 @@ struct CalculateIntrinsicsResult {
  * sensitive to clutter.
  * @param blobDetector Feature detector for blobs (e.g., dark circles on light
  * background). If nullptr, a default implementation is used.
- * @return std::optional<calibration::CalibrationMetrics> Struct containing
+ * @return std::optional<calibration::IntrinsicsResult> struct containing
  * (camera intrinsic matrix, distortion coefficients), or std::nullopt if
  * calibration was unsuccessful.
  */
-std::optional<calibration::CalculateIntrinsicsResult> calculateIntrinsics(
+std::optional<calibration::IntrinsicsResult> calculateIntrinsics(
     const std::vector<cv::Mat>& monoImages, const cv::Size& gridSize,
     const int gridType = cv::CALIB_CB_SYMMETRIC_GRID,
     const cv::Ptr<cv::FeatureDetector> blobDetector = NULL);
@@ -112,5 +112,40 @@ ReprojectErrors _calcReprojectionError(
     const std::vector<std::vector<cv::Point2f>>& imagePoints,
     const std::vector<cv::Mat>& rvecs, const std::vector<cv::Mat>& tvecs,
     const cv::Mat& cameraMatrix, const cv::Mat& distCoeffs);
+
+/**
+ * Performs tilde expansion for a file path.
+ *
+ * @param path Path to expand.
+ * @return Fully qualified file path.
+ */
+std::string expandUser(const std::string& path);
+
+/**
+ * Reads an XYZ data file.
+ *
+ * @param xyzFile Path to the xyz data file.
+ * @return xyz data, or std::nullopt if unsuccessful.
+ */
+std::optional<cv::Mat> readXyzFile(const std::string& xyzFile);
+
+/**
+ * Reads an intrinsics calibration parameters file.
+ *
+ * @param intrinsicsFile Path to the intrinsics calibration parameters file.
+ * @return std::optional<calibration::IntrinsicsResult> struct containing
+ * (intrinsic matrix, distortion coefficients), or std::nullopt if
+ * unsuccessful.
+ */
+std::optional<calibration::IntrinsicsResult> readIntrinsicsFile(
+    const std::string& intrinsicsFile);
+
+/**
+ * Reads an extrinsics calibration parameters file.
+ *
+ * @param intrinsicsFile Path to the extrinsics calibration parameters file.
+ * @return Extrinsic matrix, or std::nullopt if unsuccessful.
+ */
+std::optional<cv::Mat> readExtrinsicsFile(const std::string& extrinsicsFile);
 
 }  // namespace calibration
