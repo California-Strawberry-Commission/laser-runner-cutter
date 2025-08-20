@@ -1,6 +1,8 @@
 import logging
 import threading
 import time
+import websockets
+import os
 
 import gi
 import rclpy
@@ -19,6 +21,12 @@ class GStreamerRosWebRTCNode(Node):
     def __init__(self):
         super().__init__("gstreamer_ros_webrtc_node")
         self.get_logger().info("GStreamer ROS WebRTC Node initializing...")
+
+        #Signaling server
+        self.topics = {}
+        self._server_thread = threading.Thread(target=self._run_signaling_server, daemon=True)
+        self._server_thread.start()
+        self.get_logger().info("Signaling server thread started.")
 
         self.declare_parameter("video_topic", "/camera0/debug_frame")
         self.video_topic = (
@@ -45,37 +53,22 @@ class GStreamerRosWebRTCNode(Node):
             self.get_parameter("gst_input_encoding").get_parameter_value().string_value
         )
 
-        self.declare_parameter("signaling_server_url", "ws://localhost:8081")
+        self.declare_parameter("signaling_server_url", "ws://0.0.0.0:8080/?topic=/camera0/debug_frame")
         self.signaling_server_url = (
             self.get_parameter("signaling_server_url")
             .get_parameter_value()
             .string_value
         )
 
-        self.declare_parameter("our_peer_id", 123)
-        self.our_peer_id = (
-            self.get_parameter("our_peer_id").get_parameter_value().integer_value
-        )
-
-        self.declare_parameter("target_peer_id", 456)
-        self.target_peer_id = (
-            self.get_parameter("target_peer_id").get_parameter_value().integer_value
-        )
-
-        self.declare_parameter("webrtc_stun_server", "stun://stun.l.google.com:19302")
-        self.webrtc_stun_server = (
-            self.get_parameter("webrtc_stun_server").get_parameter_value().string_value
-        )
-
-        self.declare_parameter("webrtc_turn_server", "")
-        self.webrtc_turn_server = (
-            self.get_parameter("webrtc_turn_server").get_parameter_value().string_value
-        )
-
         Gst.init(None)
 
-        # self.create_pipeline_manually()
-        self.create_jetson_pipeline()
+        #Environment check for Jetson
+        if os.path.exists('/etc/nv_tegra_release'):
+            self.get_logger().info("Jetson device detected, using jetson pipeline")
+            self.create_jetson_pipeline()
+        else:
+            self.get_logger().info("Non Jetson device detected, using non jetson pipeline")
+            self.create_pipeline_manually()
 
         self.glib_main_loop = GLib.MainLoop()
         bus = self.pipeline.get_bus()
@@ -108,19 +101,70 @@ class GStreamerRosWebRTCNode(Node):
         self.get_logger().info(f"Subscribed to ROS topic: {self.video_topic}")
 
         time.sleep(1)
-        self.webrtc_handler = MavWebRTC(self.pipeline, self.our_peer_id, {})
+        
+        #Initialize the async WebRTC handler
+        self.webrtc_handler = MavWebRTC(self.pipeline, {}, "webrtc")
         self.webrtc_handler.server = self.signaling_server_url
-        self.webrtc_handler.peer_id = self.target_peer_id
 
         self.setup_connection_monitor()
 
+        #Start the WebRTC handler (it will create its own thread with event loop)
         self.webrtc_handler.start()
 
         self.frame_count = 0
         self.connection_established = False
 
+    #Runs the asyncio event loop for the server
+    def _run_signaling_server(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self._start_server_main())
+            loop.run_forever()
+        finally:
+            loop.close()
+
+    #Start the websockets server
+    async def _start_server_main(self):
+        self.get_logger().info("Starting WebRTC signaling server on ws://0.0.0.0:8080")
+        server = await websockets.serve(self._signaling_handler, "0.0.0.0", 8080)
+        await server.wait_closed()
+
+    #The handler for websocket connection(s)
+    async def _signaling_handler(self, websocket):
+        path = websocket.request.path
+        self.get_logger().info(f"New connection with path: {path}")
+
+        try:
+            topic_name = path.split("?topic=")[-1]
+        except IndexError:
+            self.get_logger().error("No topic name provided in the URL.")
+            await websocket.close()
+            return
+
+        if topic_name not in self.topics:
+            self.topics[topic_name] = set()
+        self.topics[topic_name].add(websocket)
+        self.get_logger().info(f"Registered new peer on topic: '{topic_name}'. Total peers: {len(self.topics[topic_name])}")
+
+        try:
+            async for message_str in websocket:
+                self.get_logger().info(f"Relaying message on topic '{topic_name}': {message_str[:50]}...")
+                for peer_ws in self.topics[topic_name]:
+                    if peer_ws is not websocket:
+                        await peer_ws.send(message_str)
+
+        except websockets.exceptions.ConnectionClosed as e:
+            self.get_logger().info(f"Peer on topic '{topic_name}' disconnected. Code: {e.code}")
+        finally:
+            self.topics[topic_name].discard(websocket)
+            if not self.topics[topic_name]:
+                del self.topics[topic_name]
+            self.get_logger().info(f"Unregistered peer on topic: '{topic_name}'. Remaining topics: {list(self.topics.keys())}")
+
+
     def setup_connection_monitor(self):
-        """Monitor WebRTC connection state and unblock pad when connected"""
+        #Monitor WebRTC connection state and unblock pad when connected
 
         self.get_logger().info(f"Setting up connection monitor")
         self.webrtcbin.connect(
@@ -131,7 +175,8 @@ class GStreamerRosWebRTCNode(Node):
         )
 
     def on_connection_state_changed(self, webrtcbin, pspec):
-        """Handle connection state changes"""
+        #Handle connection state changes
+
         state = webrtcbin.get_property("connection-state")
         self.get_logger().info(f"WebRTC connection state: {state}")
 
@@ -141,12 +186,41 @@ class GStreamerRosWebRTCNode(Node):
             self.ensure_media_flow()
 
     def on_ice_state_changed(self, webrtcbin, pspec):
-        """Handle ICE connection state changes"""
+        #Handle ICE connection state changes with detailed logging for debugging
+
         state = webrtcbin.get_property("ice-connection-state")
-        self.get_logger().info(f"ICE connection state: {state}")
+        state_name = {
+            0: "NEW",
+            1: "CHECKING", 
+            2: "CONNECTED",
+            3: "COMPLETED",
+            4: "FAILED",
+            5: "DISCONNECTED",
+            6: "CLOSED"
+        }.get(state, f"UNKNOWN({state})")
+        
+        self.get_logger().info(f"ICE connection state: {state_name}")
+        
+        #Force pipeline refresh when ICE is connected or completed
+        if state in [2, 3] and not self.connection_established:  # CONNECTED or COMPLETED
+            self.connection_established = True
+            self.get_logger().info("ICE connection established - ensuring media flow")
+            
+            #Trick to ensure decoder can start
+            if hasattr(self, 'encoder'):
+                structure = Gst.Structure.new_empty("GstForceKeyUnit")
+                event = Gst.Event.new_custom(Gst.EventType.CUSTOM_DOWNSTREAM, structure)
+                self.encoder.send_event(event)
+                self.get_logger().info("Forced keyframe generation")
+            
+            self.ensure_media_flow()
+        elif state == 4:  # FAILED
+            self.get_logger().error("ICE connection failed!")
+            self.connection_established = False
 
     def ensure_media_flow(self):
-        """Ensure media is flowing through the pipeline"""
+        #Ensure media is flowing through the pipeline
+        
         self.get_logger().info("Forcing pipeline state refresh to unblock pads")
 
         success, position = self.pipeline.query_position(Gst.Format.TIME)
@@ -166,6 +240,8 @@ class GStreamerRosWebRTCNode(Node):
         self.get_logger().info("Pipeline state refreshed")
 
     def create_jetson_pipeline(self):
+        #Jetson pipeline creation
+
         self.pipeline = Gst.Pipeline.new("webrtc-pipeline")
 
         self.webrtcbin = Gst.ElementFactory.make("webrtcbin", "webrtc")
@@ -179,20 +255,16 @@ class GStreamerRosWebRTCNode(Node):
         self.appsrc.set_property("is-live", True)
         self.appsrc.set_property("format", Gst.Format.TIME)
 
-        # videoconvert is needed to convert BGR to I420 (which is required for nvvidconv)
         videoconvert = Gst.ElementFactory.make("videoconvert", "convert")
 
-        # Configure capsfilter to enforce NVMM memory and NV12 format after nvvidconv
         capsfilter1 = Gst.ElementFactory.make("capsfilter", "capsfilter1")
         capsfilter1_caps = Gst.Caps.from_string(
             "video/x-raw,format=I420,width=640,height=480,framerate=30/1"
         )
         capsfilter1.set_property("caps", capsfilter1_caps)
 
-        # Push CPU frame data to GPU
         nvvidconv = Gst.ElementFactory.make("nvvidconv", "nvvidconv")
 
-        # Configure capsfilter to enforce NVMM memory and NV12 format after nvvidconv
         capsfilter2 = Gst.ElementFactory.make("capsfilter", "capsfilter2")
         capsfilter2_caps = Gst.Caps.from_string(
             "video/x-raw(memory:NVMM),format=NV12,width=640,height=480,framerate=30/1"
@@ -206,7 +278,6 @@ class GStreamerRosWebRTCNode(Node):
         rtph264pay = Gst.ElementFactory.make("rtph264pay", "payloader")
         rtph264pay.set_property("pt", 96)
 
-        # Add elements to the pipeline
         self.pipeline.add(self.appsrc)
         self.pipeline.add(videoconvert)
         self.pipeline.add(capsfilter1)
@@ -232,139 +303,66 @@ class GStreamerRosWebRTCNode(Node):
         if not parser.link(rtph264pay):
             self.get_logger().error("Failed to link parser to rtph264pay")
 
-        # Request an RTP sink pad from webrtcbin and link it
         rtp_sink_pad = self.webrtcbin.get_request_pad("sink_%u")
         src_pad = rtph264pay.get_static_pad("src")
         src_pad.link(rtp_sink_pad)
 
+    
     def create_pipeline_manually(self):
-        """Create pipeline by manually linking elements for better control"""
+        #Non jetson pipeline creation
+        #Minimal pipeline appsrc → videoconvert → NV12 → NVENC → H264Parse → RTP → webrtcbin
 
-        self.pipeline = Gst.Pipeline.new("webrtc-pipeline")
+        self.pipeline = Gst.Pipeline.new("simple-webrtc-pipeline")
 
         self.appsrc = Gst.ElementFactory.make("appsrc", "mysource")
-        videoconvert = Gst.ElementFactory.make("videoconvert", "convert")
-        queue1 = Gst.ElementFactory.make("queue", "queue1")
-        queue2 = Gst.ElementFactory.make("queue", "queue2")
-        queue3 = Gst.ElementFactory.make("queue", "queue3")
-        encoder = Gst.ElementFactory.make("nvh264enc", "encoder")
-        h264parse = Gst.ElementFactory.make("h264parse", "parser")
-        rtppay = Gst.ElementFactory.make("rtph264pay", "pay")
-        capsfilter1 = Gst.ElementFactory.make("capsfilter", "capsfilter1")
-        capsfilter2 = Gst.ElementFactory.make("capsfilter", "capsfilter2")
-        capsfilter3 = Gst.ElementFactory.make("capsfilter", "capsfilter3")
+        self.videoconvert = Gst.ElementFactory.make("videoconvert", "videoconvert")
+        self.capsfilter = Gst.ElementFactory.make("capsfilter", "capsfilter")
+        self.encoder = Gst.ElementFactory.make("nvh264enc", "encoder")
+        self.parser = Gst.ElementFactory.make("h264parse", "parser")
+        self.rtppay = Gst.ElementFactory.make("rtph264pay", "pay")
         self.webrtcbin = Gst.ElementFactory.make("webrtcbin", "webrtc")
 
-        if not all(
-            [
-                self.appsrc,
-                videoconvert,
-                queue1,
-                queue2,
-                queue3,
-                encoder,
-                h264parse,
-                rtppay,
-                capsfilter1,
-                capsfilter2,
-                capsfilter3,
-                self.webrtcbin,
-            ]
-        ):
-            self.get_logger().error("Failed to create all pipeline elements")
-            raise RuntimeError("Failed to create pipeline elements")
+        if not all([self.appsrc, self.videoconvert, self.capsfilter, self.encoder, self.parser, self.rtppay, self.webrtcbin]):
+            raise RuntimeError("Failed to create all elements")
 
         self.appsrc.set_property("is-live", True)
         self.appsrc.set_property("format", Gst.Format.TIME)
         self.appsrc.set_property("do-timestamp", True)
-        self.appsrc.set_property("max-bytes", 0)
-        self.appsrc.set_property("block", False)
-
-        gst_format = self._get_gst_format(self.gst_input_encoding)
-        appsrc_caps = Gst.Caps.from_string(
-            f"video/x-raw,format={gst_format},width={self.width},height={self.height},framerate={self.framerate}/1"
+        self.appsrc.set_property(
+            "caps",
+            Gst.Caps.from_string(
+                f"video/x-raw,format={self._get_gst_format(self.gst_input_encoding)},"
+                f"width={self.width},height={self.height},framerate={self.framerate}/1"
+            ),
         )
-        self.appsrc.set_property("caps", appsrc_caps)
 
-        queue1.set_property("max-size-buffers", 1)
-        queue1.set_property("leaky", 2)
-        queue2.set_property("max-size-buffers", 1)
-        queue3.set_property("max-size-buffers", 2)
-        queue3.set_property("leaky", 2)
-
-        encoder.set_property("preset", 2)
-        encoder.set_property("rc-mode", 1)
-        encoder.set_property("bitrate", 2000)
-        encoder.set_property("gop-size", 30)
-
-        h264parse.set_property("config-interval", -1)
-
-        rtppay.set_property("config-interval", -1)
-        rtppay.set_property("pt", 96)
-        rtppay.set_property("mtu", 1200)
-
-        capsfilter1_caps = Gst.Caps.from_string(
-            f"video/x-raw,format=I420,width={self.width},height={self.height},framerate={self.framerate}/1"
+        nv12_caps = Gst.Caps.from_string(
+            f"video/x-raw,format=NV12,width={self.width},height={self.height},framerate={self.framerate}/1"
         )
-        capsfilter1.set_property("caps", capsfilter1_caps)
+        self.capsfilter.set_property("caps", nv12_caps)
 
-        capsfilter2_caps = Gst.Caps.from_string(
-            "video/x-h264,profile=baseline,stream-format=byte-stream"
-        )
-        capsfilter2.set_property("caps", capsfilter2_caps)
+        self.encoder.set_property("rc-mode", 1)
+        self.encoder.set_property("bitrate", 2000)
+        self.encoder.set_property("gop-size", 30)
 
-        capsfilter3_caps = Gst.Caps.from_string(
-            "application/x-rtp,media=video,encoding-name=H264,payload=96,clock-rate=90000"
-        )
-        capsfilter3.set_property("caps", capsfilter3_caps)
+        self.parser.set_property("config-interval", 1)
+        self.rtppay.set_property("pt", 96)
+        self.rtppay.set_property("mtu", 1200)
 
-        self.webrtcbin.set_property("bundle-policy", 0)
-        self.webrtcbin.set_property("latency", 0)
-        if self.webrtc_stun_server:
-            self.webrtcbin.set_property("stun-server", self.webrtc_stun_server)
-        if self.webrtc_turn_server:
-            self.webrtcbin.set_property("turn-server", self.webrtc_turn_server)
+        for el in [self.appsrc, self.videoconvert, self.capsfilter, self.encoder, self.parser, self.rtppay, self.webrtcbin]:
+            self.pipeline.add(el)
 
-        self.pipeline.add(self.appsrc)
-        self.pipeline.add(queue1)
-        self.pipeline.add(videoconvert)
-        self.pipeline.add(capsfilter1)
-        self.pipeline.add(queue2)
-        self.pipeline.add(encoder)
-        self.pipeline.add(capsfilter2)
-        self.pipeline.add(h264parse)
-        self.pipeline.add(rtppay)
-        self.pipeline.add(capsfilter3)
-        self.pipeline.add(queue3)
-        self.pipeline.add(self.webrtcbin)
+        assert self.appsrc.link(self.videoconvert)
+        assert self.videoconvert.link(self.capsfilter)
+        assert self.capsfilter.link(self.encoder)
+        assert self.encoder.link(self.parser)
+        assert self.parser.link(self.rtppay)
+        assert self.rtppay.link(self.webrtcbin)
 
-        if not self.appsrc.link(queue1):
-            self.get_logger().error("Failed to link appsrc to queue1")
-        if not queue1.link(videoconvert):
-            self.get_logger().error("Failed to link queue1 to videoconvert")
-        if not videoconvert.link(capsfilter1):
-            self.get_logger().error("Failed to link videoconvert to capsfilter1")
-        if not capsfilter1.link(queue2):
-            self.get_logger().error("Failed to link capsfilter1 to queue2")
-        if not queue2.link(encoder):
-            self.get_logger().error("Failed to link queue2 to encoder")
-        if not encoder.link(capsfilter2):
-            self.get_logger().error("Failed to link encoder to capsfilter2")
-        if not capsfilter2.link(h264parse):
-            self.get_logger().error("Failed to link capsfilter2 to h264parse")
-        if not h264parse.link(rtppay):
-            self.get_logger().error("Failed to link h264parse to rtppay")
-        if not rtppay.link(capsfilter3):
-            self.get_logger().error("Failed to link rtppay to capsfilter3")
-        if not capsfilter3.link(queue3):
-            self.get_logger().error("Failed to link capsfilter3 to queue3")
-        if not queue3.link(self.webrtcbin):
-            self.get_logger().error("Failed to link queue3 to webrtcbin")
-
-        self.get_logger().info("Pipeline created and linked successfully")
-
+        
     def _get_gst_format(self, encoding):
-        """Convert ROS image encoding to GStreamer format"""
+        #Convert ROS image encoding to GStreamer format
+
         format_map = {
             "rgb8": "RGB",
             "bgr8": "BGR",
@@ -425,8 +423,13 @@ class GStreamerRosWebRTCNode(Node):
             self.get_logger().info("GLib MainLoop exited from dedicated thread.")
 
     def image_callback(self, msg: Image):
-        """Handle incoming ROS image messages"""
-
+        #Handle incoming ROS image messages with debugging
+        
+        #Log first frame and every 30th frame
+        if not hasattr(self, 'first_frame_logged'):
+            self.get_logger().info(f"First frame received! Size: {msg.width}x{msg.height}, encoding: {msg.encoding}")
+            self.first_frame_logged = True
+        
         if msg.encoding != self.gst_input_encoding:
             self.get_logger().warning(
                 f"Unexpected image encoding: {msg.encoding}, expected: {self.gst_input_encoding}"
@@ -464,44 +467,44 @@ class GStreamerRosWebRTCNode(Node):
                 self.get_logger().warning(
                     f"Failed to push buffer to appsrc: {ret.value_name}"
                 )
-        else:  # debugging
+        else:
             self.frame_count += 1
-            if self.frame_count % 30 == 0:
+            
+            #More debugging logging
+            if self.frame_count % 10 == 0:
                 success, position = self.pipeline.query_position(Gst.Format.TIME)
                 if success:
                     position_s = position / Gst.SECOND
                     self.get_logger().info(
-                        f"Pushed {self.frame_count} frames, pipeline time: {position_s:.2f}s"
+                        f"Pushed {self.frame_count} frames, pipeline time: {position_s:.2f}s, "
+                        f"WebRTC connected: {self.connection_established}"
                     )
-
-                    if self.connection_established and self.frame_count > 60:
-                        if position_s < 1.0:
-                            self.get_logger().warning(
-                                "Pipeline time stuck, forcing unblock"
-                            )
-                            self.ensure_media_flow()
+                    
+                    #Check if encoder is receiving frames
+                    if hasattr(self, 'encoder'):
+                        encoder_pad = self.encoder.get_static_pad("sink")
+                        if encoder_pad:
+                            success, current = encoder_pad.query_position(Gst.Format.TIME)
+                            if success:
+                                self.get_logger().info(f"Encoder position: {current / Gst.SECOND:.2f}s")
                 else:
                     self.get_logger().info(
-                        f"Pushed {self.frame_count} frames to pipeline"
+                        f"Pushed {self.frame_count} frames to pipeline (position query failed)"
                     )
-
     def destroy_node(self):
-        # TODO: Don't use get_logger() in destroy_node since the node is invalid at this point
-        # self.get_logger().info("GStreamer ROS WebRTC Node shutting down...")
-
+        
+        #Shutdown the WebRTC handler (async components)
         if hasattr(self, "webrtc_handler") and self.webrtc_handler:
             self.webrtc_handler.shutdown()
             self.webrtc_handler.join(timeout=5)
 
+        #Cleanup GStreamer pipeline
         if hasattr(self, "pipeline") and self.pipeline:
-            # self.get_logger().info("Sending EOS to pipeline...")
             self.pipeline.send_event(Gst.Event.new_eos())
             time.sleep(0.5)
-
-            # self.get_logger().info("Setting GStreamer pipeline to NULL state...")
             self.pipeline.set_state(Gst.State.NULL)
-            # self.get_logger().info("GStreamer pipeline released.")
 
+        #Stop GLib main loop
         if (
             hasattr(self, "glib_main_loop")
             and self.glib_main_loop
@@ -509,6 +512,7 @@ class GStreamerRosWebRTCNode(Node):
         ):
             self.glib_main_loop.quit()
 
+        #Wait for GLib thread to finish
         if (
             hasattr(self, "_glib_thread")
             and self._glib_thread
@@ -517,7 +521,6 @@ class GStreamerRosWebRTCNode(Node):
             self._glib_thread.join(timeout=2)
 
         super().destroy_node()
-        # self.get_logger().info("GStreamer ROS WebRTC Node gracefully shut down.")
 
 
 def main(args=None):
