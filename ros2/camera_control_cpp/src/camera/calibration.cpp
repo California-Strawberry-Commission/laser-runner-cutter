@@ -1,9 +1,10 @@
 #include "camera_control_cpp/camera/calibration.hpp"
 
+#include <filesystem>
+
 #include "spdlog/spdlog.h"
 
-std::optional<calibration::CalculateIntrinsicsResult>
-calibration::calculateIntrinsics(
+std::optional<calibration::IntrinsicsResult> calibration::calculateIntrinsics(
     const std::vector<cv::Mat>& monoImages, const cv::Size& gridSize,
     const int gridType, const cv::Ptr<cv::FeatureDetector> blobDetector) {
   // Prepare calibration pattern points,
@@ -50,7 +51,7 @@ calibration::calculateIntrinsics(
 
   try {
     std::vector<cv::Mat> rvecs, tvecs;
-    calibration::CalculateIntrinsicsResult result;
+    calibration::IntrinsicsResult result;
     result.intrinsicMatrix = cv::Mat::eye(3, 3, CV_64F);
     result.distCoeffs = cv::Mat::zeros(8, 1, CV_64F);
     float retval = cv::calibrateCamera(
@@ -220,4 +221,82 @@ calibration::ReprojectErrors calibration::_calcReprojectionError(
   }
   retVals.meanError = totalError / objectPoints.size();
   return retVals;
+}
+
+std::string calibration::expandUser(const std::string& path) {
+  if (path.empty() || path[0] != '~') {
+    return path;
+  }
+
+  const char* home{std::getenv("HOME")};
+  if (!home) {
+    throw std::runtime_error("HOME environment variable not set");
+  }
+
+  return std::string(home) + path.substr(1);
+}
+
+std::optional<cv::Mat> calibration::readXyzFile(const std::string& xyzFile) {
+  std::filesystem::path filePath{calibration::expandUser(xyzFile)};
+  if (!std::filesystem::exists(filePath)) {
+    spdlog::error("File does not exist: {}", filePath.string());
+    return std::nullopt;
+  }
+  cv::FileStorage fs{filePath, cv::FileStorage::READ};
+  if (!fs.isOpened() || fs["xyz"].isNone()) {
+    spdlog::error("Could not read XYZ data file: {}", filePath.string());
+    return std::nullopt;
+  }
+
+  cv::Mat xyz;
+  fs["xyz"] >> xyz;
+  fs.release();
+
+  return xyz;
+}
+
+std::optional<calibration::IntrinsicsResult> calibration::readIntrinsicsFile(
+    const std::string& intrinsicsFile) {
+  std::filesystem::path filePath{calibration::expandUser(intrinsicsFile)};
+  if (!std::filesystem::exists(filePath)) {
+    spdlog::error("Intrinsics file does not exist: {}", filePath.string());
+    return std::nullopt;
+  }
+  cv::FileStorage fs{filePath, cv::FileStorage::READ};
+  if (!fs.isOpened() || fs["intrinsicMatrix"].isNone() ||
+      fs["distCoeffs"].isNone()) {
+    spdlog::error("Invalid intrinsics file: {}", filePath.string());
+    return std::nullopt;
+  }
+
+  cv::Mat intrinsicMatrix, distCoeffs;
+  fs["intrinsicMatrix"] >> intrinsicMatrix;
+  fs["distCoeffs"] >> distCoeffs;
+  fs.release();
+
+  calibration::IntrinsicsResult result;
+  result.intrinsicMatrix = intrinsicMatrix;
+  result.distCoeffs = distCoeffs;
+
+  return result;
+}
+
+std::optional<cv::Mat> calibration::readExtrinsicsFile(
+    const std::string& extrinsicsFile) {
+  std::filesystem::path filePath{calibration::expandUser(extrinsicsFile)};
+  if (!std::filesystem::exists(filePath)) {
+    spdlog::error("Extrinsics file does not exist: {}", filePath.string());
+    return std::nullopt;
+  }
+  cv::FileStorage fs{filePath, cv::FileStorage::READ};
+  if (!fs.isOpened() || fs["extrinsicMatrix"].isNone()) {
+    spdlog::error("Invalid extrinsics file: {}", filePath.string());
+    return std::nullopt;
+  }
+
+  cv::Mat extrinsicMatrix;
+  fs["extrinsicMatrix"] >> extrinsicMatrix;
+  fs.release();
+
+  return extrinsicMatrix;
 }

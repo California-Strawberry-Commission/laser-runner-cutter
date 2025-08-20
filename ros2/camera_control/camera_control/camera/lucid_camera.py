@@ -818,6 +818,7 @@ class LucidRgbdCamera(RgbdCamera):
 
 
 def create_lucid_rgbd_camera(
+    calibration_id: str = "1c0faf4b115d1c0faf4d17ce",
     color_camera_serial_number: Optional[str] = None,
     depth_camera_serial_number: Optional[str] = None,
     color_frame_size: Tuple[int, int] = (2048, 1536),
@@ -827,25 +828,15 @@ def create_lucid_rgbd_camera(
     """
     Helper to create an instance of LucidRgbd using predefined calibration params.
     """
-    calibration_params_dir = _get_calibration_params_dir()
-    triton_intrinsic_matrix = np.load(
-        os.path.join(calibration_params_dir, "triton_intrinsic_matrix.npy")
-    )
-    triton_distortion_coeffs = np.load(
-        os.path.join(calibration_params_dir, "triton_distortion_coeffs.npy")
-    )
-    helios_intrinsic_matrix = np.load(
-        os.path.join(calibration_params_dir, "helios_intrinsic_matrix.npy")
-    )
-    helios_distortion_coeffs = np.load(
-        os.path.join(calibration_params_dir, "helios_distortion_coeffs.npy")
-    )
-    xyz_to_triton_extrinsic_matrix = np.load(
-        os.path.join(calibration_params_dir, "xyz_to_triton_extrinsic_matrix.npy")
-    )
-    xyz_to_helios_extrinsic_matrix = np.load(
-        os.path.join(calibration_params_dir, "xyz_to_helios_extrinsic_matrix.npy")
-    )
+    (
+        triton_intrinsic_matrix,
+        triton_distortion_coeffs,
+        helios_intrinsic_matrix,
+        helios_distortion_coeffs,
+        xyz_to_triton_extrinsic_matrix,
+        xyz_to_helios_extrinsic_matrix,
+    ) = _get_calibration_params(calibration_id)
+
     return LucidRgbdCamera(
         triton_intrinsic_matrix,  # type: ignore
         triton_distortion_coeffs,  # type: ignore
@@ -861,9 +852,54 @@ def create_lucid_rgbd_camera(
     )
 
 
-def _get_calibration_params_dir():
+def _get_calibration_params(calib_id: str = "1c0faf4b115d1c0faf4d17ce"):
     package_share_directory = get_package_share_directory("camera_control")
-    return os.path.join(package_share_directory, "calibration_params")
+    calib_params_dir = os.path.join(
+        package_share_directory, "calibration_params", calib_id
+    )
+
+    triton_intrinsics_path = os.path.join(calib_params_dir, "triton_intrinsics.yml")
+    if os.path.exists(triton_intrinsics_path):
+        fs = cv2.FileStorage(triton_intrinsics_path, cv2.FILE_STORAGE_READ)
+        if fs.isOpened():
+            triton_intrinsic_matrix = fs.getNode("intrinsicMatrix").mat()
+            triton_dist_coeffs = fs.getNode("distCoeffs").mat()
+            fs.release()
+
+    helios_intrinsics_path = os.path.join(calib_params_dir, "helios_intrinsics.yml")
+    if os.path.exists(helios_intrinsics_path):
+        fs = cv2.FileStorage(helios_intrinsics_path, cv2.FILE_STORAGE_READ)
+        if fs.isOpened():
+            helios_intrinsic_matrix = fs.getNode("intrinsicMatrix").mat()
+            helios_dist_coeffs = fs.getNode("distCoeffs").mat()
+            fs.release()
+
+    xyz_to_triton_extrinsics_path = os.path.join(
+        calib_params_dir, "xyz_to_triton_extrinsics.yml"
+    )
+    if os.path.exists(xyz_to_triton_extrinsics_path):
+        fs = cv2.FileStorage(xyz_to_triton_extrinsics_path, cv2.FILE_STORAGE_READ)
+        if fs.isOpened():
+            xyz_to_triton_extrinsic_matrix = fs.getNode("extrinsicMatrix").mat()
+            fs.release()
+
+    xyz_to_helios_extrinsics_path = os.path.join(
+        calib_params_dir, "xyz_to_helios_extrinsics.yml"
+    )
+    if os.path.exists(xyz_to_helios_extrinsics_path):
+        fs = cv2.FileStorage(xyz_to_helios_extrinsics_path, cv2.FILE_STORAGE_READ)
+        if fs.isOpened():
+            xyz_to_helios_extrinsic_matrix = fs.getNode("extrinsicMatrix").mat()
+            fs.release()
+
+    return (
+        triton_intrinsic_matrix,
+        triton_dist_coeffs,
+        helios_intrinsic_matrix,
+        helios_dist_coeffs,
+        xyz_to_triton_extrinsic_matrix,
+        xyz_to_helios_extrinsic_matrix,
+    )
 
 
 def _get_frame(output_dir):
@@ -1043,25 +1079,14 @@ def _stream_heatmap_to_terminal():
 def _get_position(
     color_pixel, triton_mono_image_path, helios_intensity_image, helios_xyz_path
 ):
-    calibration_params_dir = _get_calibration_params_dir()
-    triton_intrinsic_matrix = np.load(
-        os.path.join(calibration_params_dir, "triton_intrinsic_matrix.npy")
-    )
-    triton_distortion_coeffs = np.load(
-        os.path.join(calibration_params_dir, "triton_distortion_coeffs.npy")
-    )
-    helios_intrinsic_matrix = np.load(
-        os.path.join(calibration_params_dir, "helios_intrinsic_matrix.npy")
-    )
-    helios_distortion_coeffs = np.load(
-        os.path.join(calibration_params_dir, "helios_distortion_coeffs.npy")
-    )
-    xyz_to_triton_extrinsic_matrix = np.load(
-        os.path.join(calibration_params_dir, "xyz_to_triton_extrinsic_matrix.npy")
-    )
-    xyz_to_helios_extrinsic_matrix = np.load(
-        os.path.join(calibration_params_dir, "xyz_to_helios_extrinsic_matrix.npy")
-    )
+    (
+        triton_intrinsic_matrix,
+        triton_distortion_coeffs,
+        helios_intrinsic_matrix,
+        helios_distortion_coeffs,
+        xyz_to_triton_extrinsic_matrix,
+        xyz_to_helios_extrinsic_matrix,
+    ) = _get_calibration_params()
 
     triton_mono_image = np.load(os.path.expanduser(triton_mono_image_path))
     helios_intensity_image = np.load(os.path.expanduser(helios_intensity_image))
@@ -1113,16 +1138,14 @@ def _get_position(
 def _test_transform_depth_pixel_to_color_pixel(
     depth_pixel, triton_mono_image_path, helios_intensity_image_path, helios_xyz_path
 ):
-    calibration_params_dir = _get_calibration_params_dir()
-    triton_intrinsic_matrix = np.load(
-        os.path.join(calibration_params_dir, "triton_intrinsic_matrix.npy")
-    )
-    triton_distortion_coeffs = np.load(
-        os.path.join(calibration_params_dir, "triton_distortion_coeffs.npy")
-    )
-    xyz_to_triton_extrinsic_matrix = np.load(
-        os.path.join(calibration_params_dir, "xyz_to_triton_extrinsic_matrix.npy")
-    )
+    (
+        triton_intrinsic_matrix,
+        triton_distortion_coeffs,
+        helios_intrinsic_matrix,
+        helios_distortion_coeffs,
+        xyz_to_triton_extrinsic_matrix,
+        xyz_to_helios_extrinsic_matrix,
+    ) = _get_calibration_params()
     triton_mono_image = np.load(os.path.expanduser(triton_mono_image_path))
     helios_xyz = np.load(os.path.expanduser(helios_xyz_path))
     helios_intensity_image = np.load(os.path.expanduser(helios_intensity_image_path))

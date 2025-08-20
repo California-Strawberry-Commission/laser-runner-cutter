@@ -1,10 +1,12 @@
 #include <cv_bridge/cv_bridge.h>
 #include <fmt/core.h>
 
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <atomic>
 #include <filesystem>
 #include <opencv2/opencv.hpp>
 
+#include "camera_control_cpp/camera/calibration.hpp"
 #include "camera_control_cpp/camera/lucid_camera.hpp"
 #include "camera_control_interfaces/msg/device_state.hpp"
 #include "camera_control_interfaces/msg/state.hpp"
@@ -63,6 +65,10 @@ class CameraControlNode : public rclcpp::Node {
     // Parameters
     /////////////
     declare_parameter<int>("camera_index", 0);
+    declare_parameter<std::string>(
+        "calibration_id",
+        "1c0faf4b115d1c0faf4d17ce");  // calibration ID is <Triton MAC><Helios
+                                      // MAC>
     declare_parameter<double>("exposure_us", -1.0);
     declare_parameter<double>("gain_db", -1.0);
     declare_parameter<std::string>("save_dir", "~/runner_cutter/camera");
@@ -157,11 +163,16 @@ class CameraControlNode : public rclcpp::Node {
     ///////////////
     // Camera Setup
     ///////////////
-    cv::Mat testMat;  // TODO: replace with real mats
+    auto calibrationParams{readCalibrationParams(getParamCalibrationId())};
     LucidCamera::StateChangeCallback stateChangeCallback =
         [this](LucidCamera::State) { publishState(); };
     camera_ = std::make_shared<LucidCamera>(
-        testMat, testMat, testMat, testMat, testMat, testMat, std::nullopt,
+        calibrationParams.tritonIntrinsicMatrix,
+        calibrationParams.tritonDistCoeffs,
+        calibrationParams.heliosIntrinsicMatrix,
+        calibrationParams.heliosDistCoeffs,
+        calibrationParams.xyzToTritonExtrinsicMatrix,
+        calibrationParams.xyzToHeliosExtrinsicMatrix, std::nullopt,
         std::nullopt, std::pair<int, int>{2048, 1536}, stateChangeCallback);
 
     // Publish initial state
@@ -177,6 +188,10 @@ class CameraControlNode : public rclcpp::Node {
 
   int getParamDacIndex() {
     return static_cast<int>(get_parameter("camera_index").as_int());
+  }
+
+  std::string getParamCalibrationId() {
+    return get_parameter("calibration_id").as_string();
   }
 
   double getParamExposureUs() {
@@ -617,6 +632,69 @@ class CameraControlNode : public rclcpp::Node {
 
 #pragma endregion
 
+  struct CalibrationParams {
+    cv::Mat tritonIntrinsicMatrix;
+    cv::Mat tritonDistCoeffs;
+    cv::Mat heliosIntrinsicMatrix;
+    cv::Mat heliosDistCoeffs;
+    cv::Mat xyzToTritonExtrinsicMatrix;
+    cv::Mat xyzToHeliosExtrinsicMatrix;
+  };
+  CalibrationParams readCalibrationParams(
+      const std::string& calib_id = "1c0faf4b115d1c0faf4d17ce") {
+    std::string packageShareDirectory{
+        ament_index_cpp::get_package_share_directory("camera_control")};
+    std::filesystem::path calibParamsDir{
+        std::filesystem::path(packageShareDirectory) / "calibration_params" /
+        calib_id};
+    std::filesystem::path tritonIntrinsicsPath{calibParamsDir /
+                                               "triton_intrinsics.yml"};
+    std::filesystem::path heliosIntrinsicsPath{calibParamsDir /
+                                               "helios_intrinsics.yml"};
+    std::filesystem::path xyzToTritonIntrinsicsPath{
+        calibParamsDir / "xyz_to_triton_extrinsics.yml"};
+    std::filesystem::path xyzToHeliosIntrinsicsPath{
+        calibParamsDir / "xyz_to_helios_extrinsics.yml"};
+    auto tritonIntrinsicsOpt{
+        calibration::readIntrinsicsFile(tritonIntrinsicsPath.string())};
+    if (!tritonIntrinsicsOpt) {
+      throw std::runtime_error(fmt::format("Could not read calibration file {}",
+                                           tritonIntrinsicsPath.string()));
+    }
+    auto [tritonIntrinsicMatrix, tritonDistCoeffs]{tritonIntrinsicsOpt.value()};
+    auto heliosIntrinsicsOpt{
+        calibration::readIntrinsicsFile(heliosIntrinsicsPath.string())};
+    if (!heliosIntrinsicsOpt) {
+      throw std::runtime_error(fmt::format("Could not read calibration file {}",
+                                           heliosIntrinsicsPath.string()));
+    }
+    auto [heliosIntrinsicMatrix, heliosDistCoeffs]{heliosIntrinsicsOpt.value()};
+    auto xyzToTritonExtrinsicsOpt{
+        calibration::readExtrinsicsFile(xyzToTritonIntrinsicsPath.string())};
+    if (!xyzToTritonExtrinsicsOpt) {
+      throw std::runtime_error(fmt::format("Could not read calibration file {}",
+                                           xyzToTritonIntrinsicsPath.string()));
+    }
+    auto xyzToTritonExtrinsicMatrix{xyzToTritonExtrinsicsOpt.value()};
+    auto xyzToHeliosExtrinsicsOpt{
+        calibration::readExtrinsicsFile(xyzToHeliosIntrinsicsPath.string())};
+    if (!xyzToHeliosExtrinsicsOpt) {
+      throw std::runtime_error(fmt::format("Could not read calibration file {}",
+                                           xyzToHeliosIntrinsicsPath.string()));
+    }
+    auto xyzToHeliosExtrinsicMatrix{xyzToHeliosExtrinsicsOpt.value()};
+
+    CalibrationParams result;
+    result.tritonIntrinsicMatrix = tritonIntrinsicMatrix;
+    result.tritonDistCoeffs = tritonDistCoeffs;
+    result.heliosIntrinsicMatrix = heliosIntrinsicMatrix;
+    result.heliosDistCoeffs = heliosDistCoeffs;
+    result.xyzToTritonExtrinsicMatrix = xyzToTritonExtrinsicMatrix;
+    result.xyzToHeliosExtrinsicMatrix = xyzToHeliosExtrinsicMatrix;
+
+    return result;
+  }
+
   std::shared_ptr<rclcpp::ParameterEventHandler> paramSubscriber_;
   std::shared_ptr<rclcpp::ParameterCallbackHandle> exposureUsParamCallback_;
   std::shared_ptr<rclcpp::ParameterCallbackHandle> gainDbParamCallback_;
@@ -662,12 +740,18 @@ class CameraControlNode : public rclcpp::Node {
 
 int main(int argc, char* argv[]) {
   rclcpp::init(argc, argv);
-  // MultiThreadedExecutor allows callbacks to run in parallel
-  rclcpp::executors::MultiThreadedExecutor executor;
-  auto node{std::make_shared<CameraControlNode>()};
-  executor.add_node(node);
-  executor.spin();
-  rclcpp::shutdown();
 
+  try {
+    // MultiThreadedExecutor allows callbacks to run in parallel
+    rclcpp::executors::MultiThreadedExecutor executor;
+    auto node{std::make_shared<CameraControlNode>()};
+    executor.add_node(node);
+    executor.spin();
+  } catch (const std::exception& e) {
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  rclcpp::shutdown();
   return 0;
 }
