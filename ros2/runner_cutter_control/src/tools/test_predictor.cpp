@@ -38,15 +38,15 @@ int main() {
 
   std::vector<float> measX, measY, predX, predY;
 
-  for (const auto& [ts, pos] : data) {
-    predictor.add(pos, ts);
-    measX.push_back(pos.x);
-    measY.push_back(pos.y);
+  for (const auto& [timestampMs, position] : data) {
+    predictor.add(timestampMs / 1000.0, {position, 1.0f});
+    measX.push_back(position.x);
+    measY.push_back(position.y);
   }
 
   std::vector<double> timeDeltas;
   for (size_t i = 1; i < data.size(); ++i) {
-    timeDeltas.push_back(data[i].first - data[i - 1].first);
+    timeDeltas.push_back((data[i].first - data[i - 1].first) / 1000.0);
   }
 
   double avgTimeDelta{accumulate(timeDeltas.begin(), timeDeltas.end(), 0.0) /

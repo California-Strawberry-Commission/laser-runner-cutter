@@ -224,6 +224,11 @@ class LaserControlNode : public rclcpp::Node {
 
   void onUpdatePath(
       const laser_control_interfaces::msg::PathUpdate::SharedPtr msg) {
+    if (msg->destination.x < 0.0 || msg->destination.x > 1.0 ||
+        msg->destination.y < 0.0 || msg->destination.y > 1.0) {
+      return;
+    }
+
     Point destination{static_cast<float>(msg->destination.x),
                       static_cast<float>(msg->destination.y)};
     dac_->setPath(msg->path_id, destination, msg->duration_ms);

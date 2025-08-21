@@ -17,6 +17,10 @@
 #include "runner_cutter_control/clients/laser_control_client.hpp"
 #include "runner_cutter_control/clients/laser_detection_context.hpp"
 #include "runner_cutter_control/common_types.hpp"
+#include "runner_cutter_control/prediction/average_velocity_predictor.hpp"
+#include "runner_cutter_control/prediction/kalman_filter_predictor.hpp"
+#include "runner_cutter_control/prediction/last_known_predictor.hpp"
+#include "runner_cutter_control/tools/prediction_evaluator.hpp"
 #include "runner_cutter_control/tracking/tracker.hpp"
 #include "runner_cutter_control_interfaces/msg/state.hpp"
 #include "runner_cutter_control_interfaces/msg/track.hpp"
@@ -601,7 +605,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
     bool res{startTask("circle_follower",
-                       &RunnerCutterControlNode::circleFollowerTask, 0.5f)};
+                       &RunnerCutterControlNode::circleFollowerTask, 0.25f)};
     response->success = res;
   }
 
@@ -929,7 +933,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
     RCLCPP_INFO(get_logger(), "Burn complete on track %u...", targetTrackId);
   }
 
-  void circleFollowerTask(float laserIntervalSecs = 0.5f) {
+  void circleFollowerTask(float laserIntervalSecs = 0.25f) {
     laser_->clearPoint();
     laser_->setColor(getParamTrackingLaserColor());
     laser_->play();
@@ -947,22 +951,65 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
       auto track{trackOpt.value()};
 
+      if (track->getState() != Track::State::PENDING) {
+        continue;
+      }
+
       // Fire tracking laser at target using predicted future position
-      // TODO: Determine actual latency
-      double estimatedCameraLatencyMs{100.0};
       double timestampMillis{
           std::chrono::duration<double, std::milli>(
               std::chrono::high_resolution_clock::now().time_since_epoch())
               .count()};
+      // TODO: measure camera latency
+      double cameraLatencyMillis{
+          50.0};  // photon-to-frame latency (camera firmware + hardware)
       Position predictedPosition{track->getPredictor().predict(
-          timestampMillis + estimatedCameraLatencyMs)};
-      LaserCoord laserCoord{
+          (timestampMillis + cameraLatencyMillis) / 1000.0)};
+      LaserCoord predictedLaserCoord{
           calibration_->cameraPositionToLaserCoord(predictedPosition)};
-      track->getPredictor().reset();
 
-      laser_->setPoint(laserCoord);
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      laser_->setPoint(predictedLaserCoord);
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
       laser_->clearPoint();
+
+      // Evaluate predictor
+      RCLCPP_INFO(get_logger(), "Evaluating predictors...");
+      std::vector<double> timestampsSec;
+      std::vector<Position> positions;
+      std::vector<float> confidences;
+      for (const auto& [ts, entry] : track->getPredictor().getHistory()) {
+        timestampsSec.push_back(ts);
+        positions.push_back(entry.position);
+        confidences.push_back(entry.confidence);
+      }
+      for (double predictionOffsetSec : {0.1, 0.2, 0.5}) {
+        RCLCPP_INFO(get_logger(), "  Prediction offset: %fs",
+                    predictionOffsetSec);
+        auto lastKnownPredictor{std::make_unique<LastKnownPredictor>()};
+        double lastKnownPredictorMeanError{
+            prediction_evaluator::evaluatePredictor(
+                std::move(lastKnownPredictor), timestampsSec, positions,
+                confidences, predictionOffsetSec)};
+        RCLCPP_INFO(get_logger(), "    LastKnownPredictor mean error: %f",
+                    lastKnownPredictorMeanError);
+
+        auto averageVelocityPredictor{
+            std::make_unique<AverageVelocityPredictor>()};
+        double averageVelocityPredictorMeanError{
+            prediction_evaluator::evaluatePredictor(
+                std::move(averageVelocityPredictor), timestampsSec, positions,
+                confidences, predictionOffsetSec)};
+        RCLCPP_INFO(get_logger(), "    AverageVelocityPredictor mean error: %f",
+                    averageVelocityPredictorMeanError);
+
+        auto kalmanFilterPredictor{std::make_unique<KalmanFilterPredictor>()};
+        double kalmanFilterPredictorMeanError{
+            prediction_evaluator::evaluatePredictor(
+                std::move(kalmanFilterPredictor), timestampsSec, positions,
+                confidences, predictionOffsetSec)};
+        RCLCPP_INFO(get_logger(), "    KalmanFilterPredictor mean error: %f",
+                    kalmanFilterPredictorMeanError);
+      }
     }
 
     laser_->clearPoint();

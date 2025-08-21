@@ -9,6 +9,7 @@
 class PointCorrespondences {
  public:
   PointCorrespondences();
+  ~PointCorrespondences() = default;
 
   std::size_t size() const;
   void add(const LaserCoord& laserCoord, const PixelCoord& cameraPixelCoord,

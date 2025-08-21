@@ -12,6 +12,7 @@ class Calibration {
  public:
   explicit Calibration(std::shared_ptr<LaserControlClient> laser,
                        std::shared_ptr<CameraControlClient> camera);
+  ~Calibration() = default;
 
   FrameSize getCameraFrameSize() const;
   PixelRect getLaserBounds() const;

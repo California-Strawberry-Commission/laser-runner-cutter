@@ -87,6 +87,10 @@ bool LaserControlClient::setColor(const LaserColor& color) {
 }
 
 bool LaserControlClient::setPoint(const LaserCoord& point) {
+  if (point.x < 0.0 || point.x > 1.0 || point.y < 0.0 || point.y > 1.0) {
+    return false;
+  }
+
   auto msg{laser_control_interfaces::msg::PathUpdate()};
   msg.path_id = 1;
   msg.destination.x = point.x;

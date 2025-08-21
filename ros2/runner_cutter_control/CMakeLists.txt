@@ -78,6 +78,9 @@ target_link_libraries(calibration PUBLIC Eigen3::Eigen clients)
 
 # prediction
 add_library(prediction SHARED
+  src/prediction/predictor.cpp
+  src/prediction/last_known_predictor.cpp
+  src/prediction/average_velocity_predictor.cpp
   src/prediction/kalman_filter_predictor.cpp
 )
 target_link_libraries(prediction PUBLIC Eigen3::Eigen)
@@ -120,6 +123,8 @@ target_link_libraries(test_predictor PRIVATE prediction matplotlib_cpp)
 
 install(TARGETS
   runner_cutter_control_node
+  test_calibration
+  test_predictor
   DESTINATION lib/${PROJECT_NAME})
 
 # Install launch files

@@ -97,17 +97,43 @@ We currently use the following LUCID cameras:
 
 We need to calculate the intrinsic matrix and distortion coefficients for each camera, as well as the extrinic matrix that describes the rotation and translation between the two cameras. For more details, see https://support.thinklucid.com/app-note-helios-3d-point-cloud-with-rgb-color/
 
-### Intrinsics
+### Step 1: Capture frames
 
-For each camera, do the following:
+1.  Print the [calibration grid](https://arenasdk.s3-us-west-2.amazonaws.com/LUCID_target_whiteCircles.pdf)
+2.  Imagine a 3x3 grid in the cameras' FOV. Do the following for each grid cell:
 
-Grab at least 3 images (9 recommended) of the [calibration grid](https://arenasdk.s3-us-west-2.amazonaws.com/LUCID_target_whiteCircles.pdf) in varying locations in the camera's field of view, roughly 3 feet away (note: for the Helios camera, use the intensity channel of the frame to generate a grayscale image). Then, use `calibrate_camera` in [`calibration.py`](camera_control/camera_control/camera/calibration.py), which calculates the intrinsic matrix and distortion coefficients using the method based on https://docs.opencv.org/4.x/d4/d94/tutorial_camera_calibration.html
+    1.  Place the calibration grid in the grid cell
+    2.  Create a new directory where this set of images should be saved
+    3.  Capture a frame (change param values as needed):
 
-### Extrinsics
+            ros2 run camera_control_cpp lucid_calibrate -- capture_frame --output_dir <output dir> --exposure_us 20000 --gain_db 1
 
-Solving for orientation of the Helios relative to the Triton requires a single image of the calibration target from each camera. Place the calibration grid near the center of both cameras field of view at roughly 3 feet away. Make sure not to move the calibration target or cameras in between grabbing the Helios image and grabbing the Triton image, and make sure to grab both the xyz and intensity image from the Helios.
+In the end, you should have 9 sets of {Triton image (png), Helios intensity image (png), Helios xyz data (yml)}.
 
-Then, use `get_extrinsics` in [`lucid_camera.py`](camera_control/camera_control/camera/lucid_camera.py) to get the rotation matrix and translation vector.
+### Step 2: Calculate intrinsics
+
+We calculate the intrinsic matrix and distortion coefficients using the method based on https://docs.opencv.org/4.x/d4/d94/tutorial_camera_calibration.html
+
+1.  Create a single directory with the 9 Triton images you captured.
+2.  Run the following to calculate and save the Triton intrinsics:
+
+        ros2 run camera_control_cpp lucid_calibrate -- calculate_intrinsics --images_dir <path to the dir containing the Triton images> --output_dir <where to write the intrinsics data file>
+
+3.  Create a single directory with the 9 Helios intensity images you captured.
+4.  Run the following to calculate and save the Helios intrinsics:
+
+        ros2 run camera_control_cpp lucid_calibrate -- calculate_intrinsics --images_dir <path to the dir containing the Helios intensity images> --output_dir <where to write the intrinsics data file>
+
+### Step 3: Calculate extrinsics
+
+1.  Create 3 directories: one containing all of the Triton images, one containing all of the Helios intensity images, and one containing all of the Helios xyz data files. Make sure that the corresponding files in each directory share the same base name. For example, `triton_images/0.png`, `helios_intensity_images/0.png`, and `xyz_data/0.yml` should come from a single capture.
+2.  Run the following to save the xyz-to-Triton extrinsics:
+
+        ros2 run camera_control_cpp lucid_calibrate -- calculate_extrinsics_xyz_to_triton --triton_intrinsics_file <path to Triton intrinsics yml file> --triton_images_dir <dir containing all Triton images> --helios_images_dir <dir containing all Helios intensity images> --helios_xyz_dir <dir containing all xyz data files> --output_dir <where to write the extrinsics data file>
+
+3.  Run the following to save the xyz-to-Helios extrinsics:
+
+        ros2 run camera_control_cpp lucid_calibrate -- calculate_extrinsics_xyz_to_helios --helios_intrinsics_file <path to Helios intrinsics yml file> --helios_images_dir <dir containing all Helios intensity images> --helios_xyz_dir <dir containing all xyz data files> --output_dir <where to write the extrinsics data file>
 
 ## Troubleshooting
 

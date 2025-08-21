@@ -7,8 +7,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "runner_cutter_control/tracking/track.hpp"
 #include "runner_cutter_control/common_types.hpp"
+#include "runner_cutter_control/tracking/track.hpp"
 
 /**
  * Tracker maintains a collection of Tracks with state management. Thread-safe.
@@ -17,7 +17,8 @@
  */
 class Tracker {
  public:
-  Tracker();
+  Tracker() = default;
+  ~Tracker() = default;
 
   /**
    * Check if any track is in the specified state.
@@ -58,8 +59,8 @@ class Tracker {
    * @return The newly created track, or existing track if it already exists.
    */
   std::shared_ptr<Track> addTrack(uint32_t trackId, const PixelCoord& pixel,
-                                  const Position& position,
-                                  double timestampMs, float confidence = 1.0f);
+                                  const Position& position, double timestampMs,
+                                  float confidence = 1.0f);
 
   /**
    * Get the next pending track.
