@@ -26,6 +26,12 @@ start_runner_cutter() {
   ros2 launch runner_cutter_control launch.py
 }
 
+start_gstreamer_webrtc(){
+  cd $script_dir
+  source setup.sh
+  ros2 launch runner_cutter_control gstreamer_webrtc.launch.py
+}
+
 start_lifecycle_manager & start_rosbridge & start_web_video_server & start_runner_cutter
 
 wait
