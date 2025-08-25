@@ -4,6 +4,33 @@
 
 #include "spdlog/spdlog.h"
 
+namespace {
+struct ReprojectErrors {
+  float meanError;
+  std::vector<float> perImageErrors;
+};
+
+ReprojectErrors _calcReprojectionError(
+    const std::vector<std::vector<cv::Point3f>>& objectPoints,
+    const std::vector<std::vector<cv::Point2f>>& imagePoints,
+    const std::vector<cv::Mat>& rvecs, const std::vector<cv::Mat>& tvecs,
+    const cv::Mat& cameraMatrix, const cv::Mat& distCoeffs) {
+  ReprojectErrors retVals;
+  float totalError{0};
+  float err;
+  for (size_t i = 0; i < objectPoints.size(); i++) {
+    std::vector<cv::Point2f> projected;
+    cv::projectPoints(objectPoints[i], rvecs[i], tvecs[i], cameraMatrix,
+                      distCoeffs, projected);
+    err = norm(imagePoints[i], projected, cv::NORM_L2) / projected.size();
+    retVals.perImageErrors.push_back(err);
+    totalError += err;
+  }
+  retVals.meanError = totalError / objectPoints.size();
+  return retVals;
+}
+}  // namespace
+
 std::optional<calibration::IntrinsicsResult> calibration::calculateIntrinsics(
     const std::vector<cv::Mat>& monoImages, const cv::Size& gridSize,
     const int gridType, const cv::Ptr<cv::FeatureDetector> blobDetector) {
@@ -58,10 +85,9 @@ std::optional<calibration::IntrinsicsResult> calibration::calculateIntrinsics(
         objPoints, imgPoints, monoImages[0].size(), result.intrinsicMatrix,
         result.distCoeffs, rvecs, tvecs);
     if (retval) {
-      calibration::ReprojectErrors projErrors{
-          calibration::_calcReprojectionError(objPoints, imgPoints, rvecs,
-                                              tvecs, result.intrinsicMatrix,
-                                              result.distCoeffs)};
+      ReprojectErrors projErrors{
+          _calcReprojectionError(objPoints, imgPoints, rvecs, tvecs,
+                                 result.intrinsicMatrix, result.distCoeffs)};
       spdlog::info(
           "Calibration successful. Used {} images. Mean reprojection error: {}",
           objPoints.size(), projErrors.meanError);
@@ -201,26 +227,6 @@ cv::Ptr<cv::Feature2D> calibration::createBlobDetector() {
   params.maxArea = 10000.0;
 
   return cv::SimpleBlobDetector::create(params);
-}
-
-calibration::ReprojectErrors calibration::_calcReprojectionError(
-    const std::vector<std::vector<cv::Point3f>>& objectPoints,
-    const std::vector<std::vector<cv::Point2f>>& imagePoints,
-    const std::vector<cv::Mat>& rvecs, const std::vector<cv::Mat>& tvecs,
-    const cv::Mat& cameraMatrix, const cv::Mat& distCoeffs) {
-  calibration::ReprojectErrors retVals;
-  float totalError{0};
-  float err;
-  for (size_t i = 0; i < objectPoints.size(); i++) {
-    std::vector<cv::Point2f> projected;
-    cv::projectPoints(objectPoints[i], rvecs[i], tvecs[i], cameraMatrix,
-                      distCoeffs, projected);
-    err = norm(imagePoints[i], projected, cv::NORM_L2) / projected.size();
-    retVals.perImageErrors.push_back(err);
-    totalError += err;
-  }
-  retVals.meanError = totalError / objectPoints.size();
-  return retVals;
 }
 
 std::string calibration::expandUser(const std::string& path) {
