@@ -125,7 +125,6 @@ LucidFrame::LucidFrame(const cv::Mat& colorFrame, const cv::Mat& depthFrameXyz,
       xyzToColorCameraExtrinsicMatrix_(xyzToColorCameraExtrinsicMatrix),
       xyzToDepthCameraExtrinsicMatrix_(xyzToDepthCameraExtrinsicMatrix),
       colorFrameOffset_(colorFrameOffset) {
-  // Compute color_to_depth_extrinsic_matrix
   colorToDepthExtrinsicMatrix_ =
       xyzToDepthCameraExtrinsicMatrix_ *
       calibration::invertExtrinsicMatrix(xyzToColorCameraExtrinsicMatrix_);
@@ -149,26 +148,6 @@ cv::Mat LucidFrame::getDepthFrame() const {
   depthFrame.convertTo(depthFrameMono16, CV_16U);
 
   return depthFrameMono16;
-}
-
-std::optional<cv::Vec3f> LucidFrame::getPosition(
-    const cv::Point2i& colorPixel) const {
-  auto depthPixelOpt{getCorrespondingDepthPixel(colorPixel)};
-  if (!depthPixelOpt) {
-    return std::nullopt;
-  }
-  cv::Point2i depthPixel{depthPixelOpt.value()};
-
-  cv::Vec3f position{depthFrameXyz_.at<cv::Vec3f>(depthPixel.y, depthPixel.x)};
-  // Negative depth indicates an invalid position. Depth greater than 2^14 - 1
-  // also indicates invalid position.
-  if (position[2] < 0.0f || position[2] > ((1 << 14) - 1)) {
-    spdlog::warn("Invalid depth value at pixel ({}, {}): {}", depthPixel.x,
-                 depthPixel.y, position[2]);
-    return std::nullopt;
-  }
-
-  return position;
 }
 
 std::optional<cv::Point2i> LucidFrame::getCorrespondingDepthPixel(
@@ -281,4 +260,24 @@ std::optional<cv::Point2i> LucidFrame::getCorrespondingDepthPixel(
   }
 
   return closestDepthPixel;
+}
+
+std::optional<cv::Vec3f> LucidFrame::getPosition(
+    const cv::Point2i& colorPixel) const {
+  auto depthPixelOpt{getCorrespondingDepthPixel(colorPixel)};
+  if (!depthPixelOpt) {
+    return std::nullopt;
+  }
+  cv::Point2i depthPixel{depthPixelOpt.value()};
+
+  cv::Vec3f position{depthFrameXyz_.at<cv::Vec3f>(depthPixel.y, depthPixel.x)};
+  // Negative depth indicates an invalid position. Depth greater than 2^14 - 1
+  // also indicates invalid position.
+  if (position[2] < 0.0f || position[2] > ((1 << 14) - 1)) {
+    spdlog::warn("Invalid depth value at pixel ({}, {}): {}", depthPixel.x,
+                 depthPixel.y, position[2]);
+    return std::nullopt;
+  }
+
+  return position;
 }

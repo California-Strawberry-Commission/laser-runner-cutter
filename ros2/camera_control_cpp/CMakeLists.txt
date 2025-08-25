@@ -107,6 +107,9 @@ ament_target_dependencies(camera_control_node PUBLIC
 add_executable(lucid_calibrate src/tools/lucid_calibrate.cpp)
 target_link_libraries(lucid_calibrate PRIVATE camera CLI11::CLI11 spdlog::spdlog ${OpenCV_LIBS})
 
+add_executable(test_color_to_depth_pixel_coord src/tools/test_color_to_depth_pixel_coord.cpp)
+target_link_libraries(test_color_to_depth_pixel_coord PRIVATE camera CLI11::CLI11 spdlog::spdlog ${OpenCV_LIBS})
+
 #############
 ## Install ##
 #############
@@ -114,6 +117,7 @@ target_link_libraries(lucid_calibrate PRIVATE camera CLI11::CLI11 spdlog::spdlog
 install(TARGETS
   camera_control_node
   lucid_calibrate
+  test_color_to_depth_pixel_coord
   DESTINATION lib/${PROJECT_NAME})
 
 # Install launch files

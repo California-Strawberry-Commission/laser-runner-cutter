@@ -21,12 +21,23 @@ class LucidFrame {
   double getTimestampMillis() const { return timestampMillis_; }
 
   /**
+   * Given an (x, y) coordinate in the color frame, return the corresponding
+   * (x, y) coordinate in the depth frame.
+   *
+   * @param colorPixel (x, y) coordinate in the color frame.
+   * @return Corresponding (x, y) coordinate in the depth frame, or nullopt
+   * if it could not be determined.
+   */
+  std::optional<cv::Point2i> getCorrespondingDepthPixel(
+      const cv::Point2i& colorPixel) const;
+
+  /**
    * Given an (x, y) coordinate in the color frame, return the (x, y, z)
    * position with respect to the camera.
    *
    * @param colorPixel (x, y) coordinate in the color frame.
    * @return (x, y, z) position with respect to the camera, or nullopt if
-   * the position could not be determined.
+   * it could not be determined.
    */
   std::optional<cv::Vec3f> getPosition(const cv::Point2i& colorPixel) const;
 
@@ -45,7 +56,4 @@ class LucidFrame {
   cv::Mat xyzToDepthCameraExtrinsicMatrix_;
   cv::Mat colorToDepthExtrinsicMatrix_;
   std::pair<int, int> colorFrameOffset_;
-
-  std::optional<cv::Point2i> getCorrespondingDepthPixel(
-      const cv::Point2i& colorPixel) const;
 };
