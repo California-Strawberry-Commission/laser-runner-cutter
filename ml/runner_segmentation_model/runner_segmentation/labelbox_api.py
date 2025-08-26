@@ -19,26 +19,28 @@ from .yolo import Yolo
 
 load_dotenv()
 CLIENT = lb.Client(os.getenv("LABELBOX_API_KEY"))
-DATASET_NAME = "Runner2024"
-PROJECT_NAME = "Runner2024 Segmentation"
+DEFAULT_DATASET_NAME = "Runner2024"
+DEFAULT_PROJECT_NAME = "Runner2024 Segmentation"
 CLASS_MAP = {"Runner": 0}
 
 DATA_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "../data",
 )
-IMAGES_DIR = os.path.join(DATA_DIR, "raw", "runner1800", "images")
-LABELS_DIR = os.path.join(DATA_DIR, "raw", "runner1800", "labels")
-MASKS_DIR = os.path.join(DATA_DIR, "raw", "runner1800", "masks")
+DEFAULT_IMAGES_DIR = os.path.join(DATA_DIR, "raw", "runner1800", "images")
+DEFAULT_LABELS_DIR = os.path.join(DATA_DIR, "raw", "runner1800", "labels")
+DEFAULT_MASKS_DIR = os.path.join(DATA_DIR, "raw", "runner1800", "masks")
 MODELS_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "../models",
 )
-MODEL_PATH = os.path.join(MODELS_DIR, "runner1800-yolov8m-seg", "weights", "best.pt")
-MODEL_IMAGE_SIZE = (1024, 768)
+DEFAULT_MODEL_PATH = os.path.join(
+    MODELS_DIR, "runner1800-yolov8m-seg", "weights", "best.pt"
+)
+DEFAULT_MODEL_IMAGE_SIZE = (1024, 768)
 
 
-def import_images(dataset_name=DATASET_NAME, images_dir=IMAGES_DIR):
+def import_images(dataset_name=DEFAULT_DATASET_NAME, images_dir=DEFAULT_IMAGES_DIR):
     dataset = CLIENT.get_datasets(where=lb.Dataset.name == dataset_name).get_one()
     if not dataset:
         dataset = CLIENT.create_dataset(name=dataset_name)
@@ -50,7 +52,9 @@ def import_images(dataset_name=DATASET_NAME, images_dir=IMAGES_DIR):
     data_rows = []
     for img_path in img_paths:
         _, img_name = os.path.split(img_path)
-        data_rows.append({"row_data": img_path, "global_key": img_name})
+        data_rows.append(
+            {"row_data": img_path, "global_key": img_name, "external_id": img_name}
+        )
     print(f"Uploading {len(data_rows)} images. This may take a while...")
     upload_task = dataset.create_data_rows(data_rows)
     upload_task.wait_till_done()
@@ -59,10 +63,10 @@ def import_images(dataset_name=DATASET_NAME, images_dir=IMAGES_DIR):
 
 
 def upload_yolo_predictions(
-    images_dir=IMAGES_DIR,
-    model_path=MODEL_PATH,
-    model_image_size=MODEL_IMAGE_SIZE,
-    project_name=PROJECT_NAME,
+    images_dir=DEFAULT_IMAGES_DIR,
+    model_path=DEFAULT_MODEL_PATH,
+    model_image_size=DEFAULT_MODEL_IMAGE_SIZE,
+    project_name=DEFAULT_PROJECT_NAME,
     conf_threshold=0.0,
 ):
     project = CLIENT.get_projects(where=lb.Project.name == project_name).get_one()
@@ -140,7 +144,7 @@ def upload_yolo_predictions(
 
 
 def create_masks_from_labelbox_export(
-    labelbox_export_file, masks_dir=MASKS_DIR, project_name=PROJECT_NAME
+    labelbox_export_file, masks_dir=DEFAULT_MASKS_DIR, project_name=DEFAULT_PROJECT_NAME
 ):
     with open(labelbox_export_file, "r") as f:
         rows = ndjson.load(f)
@@ -149,7 +153,9 @@ def create_masks_from_labelbox_export(
     api_key = os.getenv("LABELBOX_API_KEY")
 
     for row in tqdm(rows):
-        image_filename = row["data_row"]["global_key"]
+        data_row = row["data_row"]
+        # Prefer external_id, fallback to global_key for the image name
+        image_filename = data_row.get("external_id") or data_row["global_key"]
         mask_subdir = os.path.join(masks_dir, os.path.splitext(image_filename)[0])
         if not os.path.exists(mask_subdir):
             os.makedirs(mask_subdir)
@@ -176,6 +182,31 @@ def create_masks_from_labelbox_export(
                     print(f"Failed to save mask for {image_filename}: {exc}")
 
 
+def download_images(labelbox_export_file, output_dir):
+    with open(labelbox_export_file, "r") as f:
+        rows = ndjson.load(f)
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    for row in tqdm(rows):
+        try:
+            data_row = row["data_row"]
+            # Prefer external_id, fallback to global_key for the image name
+            image_filename = data_row.get("external_id") or data_row["global_key"]
+            image_url = data_row.get("row_data")
+            if image_url is None:
+                continue
+            resp = requests.get(image_url, timeout=10)
+            resp.raise_for_status()
+            image_path = os.path.join(output_dir, image_filename)
+            with open(image_path, "wb") as img_file:
+                img_file.write(resp.content)
+            print(f"Downloaded: {image_url}")
+        except Exception as e:
+            print(f"Error attempting to download image: {e}")
+
+
 def tuple_type(arg_string):
     try:
         # Parse the input string as a tuple
@@ -199,13 +230,13 @@ if __name__ == "__main__":
     import_parser.add_argument(
         "-n",
         "--dataset_name",
-        default=DATASET_NAME,
+        default=DEFAULT_DATASET_NAME,
         help="Labelbox dataset name",
     )
     import_parser.add_argument(
         "-i",
         "--images_dir",
-        default=IMAGES_DIR,
+        default=DEFAULT_IMAGES_DIR,
         help="Path to the directory containing images",
     )
 
@@ -215,26 +246,26 @@ if __name__ == "__main__":
     upload_predictions_parser.add_argument(
         "-i",
         "--input_dir",
-        default=IMAGES_DIR,
-        help="Path to the directory containing the instanced masks",
+        default=DEFAULT_IMAGES_DIR,
+        help="Path to the directory containing images",
     )
     upload_predictions_parser.add_argument(
         "-m",
         "--model",
-        default=MODEL_PATH,
+        default=DEFAULT_MODEL_PATH,
         help="Path to trained runner mask instancing YOLOv8 model",
     )
     upload_predictions_parser.add_argument(
         "-s",
         "--model_image_size",
         type=tuple_type,
-        default=f"({MODEL_IMAGE_SIZE[0]}, {MODEL_IMAGE_SIZE[1]})",
+        default=f"({DEFAULT_MODEL_IMAGE_SIZE[0]}, {DEFAULT_MODEL_IMAGE_SIZE[1]})",
         help="Image size that the YOLOv8 model was trained with",
     )
     upload_predictions_parser.add_argument(
         "-n",
         "--project_name",
-        default=PROJECT_NAME,
+        default=DEFAULT_PROJECT_NAME,
         help="Labelbox project name",
     )
 
@@ -251,14 +282,31 @@ if __name__ == "__main__":
     create_masks_parser.add_argument(
         "-o",
         "--output_dir",
-        default=MASKS_DIR,
+        default=DEFAULT_MASKS_DIR,
         help="Path to write the binary mask image files",
     )
     create_masks_parser.add_argument(
         "-n",
         "--project_name",
-        default=PROJECT_NAME,
+        default=DEFAULT_PROJECT_NAME,
         help="Labelbox project name",
+    )
+
+    download_parser = subparsers.add_parser(
+        "download_images",
+        help="Download images from Labelbox",
+    )
+    download_parser.add_argument(
+        "-i",
+        "--input_file",
+        required=True,
+        help="Path to the Labelbox export ndjson file",
+    )
+    download_parser.add_argument(
+        "-o",
+        "--output_dir",
+        required=True,
+        help="Path to the directory to save images",
     )
 
     args = parser.parse_args()
@@ -273,5 +321,7 @@ if __name__ == "__main__":
         create_masks_from_labelbox_export(
             args.input_file, args.output_dir, args.project_name
         )
+    elif args.command == "download_images":
+        download_images(args.input_file, args.output_dir)
     else:
         print("Invalid command.")
