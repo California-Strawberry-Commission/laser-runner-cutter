@@ -16,6 +16,12 @@ camera0:
       exposure_us: 20000.0
       gain_db: 1.0
       debug_video_fps: 15.0
+detection_node:
+  ros__parameters:
+    confidence_threshold: 0.5
+    nms_threshold: 0.45
+    tracker_fps: 30.0
+    tracker_buffer_size: 30.0
 laser0:
   ros__parameters:
     dac_type: "helios"

@@ -9,12 +9,14 @@
 #include <vector>
 #include <filesystem>
 #include <fstream>
+#include <numeric>
 
 #include "spdlog/spdlog.h"
 #include "NvInfer.h"
 
 #include "detection_cpp/tools/fp16_utils.hpp"
 #include "BYTETracker.h"
+
 
 
 class Logger : public nvinfer1::ILogger {

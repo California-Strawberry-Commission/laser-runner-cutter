@@ -6,7 +6,7 @@
 #define TRACKER_FPS 1
 #define TRACKER_BUFFER_SIZE 1
 
-bool sendResults = true;
+bool sendResults = false;
 
 std::string overlays_dir = "/tmp/overlays/";
 std::string laptop_address = "paul@100.111.178.61:/home/paul/Desktop/testing/";
@@ -103,9 +103,11 @@ int main(int argc, char const *argv[]) {
   std::sort(images.begin(), images.end(), [](const auto& a, const auto& b) {
     return a.second < b.second;
   });
+
+  std::vector<int64_t> prepTimes, infTimes, postTimes, totalTimes;
   
   for (const auto& [img, filename] : images) {
-    for (int iter = 1; iter < 2; iter++) {
+    for (int iter = 1; iter < 11; iter++) {
       spdlog::info("=====Processing Image: {} | ({}/10)=====", filename, iter);
 
       cv::cuda::GpuMat gpuImg;
@@ -127,6 +129,7 @@ int main(int argc, char const *argv[]) {
 
       auto endPreprocessTime = std::chrono::high_resolution_clock::now();
       auto preprocessDuration = std::chrono::duration_cast<std::chrono::milliseconds>(endPreprocessTime - startTime).count();
+      prepTimes.push_back(preprocessDuration);
       spdlog::info("Preprocessing completed successfully in {} ms", preprocessDuration);
 
       if (isHalfPrecision) {
@@ -160,6 +163,7 @@ int main(int argc, char const *argv[]) {
 
       auto endInferenceTime = std::chrono::high_resolution_clock::now();
       auto inferenceDuration = std::chrono::duration_cast<std::chrono::milliseconds>(endInferenceTime - endInferenceSetupTime).count();
+      infTimes.push_back(inferenceDuration);
       spdlog::info("Inferencing completed successfully in {} ms", inferenceDuration);
 
       // cudaMemcpy(output0.data, outputMem0, output0_size, cudaMemcpyDeviceToHost);
@@ -210,6 +214,7 @@ int main(int argc, char const *argv[]) {
 
       auto endPostprocessingTime = std::chrono::high_resolution_clock::now();
       auto postprocessingDuration = std::chrono::duration_cast<std::chrono::milliseconds>(endPostprocessingTime - endInferenceTime).count();
+      postTimes.push_back(postprocessingDuration);
       spdlog::info("Post-Processing completed successfully in {} ms", postprocessingDuration);
 
       for (const auto& track : tracked) {
@@ -244,10 +249,24 @@ int main(int argc, char const *argv[]) {
 
       auto endTime = std::chrono::high_resolution_clock::now();
       auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
+      totalTimes.push_back(duration);
       spdlog::info("===Total time taken: {} ms===", duration);
     }
     std::cout << "\n" << std::endl;
   }
+
+  auto avg = [](const std::vector<int64_t>& v) -> double {
+    if (v.empty()) return 0.0;
+    int64_t sum = std::accumulate(v.begin(), v.end(), int64_t(0));
+    return static_cast<double>(sum) / v.size();
+  };
+
+  spdlog::info("Average Preprocessing Time: {:.2f} ms", avg(prepTimes));
+  spdlog::info("Average Inference Time: {:.2f} ms", avg(infTimes));
+  spdlog::info("Average Postprocessing Time: {:.2f} ms", avg(postTimes));
+  spdlog::info("Average Total Time: {:.2f} ms", avg(totalTimes));
+  std::cout << std::endl;
+
 
   if (sendResults) {
     system(("rsync -avz --progress " + overlays_dir + " " + laptop_address).c_str());

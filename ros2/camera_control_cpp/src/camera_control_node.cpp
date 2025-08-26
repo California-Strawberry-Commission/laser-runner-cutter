@@ -93,6 +93,8 @@ class CameraControlNode : public rclcpp::Node {
     // TODO: move debug frame topic publishing to detection node
     debugFramePublisher_ = create_publisher<sensor_msgs::msg::Image>(
         "~/debug_frame", rclcpp::SensorDataQoS());
+    framePublisher_ = create_publisher<sensor_msgs::msg::Image>(
+        "~/frame", rclcpp::SensorDataQoS());
     notificationsPublisher_ =
         create_publisher<rcl_interfaces::msg::Log>("/notifications", 1);
 
@@ -271,6 +273,10 @@ class CameraControlNode : public rclcpp::Node {
           sensor_msgs::msg::Image::SharedPtr debugFrameMsg{
               getColorImageMsg(debugFrame, frame->getTimestampMillis())};
           debugFramePublisher_->publish(*debugFrameMsg);
+
+          sensor_msgs::msg::Image::SharedPtr frameMsg{
+              getColorImageMsg(frame->getColorFrame(), frame->getTimestampMillis())};
+          framePublisher_->publish(*frameMsg);
         };
     camera_->start(static_cast<LucidCamera::CaptureMode>(request->capture_mode),
                    getParamExposureUs(), getParamGainDb(), frameCallback);
@@ -701,6 +707,7 @@ class CameraControlNode : public rclcpp::Node {
   rclcpp::Publisher<camera_control_interfaces::msg::State>::SharedPtr
       statePublisher_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr debugFramePublisher_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr framePublisher_;
   rclcpp::Publisher<rcl_interfaces::msg::Log>::SharedPtr
       notificationsPublisher_;
   rclcpp::CallbackGroup::SharedPtr serviceCallbackGroup_;

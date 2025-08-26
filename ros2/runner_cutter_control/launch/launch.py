@@ -161,6 +161,18 @@ def generate_launch_description():
         condition=IfCondition(launch_cutter_nodes),
     )
 
+    detection_cpp_launch_node = Node(
+        package="detection_cpp",
+        executable="detection_node",
+        name="detection_node",
+        parameters=[parameters_file],
+        respawn=True,
+        respawn_delay=2.0,
+        output="screen",
+        emulate_tty=True,
+        condition=IfCondition(launch_cutter_nodes),
+    )
+
     laser_control_launch_node = Node(
         package="laser_control",
         executable="laser_control_node",
@@ -198,8 +210,9 @@ def generate_launch_description():
             amiga_launch_node,
             guidance_brain_launch_node,
             laser_control_launch_node,
-            camera_control_launch_node,
-            # camera_control_cpp_launch_node,
+            # camera_control_launch_node,
+            camera_control_cpp_launch_node,
+            detection_cpp_launch_node,
             runner_cutter_control_launch_node,
         ]
     )  # type: ignore

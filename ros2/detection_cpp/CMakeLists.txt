@@ -104,12 +104,22 @@ include_directories(third_party/bs_thread_pool/include)
 add_executable(detection_node
   src/detection_node.cpp
 )
-target_link_libraries(detection_node PRIVATE fmt::fmt)
+target_link_libraries(detection_node PRIVATE 
+  fmt::fmt 
+  spdlog::spdlog 
+  ${ARENA_LIBS} 
+  ${OpenCV_LIBS} 
+  ${TensorRT_LIBRARIES} 
+  nvinfer 
+  nvonnxparser 
+  cudart 
+  fp16_utils 
+  bytetrack
+)
 ament_target_dependencies(detection_node PUBLIC
   rclcpp
   std_msgs
   std_srvs
-  camera_control_interfaces
   cv_bridge
   OpenCV
 )
