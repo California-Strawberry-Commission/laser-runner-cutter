@@ -202,6 +202,6 @@ def generate_launch_description():
             laser_control_launch_node,
             camera_control_launch_node,
             runner_cutter_control_launch_node,
-            gstreamer_launch_node,
+            # gstreamer_launch_node,
         ]
     )  # type: ignore
