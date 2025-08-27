@@ -1,5 +1,5 @@
 "use client";
-
+//import FramePreviewWebRTCfrom "@/components/camera/frame-preview-webrtc";
 import FramePreviewWithOverlay from "@/components/camera/frame-preview-with-overlay";
 import DeviceCard, {
   DeviceState,
@@ -288,7 +288,7 @@ export default function Controls({
           </CardContent>
         </Card>
       </div>
-      <FramePreviewWithOverlay
+      <FramePreviewWithOverlay //FramePreviewWebRTC
         className="w-full h-[480px]"
         topicName={`${cameraNodeName}/debug_frame`}
         enableStream={

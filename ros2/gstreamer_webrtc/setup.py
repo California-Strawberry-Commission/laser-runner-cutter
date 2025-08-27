@@ -5,6 +5,15 @@ from setuptools import find_packages, setup
 
 package_name = "gstreamer_webrtc"
 
+
+def get_requirements():
+    requirements = []
+    if os.path.exists("requirements.txt"):
+        with open("requirements.txt") as f:
+            requirements = f.read().splitlines()
+    return requirements
+
+
 setup(
     name=package_name,
     version="0.0.0",
@@ -17,14 +26,12 @@ setup(
             os.path.join("share", package_name, "launch"),
             glob(os.path.join("launch", "*launch.[pxy][yma]*")),
         ),
-        # Include all config files.
-        # (os.path.join("share", package_name, "config"), glob("config/*.yaml")),
     ],
-    install_requires=["setuptools","websockets","PyGObject"],
+    install_requires=get_requirements(),
     zip_safe=True,
-    maintainer="genki",
-    maintainer_email="kondo.genki@gmail.com",
-    description="TODO: Package description",
+    maintainer="brendan",
+    maintainer_email="bholt@calstrawberry.org",
+    description="Low(er) latency streaming implemented with GStreamer and WebRTC",
     license="MIT",
     tests_require=["pytest"],
     entry_points={

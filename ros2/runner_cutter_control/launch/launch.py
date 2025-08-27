@@ -173,6 +173,20 @@ def generate_launch_description():
         condition=IfCondition(launch_cutter_nodes),
     )
 
+    """
+    This will launch the gstreamer node
+    
+    gstreamer_launch_node = Node(
+        package="gstreamer_webrtc",
+        executable="gstreamer_node",
+        name="gstreamer_ros_webrtc_node",
+        respawn=True,
+        respawn_delay=2.0,
+        output="screen",
+        emulate_tty=True,
+        condition=IfCondition(launch_cutter_nodes),
+    )
+    """
     # endregion
 
     return LaunchDescription(
@@ -188,5 +202,6 @@ def generate_launch_description():
             laser_control_launch_node,
             camera_control_launch_node,
             runner_cutter_control_launch_node,
+            gstreamer_launch_node,
         ]
     )  # type: ignore
