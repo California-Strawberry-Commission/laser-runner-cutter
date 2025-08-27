@@ -6,20 +6,11 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, Set, Tuple
-import gi
-
-gi.require_version('Gst', '1.0')
-from gi.repository import Gst
-gi.require_version('GstWebRTC', '1.0')
-from gi.repository import GstWebRTC
-gi.require_version('GstSdp', '1.0')
-from gi.repository import GstSdp
-gi.require_version('GLib', '2.0')
-from gi.repository import GLib
 
 import cv2
 import numpy as np
 from cv_bridge import CvBridge
+from gi.repository import GLib
 from rcl_interfaces.msg import Log
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CompressedImage, Image
@@ -59,8 +50,6 @@ from camera_control_interfaces.srv import (
 )
 from common_interfaces.msg import Vector2, Vector3
 from common_interfaces.srv import GetBool
-
-
 
 
 def milliseconds_to_ros_time(milliseconds):
@@ -135,10 +124,6 @@ class SharedState:
     runner_detector: Optional[RunnerDetector] = None
     laser_detector: Optional[LaserDetector] = None
     circle_detector: Optional[CircleDetector] = None
-
-    #encoder: Optional[GStreamerEncoder] = None
-
-
 
 
 shared_state = SharedState()
@@ -626,68 +611,12 @@ async def _detection_task():
 
         shared_state.debug_frame = debug_frame
 
-        #foo()
         msg = _get_color_frame_msg(debug_frame, frame.timestamp_millis)
         debug_frame_topic.publish(msg)
 
     finally:
         shared_state.detection_completed_event.set()
 
-
-'''
-def foo():
-
-    Gst.init(None)
-    logging.basicConfig(level=logging.DEBUG)
-
-    pipeline = Gst.parse_launch(
-
-        #"filesrc location=/home/csc-jetson1/laser-runner-cutter/ros2/webrtc_ros2_py/webrtc_ros2_py/video.mp4 ! "
-        #"qtdemux ! h264parse ! nvv4l2decoder ! "
-        "videotestsrc ! "
-        #"nvvidconv ! video/x-raw(memory:NVMM),format=NV12,width=640,height=480,framerate=30/1, pixel-aspect-ratio=1/1 ! "
-        "video/x-raw,format=NV12,width=640,height=480,framerate=30/1, pixel-aspect-ratio=1/1 ! "
-        #"nvv4l2h264enc name=encoder profile=0 insert-sps-pps=true insert-vui=true maxperf-enable=true preset-level=3 bitrate=4000000 ! "
-        "nvh264enc name=encoder preset=5 rc-mode=2 bitrate=4000000 ! "
-        "h264parse config-interval =1 ! "
-        "rtph264pay name=pay0 config-interval=1 pt=96 ! "
-        
-        "application/x-rtp,media=video,encoding-name=H264,payload=96,clock-rate=90000 ! "
-        "webrtcbin name=webrtc"
-
-    )
-
-    our_id = 123
-    config = {}
-
-    webrtc_handler = MavWebRTC(pipeline, our_id, config)
-    webrtc_handler.server = 'ws://localhost:8081'
-    webrtc_handler.peer_id = 456
-    webrtc_handler.start() 
-
-    main_loop = GLib.MainLoop()
-
-    import signal
-    def sigint_handler(signum, frame):
-        logging.info("SIGINT (Ctrl+C) received. Quitting GLib MainLoop...")
-        main_loop.quit()
-        logging.info("GLib MainLoop exited gracefully.")
-
-    signal.signal(signal.SIGINT, sigint_handler)
-
-    try:
-        logging.info("Starting GLib MainLoop in main thread to process GStreamer events...")
-        main_loop.run() 
-    finally:
-
-        logging.info("GLib MainLoop exited. Initiating graceful shutdown...")
-        webrtc_handler.shutdown() 
-        webrtc_handler.join()    
-        logging.info("Setting GStreamer pipeline to NULL state...")
-        pipeline.set_state(Gst.State.NULL) 
-        logging.info("WebRTC streaming stopped and pipeline released.")
-
-'''
 
 async def _interval_capture_task(interval_secs: float):
     while True:
@@ -972,4 +901,5 @@ def main():
 
 
 if __name__ == "__main__":
+    main()
     main()
