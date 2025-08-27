@@ -1,27 +1,5 @@
 #!/bin/bash
 
-usage() { echo "Usage: $0 [-a <AWS access key used by DVC>] [-s <AWS secret key used by DVC>]" 1>&2; exit 1; }
-
-aws_dvc_access_key=""
-aws_dvc_secret_key=""
-while getopts ":a:s:" opt; do
-  case $opt in
-    a)
-      aws_dvc_access_key="$OPTARG"
-      ;;
-    s)
-      aws_dvc_secret_key="$OPTARG"
-      ;;
-    *)
-      usage
-      ;;
-  esac
-done
-shift $((OPTIND-1))
-if [ -z "${aws_dvc_access_key}" ] || [ -z "${aws_dvc_secret_key}" ]; then
-  usage
-fi
-
 script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 venv_dir=$script_dir/../venv
 
@@ -104,7 +82,11 @@ fi
 cd $script_dir/..
 
 # Install AWS CLI and zip
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+if [[ $arch == x86_64* ]]; then
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+elif [[ $arch == aarch64* ]]; then
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"
+fi
 unzip awscliv2.zip
 sudo ./aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli --update
 sudo apt -y install zip
@@ -114,8 +96,3 @@ pip install -r requirements.txt
 
 # Needed for DVC. See https://stackoverflow.com/questions/73830524/attributeerror-module-lib-has-no-attribute-x509-v-flag-cb-issuer-check
 pip install pyopenssl --upgrade
-
-# DVC setup
-dvc remote modify --local runner_segmentation access_key_id $aws_dvc_access_key
-dvc remote modify --local runner_segmentation secret_access_key $aws_dvc_secret_key
-dvc pull -r runner_segmentation

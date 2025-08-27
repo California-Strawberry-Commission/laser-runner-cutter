@@ -4,41 +4,7 @@ Project for preparing training data and training a ML model for detecting laser 
 
 ## Environment setup
 
-1.  Install CUDA, this is a package that allows for model training on GPU's. This is all from https://developer.nvidia.com/cuda-11-8-0-download-archive?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=20.04&target_type=deb_local
-
-        $ wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
-        $ sudo mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
-        $ wget https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda-repo-ubuntu2004-11-8-local_11.8.0-520.61.05-1_amd64.deb
-        $ sudo dpkg -i cuda-repo-ubuntu2004-11-8-local_11.8.0-520.61.05-1_amd64.deb
-        $ sudo cp /var/cuda-repo-ubuntu2004-11-8-local/cuda-*-keyring.gpg /usr/share/keyrings/
-        $ sudo apt-get update
-        $ sudo apt-get -y install cuda
-
-1.  Create and source into a venv
-
-    Install Python 3.11:
-
-        $ sudo apt update && sudo apt upgrade -y
-        $ sudo add-apt-repository ppa:deadsnakes/ppa
-        $ sudo apt update
-        $ sudo apt install python3.11
-        $ sudo apt install python3.11-venv
-
-    Create venv:
-
-        $ cd runner_segmentation_model
-        $ python3.11 -m venv venv
-        $ source venv/bin/activate
-
-1.  Install specific version of PyTorch to match the CUDA version
-
-        $ pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-
-    NOTE: If you have any existing installs of touch torchvision or torchaudio in the venv, this will cause errors and they should be uninstalled
-
-1.  Install necessary requirements
-
-        $ pip install -r requirements.txt
+1.  Run `../runner_segmentation_model/scripts/env_setup.sh`.
 
 ### DVC setup
 
@@ -64,6 +30,10 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
 
 ## Workflow
 
+1.  Source the venv
+
+        $ source ../runner_segmentation_model/venv/bin/activate
+
 1.  Obtain new training images. See `laser_detection/image_capture.py` for an example.
 
         $ python laser_detection/image_capture.py --output_directory <directory>
@@ -76,10 +46,10 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
 
 1.  Obtain labels from Labelbox
 
-    1. Go to Annotate -> Laser Detection
-    1. Click the "Data Rows" tab
-    1. Click the "All (X data rows)" dropdown, then click "Export data v2"
-    1. Select all fields, then click the "Export JSON" button
+    1.  Go to Annotate -> Laser Detection
+    1.  Click the "Data Rows" tab
+    1.  Click the "All (X data rows)" dropdown, then click "Export data"
+    1.  Select all fields, then click the "Export JSON" button
 
 1.  Create YOLO label txt files from the Labelbox ndjson export file:
 
