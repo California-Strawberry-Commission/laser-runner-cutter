@@ -10,7 +10,6 @@ from typing import Dict, List, Optional, Set, Tuple
 import cv2
 import numpy as np
 from cv_bridge import CvBridge
-from gi.repository import GLib
 from rcl_interfaces.msg import Log
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CompressedImage, Image
@@ -901,5 +900,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
     main()
