@@ -1,29 +1,48 @@
+import asyncio
+import gc
 import logging
+import os
 import threading
 import time
-import websockets
-import os
-import asyncio
 
 import gi
 import rclpy
+import websockets
 from gi.repository import GLib, Gst
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
 
-from gstreamer_webrtc.gstreamer_to_webrtc import MavWebRTC
+from gstreamer_webrtc.gstreamer_to_webrtc import GstreamerToWebRTCBridge
 
 gi.require_version("Gst", "1.0")
 
 
 class GStreamerRosWebRTCNode(Node):
+
     def __init__(self):
         super().__init__("gstreamer_ros_webrtc_node")
         self.get_logger().info("GStreamer ROS WebRTC Node initializing...")
 
-        # Signaling server
+        Gst.init(None)
+
+        self.is_jetson_device = os.path.exists("/etc/nv_tegra_release")
+
+        self.pipeline = None
+        self.webrtcbin = None
+        self.webrtc_handler = None
+        self.appsrc = None
+        self.frame_count = 0
+        self.connection_established = False
+        self.pipeline_is_playing = False
+
+        self.glib_main_loop = GLib.MainLoop()
+        self._glib_thread = threading.Thread(
+            target=self._run_glib_main_loop, daemon=True
+        )
+        self._glib_thread.start()
+
         self.topics = {}
         self._server_thread = threading.Thread(
             target=self._run_signaling_server, daemon=True
@@ -57,7 +76,7 @@ class GStreamerRosWebRTCNode(Node):
         )
 
         self.declare_parameter(
-            "signaling_server_url", "ws://0.0.0.0:8080/?topic=/camera0/debug_frame"
+            "signaling_server_url", "ws://localhost:8080/?topic=/camera0/debug_frame"
         )
         self.signaling_server_url = (
             self.get_parameter("signaling_server_url")
@@ -65,61 +84,169 @@ class GStreamerRosWebRTCNode(Node):
             .string_value
         )
 
-        Gst.init(None)
-
-        # Environment check for Jetson
-        if os.path.exists("/etc/nv_tegra_release"):
-            self.get_logger().info("Jetson device detected, using jetson pipeline")
-            self.create_jetson_pipeline()
-        else:
-            self.get_logger().info(
-                "Non Jetson device detected, using non jetson pipeline"
-            )
-            self.create_pipeline_manually()
-
-        self.glib_main_loop = GLib.MainLoop()
-        bus = self.pipeline.get_bus()
-        bus.add_signal_watch()
-        bus.connect("message", self._on_gst_message)
-
-        self._glib_thread = threading.Thread(
-            target=self._run_glib_main_loop, daemon=True
+        self.declare_parameter("connection_timeout", 3.0)
+        self.connection_timeout = (
+            self.get_parameter("connection_timeout").get_parameter_value().double_value
         )
-        self._glib_thread.start()
-        self.get_logger().info("GLib MainLoop thread started.")
-
-        self.get_logger().info("Setting GStreamer pipeline state to PLAYING...")
-        ret = self.pipeline.set_state(Gst.State.PLAYING)
-        if ret == Gst.StateChangeReturn.FAILURE:
-            self.get_logger().error("Failed to set pipeline to PLAYING state")
-            raise RuntimeError("Failed to start pipeline")
-
-        state_change_return, state, pending = self.pipeline.get_state(Gst.SECOND * 5)
-        if state != Gst.State.PLAYING:
-            self.get_logger().error(
-                f"Pipeline failed to reach PLAYING state, current state: {state.value_nick}"
-            )
-        else:
-            self.get_logger().info("Pipeline is now in PLAYING state")
 
         self.subscription = self.create_subscription(
             Image, self.video_topic, self.image_callback, qos_profile_sensor_data
         )
         self.get_logger().info(f"Subscribed to ROS topic: {self.video_topic}")
 
-        time.sleep(1)
+    # This function destroys the webrtc session and pipeline
+    def _teardown_webrtc_session(self):
 
-        # Initialize the async WebRTC handler
-        self.webrtc_handler = MavWebRTC(self.pipeline, {}, "webrtc")
-        self.webrtc_handler.server = self.signaling_server_url
+        self.get_logger().info("Tearing down GStreamer Pipeline and WebRTC Handler")
+        self.pipeline_is_playing = False
+        self.connection_established = False  # Reset connection state
+        self.frame_count = 0  # Reset frame counter
 
-        self.setup_connection_monitor()
+        # Store references to old objects
+        old_handler = self.webrtc_handler
+        old_pipeline = self.pipeline
+        old_webrtcbin = self.webrtcbin
 
-        # Start the WebRTC handler (it will create its own thread with event loop)
+        # Nullify
+        self.webrtc_handler = None
+        self.pipeline = None
+        self.appsrc = None
+        self.webrtcbin = None
+
+        # Shut down the old handler and wait for its thread to exit
+        if old_handler:
+            self.get_logger().info("Shutting down old WebRTC handler...")
+            try:
+                old_handler.shutdown()
+
+                old_handler.join(timeout=10)  # Time for thread to exit
+
+                # Check if thread is still alive
+                if (
+                    hasattr(old_handler, "_thread")
+                    and old_handler._thread
+                    and old_handler._thread.is_alive()
+                ):
+                    self.get_logger().warning(
+                        "WebRTC handler thread still alive after timeout!"
+                    )
+                    # Force kill the thread's event loop
+                    if old_handler.loop:
+                        old_handler.loop.call_soon_threadsafe(old_handler.loop.stop)
+                else:
+                    self.get_logger().info("Old WebRTC handler thread has exited.")
+            except Exception as e:
+                self.get_logger().error(f"Error during handler shutdown: {e}")
+
+        # Disconnect webrtcbin before cleaning up pipeline
+        if old_webrtcbin:
+            try:
+                old_webrtcbin.disconnect_by_func(self.on_connection_state_changed)
+                old_webrtcbin.disconnect_by_func(self.on_ice_state_changed)
+            except:
+                pass
+
+        # Shut down the old pipeline
+        if old_pipeline:
+            self.get_logger().info("Setting old pipeline to NULL...")
+            try:
+                # Send EOS to flush the pipeline
+                old_pipeline.send_event(Gst.Event.new_eos())
+
+                time.sleep(0.1)  # Time delay to process EOS
+
+                old_pipeline.set_state(Gst.State.NULL)
+
+                # Wait for state change with timeout
+                ret, current, pending = old_pipeline.get_state(5 * Gst.SECOND)
+
+                if ret == Gst.StateChangeReturn.SUCCESS:
+                    self.get_logger().info(
+                        f"Old pipeline is now in {current.value_nick} state."
+                    )
+                else:
+                    self.get_logger().warning(
+                        f"Pipeline state change returned: {ret.value_nick}"
+                    )
+
+                # Remove bus watch
+                bus = old_pipeline.get_bus()
+                if bus:
+                    bus.remove_signal_watch()
+
+            except Exception as e:
+                self.get_logger().error(f"Error during pipeline cleanup: {e}")
+
+        gc.collect()
+
+        self.get_logger().info("Teardown complete.")
+        return False  # for GLib.idle_add
+
+    # Called for first pipeline and all subsequent pipelines
+    # (Re)creates pipeline and webrtcbin
+    def _recreate_pipeline_and_webrtc_handler(self):
+
+        # Ensure we are working with a clean slate
+        self._teardown_webrtc_session()
+
+        time.sleep(0.5)  # Time delay to ensure cleanup is performed
+
+        self.get_logger().info("Creating GStreamer Pipeline and WebRTC Handler")
+
+        # Reset state variables
+        self.connection_established = False
+        self.frame_count = 0
+        if hasattr(self, "start_time_ns"):
+            delattr(self, "start_time_ns")  # Reset timestamp baseline
+
+        # Create a new pipeline
+        if self.is_jetson_device:
+            self.create_jetson_pipeline()
+        else:
+            self.create_pipeline_manually()
+
+        assert self.pipeline is not None, "Pipeline creation failed!"
+
+        bus = self.pipeline.get_bus()
+        bus.add_signal_watch()
+        bus.connect("message", self._on_gst_message)
+
+        # Setup connection monitoring for the new webrtcbin
+        if self.webrtcbin:
+            self.setup_connection_monitor()
+
+        # Create and start a new WebRTC handler for the new pipeline
+        self.webrtc_handler = GstreamerToWebRTCBridge(
+            pipeline=self.pipeline,
+            logger=self.get_logger(),
+            server_url=self.signaling_server_url,
+            webrtc_pipeline_element_name="webrtc",
+            connection_timeout=self.connection_timeout,
+        )
         self.webrtc_handler.start()
 
-        self.frame_count = 0
-        self.connection_established = False
+        # Set the new pipeline to PLAYING
+        ret = self.pipeline.set_state(Gst.State.PLAYING)
+        if ret == Gst.StateChangeReturn.FAILURE:
+            self.get_logger().error("Failed to start pipeline")
+            return False
+
+        # Wait for state change
+        ret, current_state, pending = self.pipeline.get_state(5 * Gst.SECOND)
+
+        if current_state == Gst.State.PLAYING:
+            self.get_logger().info("New pipeline is now in PLAYING state.")
+            self.pipeline_is_playing = True
+            # Small delay before triggering offer
+            GLib.timeout_add(
+                200, lambda: self.webrtc_handler.handle_new_client() or False
+            )
+        else:
+            self.get_logger().error(
+                f"Failed to set new pipeline to PLAYING. Current state: {current_state.value_nick}"
+            )
+
+        return False  # for GLib.idle_add
 
     # Runs the asyncio event loop for the server
     def _run_signaling_server(self):
@@ -140,45 +267,48 @@ class GStreamerRosWebRTCNode(Node):
     # The handler for websocket connection(s)
     async def _signaling_handler(self, websocket):
         path = websocket.request.path
-        self.get_logger().info(f"New connection with path: {path}")
-
-        try:
-            topic_name = path.split("?topic=")[-1]
-        except IndexError:
-            self.get_logger().error("No topic name provided in the URL.")
+        topic_name = path.split("?topic=")[-1] if "?topic=" in path else None
+        if not topic_name:
             await websocket.close()
             return
 
-        if topic_name not in self.topics:
-            self.topics[topic_name] = set()
-        self.topics[topic_name].add(websocket)
-        self.get_logger().info(
-            f"Registered new peer on topic: '{topic_name}'. Total peers: {len(self.topics[topic_name])}"
-        )
+        self.get_logger().info(f"Peer connected on topic: '{topic_name}'")
+        self.topics.setdefault(topic_name, set()).add(websocket)
+
+        if self.webrtc_handler is None:
+            self.get_logger().info("First peer connected, creating new WebRTC session.")
+            GLib.idle_add(self._recreate_pipeline_and_webrtc_handler)
+        else:
+            self.get_logger().info("Additional peer connected (likely self), ignoring.")
 
         try:
             async for message_str in websocket:
-                self.get_logger().info(
-                    f"Relaying message on topic '{topic_name}': {message_str[:50]}..."
-                )
-                for peer_ws in self.topics[topic_name]:
-                    if peer_ws is not websocket:
-                        await peer_ws.send(message_str)
-
-        except websockets.exceptions.ConnectionClosed as e:
-            self.get_logger().info(
-                f"Peer on topic '{topic_name}' disconnected. Code: {e.code}"
-            )
+                peers = self.topics.get(topic_name, set())
+                send_tasks = [
+                    peer.send(message_str) for peer in peers if peer is not websocket
+                ]
+                await asyncio.gather(*send_tasks)
         finally:
-            self.topics[topic_name].discard(websocket)
-            if not self.topics[topic_name]:
-                del self.topics[topic_name]
+            self.get_logger().info(f"Peer disconnected from topic: '{topic_name}'")
+            self.topics.get(topic_name, set()).discard(websocket)
+
+            remaining_peers = self.topics.get(topic_name, set())
+            num_remaining = len(remaining_peers)
+            handler_exists = self.webrtc_handler is not None
+
             self.get_logger().info(
-                f"Unregistered peer on topic: '{topic_name}'. Remaining topics: {list(self.topics.keys())}"
+                f"Teardown Check: Peers remaining = {num_remaining}. "
+                f"Handler exists = {handler_exists}."
             )
 
+            if num_remaining <= 1 and handler_exists:
+                self.get_logger().info("CONDITION MET. Tearing down WebRTC session.")
+                GLib.idle_add(self._teardown_webrtc_session)
+            else:
+                self.get_logger().info("CONDITION NOT MET. Not tearing down session.")
+
+    # Monitor WebRTC connection state and unblock pad when connected
     def setup_connection_monitor(self):
-        # Monitor WebRTC connection state and unblock pad when connected
 
         self.get_logger().info(f"Setting up connection monitor")
         self.webrtcbin.connect(
@@ -188,8 +318,8 @@ class GStreamerRosWebRTCNode(Node):
             "notify::ice-connection-state", self.on_ice_state_changed
         )
 
+    # Handle connection state changes
     def on_connection_state_changed(self, webrtcbin, pspec):
-        # Handle connection state changes
 
         state = webrtcbin.get_property("connection-state")
         self.get_logger().info(f"WebRTC connection state: {state}")
@@ -199,8 +329,8 @@ class GStreamerRosWebRTCNode(Node):
             self.get_logger().info("Connection established - ensuring media flow")
             self.ensure_media_flow()
 
+    # Handle ICE connection state changes with detailed logging for debugging
     def on_ice_state_changed(self, webrtcbin, pspec):
-        # Handle ICE connection state changes with detailed logging for debugging
 
         state = webrtcbin.get_property("ice-connection-state")
         state_name = {
@@ -234,8 +364,8 @@ class GStreamerRosWebRTCNode(Node):
             self.get_logger().error("ICE connection failed!")
             self.connection_established = False
 
+    # Ensure media is flowing through the pipeline, not needed with tee implementation
     def ensure_media_flow(self):
-        # Ensure media is flowing through the pipeline
 
         self.get_logger().info("Forcing pipeline state refresh to unblock pads")
 
@@ -255,8 +385,8 @@ class GStreamerRosWebRTCNode(Node):
 
         self.get_logger().info("Pipeline state refreshed")
 
+    # Jetson pipeline creation
     def create_jetson_pipeline(self):
-        # Jetson pipeline creation
 
         self.pipeline = Gst.Pipeline.new("webrtc-pipeline")
 
@@ -270,6 +400,7 @@ class GStreamerRosWebRTCNode(Node):
         self.appsrc.set_property("caps", appsrc_caps)
         self.appsrc.set_property("is-live", True)
         self.appsrc.set_property("format", Gst.Format.TIME)
+        self.appsrc.set_property("do-timestamp", False)
 
         videoconvert = Gst.ElementFactory.make("videoconvert", "convert")
 
@@ -323,9 +454,9 @@ class GStreamerRosWebRTCNode(Node):
         src_pad = rtph264pay.get_static_pad("src")
         src_pad.link(rtp_sink_pad)
 
+    # Non jetson pipeline creation
+    # Minimal pipeline appsrc → videoconvert → NV12 → NVENC → H264Parse → RTP → webrtcbin
     def create_pipeline_manually(self):
-        # Non jetson pipeline creation
-        # Minimal pipeline appsrc → videoconvert → NV12 → NVENC → H264Parse → RTP → webrtcbin
 
         self.pipeline = Gst.Pipeline.new("simple-webrtc-pipeline")
 
@@ -352,7 +483,7 @@ class GStreamerRosWebRTCNode(Node):
 
         self.appsrc.set_property("is-live", True)
         self.appsrc.set_property("format", Gst.Format.TIME)
-        self.appsrc.set_property("do-timestamp", True)
+        self.appsrc.set_property("do-timestamp", False)
         self.appsrc.set_property(
             "caps",
             Gst.Caps.from_string(
@@ -365,10 +496,6 @@ class GStreamerRosWebRTCNode(Node):
             f"video/x-raw,format=NV12,width={self.width},height={self.height},framerate={self.framerate}/1"
         )
         self.capsfilter.set_property("caps", nv12_caps)
-
-        self.encoder.set_property("rc-mode", 1)
-        self.encoder.set_property("bitrate", 2000)
-        self.encoder.set_property("gop-size", 30)
 
         self.parser.set_property("config-interval", 1)
         self.rtppay.set_property("pt", 96)
@@ -392,8 +519,8 @@ class GStreamerRosWebRTCNode(Node):
         assert self.parser.link(self.rtppay)
         assert self.rtppay.link(self.webrtcbin)
 
+    # Convert ROS image encoding to GStreamer format
     def _get_gst_format(self, encoding):
-        # Convert ROS image encoding to GStreamer format
 
         format_map = {
             "rgb8": "RGB",
@@ -454,8 +581,12 @@ class GStreamerRosWebRTCNode(Node):
         finally:
             self.get_logger().info("GLib MainLoop exited from dedicated thread.")
 
+    # Handle incoming ROS image messages with debugging
     def image_callback(self, msg: Image):
-        # Handle incoming ROS image messages with debugging
+
+        if not self.pipeline_is_playing or not self.appsrc:
+            self.get_logger().debug("Dropping frame, pipeline not ready.")
+            return
 
         # Log first frame and every 30th frame
         if not hasattr(self, "first_frame_logged"):
@@ -483,7 +614,7 @@ class GStreamerRosWebRTCNode(Node):
                 msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
             )
 
-        timestamp_ns = (
+        timestamp_ns = (  # Assigns ROS timestamp to video frame
             msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
         ) - self.start_time_ns
         gst_buffer.pts = timestamp_ns
@@ -509,10 +640,6 @@ class GStreamerRosWebRTCNode(Node):
                 success, position = self.pipeline.query_position(Gst.Format.TIME)
                 if success:
                     position_s = position / Gst.SECOND
-                    self.get_logger().info(
-                        f"Pushed {self.frame_count} frames, pipeline time: {position_s:.2f}s, "
-                        f"WebRTC connected: {self.connection_established}"
-                    )
 
                     # Check if encoder is receiving frames
                     if hasattr(self, "encoder"):
@@ -521,10 +648,6 @@ class GStreamerRosWebRTCNode(Node):
                             success, current = encoder_pad.query_position(
                                 Gst.Format.TIME
                             )
-                            if success:
-                                self.get_logger().info(
-                                    f"Encoder position: {current / Gst.SECOND:.2f}s"
-                                )
                 else:
                     self.get_logger().info(
                         f"Pushed {self.frame_count} frames to pipeline (position query failed)"

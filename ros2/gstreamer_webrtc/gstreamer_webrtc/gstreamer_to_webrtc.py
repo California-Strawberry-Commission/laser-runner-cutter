@@ -1,9 +1,12 @@
 import asyncio
 import json
 import logging
+import threading
+from typing import List, Optional
 
 import gi
 import websockets
+from websockets.client import WebSocketClientProtocol
 
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst
@@ -18,181 +21,255 @@ gi.require_version("GLib", "2.0")
 from gi.repository import GLib
 
 
-class MavWebRTC:
+class GstreamerToWebRTCBridge:
 
-    def __init__(self, pipeline, config, webrtc_name="webrtc"):
-        self.pipeline = pipeline
-        self.logger = logging.getLogger("GSTREAMER_WEBRTC" + __name__)
-        self.logger.setLevel(logging.INFO)
-        if not self.logger.handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter(
-                "%(asctime)s [%(name)s] %(levelname)s: %(message)s"
-            )
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
-        self.config = config
-        self.conn = None
-        self.server = "ws://0.0.0.0:8080/?topic=/camera0/debug_frame"
-        self.webrtc_name = webrtc_name
-        self.webrtc = None
-        self.connection_timeout = 3.0  # seconds
-        self.pipeline_started = False  # Track if pipeline has been started
+    def __init__(
+        self,
+        pipeline,
+        logger,
+        server_url="ws://0.0.0.0:8080/?topic=/camera0/debug_frame",
+        webrtc_pipeline_element_name="webrtc",
+        connection_timeout=3.0,
+    ) -> None:
+        """
+        Initializes the GstreamerToWebRTCBridge.
 
-        self.loop = None
-        self.main_task = None
-        self._shutdown_event = None
-        self.tasks = []
-        self.read_task = None
+        Args:
+            pipeline (Gst.Pipeline): The GStreamer pipeline object to manage.
+            logger (Optional[logging.Logger]): An optional logger instance. If None,
+                a default logger is created.
+            server_url (str): The URL of the WebSocket signaling server.
+            webrtc_pipeline_element_name (str): The name of the 'webrtcbin'
+                element within the GStreamer pipeline.
+            connection_timeout (float): Timeout in seconds for establishing the
+                WebSocket connection.
+        """
+
+        self._pipeline = pipeline
+
+        if logger:
+            self._logger = logger
+        else:
+            self._logger = logging.getLogger(__name__)
+            self._logger.setLevel(logging.INFO)
+            if not self._logger.handlers:
+                handler = logging.StreamHandler()
+                formatter = logging.Formatter(
+                    "%(asctime)s [%(name)s] %(levelname)s: %(message)s"
+                )
+                handler.setFormatter(formatter)
+                self._logger.addHandler(handler)
+
+        # WebSocket and WebRTC configuration
+        self._websocket_conn: Optional[WebSocketClientProtocol] = None
+        self._server: str = server_url
+        self._webrtc_pipeline_element_name: str = webrtc_pipeline_element_name
+        self._webrtc: Optional[Gst.Element] = None
+        self._connection_timeout: float = connection_timeout
+        self._pipeline_started: bool = False
+
+        # Threading and asyncio event loop management
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._shutdown_event: Optional[asyncio.Event] = None
+        self._shutdown_complete: threading.Event = threading.Event()
+        self._tasks: List[asyncio.Task] = []
+        self._read_task: Optional[asyncio.Task] = None
+        self._thread: Optional[threading.Thread] = None
+        self._running: bool = False
 
     @property
-    def connected(self):
-        if self.conn is None:
+    def _connected(self) -> bool:
+        """
+        Checks if the WebSocket connection is active and not in a closing state.
+
+        Args: None
+
+        Returns:
+            bool: True if connected, False otherwise.
+        """
+        if self._websocket_conn is None:
             return False
         try:
-            # See if still connected
             return (
-                self.conn.transport is not None and not self.conn.transport.is_closing()
+                self._websocket_conn.transport is not None
+                and not self._websocket_conn.transport.is_closing()
             )
         except:
-            # Assume disconnected
             return False
 
-    def start(self):
+    def start(self) -> None:
+        """
+        Starts the WebRTC bridge handler in a new thread.
 
-        import threading
+        Initializes and runs the asyncio event loop that manages the WebSocket
+        connection and signaling.
 
+        Args: None
+
+        Returns: None
+        """
+        if self._running:
+            self._logger.warning("WebRTC handler already running")
+            return
+
+        self._running = True
+        self._shutdown_complete.clear()
         self._thread = threading.Thread(target=self._run_event_loop, daemon=True)
         self._thread.start()
 
-    def _run_event_loop(self):
-        # Run the asyncio event loop in a dedicated thread
+    def _run_event_loop(self) -> None:
+        """
+        The main entry point for the handler thread.
 
-        self.logger.info("WebRTC stream is starting...")
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
+        This method sets up a new asyncio event loop and runs the connection
+        manager task until a shutdown is signaled. It also handles the graceful
+        cancellation of all running tasks upon exit.
+
+        Args: None
+
+        Returns: None
+        """
+        self._logger.info("WebRTC stream is starting...")
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
         self._shutdown_event = asyncio.Event()
 
         try:
-            self.loop.run_until_complete(self.main())
+            connect_task = self._loop.create_task(self._connect_loop_task_fn())
+            self._tasks = [connect_task]
+            self._loop.run_until_complete(self._shutdown_event.wait())
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            self.logger.error(f"Error in event loop: {e}", exc_info=True)
+            self._logger.error(f"Error in event loop: {e}")
         finally:
-            # Cancel all pending tasks
-            pending = asyncio.all_tasks(self.loop)
-            for task in pending:
-                task.cancel()
-            if pending:
-                self.loop.run_until_complete(
-                    asyncio.gather(*pending, return_exceptions=True)
-                )
-            self.loop.close()
-            self.logger.info("WebRTC stream has exited")
+            self._logger.info("Cancelling outstanding tasks...")
 
-    async def main(self):
-        # Async entry point
-
-        try:
-            # Create task for connection loop only
-            # Message reading will be handled within the connection
-            connect_task = asyncio.create_task(self.connect_loop())
-            self.tasks = [connect_task]
-
-            # Wait until shutdown is requested
-            await self._shutdown_event.wait()
-
-        except Exception as e:
-            self.logger.error(f"Error in main loop: {e}", exc_info=True)
-        finally:
-            # Cancel all tasks
-            for task in self.tasks:
+            for task in self._tasks:
                 if not task.done():
                     task.cancel()
-            if self.read_task and not self.read_task.done():
-                self.read_task.cancel()
-            await asyncio.gather(*self.tasks, return_exceptions=True)
-            if self.read_task:
-                await asyncio.gather(self.read_task, return_exceptions=True)
 
-    async def connect_loop(self):
-        # Maintain connection with signalling server
+            if self._read_task and not self._read_task.done():
+                self._read_task.cancel()
 
-        reconnect_delay = 5  # seconds between reconnection attempts
+            async def _gather_cancelled_tasks():
+                await asyncio.gather(*self._tasks, return_exceptions=True)
+                if self._read_task:
+                    await asyncio.gather(self._read_task, return_exceptions=True)
+
+            if self._loop.is_running():
+                self._loop.run_until_complete(_gather_cancelled_tasks())
+
+            self._logger.info("Closing event loop...")
+            try:
+                self._loop.close()
+            except Exception as e:
+                self._logger.error(f"Error closing loop: {e}")
+
+            self._loop = None
+            self._running = False
+            self._shutdown_complete.set()
+            self._logger.info("WebRTC stream has exited")
+
+    async def _connect_loop_task_fn(self) -> None:
+        """
+        Manages the WebSocket connection lifecycle.
+
+        This coroutine runs in a loop, attempting to connect to the signaling
+        server. Once connected, it starts reading messages. If the connection
+        is lost, it waits for a delay before attempting to reconnect.
+
+        Args: None
+
+        Returns: None
+        """
+        reconnect_delay = 5
 
         while not self._shutdown_event.is_set():
             try:
-                if not self.connected:
-                    self.logger.info("Attempting connection to signalling server")
+                if not self._connected:
+                    self._logger.info("Attempting connection to signalling server")
                     await asyncio.wait_for(
-                        self.connect(), timeout=self.connection_timeout
+                        self._connect(), timeout=self._connection_timeout
                     )
 
-                    # Wait for the read task to complete (connection closed)
-                    if self.read_task:
-                        try:
-                            await self.read_task
-                        except asyncio.CancelledError:
-                            break
-                        except Exception as e:
-                            self.logger.error(f"Read task error: {e}")
+                    self._logger.info("Connection successful, now reading messages.")
+                    await self._read_messages_task_fn()
 
-                    # Connection closed, wait before reconnecting
-                    self.logger.info(
-                        f"Waiting {reconnect_delay}s before reconnecting..."
-                    )
-                    await asyncio.sleep(reconnect_delay)
+                    if (
+                        not self._shutdown_event.is_set()
+                    ):  # Only wait if not shutting down
+                        self._logger.info(
+                            f"Waiting {reconnect_delay}s before reconnecting..."
+                        )
+                        await asyncio.sleep(reconnect_delay)
                 else:
-                    # Connection is active, just wait
                     await asyncio.sleep(1)
 
             except asyncio.TimeoutError:
-                self.logger.warning("Connection timeout")
-                self.conn = None
-                await asyncio.sleep(reconnect_delay)
+                self._logger.warning("Connection timeout")
+                self._websocket_conn = None
+                if not self._shutdown_event.is_set():
+                    await asyncio.sleep(reconnect_delay)
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                self.logger.warning(f"connect_loop error: {repr(e)}")
-                self.conn = None
-                await asyncio.sleep(reconnect_delay)
+                self._logger.warning(f"connect_loop error: {repr(e)}")
+                self._websocket_conn = None
+                if not self._shutdown_event.is_set():
+                    await asyncio.sleep(reconnect_delay)
 
-    async def connect(self):
+    async def _connect(self) -> None:
+        """
+        Establishes a connection to the WebSocket signaling server.
+
+        On the first successful connection, it also initializes the GStreamer pipeline.
+
+        Args: None
+
+        Returns: None
+        """
         try:
-            self.conn = await websockets.connect(self.server)
-            # Initialize webrtc element & signals
-            if not self.pipeline_started:
-                self.start_pipeline()
-            # Start reading
-            self.read_task = asyncio.create_task(self.read_messages())
+            self._websocket_conn = await websockets.connect(self._server)
+            if not self._pipeline_started:
+                self._start_pipeline()
         except Exception as e:
-            self.logger.error(f"Failed to connect: {e}")
+            self._logger.error(f"Failed to connect: {e}")
             raise
 
-    async def read_messages(self):
-        # Read and handle messages from the WebSocket connection
+    async def _read_messages_task_fn(self) -> None:
+        """
+        Reads incoming messages from the WebSocket connection.
 
+        This coroutine continuously listens for messages and passes them to the
+        message handler. It exits when the connection is closed or when a
+        shutdown is initiated.
+
+        Args: None
+
+        Returns: None
+        """
         try:
-            self.logger.info("Starting to read messages from WebSocket")
-            async for message in self.conn:
+            self._logger.info("Starting to read messages from WebSocket")
+            async for message in self._websocket_conn:
+                if self._shutdown_event.is_set():
+                    break
                 try:
-                    await self.handle_message(message)
+                    self._handle_message(message)
                 except Exception as e:
-                    self.logger.error(
-                        f"Error handling message '{message[:100]}...': {e}",
-                        exc_info=True,
+                    self._logger.error(
+                        f"Error handling message '{message[:100]}...': {e}"
                     )
         except websockets.exceptions.ConnectionClosed as e:
-            self.logger.info(f"WebSocket connection closed: {e}")
+            self._logger.info(f"WebSocket connection closed: {e}")
         except asyncio.CancelledError:
-            self.logger.info("Message reading cancelled")
+            self._logger.info("Message reading cancelled")
             raise
         except Exception as e:
-            self.logger.error(f"Error reading messages: {e}", exc_info=True)
+            self._logger.error(f"Error reading messages: {e}")
         finally:
-            old_conn = self.conn
-            self.conn = None
+            old_conn = self._websocket_conn
+            self._websocket_conn = None
             if old_conn is not None:
                 is_closed = getattr(old_conn, "closed", True)
                 if callable(is_closed):
@@ -202,116 +279,109 @@ class MavWebRTC:
                         await old_conn.close()
                     except:
                         pass
-            self.logger.info("Message reading loop ended")
+            self._logger.info("Message reading loop ended")
 
-    async def handle_message(self, message):
-        # Handle messages from the signaling server
+    def _handle_message(self, message) -> None:
+        """
+        Processes a raw message received from the signaling server.
 
-        self.logger.debug(f"Message: {message}")
+        Args:
+            message (str): The message string received from the WebSocket.
+
+        Returns: None
+        """
+        self._logger.debug(f"Message: {message}")
         try:
-            await self.handle_sdp(message)
+            self._handle_sdp(message)
         except json.JSONDecodeError:
-            self.logger.warning(f"Unknown message format: {message}")
+            self._logger.warning(f"Unknown message format: {message}")
 
-    def send_sdp_answer(self, answer):
-        # Send SDP answer to signaling server
+    async def _send_sdp_offer(self, sdp_text: str) -> None:
+        """
+        Sends an SDP offer to the signaling server.
 
+        Args:
+            sdp_text (str): The SDP offer content as a string.
+
+        Returns: None
+        """
         try:
-            text = answer.sdp.as_text()
-            self.logger.info(f"Sending answer:\n{text[:200]}...")
-            msg = json.dumps({"answer": {"type": "answer", "sdp": text}})
-
-            if not self.connected:
-                self.logger.error("Cannot send answer: not connected")
+            if not self._connected:
+                self._logger.error("Cannot send SDP: not connected to signaling server")
                 return
 
-            if self.loop and self.loop.is_running():
+            self._logger.info(f"Sending offer:\n{sdp_text[:200]}...")
+            msg = json.dumps({"sdp": {"type": "offer", "sdp": sdp_text}})
+            await self._websocket_conn.send(msg)
+            self._logger.info("SDP offer sent successfully")
 
-                async def _send():
-                    try:
-                        await self.conn.send(msg)
-                        self.logger.info("Answer sent successfully")
-                    except Exception as e:
-                        self.logger.error(f"Failed to send answer: {e}")
-
-                asyncio.run_coroutine_threadsafe(_send(), self.loop)
         except Exception as e:
-            self.logger.error(f"Error in send_sdp_answer: {e}", exc_info=True)
+            self._logger.error(f"Failed to send SDP offer: {e}")
 
-    def send_sdp_offer(self, offer):
-        # Send SDP offer to signaling server
+    def _on_offer_created(self, promise, _, __) -> None:
+        """
+        Callback executed when a GStreamer Promise for an SDP offer is fulfilled.
 
-        try:
-            text = offer.sdp.as_text()
-            self.logger.info(f"Sending offer:\n{text[:200]}...")
-            msg = json.dumps({"sdp": {"type": "offer", "sdp": text}})
+        Args:
+            promise (Gst.Promise): The promise containing the SDP offer reply.
 
-            # Check connection before sending
-            if not self.connected:
-                self.logger.error("Cannot send SDP: not connected to signaling server")
-                return
-
-            if self.loop and self.loop.is_running():
-                # Send the message
-                async def _send():
-                    try:
-                        await self.conn.send(msg)
-                        self.logger.info("SDP offer sent successfully")
-                    except Exception as e:
-                        self.logger.error(f"Failed to send SDP offer: {e}")
-
-                asyncio.run_coroutine_threadsafe(_send(), self.loop)
-            else:
-                self.logger.error(f"Cannot send SDP: event loop not running")
-        except Exception as e:
-            self.logger.error(f"Error in send_sdp_offer: {e}", exc_info=True)
-
-    def on_offer_created(self, promise, _, __):
-        # Handle offer creation
-
+        Returns: None
+        """
         try:
             promise.wait()
             reply = promise.get_reply()
             offer = reply.get_value("offer")
 
-            # Set local description
+            sdp_text = offer.sdp.as_text()
+
             promise = Gst.Promise.new()
-            self.webrtc.emit("set-local-description", offer, promise)
+            self._webrtc.emit("set-local-description", offer, promise)
             promise.interrupt()
 
-            # Send the offer
-            self.send_sdp_offer(offer)
+            self._safe_run_coro(self._send_sdp_offer(sdp_text))
 
         except Exception as e:
-            self.logger.error(f"Error in on_offer_created: {e}", exc_info=True)
+            self._logger.error(f"Error in on_offer_created: {e}")
 
-    def on_negotiation_needed(self, element):
-        # On Handle negotiation needed signal
+    def _send_ice_candidate_message(self, _, mlineindex, candidate) -> None:
+        """
+        Callback for the 'on-ice-candidate' signal from the webrtcbin element.
 
-        try:
-            self.logger.info("Negotiation needed, creating offer...")
-            promise = Gst.Promise.new_with_change_func(
-                self.on_offer_created, element, None
-            )
-            element.emit("create-offer", None, promise)
-        except Exception as e:
-            self.logger.error(f"Error in on_negotiation_needed: {e}", exc_info=True)
+        Sends the generated ICE candidate to the signaling server.
 
-    def send_ice_candidate_message(self, _, mlineindex, candidate):
+        Args:
+            _ (Gst.Element): The webrtcbin element that emitted the signal.
+            mlineindex (int): The media line index of the candidate.
+            candidate (str): The ICE candidate string.
+
+        Returns: None
+        """
         try:
             icemsg = json.dumps(
-                {"candidate": {"candidate": candidate, "sdpMLineIndex": mlineindex}}
+                {"ice": {"candidate": candidate, "sdpMLineIndex": mlineindex}}
             )
-            if self.loop and self.connected:
-                asyncio.run_coroutine_threadsafe(self.conn.send(icemsg), self.loop)
+
+            if self._connected:
+                self._safe_run_coro(self._websocket_conn.send(icemsg))
+
         except Exception as e:
-            self.logger.error(f"Error sending ICE candidate: {e}")
+            self._logger.error(f"Error sending ICE candidate: {e}")
 
-    def on_incoming_decodebin_stream(self, _, pad):
-        # Handle incoming decodebin stream
+    def _on_incoming_decodebin_stream(self, _, pad) -> None:
+        """
+        Callback for the 'pad-added' signal from a decodebin element.
 
+        This is used to handle decoded streams from a remote peer. It links the
+        newly decoded audio or video pad to an appropriate sink element.
+
+        Args:
+            _ (Gst.Element): The decodebin element that emitted the signal.
+            pad (Gst.Pad): The new pad that has been added to the element.
+
+        Returns: None
+        """
         if not pad.has_current_caps():
-            self.logger.info(f"{pad} has no caps, ignoring")
+            self._logger.info(f"{pad} has no caps, ignoring")
             return
 
         caps = pad.get_current_caps()
@@ -323,8 +393,8 @@ class MavWebRTC:
             q = Gst.ElementFactory.make("queue")
             conv = Gst.ElementFactory.make("videoconvert")
             sink = Gst.ElementFactory.make("autovideosink")
-            self.pipeline.add(q, conv, sink)
-            self.pipeline.sync_children_states()
+            self._pipeline.add(q, conv, sink)
+            self._pipeline.sync_children_states()
             pad.link(q.get_static_pad("sink"))
             q.link(conv)
             conv.link(sink)
@@ -333,57 +403,93 @@ class MavWebRTC:
             conv = Gst.ElementFactory.make("audioconvert")
             resample = Gst.ElementFactory.make("audioresample")
             sink = Gst.ElementFactory.make("autoaudiosink")
-            self.pipeline.add(q, conv, resample, sink)
-            self.pipeline.sync_children_states()
+            self._pipeline.add(q, conv, resample, sink)
+            self._pipeline.sync_children_states()
             pad.link(q.get_static_pad("sink"))
             q.link(conv)
             conv.link(resample)
             resample.link(sink)
 
-    def on_incoming_stream(self, _, pad):
-        # Handle incoming stream
+    def _on_incoming_stream(self, _, pad) -> None:
+        """
+        Callback for the 'pad-added' signal from the webrtcbin element.
 
+        Handles incoming remote media streams by linking them to a new decodebin
+        instance for processing.
+
+        Args:
+            _ (Gst.Element): The webrtcbin element.
+            pad (Gst.Pad): The new source pad for the incoming stream.
+
+        Returns: None
+        """
         if pad.direction != Gst.PadDirection.SRC:
             return
 
         decodebin = Gst.ElementFactory.make("decodebin")
-        decodebin.connect("pad-added", self.on_incoming_decodebin_stream)
-        self.pipeline.add(decodebin)
+        decodebin.connect("pad-added", self._on_incoming_decodebin_stream)
+        self._pipeline.add(decodebin)
         decodebin.sync_state_with_parent()
-        self.webrtc.link(decodebin)
+        self._webrtc.link(decodebin)
 
-    def start_pipeline(self):
-        # Start the GStreamer pipeline
+    def _start_pipeline(self) -> None:
+        """
+        Finds the webrtcbin element in the pipeline and connects its signals.
+
+        This method should be called once the pipeline is ready to be connected
+        to the signaling logic.
+
+        Args: None
+
+        Returns: None
+        """
+
+        if self._pipeline_started:
+            self._logger.info("Pipeline already started")
+            return
 
         try:
-            if self.pipeline_started:
-                self.logger.info("Pipeline already started")
-                return
 
-            self.webrtc = self.pipeline.get_by_name(self.webrtc_name)
-            if not self.webrtc:
-                self.logger.error(
-                    f"Could not find webrtcbin element with name '{self.webrtc_name}'"
+            self._webrtc = self._pipeline.get_by_name(
+                self._webrtc_pipeline_element_name
+            )
+            if not self._webrtc:
+                self._logger.error(
+                    f"Could not find webrtcbin element with name '{self._webrtc_pipeline_element_name}'"
                 )
                 return
 
-            self.webrtc.connect("on-negotiation-needed", self.on_negotiation_needed)
-            self.webrtc.connect("on-ice-candidate", self.send_ice_candidate_message)
-            self.webrtc.connect("pad-added", self.on_incoming_stream)
+            try:
+                self._webrtc.disconnect_by_func(self._send_ice_candidate_message)
+                self._webrtc.disconnect_by_func(self._on_incoming_stream)
+            except:
+                pass
 
-            # Pipeline should already be in PLAYING state from gstreamer_node.py
-            current_state = self.pipeline.get_state(0)[1]
-            self.logger.info(f"Pipeline state: {current_state.value_nick}")
+            self._webrtc.connect("on-ice-candidate", self._send_ice_candidate_message)
+            self._webrtc.connect("pad-added", self._on_incoming_stream)
 
-            self.pipeline_started = True
-            self.logger.info("WebRTC pipeline initialized successfully")
+            current_state = self._pipeline.get_state(0)[1]
+            self._logger.info(f"Pipeline state: {current_state.value_nick}")
+
+            self._pipeline_started = True
+            self._logger.info("WebRTC pipeline initialized successfully")
 
         except Exception as e:
-            self.logger.error(f"Error starting pipeline: {e}", exc_info=True)
+            self._logger.error(f"Error starting pipeline: {e}")
 
-    async def handle_sdp(self, message):
-        # Handle SDP messages
+    def _handle_sdp(self, message) -> None:
+        """
+        Parses SDP and ICE messages from the signaling server.
 
+        This method handles SDP answers from the remote peer by setting them as
+        the remote description on the webrtcbin element. It also handles incoming
+        ICE candidates.
+
+        Args:
+            message (str): The JSON message string from the server.
+
+        Returns: None
+        """
         try:
             msg = json.loads(message)
 
@@ -392,11 +498,11 @@ class MavWebRTC:
                 sdp_type = sdp.get("type", "")
                 sdp_text = sdp.get("sdp", "")
 
-                self.logger.info(f"Received {sdp_type}:\n{sdp_text[:200]}...")
+                self._logger.debug(f"Received {sdp_type}:\n{sdp_text[:200]}...")
 
                 if sdp_type == "answer":
-                    if not self.webrtc:
-                        self.logger.error(
+                    if not self._webrtc:
+                        self._logger.error(
                             "WebRTC element not initialized, cannot set remote description"
                         )
                         return
@@ -407,50 +513,143 @@ class MavWebRTC:
                         GstWebRTC.WebRTCSDPType.ANSWER, sdpmsg
                     )
                     promise = Gst.Promise.new()
-                    self.webrtc.emit("set-remote-description", answer, promise)
+                    self._webrtc.emit("set-remote-description", answer, promise)
                     promise.interrupt()
-                    self.logger.info("Remote description set successfully")
+                    self._logger.info("Remote description set successfully")
 
             elif "ice" in msg:
                 ice = msg["ice"]
                 candidate = ice["candidate"]
                 sdpmlineindex = ice["sdpMLineIndex"]
 
-                if self.webrtc:
-                    self.webrtc.emit("add-ice-candidate", sdpmlineindex, candidate)
-                    self.logger.debug(f"Added ICE candidate: {candidate[:50]}...")
+                if self._webrtc:
+                    self._webrtc.emit("add-ice-candidate", sdpmlineindex, candidate)
+                    self._logger.debug(f"Added ICE candidate: {candidate[:50]}...")
                 else:
-                    self.logger.warning(
+                    self._logger.warning(
                         "WebRTC element not ready, cannot add ICE candidate"
                     )
 
         except Exception as e:
-            self.logger.error(f"Error handling SDP: {e}", exc_info=True)
+            self._logger.error(f"Error handling SDP: {e}")
 
-    def shutdown(self):
-        # Shutdown the WebRTC handler
+    def shutdown(self) -> None:
+        """
+        Initiates a graceful shutdown of the WebRTC handler.
 
-        if self.loop and self.loop.is_running():
-            # Schedule shutdown in the event loop
-            asyncio.run_coroutine_threadsafe(self._async_shutdown(), self.loop)
+        This method closes the WebSocket connection and signals the event loop
+        thread to terminate.
 
-    async def _async_shutdown(self):
-        # Async shutdown implementation
+        Args: None
 
-        self.logger.info("Shutting down WebRTC handler...")
+        Returns: None
+        """
+        if not self._running:
+            self._logger.info("WebRTC handler not running, nothing to shutdown")
+            return
 
-        # Close WebSocket connection
-        if self.conn:
+        future = self._safe_run_coro(self._async_shutdown())
+        if future:
             try:
-                await self.conn.close()
+                future.result(timeout=5.0)
             except Exception as e:
-                self.logger.warning(f"Error closing WebSocket connection: {e}")
+                self._logger.error(f"Error during async shutdown: {e}")
 
-        # Signal shutdown
+    async def _async_shutdown(self) -> None:
+        """
+        Performs the asynchronous part of the shutdown process.
+
+        Closes the WebSocket connection and sets the event to stop the loop.
+
+        Args: None
+
+        Returns: None
+        """
+        self._logger.info("Shutting down WebRTC handler...")
+
+        if self._websocket_conn:
+            try:
+                await self._websocket_conn.close()
+            except Exception as e:
+                self._logger.warning(f"Error closing WebSocket connection: {e}")
+            finally:
+                self._websocket_conn = None
+
         self._shutdown_event.set()
 
-    def join(self, timeout=None):
-        # Wait for the handler thread to complete
+    def handle_new_client(self) -> None:
+        """
+        Public API to manually trigger a new SDP offer.
 
-        if hasattr(self, "_thread") and self._thread.is_alive():
+        This is useful when a new peer connects and an offer needs to be sent
+        to establish the WebRTC connection. It schedules the offer creation
+        on the GStreamer main loop thread.
+
+        Args: None
+
+        Returns: None
+        """
+        GLib.timeout_add(100, self._do_create_offer)
+
+    def _do_create_offer(self) -> bool:
+        """
+        Creates and emits an SDP offer from the webrtcbin element.
+
+        This method is called via GLib's event loop to ensure it runs on the
+        correct thread for GStreamer operations.
+
+        Args: None
+
+        Returns:
+            bool: Always returns False to ensure the GLib timeout does not repeat.
+        """
+        if not self._webrtc:
+            self._logger.error("Cannot create offer: webrtc element not initialized")
+            return False
+
+        self._logger.info("Manually creating offer...")
+        promise = Gst.Promise.new_with_change_func(
+            self._on_offer_created, self._webrtc, None
+        )
+        self._webrtc.emit("create-offer", None, promise)
+        return False
+
+    def join(self, timeout=None) -> None:
+        """
+        Waits for the handler thread to complete.
+
+        This blocks the calling thread until the handler thread has terminated,
+        or until the optional timeout occurs.
+
+        Args:
+            timeout (Optional[float]): The maximum time in seconds to wait.
+
+        Returns: None
+        """
+        if hasattr(self, "_thread") and self._thread and self._thread.is_alive():
             self._thread.join(timeout=timeout)
+
+        # Also wait for shutdown to complete
+        if self._shutdown_complete:
+            self._shutdown_complete.wait(timeout=timeout or 10.0)
+
+    def _safe_run_coro(self, coro) -> Optional[asyncio.Future]:
+        """
+        Safely schedules a coroutine to run on the asyncio event loop from a
+        different thread.
+
+        Args:
+            coro (Coroutine): The coroutine to execute.
+
+        Returns:
+            Optional[asyncio.Future]: A Future representing the execution of the
+            coroutine, or None if the loop is not running.
+        """
+        try:
+            if not self._loop or not self._loop.is_running():
+                self._logger.error("Event loop not running, cannot schedule task")
+                return None
+            return asyncio.run_coroutine_threadsafe(coro, self._loop)
+        except RuntimeError as e:
+            self._logger.warning(f"Failed to schedule task: {e}")
+            return None
