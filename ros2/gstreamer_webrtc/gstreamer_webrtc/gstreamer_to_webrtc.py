@@ -7,6 +7,7 @@ from typing import List, Optional
 import gi
 import websockets
 from websockets.client import WebSocketClientProtocol
+from websockets.connection import State
 
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst
@@ -73,7 +74,6 @@ class GstreamerToWebRTCBridge:
         self._shutdown_event: Optional[asyncio.Event] = None
         self._shutdown_complete: threading.Event = threading.Event()
         self._tasks: List[asyncio.Task] = []
-        self._read_task: Optional[asyncio.Task] = None
         self._thread: Optional[threading.Thread] = None
         self._running: bool = False
 
@@ -89,13 +89,7 @@ class GstreamerToWebRTCBridge:
         """
         if self._websocket_conn is None:
             return False
-        try:
-            return (
-                self._websocket_conn.transport is not None
-                and not self._websocket_conn.transport.is_closing()
-            )
-        except:
-            return False
+        return self._websocket_conn.state == State.OPEN
 
     def start(self) -> None:
         """
@@ -149,13 +143,8 @@ class GstreamerToWebRTCBridge:
                 if not task.done():
                     task.cancel()
 
-            if self._read_task and not self._read_task.done():
-                self._read_task.cancel()
-
             async def _gather_cancelled_tasks():
                 await asyncio.gather(*self._tasks, return_exceptions=True)
-                if self._read_task:
-                    await asyncio.gather(self._read_task, return_exceptions=True)
 
             if self._loop.is_running():
                 self._loop.run_until_complete(_gather_cancelled_tasks())
