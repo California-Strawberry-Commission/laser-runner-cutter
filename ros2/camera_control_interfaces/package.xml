@@ -7,6 +7,7 @@
   <maintainer email="kondo.genki@gmail.com">genki</maintainer>
   <license>TODO: License declaration</license>
 
+  <exec_depend>std_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>common_interfaces</exec_depend>
 

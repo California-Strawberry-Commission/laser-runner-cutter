@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<profiles xmlns="http://www.eprosima.com">
+
+    <participant profile_name="participant_profile_ros2" is_default_profile="true">
+        <rtps>
+            <name>profile_for_ros2_context</name>
+        </rtps>
+    </participant>
+
+    <!-- Default publisher profile -->
+    <data_writer profile_name="default publisher profile" is_default_profile="true">
+        <qos>
+            <publishMode>
+                <kind>SYNCHRONOUS</kind>
+            </publishMode>
+        </qos>
+        <historyMemoryPolicy>DYNAMIC</historyMemoryPolicy>
+    </data_writer>
+
+    <!-- Default subscriber profile -->
+    <data_reader profile_name="default subscriber profile" is_default_profile="true">
+        <historyMemoryPolicy>DYNAMIC</historyMemoryPolicy>
+    </data_reader>
+
+</profiles>

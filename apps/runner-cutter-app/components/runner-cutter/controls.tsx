@@ -301,7 +301,7 @@ export default function Controls({
       </Card>
       {deviceTemperatureAlert}
       <FramePreviewWithOverlay
-        className="w-full h-[360px]"
+        className="w-full h-full"
         topicName={`/detection_node/overlay_frame`}
         enableStream={
           cameraNode.state.deviceState === CameraDeviceState.STREAMING

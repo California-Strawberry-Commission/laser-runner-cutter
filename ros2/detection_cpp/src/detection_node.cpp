@@ -8,10 +8,12 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
 #include "sensor_msgs/msg/compressed_image.hpp"
+#include "camera_control_interfaces/msg/lucid_frame_images.hpp"
 
 #include "BYTETracker.h"
 #include "NvInfer.h"
-#include "detection_cpp/tools/fp16_utils.hpp"
+// Building fp16 mode with trtexec somehow enables cross-compatibility with input
+// #include "detection_cpp/tools/fp16_utils.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -30,7 +32,6 @@ class Logger : public nvinfer1::ILogger {
 class DetectionNode : public rclcpp::Node {
   public:
     DetectionNode() : Node("detection_node") {
-      // Constructor implementation (if needed)
       declare_parameter<float>("confidence_threshold", 0.5f);
       declare_parameter<float>("nms_threshold", 0.45f);
       declare_parameter<float>("tracker_fps", 30.0f);
@@ -41,7 +42,9 @@ class DetectionNode : public rclcpp::Node {
       tracker_fps = this->get_parameter("tracker_fps").as_double();
       tracker_buffer_size = this->get_parameter("tracker_buffer_size").as_double();
 
-      frameSubscription_ = this->create_subscription<sensor_msgs::msg::Image>(
+      spdlog::info("Using RMW: {}", rmw_get_implementation_identifier());
+
+      frameSubscription_ = this->create_subscription<camera_control_interfaces::msg::LucidFrameImages>(
         "/camera0/frame",
         rclcpp::SensorDataQoS(),
         std::bind(&DetectionNode::frame_callback, this, std::placeholders::_1)
@@ -78,7 +81,6 @@ class DetectionNode : public rclcpp::Node {
 
       inputType = mEngine->getTensorDataType(input_name);
       isHalfPrecision = (inputType == nvinfer1::DataType::kHALF);
-      spdlog::info("Model uses {} precision", isHalfPrecision ? "FP16" : "FP32");
 
       dtype_size = isHalfPrecision ? sizeof(uint16_t) : sizeof(float);
       output0_size = output0_dims.d[0] * output0_dims.d[1] * output0_dims.d[2] * dtype_size;
@@ -88,21 +90,17 @@ class DetectionNode : public rclcpp::Node {
       cudaMalloc(&outputMem1, output1_size);
 
       output0 = cv::Mat(37, 16128, CV_32FC1);
+      output1 = cv::Mat(32 * 192, 256, CV_32FC1);
     }
 
 
-    void frame_callback(const sensor_msgs::msg::Image::SharedPtr msg) {
-      // spdlog::info("===============================================");
-      // spdlog::info("Frame timestamp: sec={}, nanosec={}", msg->header.stamp.sec, msg->header.stamp.nanosec);
-      // spdlog::info("Image size: {}x{}, step={}", msg->width, msg->height, msg->step);
-
-      cv::Mat image(msg->height, msg->width, CV_8UC3, const_cast<uint8_t*>(msg->data.data()), msg->step);
-      // spdlog::info("cv::Mat image dimensions: rows={}, cols={}, channels={}, type={}", 
-      //      image.rows, image.cols, image.channels(), image.type());
+    void frame_callback(const camera_control_interfaces::msg::LucidFrameImages::SharedPtr msg) {
+      cv::Mat image(cv::Size(2048, 1536), CV_8UC3, const_cast<uint8_t*>(msg->color.data()));
 
       boxes.clear();
       confidences.clear();
       objects.clear();
+      maskCoeffs.clear();
       
       cv::cuda::GpuMat gpuImg;
       gpuImg.upload(image);
@@ -119,16 +117,8 @@ class DetectionNode : public rclcpp::Node {
         channels[c].copyTo(roi);
       }
 
-      if (isHalfPrecision) {
-        int numElems = nchw.rows * nchw.cols;
-        __half* inputFp16;
-        cudaMalloc((void **)&inputFp16, numElems * sizeof(__half));
-        convertFp32ToFp16(nchw, inputFp16, numElems);
-        this->inputMem = inputFp16;
-      } else {
-        this->inputMem = nchw.ptr<void>();
-      }
-
+      this->inputMem = nchw.ptr<void>();
+      
       cudaMemset(outputMem0, 0, output0_size);
       cudaMemset(outputMem1, 0, output1_size);
 
@@ -141,19 +131,14 @@ class DetectionNode : public rclcpp::Node {
         spdlog::error("TensorRT inference failed");
       }
       cudaStreamSynchronize(stream);
-      
-      if (isHalfPrecision) {
-        cv::Mat half_output0(37, 16128, CV_16FC1);
-        cudaMemcpy(half_output0.data, outputMem0, output0_size, cudaMemcpyDeviceToHost);
-        half_output0.convertTo(output0, CV_32FC1);
-      } else {
-        cudaMemcpy(output0.data, outputMem0, output0_size, cudaMemcpyDeviceToHost);
-      }
+
+      cudaMemcpy(output0.data, outputMem0, output0_size, cudaMemcpyDeviceToHost);
+      cudaMemcpy(output1.data, outputMem1, output1_size, cudaMemcpyDeviceToHost);
 
       for (int i = 0; i < 16128; ++i) {
         float confidence = output0.at<float>(4, i);
         if (confidence > confidence_threshold) {
-          spdlog::info("Detection found: confidence = {:.2f}, index = {}", confidence, i);
+          // spdlog::info("Detection found: confidence = {:.2f}, index = {}", confidence, i);
           float x_center = output0.at<float>(0, i);
           float y_center = output0.at<float>(1, i);
           float width = output0.at<float>(2, i);
@@ -169,52 +154,83 @@ class DetectionNode : public rclcpp::Node {
           obj.prob = confidence;                  // confidence
           obj.label = 0;                          // optional (class index)
 
+          std::vector<float> coeffs;
+          for (int j = 5; j < 37; j++) {
+              coeffs.push_back(output0.at<float>(j, i));
+          }
+
           boxes.push_back(obj.rect);
           confidences.push_back(obj.prob);
           objects.push_back(obj);
+          maskCoeffs.push_back(coeffs);
         }
       }
 
       std::vector<int> nms_indices;
       cv::dnn::NMSBoxes(boxes, confidences, confidence_threshold, nms_threshold, nms_indices);
-
+      std::vector<Point2i> cutPoints;
       std::vector<Object> nms_objects;
+      cv::Mat combinedMask = cv::Mat::zeros(cv::Size(2048, 1536), CV_8UC1);
       for (int idx : nms_indices) {
         nms_objects.push_back(objects[idx]);
+
+        const std::vector<float>& coeffs = maskCoeffs[idx];
+        cv::Mat mask = cv::Mat::zeros(192, 256, CV_32F);
+        for (int c = 0; c < 32; ++c) {
+            cv::Mat prototype = output1.rowRange(c * 192, (c + 1) * 192).clone();
+            prototype = prototype.reshape(1, 192);
+            mask += coeffs[c] * prototype;
+        }
+        cv::resize(mask, mask, cv::Size(2048, 1536));
+        cv::threshold(mask, mask, 0.5, 255, cv::THRESH_BINARY);
+        mask.convertTo(mask, CV_8UC1);
+
+        // Search the horizontal slice in the middle of the bounding box for the first white pixel in the mask
+        cv::Rect rect = nms_objects.back().rect;
+        int midY = rect.y + rect.height / 2;
+        int cutX = -1;
+        if (midY >= 0 && midY < mask.rows) {
+          int whiteStart = -1, whiteEnd = -1;
+          for (int x = rect.x; x < rect.x + rect.width && x < mask.cols; x++) {
+            if (x >= 0 && mask.at<uchar>(midY, x) == 255) {
+              if (whiteStart == -1) whiteStart = x;
+              whiteEnd = x;
+            }
+          }
+          if (whiteStart != -1 && whiteEnd != -1) {
+            cutX = (whiteStart + whiteEnd) / 2;
+          }
+        }
+        if (cutX != -1) {
+          cutPoints.push_back(cv::Point(cutX, midY));
+          cv::circle(image, cv::Point(cutX, midY), 5, cv::Scalar(0, 0, 255), -1);
+        }
+
+        cv::add(combinedMask, mask, combinedMask);
       }
 
-      // std::vector<STrack> tracked = tracker.update(nms_objects);
+      cv::Mat combinedMaskBGR;
+      cv::cvtColor(combinedMask, combinedMaskBGR, cv::COLOR_GRAY2BGR);
+      double alpha = 0.4; // transparency factor
+      cv::addWeighted(combinedMaskBGR, alpha, image, 1.0 - alpha, 0, image);
 
-      // for (const auto& track : tracked) {
-      //   if (!track.is_activated) continue;
-      //   int baseLine = 0;
-      //   std::string label = cv::format("ID: %d | Conf: %.2f", track.track_id, track.score);
-      //   cv::Size labelSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
-      //   cv::Rect box(track.tlwh[0], track.tlwh[1], track.tlwh[2], track.tlwh[3]);
-      //   int top = std::max(box.y, labelSize.height);
-
-      //   cv::rectangle(image, box, cv::Scalar(0, 255, 0), 2);
-      //   cv::rectangle(image, cv::Point(box.x, top - labelSize.height), cv::Point(box.x + labelSize.width, top + baseLine), cv::Scalar(0, 255, 0), cv::FILLED);
-      //   cv::putText(image, label, box.tl(), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255,0,0), 2);
-      // }
-
-      for (const Object& obj : nms_objects) {
+      std::vector<STrack> tracked = tracker.update(nms_objects);
+      for (const auto& track : tracked) {
+        if (!track.is_activated) continue;
         int baseLine = 0;
-        std::string label = cv::format("ID: %d | Conf: %.2f", 0, obj.prob);
+        std::string label = cv::format("ID: %d | Conf: %.2f", track.track_id, track.score);
         cv::Size labelSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
-        // cv::Rect box(track.tlwh[0], track.tlwh[1], track.tlwh[2], track.tlwh[3]);
-        int top = std::max((int)(obj.rect.y), labelSize.height);
+        cv::Rect box(track.tlwh[0], track.tlwh[1], track.tlwh[2], track.tlwh[3]);
+        int top = std::max(box.y, labelSize.height);
 
-        cv::rectangle(image, obj.rect, cv::Scalar(0, 255, 0), 2);
-        cv::rectangle(image, cv::Point(obj.rect.x, top - labelSize.height), cv::Point(obj.rect.x + labelSize.width, top + baseLine), cv::Scalar(0, 255, 0), cv::FILLED);
-        cv::putText(image, label, obj.rect.tl(), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255,0,0), 2);
+        cv::rectangle(image, box, cv::Scalar(0, 255, 0), 2);
+        cv::rectangle(image, cv::Point(box.x, top - labelSize.height), cv::Point(box.x + labelSize.width, top + baseLine), cv::Scalar(0, 255, 0), cv::FILLED);
+        cv::putText(image, label, box.tl(), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255,0,0), 2);
       }
-
-      cv::resize(image, image, cv::Size(640, 480), 0, 0, cv::INTER_NEAREST);
 
       auto header{std_msgs::msg::Header()};
-      header.stamp.sec = msg->header.stamp.sec;
-      header.stamp.nanosec = msg->header.stamp.nanosec;
+      header.stamp.sec = msg->stamp.sec;
+      header.stamp.nanosec = msg->stamp.nanosec;
       sensor_msgs::msg::Image::SharedPtr overlayFrameMsg = cv_bridge::CvImage(header, "bgr8", image).toImageMsg();
       overlayFramePublisher_->publish(*overlayFrameMsg);
       
@@ -223,7 +239,7 @@ class DetectionNode : public rclcpp::Node {
   private:
     float confidence_threshold, nms_threshold, tracker_fps, tracker_buffer_size;
 
-    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr frameSubscription_;
+    rclcpp::Subscription<camera_control_interfaces::msg::LucidFrameImages>::SharedPtr frameSubscription_;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr overlayFramePublisher_;
 
     int deviceNum = 0;
@@ -246,11 +262,12 @@ class DetectionNode : public rclcpp::Node {
     size_t output0_size;
     size_t output1_size;
     void *inputMem, *outputMem0, *outputMem1;
-    cv::Mat output0;
+    cv::Mat output0, output1;
 
     std::vector<cv::Rect> boxes;
     std::vector<float> confidences;
     std::vector<Object> objects;
+    std::vector<std::vector<float>> maskCoeffs;
 };
 
 

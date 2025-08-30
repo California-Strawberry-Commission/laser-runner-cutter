@@ -10,6 +10,7 @@
 #include "camera_control_cpp/camera/lucid_camera.hpp"
 #include "camera_control_interfaces/msg/device_state.hpp"
 #include "camera_control_interfaces/msg/state.hpp"
+#include "camera_control_interfaces/msg/lucid_frame_images.hpp"
 #include "camera_control_interfaces/srv/acquire_single_frame.hpp"
 #include "camera_control_interfaces/srv/get_frame.hpp"
 #include "camera_control_interfaces/srv/get_state.hpp"
@@ -22,6 +23,7 @@
 #include "sensor_msgs/msg/compressed_image.hpp"
 #include "sensor_msgs/msg/image.hpp"
 #include "std_srvs/srv/trigger.hpp"
+
 
 std::pair<int, int> millisecondsToRosTime(double milliseconds) {
   // ROS timestamps consist of two integers, one for seconds and one for
@@ -93,8 +95,10 @@ class CameraControlNode : public rclcpp::Node {
     // TODO: move debug frame topic publishing to detection node
     debugFramePublisher_ = create_publisher<sensor_msgs::msg::Image>(
         "~/debug_frame", rclcpp::SensorDataQoS());
-    framePublisher_ = create_publisher<sensor_msgs::msg::Image>(
+
+    framePublisher_ = create_publisher<camera_control_interfaces::msg::LucidFrameImages>(
         "~/frame", rclcpp::SensorDataQoS());
+    RCLCPP_INFO(this->get_logger(), "Loaning Support: %d", rcl_publisher_can_loan_messages(framePublisher_->get_publisher_handle().get()));
     notificationsPublisher_ =
         create_publisher<rcl_interfaces::msg::Log>("/notifications", 1);
 
@@ -274,9 +278,10 @@ class CameraControlNode : public rclcpp::Node {
               getColorImageMsg(debugFrame, frame->getTimestampMillis())};
           debugFramePublisher_->publish(*debugFrameMsg);
 
-          sensor_msgs::msg::Image::SharedPtr frameMsg{
-              getColorImageMsg(frame->getColorFrame(), frame->getTimestampMillis())};
-          framePublisher_->publish(*frameMsg);
+          // sensor_msgs::msg::Image::SharedPtr frameMsg{
+          //     getColorImageMsg(frame->getColorFrame(), frame->getTimestampMillis())};
+          // framePublisher_->publish(*frameMsg);
+          publishFrames(frame->getColorFrame(), frame->getDepthFrameXyz(), frame->getTimestampMillis());
         };
     camera_->start(static_cast<LucidCamera::CaptureMode>(request->capture_mode),
                    getParamExposureUs(), getParamGainDb(), frameCallback);
@@ -608,6 +613,23 @@ class CameraControlNode : public rclcpp::Node {
 
 #pragma region Message builders
 
+  void publishFrames(const cv::Mat& color, const cv::Mat& depth, double timestampMillis) {
+    auto loaned_msg = framePublisher_->borrow_loaned_message();
+    auto & msg = loaned_msg.get();
+
+    auto [sec, nanosec]{millisecondsToRosTime(timestampMillis)};
+    msg.stamp.sec = sec;
+    msg.stamp.nanosec = nanosec;
+
+    // Copy RGB image
+    std::memcpy(msg.color.data(), color.data, 9437184);
+
+    // Copy XYZ image (CV_32FC3, 480x640)
+    std::memcpy(msg.depth.data(), depth.data, 921600 * sizeof(float));
+
+    framePublisher_->publish(std::move(loaned_msg));
+  }
+
   sensor_msgs::msg::Image::SharedPtr getColorImageMsg(const cv::Mat& colorFrame,
                                                       double timestampMillis) {
     auto [sec, nanosec]{millisecondsToRosTime(timestampMillis)};
@@ -707,7 +729,7 @@ class CameraControlNode : public rclcpp::Node {
   rclcpp::Publisher<camera_control_interfaces::msg::State>::SharedPtr
       statePublisher_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr debugFramePublisher_;
-  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr framePublisher_;
+  rclcpp::Publisher<camera_control_interfaces::msg::LucidFrameImages>::SharedPtr framePublisher_;
   rclcpp::Publisher<rcl_interfaces::msg::Log>::SharedPtr
       notificationsPublisher_;
   rclcpp::CallbackGroup::SharedPtr serviceCallbackGroup_;

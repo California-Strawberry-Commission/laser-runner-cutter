@@ -20,6 +20,7 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(camera_control_interfaces REQUIRED)
+find_package(camera_control_interfaces REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 # Force CMake to find the locally built OpenCV w/ CUDA support
@@ -122,6 +123,7 @@ ament_target_dependencies(detection_node PUBLIC
   std_srvs
   cv_bridge
   OpenCV
+  camera_control_interfaces
 )
 
 # Tools

@@ -21,6 +21,7 @@ find_package(ament_cmake REQUIRED)
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
+find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(common_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
@@ -30,6 +31,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DetectionResult.msg"
   "msg/DetectionType.msg"
   "msg/DeviceState.msg"
+  "msg/LucidFrameImages.msg"
   "msg/ObjectInstance.msg"
   "msg/State.msg"
   "srv/AcquireSingleFrame.srv"
@@ -44,8 +46,9 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/StartDevice.srv"
   "srv/StartIntervalCapture.srv"
   "srv/StopDetection.srv"
-  DEPENDENCIES sensor_msgs common_interfaces
+  DEPENDENCIES std_msgs sensor_msgs common_interfaces
 )
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
