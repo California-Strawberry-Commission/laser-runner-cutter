@@ -136,6 +136,7 @@ class LiveKitWhipNode(Node):
         self.get_logger().info("Building pipeline...")
 
         self._pipeline = Gst.Pipeline.new("pipeline")
+        elements_to_link = []
 
         # appsrc
         self._appsrc = self._make_element("appsrc", "mysource")
@@ -149,10 +150,12 @@ class LiveKitWhipNode(Node):
         self._appsrc.set_property("format", Gst.Format.TIME)
         self._appsrc.set_property("do-timestamp", True)
         self._pipeline.add(self._appsrc)
+        elements_to_link.append(self._appsrc)
 
         # Both Jetson and non-Jetson require conversion to NV12
         videoconvert_nv12 = self._make_element("videoconvert", "videoconvert_nv12")
         self._pipeline.add(videoconvert_nv12)
+        elements_to_link.append(videoconvert_nv12)
         capsfilter_nv12 = self._make_element("capsfilter", "capsfilter_nv12")
         capsfilter_nv12.set_property(
             "caps",
@@ -161,11 +164,13 @@ class LiveKitWhipNode(Node):
             ),
         )
         self._pipeline.add(capsfilter_nv12)
+        elements_to_link.append(capsfilter_nv12)
 
         if self._is_jetson:
             # On Jetson, we need to convert into NVMM-backed NV12 for the HW encoder
             nvvidconv = self._make_element("nvvidconv", "nvvidconv_nvmm")
             self._pipeline.add(nvvidconv)
+            elements_to_link.append(nvvidconv)
             capsfilter_nvmm = self._make_element("capsfilter", "capsfilter_nvmm")
             capsfilter_nvmm.set_property(
                 "caps",
@@ -174,20 +179,24 @@ class LiveKitWhipNode(Node):
                 ),
             )
             self._pipeline.add(capsfilter_nvmm)
+            elements_to_link.append(capsfilter_nvmm)
 
             # Encoder - nvv4l2h264enc for hardware encoding
             encoder = self._make_element("nvv4l2h264enc", "encoder_h264")
             self._pipeline.add(encoder)
+            elements_to_link.append(encoder)
         else:
             # Encoder - nvh264enc for hardware encoding
             encoder = self._make_element("nvh264enc", "encoder_h264")
             self._pipeline.add(encoder)
+            elements_to_link.append(encoder)
 
         # Parser
         parser = self._make_element("h264parse", "parser_h264")
         # Ensure SPS/PPS is present for new subscribers
         parser.set_property("config-interval", 1)
         self._pipeline.add(parser)
+        elements_to_link.append(parser)
 
         # Payloader - rtph264pay converts H264 video into RTP packets
         rtp_payloader = self._make_element("rtph264pay", "payloader")
@@ -195,23 +204,17 @@ class LiveKitWhipNode(Node):
         rtp_payloader.set_property("config-interval", 1)
         rtp_payloader.set_property("pt", 96)
         self._pipeline.add(rtp_payloader)
+        elements_to_link.append(rtp_payloader)
 
         # webrtcbin
         webrtcbin = self._make_element("webrtcbin", "webrtcbin")
         webrtcbin.set_property("bundle-policy", "max-bundle")
         self._pipeline.add(webrtcbin)
 
-        # Link elements
-        assert self._appsrc.link(videoconvert_nv12)
-        assert videoconvert_nv12.link(capsfilter_nv12)
-        if self._is_jetson:
-            assert capsfilter_nv12.link(nvvidconv)
-            assert nvvidconv.link(capsfilter_nvmm)
-            assert capsfilter_nvmm.link(encoder)
-        else:
-            assert capsfilter_nv12.link(encoder)
-        assert encoder.link(parser)
-        assert parser.link(rtp_payloader)
+        # Link elements (except webrtcbin)
+        for a, b in zip(elements_to_link, elements_to_link[1:]):
+            if not a.link(b):
+                raise RuntimeError(f"Failed to link {a.name} -> {b.name}")
 
         # Link payloader to webrtcbin
         sinkpad = webrtcbin.get_request_pad("sink_%u")
