@@ -1,12 +1,15 @@
+import asyncio
 import os
 import threading
 from typing import Optional
+from urllib.parse import urlparse
 
-import cv2
 import gi
-import numpy as np
 import rclpy
 import requests
+from livekit import api
+from livekit.api import ingress_service as ingress_api
+from livekit.protocol.ingress import IngressInput
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
@@ -16,13 +19,7 @@ gi.require_version("Gst", "1.0")
 gi.require_version("GLib", "2.0")
 gi.require_version("GstSdp", "1.0")
 gi.require_version("GstWebRTC", "1.0")
-import asyncio
-from urllib.parse import urlparse
-
 from gi.repository import GLib, Gst, GstSdp, GstWebRTC
-from livekit import api
-from livekit.api import ingress_service as ingress_api
-from livekit.protocol.ingress import IngressInput
 
 
 async def get_or_create_whip_endpoint(
@@ -78,7 +75,6 @@ class LiveKitWhipNode(Node):
         self.declare_parameter("livekit_api_key", "")
         self.declare_parameter("livekit_api_secret", "")
         self.declare_parameter("fps", 30)
-        self.declare_parameter("bitrate_kbps", 4000)
         # TODO: Support multiple topics on demand, and one pipeline per topic
         self.declare_parameter("topic", "/camera0/debug_frame")
 
@@ -92,9 +88,6 @@ class LiveKitWhipNode(Node):
             self.get_parameter("livekit_api_secret").get_parameter_value().string_value
         )
         self._fps = self.get_parameter("fps").get_parameter_value().integer_value
-        self._bitrate_kbps = (
-            self.get_parameter("bitrate_kbps").get_parameter_value().integer_value
-        )
         topic = self.get_parameter("topic").get_parameter_value().string_value
 
         # Jetson flag
@@ -108,8 +101,8 @@ class LiveKitWhipNode(Node):
         )
         self._glib_thread.start()
 
-        self._pipeline: Optional[Gst.Pipeline] = None
-        self._appsrc: Optional[Gst.Element] = None
+        self._pipeline = None
+        self._appsrc = None
         self._whip_resource_url: Optional[str] = None
 
         # Get WHIP URL
@@ -130,7 +123,7 @@ class LiveKitWhipNode(Node):
 
     # region GStreamer pipeline
 
-    def _make_element(self, factory: str, name: str) -> Gst.Element:
+    def _make_element(self, factory: str, name: str):
         elem = Gst.ElementFactory.make(factory, name)
         if not elem:
             raise RuntimeError(
@@ -140,7 +133,6 @@ class LiveKitWhipNode(Node):
         return elem
 
     def _build_pipeline(self, width: int, height: int, format: str):
-        # TODO: Implement Jetson pipeline
         self.get_logger().info("Building pipeline...")
 
         self._pipeline = Gst.Pipeline.new("pipeline")
@@ -157,20 +149,30 @@ class LiveKitWhipNode(Node):
         self._appsrc.set_property("format", Gst.Format.TIME)
         self._appsrc.set_property("do-timestamp", True)
 
-        # videoconvert + capsfilter to convert to NV12
-        videoconvert_nv12 = self._make_element("videoconvert", "videoconvert_nv12")
-        capsfilter_nv12 = self._make_element("capsfilter", "capsfilter_nv12")
-        capsfilter_nv12.set_property(
-            "caps",
-            Gst.Caps.from_string(
-                f"video/x-raw,format=NV12,width={width},height={height},framerate={self._fps}/1"
-            ),
-        )
+        if self._is_jetson:
+            # On Jetson, convert into NVMM-backed NV12 for the HW encoder
+            convert = self._make_element("nvvidconv", "nvvidconv_nvmm")
+            capsfilter = self._make_element("capsfilter", "capsfilter_nvmm")
+            capsfilter.set_property(
+                "caps",
+                Gst.Caps.from_string(
+                    f"video/x-raw(memory:NVMM),format=NV12,width={width},height={height},framerate={self._fps}/1"
+                ),
+            )
+            encoder = self._make_element("nvv4l2h264enc", "encoder_h264")
+        else:
+            # Convert to NV12 for the HW encoder
+            convert = self._make_element("videoconvert", "videoconvert_nv12")
+            capsfilter = self._make_element("capsfilter", "capsfilter_nv12")
+            capsfilter.set_property(
+                "caps",
+                Gst.Caps.from_string(
+                    f"video/x-raw,format=NV12,width={width},height={height},framerate={self._fps}/1"
+                ),
+            )
 
-        # Encoder - nvh264enc for hardware encoding
-        encoder = self._make_element("nvh264enc", "encoder_h264")
-        # Target bitrate
-        encoder.set_property("bitrate", self._bitrate_kbps)
+            # Encoder - nvh264enc for hardware encoding
+            encoder = self._make_element("nvh264enc", "encoder_h264")
 
         # Parser
         parser = self._make_element("h264parse", "parser_h264")
@@ -184,26 +186,26 @@ class LiveKitWhipNode(Node):
         rtp_payloader.set_property("pt", 96)
 
         # webrtcbin
-        self.webrtcbin = self._make_element("webrtcbin", "webrtcbin")
-        self.webrtcbin.set_property("bundle-policy", "max-bundle")
+        webrtcbin = self._make_element("webrtcbin", "webrtcbin")
+        webrtcbin.set_property("bundle-policy", "max-bundle")
 
         # Add elements to pipeline and link up
         self._pipeline.add(self._appsrc)
-        self._pipeline.add(videoconvert_nv12)
-        self._pipeline.add(capsfilter_nv12)
+        self._pipeline.add(convert)
+        self._pipeline.add(capsfilter)
         self._pipeline.add(encoder)
         self._pipeline.add(parser)
         self._pipeline.add(rtp_payloader)
-        self._pipeline.add(self.webrtcbin)
+        self._pipeline.add(webrtcbin)
 
-        assert self._appsrc.link(videoconvert_nv12)
-        assert videoconvert_nv12.link(capsfilter_nv12)
-        assert capsfilter_nv12.link(encoder)
+        assert self._appsrc.link(convert)
+        assert convert.link(capsfilter)
+        assert capsfilter.link(encoder)
         assert encoder.link(parser)
         assert parser.link(rtp_payloader)
 
         # Link payloader to webrtcbin
-        sinkpad = self.webrtcbin.get_request_pad("sink_%u")
+        sinkpad = webrtcbin.get_request_pad("sink_%u")
         if not sinkpad:
             raise RuntimeError("Failed to get request pad sink_%u from webrtcbin")
         srcpad = rtp_payloader.get_static_pad("src")
@@ -216,9 +218,9 @@ class LiveKitWhipNode(Node):
         bus.connect("message", self._on_bus_message)
 
         # webrtc signals
-        self.webrtcbin.connect("on-negotiation-needed", self._on_negotiation_needed)
-        self.webrtcbin.connect("on-ice-candidate", self._on_ice_candidate)
-        self.webrtcbin.connect(
+        webrtcbin.connect("on-negotiation-needed", self._on_negotiation_needed)
+        webrtcbin.connect("on-ice-candidate", self._on_ice_candidate)
+        webrtcbin.connect(
             "notify::ice-gathering-state",
             self._on_ice_gathering_state,
         )
@@ -268,10 +270,10 @@ class LiveKitWhipNode(Node):
 
     def _on_ice_gathering_state(self, webrtcbin, state):
         # TODO: use Trickle ICE for faster start
-        state = self.webrtcbin.get_property("ice-gathering-state")
+        state = webrtcbin.get_property("ice-gathering-state")
         if int(state) == int(GstWebRTC.WebRTCICEGatheringState.COMPLETE):
             self.get_logger().info(f"ICE gathering complete")
-            self._send_offer_via_whip(self.webrtcbin)
+            self._send_offer_via_whip(webrtcbin)
 
     def _send_offer_via_whip(self, webrtcbin):
         """

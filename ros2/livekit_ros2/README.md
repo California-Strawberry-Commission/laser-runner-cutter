@@ -19,3 +19,7 @@ This node subscribes to a ROS2 Image topic, hardware encodes via GStreamer, and 
 
         $ cd livekit_ros2
         $ docker compose up
+
+1.  Start livekit_whip_node
+
+        $ ros2 launch livekit_ros2 launch.py
