@@ -148,59 +148,68 @@ class LiveKitWhipNode(Node):
         self._appsrc.set_property("is-live", True)
         self._appsrc.set_property("format", Gst.Format.TIME)
         self._appsrc.set_property("do-timestamp", True)
+        self._pipeline.add(self._appsrc)
+
+        # Both Jetson and non-Jetson require conversion to NV12
+        videoconvert_nv12 = self._make_element("videoconvert", "videoconvert_nv12")
+        self._pipeline.add(videoconvert_nv12)
+        capsfilter_nv12 = self._make_element("capsfilter", "capsfilter_nv12")
+        capsfilter_nv12.set_property(
+            "caps",
+            Gst.Caps.from_string(
+                f"video/x-raw,format=NV12,width={width},height={height},framerate={self._fps}/1"
+            ),
+        )
+        self._pipeline.add(capsfilter_nv12)
 
         if self._is_jetson:
-            # On Jetson, convert into NVMM-backed NV12 for the HW encoder
-            convert = self._make_element("nvvidconv", "nvvidconv_nvmm")
-            capsfilter = self._make_element("capsfilter", "capsfilter_nvmm")
-            capsfilter.set_property(
+            # On Jetson, we need to convert into NVMM-backed NV12 for the HW encoder
+            nvvidconv = self._make_element("nvvidconv", "nvvidconv_nvmm")
+            self._pipeline.add(nvvidconv)
+            capsfilter_nvmm = self._make_element("capsfilter", "capsfilter_nvmm")
+            capsfilter_nvmm.set_property(
                 "caps",
                 Gst.Caps.from_string(
                     f"video/x-raw(memory:NVMM),format=NV12,width={width},height={height},framerate={self._fps}/1"
                 ),
             )
-            encoder = self._make_element("nvv4l2h264enc", "encoder_h264")
-        else:
-            # Convert to NV12 for the HW encoder
-            convert = self._make_element("videoconvert", "videoconvert_nv12")
-            capsfilter = self._make_element("capsfilter", "capsfilter_nv12")
-            capsfilter.set_property(
-                "caps",
-                Gst.Caps.from_string(
-                    f"video/x-raw,format=NV12,width={width},height={height},framerate={self._fps}/1"
-                ),
-            )
+            self._pipeline.add(capsfilter_nvmm)
 
+            # Encoder - nvv4l2h264enc for hardware encoding
+            encoder = self._make_element("nvv4l2h264enc", "encoder_h264")
+            self._pipeline.add(encoder)
+        else:
             # Encoder - nvh264enc for hardware encoding
             encoder = self._make_element("nvh264enc", "encoder_h264")
+            self._pipeline.add(encoder)
 
         # Parser
         parser = self._make_element("h264parse", "parser_h264")
         # Ensure SPS/PPS is present for new subscribers
         parser.set_property("config-interval", 1)
+        self._pipeline.add(parser)
 
         # Payloader - rtph264pay converts H264 video into RTP packets
         rtp_payloader = self._make_element("rtph264pay", "payloader")
         # Ensure SPS/PPS is present for new subscribers
         rtp_payloader.set_property("config-interval", 1)
         rtp_payloader.set_property("pt", 96)
+        self._pipeline.add(rtp_payloader)
 
         # webrtcbin
         webrtcbin = self._make_element("webrtcbin", "webrtcbin")
         webrtcbin.set_property("bundle-policy", "max-bundle")
-
-        # Add elements to pipeline and link up
-        self._pipeline.add(self._appsrc)
-        self._pipeline.add(convert)
-        self._pipeline.add(capsfilter)
-        self._pipeline.add(encoder)
-        self._pipeline.add(parser)
-        self._pipeline.add(rtp_payloader)
         self._pipeline.add(webrtcbin)
 
-        assert self._appsrc.link(convert)
-        assert convert.link(capsfilter)
-        assert capsfilter.link(encoder)
+        # Link elements
+        assert self._appsrc.link(videoconvert_nv12)
+        assert videoconvert_nv12.link(capsfilter_nv12)
+        if self._is_jetson:
+            assert capsfilter_nv12.link(nvvidconv)
+            assert nvvidconv.link(capsfilter_nvmm)
+            assert capsfilter_nvmm.link(encoder)
+        else:
+            assert capsfilter_nv12.link(encoder)
         assert encoder.link(parser)
         assert parser.link(rtp_payloader)
 

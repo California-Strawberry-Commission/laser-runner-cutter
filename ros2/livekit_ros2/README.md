@@ -4,14 +4,20 @@ This node subscribes to a ROS2 Image topic, hardware encodes via GStreamer, and 
 
 ## Setup
 
-1.  Install GStreamer (follow https://gstreamer.freedesktop.org/documentation/installing/on-linux.html?gi-language=c):
+1.  Install GStreamer (follow https://gstreamer.freedesktop.org/documentation/installing/on-linux.html?gi-language=c)
 
-1.  Install Docker (follow https://docs.docker.com/engine/install/ubuntu/):
+1.  Install Docker (follow https://docs.docker.com/engine/install/ubuntu/)
 
-1.  Install LiveKit
+    1.  Note: on Jetson, you may run into an issue with Docker Compose port mapping. If so, the following will need to be done:
 
-        $ curl -sSL https://get.livekit.io | bash
-        $ sudo apt-get install jq
+            $ sudo apt-get install -y docker-ce=5:27.5* docker-ce-cli=5:27.5* --allow-downgrades
+
+        See https://forums.developer.nvidia.com/t/issue-with-docker-compose-port-mapping-on-jetson-orin-nano-iptable-raw-module-missing/335728/4 for more details on the issue.
+
+1.  Install Python deps
+
+        $ cd livekit_ros2
+        $ pip install -r requirements.txt
 
 ## Run
 
