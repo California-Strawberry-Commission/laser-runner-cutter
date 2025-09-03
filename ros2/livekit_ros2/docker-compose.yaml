@@ -1,0 +1,34 @@
+services:
+  redis:
+    image: redis:7
+    container_name: lk-redis
+    ports:
+      - "6379:6379"
+
+  server:
+    image: livekit/livekit-server:latest
+    container_name: lk-server
+    depends_on:
+      - redis
+    command: ["--config", "/config/livekit_server.yaml"]
+    volumes:
+      - ./config:/config:ro
+    ports:
+      - "7880:7880/tcp" # HTTP & WS
+      - "7881:7881/tcp" # TCP relay (optional)
+      - "7882:7882/udp" # UDP media
+    environment:
+      - LIVEKIT_LOG_LEVEL=info
+
+  ingress:
+    image: livekit/ingress:latest
+    container_name: lk-ingress
+    depends_on:
+      - server
+      - redis
+    command: ["--config", "/config/ingress_server.yaml"]
+    volumes:
+      - ./config:/config:ro
+    ports:
+      - "1935:1935/tcp" # RTMP ingest
+      - "8080:8080/tcp" # WHIP endpoint
