@@ -17,8 +17,8 @@ services:
       - "7880:7880/tcp" # HTTP & WS
       - "7881:7881/tcp" # TCP relay (optional)
       - "7882:7882/udp" # UDP media
-    environment:
-      - LIVEKIT_LOG_LEVEL=info
+    env_file:
+      - ../../.env # uses LIVEKIT_KEYS
 
   ingress:
     image: livekit/ingress:latest
@@ -32,3 +32,5 @@ services:
     ports:
       - "1935:1935/tcp" # RTMP ingest
       - "8080:8080/tcp" # WHIP endpoint
+    env_file:
+      - ../../.env # uses LIVEKIT_API_KEY / LIVEKIT_API_SECRET

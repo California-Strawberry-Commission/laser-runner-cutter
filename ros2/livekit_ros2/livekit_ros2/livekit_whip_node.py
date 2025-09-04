@@ -72,20 +72,12 @@ class LiveKitWhipNode(Node):
 
         # Parameters
         self.declare_parameter("livekit_url", "ws://localhost:7880")
-        self.declare_parameter("livekit_api_key", "")
-        self.declare_parameter("livekit_api_secret", "")
         self.declare_parameter("fps", 30)
         # TODO: Support multiple topics on demand, and one pipeline per topic
         self.declare_parameter("topic", "/camera0/debug_frame")
 
         livekit_url = (
             self.get_parameter("livekit_url").get_parameter_value().string_value
-        )
-        livekit_api_key = (
-            self.get_parameter("livekit_api_key").get_parameter_value().string_value
-        )
-        livekit_api_secret = (
-            self.get_parameter("livekit_api_secret").get_parameter_value().string_value
         )
         self._fps = self.get_parameter("fps").get_parameter_value().integer_value
         topic = self.get_parameter("topic").get_parameter_value().string_value
@@ -106,6 +98,8 @@ class LiveKitWhipNode(Node):
         self._whip_resource_url: Optional[str] = None
 
         # Get WHIP URL
+        livekit_api_key = os.environ["LIVEKIT_API_KEY"]
+        livekit_api_secret = os.environ["LIVEKIT_API_SECRET"]
         if not livekit_url or not livekit_api_key or not livekit_api_secret:
             raise RuntimeError(
                 "Parameters 'livekit_url', 'livekit_api_key', and 'livekit_api_secret' are required"

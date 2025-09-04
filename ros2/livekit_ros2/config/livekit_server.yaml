@@ -5,8 +5,6 @@ rtc:
   udp_port: 7882
 redis:
   address: redis:6379
-keys:
-  devkey: replaceme
 ingress:
   rtmp_base_url: rtmp://localhost:1935
   whip_base_url: http://localhost:8080/whip
