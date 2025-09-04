@@ -25,6 +25,19 @@ Installation assumes a fresh version of **Ubuntu 22.04 desktop/server** on a ded
 
         $ source ~/laser-runner-cutter/ros2/scripts/setup.sh
 
+1.  Create LiveKit API secret
+
+    1.  Create .env from template
+
+            $ cd laser-runner-cutter
+            $ cp .env.example .env
+
+    2.  Generate an API secret
+
+            $ openssl rand -base64 32
+
+    3.  Edit `.env` and replace the API secret with the one generated in the previous step
+
 ### Using Helios DAC on Linux
 
 Linux systems require udev rules to allow access to USB devices without root privileges. This is already set up as part of the auto-install process above. Make sure that the user account communicating with the DAC is in the _plugdev_ group.
