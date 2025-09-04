@@ -1,0 +1,4 @@
+livekit_whip_node:
+  ros__parameters:
+    livekit_api_key: "devkey"
+    livekit_api_secret: "replaceme"
