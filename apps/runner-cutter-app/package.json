@@ -19,6 +19,7 @@
     "@radix-ui/react-switch": "^1.2.5",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
+    "dotenv": "^17.2.2",
     "embla-carousel-react": "^8.5.2",
     "livekit-client": "^2.15.6",
     "livekit-server-sdk": "^2.13.3",

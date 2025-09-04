@@ -4,28 +4,25 @@ This node subscribes to a ROS2 Image topic, hardware encodes via GStreamer, and 
 
 ## Setup
 
-1.  Install GStreamer (follow https://gstreamer.freedesktop.org/documentation/installing/on-linux.html?gi-language=c)
+1.  Run the install script:
 
-1.  Install Docker (follow https://docs.docker.com/engine/install/ubuntu/)
+        $ livekit_ros2/scripts/install.sh
 
-    1.  Note: on Jetson, you may run into an issue with Docker Compose port mapping. If so, the following will need to be done:
+1.  Create LiveKit API secret
 
-            $ sudo apt-get install -y docker-ce=5:27.5* docker-ce-cli=5:27.5* --allow-downgrades
+    1.  Create .env from template
 
-        See https://forums.developer.nvidia.com/t/issue-with-docker-compose-port-mapping-on-jetson-orin-nano-iptable-raw-module-missing/335728/4 for more details on the issue.
+            $ cd laser-runner-cutter
+            $ cp .env.example .env
 
-1.  Install Python deps
+    2.  Generate an API secret
 
-        $ cd livekit_ros2
-        $ pip install -r requirements.txt
+            $ openssl rand -base64 32
+
+    3.  Edit `.env` and replace the API secret with the one generated in the previous step
 
 ## Run
 
-1.  Start Redis + LiveKit server + Ingress server via Docker
-
-        $ cd livekit_ros2
-        $ docker compose up
-
-1.  Start livekit_whip_node
-
-        $ ros2 launch livekit_ros2 launch.py
+```
+$ livekit_ros2/scripts/run.sh
+```

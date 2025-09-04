@@ -30,3 +30,6 @@ eggs/
 
 # DVC controlled files 
 /data_store
+
+# local dotenv files
+.env*.local*
