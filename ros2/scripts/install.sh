@@ -23,10 +23,11 @@ if [ ! -f "$installed_file" ]; then
     bash ./install_python_venv.sh
     bash ./install_cuda.sh
     bash ./install_arena_sdk.sh
-    bash ./create_heliosdac_udev.sh
     bash ./install_ros.sh
     bash ./install_realsense_ros.sh
     bash ./install_requirements.sh
+    bash ../laser_control/scripts/create_heliosdac_udev.sh
+    bash ../livekit_ros2/scripts/install.sh
 
     echo "Building..."
     bash ./build.sh
