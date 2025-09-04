@@ -6,7 +6,7 @@ rtc:
 redis:
   address: redis:6379
 keys:
-  devkey: b5470c2bd57b77f98d05bb1d2be204696f83d68a12072804dc186b6eaeea1904
+  devkey: replaceme
 ingress:
   rtmp_base_url: rtmp://localhost:1935
   whip_base_url: http://localhost:8080/whip

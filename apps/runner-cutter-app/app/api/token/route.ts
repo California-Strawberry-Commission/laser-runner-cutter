@@ -14,9 +14,7 @@ export async function GET(req: NextRequest) {
   }
 
   const apiKey = process.env.LIVEKIT_API_KEY ?? "devkey";
-  const apiSecret =
-    process.env.LIVEKIT_API_SECRET ??
-    "b5470c2bd57b77f98d05bb1d2be204696f83d68a12072804dc186b6eaeea1904";
+  const apiSecret = process.env.LIVEKIT_API_SECRET;
 
   const accessToken = new AccessToken(apiKey, apiSecret, {
     identity,

@@ -1,5 +1,5 @@
 api_key: devkey
-api_secret: b5470c2bd57b77f98d05bb1d2be204696f83d68a12072804dc186b6eaeea1904
+api_secret: replaceme
 ws_url: ws://server:7880
 redis:
   address: redis:6379
