@@ -3,7 +3,7 @@
 script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 # Start Docker Compose detached so Ctrl+C won't be absorbed
-( cd "$script_dir/.." && sudo docker compose up -d )
+( cd "$script_dir/.." && docker compose up -d )
 
 # Wait for LiveKit Ingress server to be ready
 sleep 2
@@ -27,7 +27,7 @@ trap '
     kill -INT "$pid" 2>/dev/null || true
   done
   wait
-  ( cd "$script_dir/.." && sudo docker compose down -t 5 ) || true
+  ( cd "$script_dir/.." && docker compose down -t 5 ) || true
 ' INT TERM
 
 wait
