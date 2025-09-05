@@ -8,6 +8,7 @@ source /opt/ros/$ROS_DISTRO/setup.sh
 # Build TensorRT models
 bash $script_dir/../camera_control/scripts/build_tensorrt_models.sh
 
-# Build ROS2 nodes
+# Fresh build of ROS2 nodes
 cd $ROS_WS_DIR
+rm -rf build install log
 colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON

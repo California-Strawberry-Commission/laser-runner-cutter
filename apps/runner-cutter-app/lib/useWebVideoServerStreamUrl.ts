@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-export default function useVideoServerStreamUrl(
+export default function useWebVideoServerStreamUrl(
   topicName: string = "",
   quality: number = 30,
   enableStream: boolean = false

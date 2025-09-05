@@ -1,6 +1,6 @@
 "use client";
 
-import FramePreviewWithOverlay from "@/components/camera/frame-preview-with-overlay";
+import FramePreviewLiveKit from "@/components/camera/frame-preview-livekit";
 import { InputWithLabel } from "@/components/ui/input-with-label";
 import useFurrowPerceiverNode from "@/lib/useFurrowPerceiverNode";
 
@@ -17,12 +17,12 @@ export default function FurrowPercieverControls({
   return (
     <div className="flex items-center justify-center flex-col gap-4">
       <div className="flex flex-row gap-4">
-        <FramePreviewWithOverlay
+        <FramePreviewLiveKit
           className="w-[360px] h-[270px]"
           topicName={`${forwardNodeName}/debug_img`}
           enableStream
         />
-        <FramePreviewWithOverlay
+        <FramePreviewLiveKit
           className="w-[360px] h-[270px]"
           topicName={`${backwardNodeName}/debug_img`}
           enableStream

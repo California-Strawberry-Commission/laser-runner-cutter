@@ -1,7 +1,7 @@
 "use client";
 
 import { Track, TrackState } from "@/lib/useControlNode";
-import useVideoServerStreamUrl from "@/lib/useVideoServerStreamUrl";
+import useWebVideoServerStreamUrl from "@/lib/useWebVideoServerStreamUrl";
 import { cn } from "@/lib/utils";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -36,7 +36,7 @@ function getImageSizeAndOffset(imgElement: HTMLImageElement) {
   return { renderedWidth, renderedHeight, offsetX, offsetY };
 }
 
-export default function FramePreviewWithOverlay({
+export default function FramePreviewWebVideoServer({
   topicName,
   quality = 30,
   enableStream = false,
@@ -76,7 +76,11 @@ export default function FramePreviewWithOverlay({
   });
   const [rotate180, setRotate180] = useState(false);
 
-  const streamUrl = useVideoServerStreamUrl(topicName, quality, enableStream);
+  const streamUrl = useWebVideoServerStreamUrl(
+    topicName,
+    quality,
+    enableStream
+  );
 
   const renderOverlay = streamUrl && enableOverlay;
 

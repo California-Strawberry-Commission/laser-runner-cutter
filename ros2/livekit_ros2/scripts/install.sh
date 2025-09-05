@@ -2,8 +2,6 @@
 set -e
 
 script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source $script_dir/../../scripts/env.sh
-source $VENV_DIR/bin/activate
 
 # Install GStreamer
 # The following is from https://gstreamer.freedesktop.org/documentation/installing/on-linux.html?gi-language=c
@@ -29,5 +27,11 @@ if ! sudo iptables -t raw -L -n &>/dev/null; then
     sudo apt install -y docker-ce=5:27.5* docker-ce-cli=5:27.5* --allow-downgrades
 fi
 
+# Add user to the Docker group
+sudo usermod -aG docker $USER
+newgrp docker
+
 # Install Python deps
+source $script_dir/../../scripts/env.sh
+source $VENV_DIR/bin/activate
 pip install -r $script_dir/../requirements.txt

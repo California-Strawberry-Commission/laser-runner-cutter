@@ -1,6 +1,6 @@
 "use client";
 
-import FramePreviewWithOverlay from "@/components/camera/frame-preview-with-overlay";
+import FramePreviewLiveKit from "@/components/camera/frame-preview-livekit";
 import DeviceCard, {
   DeviceState,
   convertCameraNodeDeviceState,
@@ -288,7 +288,7 @@ export default function Controls({
           </CardContent>
         </Card>
       </div>
-      <FramePreviewWithOverlay
+      <FramePreviewLiveKit
         className="w-full h-[480px]"
         topicName={`${cameraNodeName}/debug_frame`}
         enableStream={
