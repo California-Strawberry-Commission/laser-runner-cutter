@@ -1,11 +1,13 @@
 #include <iostream>
 
 #include "matplotlibcpp.h"
+#include "runner_cutter_control/prediction/average_velocity_predictor.hpp"
 #include "runner_cutter_control/prediction/kalman_filter_predictor.hpp"
 
 namespace plt = matplotlibcpp;
 
 int main() {
+  // AverageVelocityPredictor predictor;
   KalmanFilterPredictor predictor;
 
   // Moving
@@ -51,24 +53,24 @@ int main() {
 
   double avgTimeDelta{accumulate(timeDeltas.begin(), timeDeltas.end(), 0.0) /
                       timeDeltas.size()};
-  double lastTimestamp{data.back().first};
+  double lastTimestampS{data.back().first / 1000.0};
 
   for (int i = 1; i <= 5; ++i) {
-    double futureTimestamp{lastTimestamp + avgTimeDelta * i};
-    auto [x, y, z]{predictor.predict(futureTimestamp)};
+    double futureTimestampS{lastTimestampS + avgTimeDelta * i};
+    auto [x, y, z]{predictor.predict(futureTimestampS)};
     predX.push_back(x);
     predY.push_back(y);
   }
 
   plt::figure_size(800, 600);
   plt::named_plot("Measurements", measX, measY, "ro");
-  plt::named_plot("Kalman Predictions", predX, predY, "bo");
-  plt::xlabel("X Position");
-  plt::ylabel("Y Position");
+  plt::named_plot("Predictions", predX, predY, "bo");
+  plt::xlabel("X");
+  plt::ylabel("Y");
   plt::xlim(0, 100);
   plt::ylim(-150, -50);
   plt::legend();
-  plt::title("2D Kalman Filter Tracking");
+  plt::title("Future Position Predictions");
   plt::grid(true);
   plt::show();
 
