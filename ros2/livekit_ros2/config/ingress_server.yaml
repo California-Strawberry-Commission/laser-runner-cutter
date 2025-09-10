@@ -1,3 +1,10 @@
-ws_url: ws://server:7880
+ws_url: ws://127.0.0.1:7880
 redis:
-  address: redis:6379
+  address: 127.0.0.1:6379
+rtmp_port: 1935
+whip_port: 8085
+http_relay_port: 9095
+rtc_config:
+  udp_port: 7885
+  tcp_port: 7886 # optional TCP ICE fallback
+  use_external_ip: true # advertise public IP discovered via STUN
