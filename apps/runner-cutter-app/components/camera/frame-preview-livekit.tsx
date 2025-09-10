@@ -78,10 +78,12 @@ export default function FramePreviewLiveKit({
   className?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [status, setStatus] = useState<
+  const [streamStatus, setStreamStatus] = useState<
     "idle" | "connecting" | "connected" | "error"
   >("idle");
-  const [error, setError] = useState<string | null>(null);
+  const [streamErrorMessage, setStreamErrorMessage] = useState<string | null>(
+    null
+  );
   const [rotate180, setRotate180] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -92,7 +94,6 @@ export default function FramePreviewLiveKit({
     left: 0,
   });
 
-  const renderOverlay = enableOverlay && status === "connected" && !isLoading;
   const serverUrl =
     typeof window !== "undefined" && enableStream
       ? process.env.NEXT_PUBLIC_LIVEKIT_URL ??
@@ -148,7 +149,7 @@ export default function FramePreviewLiveKit({
     };
 
     (async () => {
-      setStatus("connecting");
+      setStreamStatus("connecting");
       console.log("Fetching JWT...");
 
       try {
@@ -175,11 +176,11 @@ export default function FramePreviewLiveKit({
         // In case the publisher was already in the room
         tryAttachVideoTrack();
         console.log("Connected to LiveKit room");
-        setStatus("connected");
+        setStreamStatus("connected");
       } catch (e: any) {
         if (!cancelled) {
-          setError(e?.message ?? String(e));
-          setStatus("error");
+          setStreamErrorMessage(e?.message ?? String(e));
+          setStreamStatus("error");
         }
       }
     })();
@@ -199,7 +200,7 @@ export default function FramePreviewLiveKit({
   // Handle image click and calculate normalized coordinates
   const handleVideoClick = useCallback(
     (e: React.MouseEvent<HTMLVideoElement, MouseEvent>) => {
-      if (!videoRef.current || status !== "connected") {
+      if (!videoRef.current || streamStatus !== "connected") {
         return;
       }
 
@@ -231,7 +232,7 @@ export default function FramePreviewLiveKit({
         onImageClick(normalizedX, normalizedY);
       }
     },
-    [status, rotate180, onImageClick]
+    [streamStatus, rotate180, onImageClick]
   );
 
   // Update canvas position and size to exactly match the rendered image
@@ -325,6 +326,19 @@ export default function FramePreviewLiveKit({
     overlayTracks,
   ]);
 
+  // Render a stream status message if not connected. Otherwise, render the overlay.
+  let streamStatusMessage = "";
+  if (streamStatus === "connecting") {
+    streamStatusMessage = "Stream connecting...";
+  } else if (streamStatus === "error") {
+    streamStatusMessage = `Stream error: ${streamErrorMessage}`;
+  } else if (streamStatus === "idle") {
+    streamStatusMessage = "Stream unavailable";
+  } else if (isLoading) {
+    streamStatusMessage = "Stream loading...";
+  }
+  const renderOverlay = enableOverlay && !streamStatusMessage;
+
   useEffect(() => {
     updateCanvasSize();
     window.addEventListener("resize", updateCanvasSize);
@@ -368,9 +382,9 @@ export default function FramePreviewLiveKit({
           className="absolute inset-0 pointer-events-none"
         />
       )}
-      {!enableStream && (
+      {streamStatusMessage && (
         <div className="absolute inset-0 flex items-center justify-center text-white">
-          <span className="text-white text-lg">Stream unavailable</span>
+          <span className="text-white text-lg">{streamStatusMessage}</span>
         </div>
       )}
       {showRotateButton && enableStream && (

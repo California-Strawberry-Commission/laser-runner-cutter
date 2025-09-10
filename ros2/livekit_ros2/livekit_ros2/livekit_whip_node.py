@@ -177,32 +177,48 @@ class LiveKitWhipNode(Node):
 
             # Encoder - nvv4l2h264enc for hardware encoding
             encoder = self._make_element("nvv4l2h264enc", "encoder_h264")
+            encoder.set_property(
+                "idrinterval", self._fps
+            )  # for faster stream start (target ~1s)
+            encoder.set_property("iframeinterval", self._fps)
+            encoder.set_property(
+                "insert-sps-pps", True
+            )  # ensure SPS/PPS is on every IDR frame
             self._pipeline.add(encoder)
             elements_to_link.append(encoder)
         else:
             # Encoder - nvh264enc for hardware encoding
             encoder = self._make_element("nvh264enc", "encoder_h264")
+            encoder.set_property(
+                "gop-size", self._fps
+            )  # for faster stream start (target ~1s)
+            encoder.set_property(
+                "zerolatency", True
+            )  # removes reordering delay, free win
             self._pipeline.add(encoder)
             elements_to_link.append(encoder)
 
         # Parser
         parser = self._make_element("h264parse", "parser_h264")
-        # Ensure SPS/PPS is present for new subscribers
-        parser.set_property("config-interval", 1)
+        parser.set_property(
+            "config-interval", -1
+        )  # ensure SPS/PPS is present for new subscribers (send with every IDR frame)
         self._pipeline.add(parser)
         elements_to_link.append(parser)
 
         # Payloader - rtph264pay converts H264 video into RTP packets
         rtp_payloader = self._make_element("rtph264pay", "payloader")
-        # Ensure SPS/PPS is present for new subscribers
-        rtp_payloader.set_property("config-interval", 1)
-        rtp_payloader.set_property("pt", 96)
+        rtp_payloader.set_property(
+            "config-interval", -1
+        )  # ensure SPS/PPS is present for new subscribers (send with every IDR frame)
         self._pipeline.add(rtp_payloader)
         elements_to_link.append(rtp_payloader)
 
         # webrtcbin
         webrtcbin = self._make_element("webrtcbin", "webrtcbin")
-        webrtcbin.set_property("bundle-policy", "max-bundle")
+        webrtcbin.set_property(
+            "bundle-policy", "max-bundle"
+        )  # aggressively bundle, which typically results in fewer ICE checks and faster startup
         self._pipeline.add(webrtcbin)
 
         # Link elements (except webrtcbin)
