@@ -3,6 +3,7 @@ log_level: info
 rtc:
   tcp_port: 7881
   udp_port: 7882
+  use_external_ip: false
 redis:
   address: 127.0.0.1:6379
 ingress:

@@ -7,4 +7,4 @@ http_relay_port: 9095
 rtc_config:
   udp_port: 7885
   tcp_port: 7886 # optional TCP ICE fallback
-  use_external_ip: true # advertise public IP discovered via STUN
+  use_external_ip: false
