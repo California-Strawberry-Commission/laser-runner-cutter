@@ -190,28 +190,23 @@ void PointCorrespondences::updateCameraPixelToLaserCoordJacobian() {
   // x = a0*u + a1*v + a2
   // y = b0*u + b1*v + b2
   // Vectorizing the above,
-  // x = A * a, where a = [a0 a1 a2]^T
-  // y = A * b, where b = [b0 b1 b2]^T
-  Eigen::MatrixXd A{numSamples, 3};
-  Eigen::VectorXd x{numSamples};
-  Eigen::VectorXd y{numSamples};
+  // [u v 1] * A = [x y], where A = [[a0 b0], [a1 b1], [a2 b2]]
+  Eigen::MatrixXd P_camera{numSamples, 3};
+  Eigen::MatrixXd P_laser{numSamples, 2};
   for (std::size_t i = 0; i < numSamples; ++i) {
-    A(i, 0) = static_cast<double>(cameraPixelCoords_[i].u);
-    A(i, 1) = static_cast<double>(cameraPixelCoords_[i].v);
-    A(i, 2) = 1.0;
-    x(i) = static_cast<double>(laserCoords_[i].x);
-    y(i) = static_cast<double>(laserCoords_[i].y);
+    P_camera(i, 0) = static_cast<double>(cameraPixelCoords_[i].u);
+    P_camera(i, 1) = static_cast<double>(cameraPixelCoords_[i].v);
+    P_camera(i, 2) = 1.0;
+    P_laser(i, 0) = static_cast<double>(laserCoords_[i].x);
+    P_laser(i, 1) = static_cast<double>(laserCoords_[i].y);
   }
 
-  // Solve for a and b using least squares
-  Eigen::Vector3d a{A.colPivHouseholderQr().solve(x)};
-  Eigen::Vector3d b{A.colPivHouseholderQr().solve(y)};
+  // Solve for A using least squares
+  Eigen::Matrix<double, 3, 2> A{P_camera.colPivHouseholderQr().solve(P_laser)};
 
   // For deltas (and thus the Jacobian), we only care about a0, a1, b0, and b1
-  cameraToLaserJacobian_(0, 0) = a(0);
-  cameraToLaserJacobian_(0, 1) = a(1);
-  cameraToLaserJacobian_(1, 0) = b(0);
-  cameraToLaserJacobian_(1, 1) = b(1);
+  // J = [[a0 a1], [b0 b1]]
+  cameraToLaserJacobian_ = A.topRows<2>().transpose();
 }
 
 float PointCorrespondences::getReprojectionError() const {
