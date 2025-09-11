@@ -113,11 +113,12 @@ LaserCoord Calibration::cameraPositionToLaserCoord(
 
 LaserCoord Calibration::cameraPixelDeltaToLaserCoordDelta(
     const PixelCoord& cameraPixelCoordDelta) const {
-  auto jacobian{pointCorrespondences_.getCameraPixelToLaserCoordJacobian()};
   Eigen::Vector2d cameraPixelDelta{
       static_cast<double>(cameraPixelCoordDelta.u),
       static_cast<double>(cameraPixelCoordDelta.v)};
-  Eigen::Vector2d laserCoordDelta{jacobian * cameraPixelDelta};
+  Eigen::Vector2d laserCoordDelta{
+      pointCorrespondences_.getCameraPixelToLaserCoordJacobian() *
+      cameraPixelDelta};
   return {static_cast<float>(laserCoordDelta[0]),
           static_cast<float>(laserCoordDelta[1])};
 }
