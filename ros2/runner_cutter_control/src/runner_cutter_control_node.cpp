@@ -1103,12 +1103,14 @@ class RunnerCutterControlNode : public rclcpp::Node {
           calibration_->cameraPixelDeltaToLaserCoordDelta(cameraPixelDelta)};
       LaserCoord newLaserCoord{currentLaserCoord.x + laserCoordCorrection.x,
                                currentLaserCoord.y + laserCoordCorrection.y};
-      RCLCPP_INFO(
-          get_logger(),
-          "Distance too large. Correcting laser. Current laser coord = (%f, "
-          "%f), corrected laser coord = (%f, %f)",
-          currentLaserCoord.x, currentLaserCoord.y, newLaserCoord.x,
-          newLaserCoord.y);
+      RCLCPP_INFO(get_logger(),
+                  "Distance too large. Correcting laser. Camera pixel delta = "
+                  "(%d, %d), laser coord correction = (%f, %f). Current laser "
+                  "coord = (%f, %f), corrected laser coord = (%f, %f)",
+                  cameraPixelDelta.u, cameraPixelDelta.v,
+                  laserCoordCorrection.x, laserCoordCorrection.y,
+                  currentLaserCoord.x, currentLaserCoord.y, newLaserCoord.x,
+                  newLaserCoord.y);
 
       if (newLaserCoord.x > 1.0f || newLaserCoord.y > 1.0f ||
           newLaserCoord.x < 0.0f || newLaserCoord.y < 0.0f) {
