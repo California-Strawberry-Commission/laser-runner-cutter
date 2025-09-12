@@ -1,6 +1,17 @@
 #include "runner_cutter_control/prediction/kalman_filter_predictor.hpp"
 
-KalmanFilterPredictor::KalmanFilterPredictor() { reset(); }
+KalmanFilterPredictor::KalmanFilterPredictor(double measurementNoiseStdMin,
+                                             double measurementNoiseStdMax,
+                                             double accelerationNoiseStd,
+                                             double initialPositionStd,
+                                             double initialVelocityStd)
+    : measurementNoiseStdMin_{measurementNoiseStdMin},
+      measurementNoiseStdMax_{measurementNoiseStdMax},
+      accelerationNoiseStd_{accelerationNoiseStd},
+      initialPositionStd_{initialPositionStd},
+      initialVelocityStd_{initialVelocityStd} {
+  reset();
+}
 
 void KalmanFilterPredictor::add(double timestampSec,
                                 const Measurement& measurement) {
@@ -42,7 +53,7 @@ Position KalmanFilterPredictor::predict(double timestampSec) const {
 void KalmanFilterPredictor::reset() {
   Predictor::reset();
 
-  // Initial state [x, y, z, vx, vy, vz]
+  // Constant-velocity model - initial state [x, y, z, vx, vy, vz]
   x_.setZero();
 
   // Will be updated every predictStep with dt
@@ -52,19 +63,18 @@ void KalmanFilterPredictor::reset() {
   H_(0, 0) = H_(1, 1) = H_(2, 2) = 1.0;
 
   // Initial uncertainties in state
-  double posInitStd = 1000.0;  // mm
-  double velInitStd = 500.0;   // mm/s
   P_.setZero();
   P_.block<3, 3>(0, 0) =
-      Eigen::Matrix3d::Identity() * (posInitStd * posInitStd);
+      Eigen::Matrix3d::Identity() * (initialPositionStd_ * initialPositionStd_);
   P_.block<3, 3>(3, 3) =
-      Eigen::Matrix3d::Identity() * (velInitStd * velInitStd);
+      Eigen::Matrix3d::Identity() * (initialVelocityStd_ * initialVelocityStd_);
 
   // Will be computed every predictStep
   Q_.setZero();
 
   // Will be dynamically set later based on confidence of each measurement
-  R_ = Eigen::Matrix3d::Identity() * (5.0 * 5.0);
+  R_ = Eigen::Matrix3d::Identity() *
+       (measurementNoiseStdMin_ * measurementNoiseStdMin_);
 
   initialized_ = false;
 }
@@ -79,8 +89,7 @@ void KalmanFilterPredictor::predictStep(double dt) {
   double dt2{dt * dt};
   double dt3{dt2 * dt};
   double dt4{dt3 * dt};
-  const double accelNoiseStd{300.0};  // mm/s^2
-  double q{accelNoiseStd * accelNoiseStd};
+  double q{accelerationNoiseStd_ * accelerationNoiseStd_};
   // top-left: position-position
   Q_.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * (dt4 / 4.0) * q;
   // top-right & bottom-left: position-velocity
@@ -92,17 +101,17 @@ void KalmanFilterPredictor::predictStep(double dt) {
   // Predict state forward: x = Fx (+ Bu)
   x_ = F_ * x_;
 
-  // Predict covariance forward: P = FPF' + Q
-  P_ = F_ * P_ * F_.transpose() + Q_;  // P = FPF' + Q
+  // Predict covariance forward: P = F * P * F' + Q
+  P_ = F_ * P_ * F_.transpose() + Q_;
 }
 
 void KalmanFilterPredictor::updateStep(const Eigen::Vector3d& z,
                                        float confidence) {
   // Adjust measurement noise covariance based on confidence
   confidence = std::clamp(confidence, 0.0f, 1.0f);
-  double sigmaMin{4.0};
-  double sigmaMax{20.0};
-  double sigma{sigmaMin + (1.0 - confidence) * (sigmaMax - sigmaMin)};
+  double sigma{measurementNoiseStdMin_ +
+               (1.0 - confidence) *
+                   (measurementNoiseStdMax_ - measurementNoiseStdMin_)};
   R_ = Eigen::Matrix3d::Identity() * (sigma * sigma);
 
   Eigen::Vector3d y{z - H_ * x_};                    // innovation
@@ -113,6 +122,10 @@ void KalmanFilterPredictor::updateStep(const Eigen::Vector3d& z,
   // Update state
   x_ = x_ + K * y;
 
-  // Update covariance
-  P_ = (Matrix6d::Identity() - K * H_) * P_;
+  // Update covariance: P = P - K * H * P;
+  // Use the Joseph form to protect against problems with roundoff error:
+  // A = I - K * H
+  // P = A * P * A' + K * R * K'
+  Matrix6d A{Matrix6d::Identity() - K * H_};
+  P_ = A * P_ * A.transpose() + K * R_ * K.transpose();
 }

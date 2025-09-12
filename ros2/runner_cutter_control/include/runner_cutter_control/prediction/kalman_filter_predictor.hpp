@@ -10,7 +10,20 @@
  */
 class KalmanFilterPredictor final : public Predictor {
  public:
-  KalmanFilterPredictor();
+  /**
+   * @param measurementNoiseStdMin Measurement noise std dev at max (1.0)
+   * confidence
+   * @param measurementNoiseStdMax Measurement noise std dev at min (0.0)
+   * confidence
+   * @param accelerationNoiseStd Acceleration noise std dev
+   * @param initialPositionStd Initial position uncertainty
+   * @param initialVelocityStd Initial velocity uncertainty
+   */
+  KalmanFilterPredictor(double measurementNoiseStdMin = 4.0,
+                        double measurementNoiseStdMax = 20.0,
+                        double accelerationNoiseStd = 300.0,
+                        double initialPositionStd = 1000.0,
+                        double initialVelocityStd = 500.0);
   ~KalmanFilterPredictor() = default;
 
   /**
@@ -45,6 +58,12 @@ class KalmanFilterPredictor final : public Predictor {
 
   void predictStep(double dt);
   void updateStep(const Eigen::Vector3d& z, float confidence);
+
+  double measurementNoiseStdMin_;
+  double measurementNoiseStdMax_;
+  double accelerationNoiseStd_;
+  double initialPositionStd_;
+  double initialVelocityStd_;
 
   // State vector (x): x, y, z, vx, vy, vz
   Vector6d x_;
