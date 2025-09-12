@@ -2,7 +2,14 @@
 builtin_interfaces/Time stamp
 
 # RGB image: 2048x1536, 3 channels, uint8
-uint8[9437184] color
+# uint8[9437184] color
+# sensor_msgs/Image color
+uint64 color_gpu_data_ptr
+uint32 color_width
+uint32 color_height
+uint32 color_type
+uint32 color_step
 
 # Depth XYZ: 480x640, 3 channels, float32
-float32[921600] depth
+# float32[921600] depth
+# sensor_msgs/Image depth

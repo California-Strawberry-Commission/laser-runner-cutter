@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.8)
 project(detection_cpp)
 
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 # Default to C++17
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 17)
@@ -17,6 +19,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
 # Find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(camera_control_interfaces REQUIRED)
@@ -102,10 +105,13 @@ target_include_directories(bytetrack PUBLIC
 include_directories(third_party/bs_thread_pool/include)
 
 # Node executable
-add_executable(detection_node
+add_library(detection_node_component SHARED
   src/detection_node.cpp
 )
-target_link_libraries(detection_node PRIVATE 
+# add_executable(detection_node
+#   src/detection_node.cpp
+# )
+target_link_libraries(detection_node_component PRIVATE 
   fmt::fmt 
   spdlog::spdlog 
   ${ARENA_LIBS} 
@@ -117,13 +123,27 @@ target_link_libraries(detection_node PRIVATE
   fp16_utils 
   bytetrack
 )
-ament_target_dependencies(detection_node PUBLIC
+ament_target_dependencies(detection_node_component PUBLIC
   rclcpp
+  rclcpp_components
   std_msgs
   std_srvs
   cv_bridge
   OpenCV
   camera_control_interfaces
+)
+rclcpp_components_register_node(
+  detection_node_component
+  PLUGIN "DetectionNode"
+  EXECUTABLE detection_node
+)
+
+ament_export_targets(export_detection_node_component)
+install(TARGETS detection_node_component
+        EXPORT export_detection_node_component
+        ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib
+        RUNTIME DESTINATION bin
 )
 
 
@@ -144,7 +164,7 @@ ament_target_dependencies(test_loop PUBLIC rclcpp std_msgs OpenCV)
 #############
 
 install(TARGETS
-  detection_node
+  # detection_node
   test_singleFrame
   test_loop
   DESTINATION lib/${PROJECT_NAME})

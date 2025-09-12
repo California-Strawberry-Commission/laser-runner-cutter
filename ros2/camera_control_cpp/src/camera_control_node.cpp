@@ -24,6 +24,8 @@
 #include "sensor_msgs/msg/image.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
+#include <rclcpp_components/register_node_macro.hpp>
+
 
 std::pair<int, int> millisecondsToRosTime(double milliseconds) {
   // ROS timestamps consist of two integers, one for seconds and one for
@@ -62,7 +64,7 @@ std::string getCurrentTimeString() {
 
 class CameraControlNode : public rclcpp::Node {
  public:
-  explicit CameraControlNode() : Node("camera_control_node") {
+  explicit CameraControlNode(const rclcpp::NodeOptions & options) : Node("camera_control_node", options) {
     /////////////
     // Parameters
     /////////////
@@ -90,15 +92,17 @@ class CameraControlNode : public rclcpp::Node {
     /////////
     rclcpp::QoS latchedQos(rclcpp::KeepLast(1));
     latchedQos.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
+    rclcpp::QoS frameQos(rclcpp::KeepLast(10));
+    frameQos.durability(RMW_QOS_POLICY_DURABILITY_VOLATILE);
+    frameQos.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
+
     statePublisher_ = create_publisher<camera_control_interfaces::msg::State>(
-        "~/state", latchedQos);
+        "~/state", frameQos);
     // TODO: move debug frame topic publishing to detection node
     debugFramePublisher_ = create_publisher<sensor_msgs::msg::Image>(
-        "~/debug_frame", rclcpp::SensorDataQoS());
-
+        "~/debug_frame", frameQos);
     framePublisher_ = create_publisher<camera_control_interfaces::msg::LucidFrameImages>(
-        "~/frame", rclcpp::SensorDataQoS());
-    RCLCPP_INFO(this->get_logger(), "Loaning Support: %d", rcl_publisher_can_loan_messages(framePublisher_->get_publisher_handle().get()));
+        "~/frame", frameQos);
     notificationsPublisher_ =
         create_publisher<rcl_interfaces::msg::Log>("/notifications", 1);
 
@@ -281,7 +285,7 @@ class CameraControlNode : public rclcpp::Node {
           // sensor_msgs::msg::Image::SharedPtr frameMsg{
           //     getColorImageMsg(frame->getColorFrame(), frame->getTimestampMillis())};
           // framePublisher_->publish(*frameMsg);
-          publishFrames(frame->getColorFrame(), frame->getDepthFrameXyz(), frame->getTimestampMillis());
+          publishFrames(frame->getColorFrame(), frame->getTimestampMillis());
         };
     camera_->start(static_cast<LucidCamera::CaptureMode>(request->capture_mode),
                    getParamExposureUs(), getParamGainDb(), frameCallback);
@@ -613,21 +617,28 @@ class CameraControlNode : public rclcpp::Node {
 
 #pragma region Message builders
 
-  void publishFrames(const cv::Mat& color, const cv::Mat& depth, double timestampMillis) {
-    auto loaned_msg = framePublisher_->borrow_loaned_message();
-    auto & msg = loaned_msg.get();
-
+  void publishFrames(const cv::Mat& color,  double timestampMillis) {
+    auto msg = std::make_unique<camera_control_interfaces::msg::LucidFrameImages>();
     auto [sec, nanosec]{millisecondsToRosTime(timestampMillis)};
-    msg.stamp.sec = sec;
-    msg.stamp.nanosec = nanosec;
 
-    // Copy RGB image
-    std::memcpy(msg.color.data(), color.data, 9437184);
+    // Fill header
+    msg->stamp.sec = sec;
+    msg->stamp.nanosec = nanosec;
 
-    // Copy XYZ image (CV_32FC3, 480x640)
-    std::memcpy(msg.depth.data(), depth.data, 921600 * sizeof(float));
+    // Allocate image on GPU (manual lifetime)
+    cv::cuda::GpuMat* gpuImg = new cv::cuda::GpuMat(color.rows, color.cols, CV_8UC3);
 
-    framePublisher_->publish(std::move(loaned_msg));
+    // fill gpuImg
+    gpuImg->upload(color);
+
+    msg->color_gpu_data_ptr = reinterpret_cast<uint64_t>(gpuImg);
+    msg->color_width  = gpuImg->cols;
+    msg->color_height = gpuImg->rows;
+    msg->color_type   = gpuImg->type();
+    msg->color_step   = gpuImg->step;
+    // msg->color = *cv_bridge::CvImage(std_msgs::msg::Header(), "rgb8", color).toImageMsg();
+
+    framePublisher_->publish(std::move(msg));
   }
 
   sensor_msgs::msg::Image::SharedPtr getColorImageMsg(const cv::Mat& colorFrame,
@@ -767,20 +778,22 @@ class CameraControlNode : public rclcpp::Node {
   rclcpp::TimerBase::SharedPtr deviceTemperaturePublishTimer_;
 };
 
-int main(int argc, char* argv[]) {
-  rclcpp::init(argc, argv);
+// int main(int argc, char* argv[]) {
+//   rclcpp::init(argc, argv);
 
-  try {
-    // MultiThreadedExecutor allows callbacks to run in parallel
-    rclcpp::executors::MultiThreadedExecutor executor;
-    auto node{std::make_shared<CameraControlNode>()};
-    executor.add_node(node);
-    executor.spin();
-  } catch (const std::exception& e) {
-    rclcpp::shutdown();
-    return 1;
-  }
+//   try {
+//     // MultiThreadedExecutor allows callbacks to run in parallel
+//     rclcpp::executors::MultiThreadedExecutor executor;
+//     auto node{std::make_shared<CameraControlNode>()};
+//     executor.add_node(node);
+//     executor.spin();
+//   } catch (const std::exception& e) {
+//     rclcpp::shutdown();
+//     return 1;
+//   }
 
-  rclcpp::shutdown();
-  return 0;
-}
+//   rclcpp::shutdown();
+//   return 0;
+// }
+
+RCLCPP_COMPONENTS_REGISTER_NODE(CameraControlNode)

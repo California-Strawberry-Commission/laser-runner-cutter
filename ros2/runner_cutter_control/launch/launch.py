@@ -6,7 +6,8 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
+from launch_ros.actions import Node, ComposableNodeContainer
+from launch_ros.descriptions import ComposableNode
 
 from aioros2.launch import launch
 from amiga_control import amiga_control_node
@@ -149,28 +150,56 @@ def generate_launch_description():
         condition=IfCondition(launch_cutter_nodes),
     )
 
-    camera_control_cpp_launch_node = Node(
-        package="camera_control_cpp",
-        executable="camera_control_node",
-        name="camera0",
-        parameters=[parameters_file],
-        respawn=True,
-        respawn_delay=2.0,
-        output="screen",
-        emulate_tty=True,
-        condition=IfCondition(launch_cutter_nodes),
-    )
+    # camera_control_cpp_launch_node = Node(
+    #     package="camera_control_cpp",
+    #     executable="camera_control_node",
+    #     name="camera0",
+    #     parameters=[parameters_file],
+    #     respawn=True,
+    #     respawn_delay=2.0,
+    #     output="screen",
+    #     emulate_tty=True,
+    #     condition=IfCondition(launch_cutter_nodes),
+    # )
 
-    detection_cpp_launch_node = Node(
-        package="detection_cpp",
-        executable="detection_node",
-        name="detection_node",
-        parameters=[parameters_file],
+    # detection_cpp_launch_node = Node(
+    #     package="detection_cpp",
+    #     executable="detection_node",
+    #     name="detection_node",
+    #     parameters=[parameters_file],
+    #     respawn=True,
+    #     respawn_delay=2.0,
+    #     output="screen",
+    #     emulate_tty=True,
+    #     condition=IfCondition(launch_cutter_nodes),
+    # )
+
+    camera_detection_container = ComposableNodeContainer(
+        name="camera_detection_container",
+        namespace="",
+        package="rclcpp_components",
+        executable="component_container_mt",
+        composable_node_descriptions=[
+            ComposableNode(
+                package="camera_control_cpp",
+                plugin="CameraControlNode",
+                name="camera0",
+                parameters=[parameters_file],
+                extra_arguments=[{"use_intra_process_comms": True}]
+            ),
+            ComposableNode(
+                package="detection_cpp",
+                plugin="DetectionNode",
+                name="detection_node",
+                parameters=[parameters_file],
+                extra_arguments=[{"use_intra_process_comms": True}]
+            )
+        ],
         respawn=True,
         respawn_delay=2.0,
         output="screen",
         emulate_tty=True,
-        condition=IfCondition(launch_cutter_nodes),
+        condition=IfCondition(launch_cutter_nodes)
     )
 
     laser_control_launch_node = Node(
@@ -211,8 +240,9 @@ def generate_launch_description():
             guidance_brain_launch_node,
             laser_control_launch_node,
             # camera_control_launch_node,
-            camera_control_cpp_launch_node,
-            detection_cpp_launch_node,
+            # camera_control_cpp_launch_node,
+            # detection_cpp_launch_node,
+            camera_detection_container,
             runner_cutter_control_launch_node,
         ]
     )  # type: ignore

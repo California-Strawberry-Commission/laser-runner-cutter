@@ -14,6 +14,7 @@ endif()
 # Find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(camera_control_interfaces REQUIRED)
@@ -89,19 +90,50 @@ target_include_directories(camera PUBLIC
 )
 target_link_libraries(camera PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS})
 
+install(TARGETS camera
+        EXPORT export_camera_control_node_component
+        ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib
+        RUNTIME DESTINATION bin
+)
+
 # Node executable
-add_executable(camera_control_node
+# add_executable(camera_control_node
+#   src/camera_control_node.cpp
+# )
+add_library(camera_control_node_component SHARED
   src/camera_control_node.cpp
 )
-target_link_libraries(camera_control_node PRIVATE fmt::fmt camera)
-ament_target_dependencies(camera_control_node PUBLIC
+target_link_libraries(camera_control_node_component PRIVATE fmt::fmt camera)
+ament_target_dependencies(camera_control_node_component PUBLIC
   rclcpp
+  rclcpp_components
   std_msgs
   std_srvs
   camera_control_interfaces
   cv_bridge
   OpenCV
 )
+rclcpp_components_register_node(
+    camera_control_node_component
+    PLUGIN "CameraControlNode"
+    EXECUTABLE camera_control_node
+)
+
+# ament_export_targets(export_camera_control_node_component)
+install(TARGETS camera_control_node_component
+        EXPORT export_camera_control_node_component
+        ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib
+        RUNTIME DESTINATION bin
+)
+
+install(EXPORT export_camera_control_node_component
+  FILE export_camera_control_node_component.cmake
+  NAMESPACE camera_control_cpp::
+  DESTINATION share/${PROJECT_NAME}/cmake
+)
+ament_export_targets(export_camera_control_node_component)
 
 # Tools
 add_executable(lucid_calibrate src/tools/lucid_calibrate.cpp)
@@ -112,7 +144,7 @@ target_link_libraries(lucid_calibrate PRIVATE camera CLI11::CLI11 spdlog::spdlog
 #############
 
 install(TARGETS
-  camera_control_node
+  # camera_control_node
   lucid_calibrate
   DESTINATION lib/${PROJECT_NAME})
 
