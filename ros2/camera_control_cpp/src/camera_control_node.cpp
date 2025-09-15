@@ -90,6 +90,13 @@ class CameraControlNode : public rclcpp::Node {
     /////////
     // Topics
     /////////
+    /*
+    As mentioned in DetectionNode, intra-process messages require volatile durability on all topics as set here.
+    Resultingly, latchedQos can't be used since TransientLocal doesn't actually make sense with intra-process. 
+    (You can't guarantee the state of a message in history)
+    However, when testing with multiple clients I found that the pages actually stayed in sync and never required even a refresh. 
+    Not sure how, but it is good to keep track.
+    */
     rclcpp::QoS latchedQos(rclcpp::KeepLast(1));
     latchedQos.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
     rclcpp::QoS frameQos(rclcpp::KeepLast(10));
@@ -617,6 +624,10 @@ class CameraControlNode : public rclcpp::Node {
 
 #pragma region Message builders
 
+  /*
+  To centralize things and make life easier, I made a turnkey function that publishes color frames passed in via reference.
+  As explained further in DetectionNode, messages are currently sent via intra-process ros2 messages containing just the gpuImg pointer.
+  */
   void publishFrames(const cv::Mat& color,  double timestampMillis) {
     auto msg = std::make_unique<camera_control_interfaces::msg::LucidFrameImages>();
     auto [sec, nanosec]{millisecondsToRosTime(timestampMillis)};
@@ -796,4 +807,8 @@ class CameraControlNode : public rclcpp::Node {
 //   return 0;
 // }
 
+
+/*
+This is the same macro call shown in DetectionNode that is needed to recreate this as a composable node.
+*/
 RCLCPP_COMPONENTS_REGISTER_NODE(CameraControlNode)

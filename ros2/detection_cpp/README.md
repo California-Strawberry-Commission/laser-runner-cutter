@@ -4,4 +4,4 @@ Specifically, the code cloned and referenced is from the [TensorRT C++ Deploymen
 
 NOTES:
  - test_loop should work properly, but ensure the image frames fed into it make sense as video feed
-  - otherwise, bytetrack gets very confused
+ - Also, this branch has the next app subscribe to the hardcoded detection_node/overlayFrame

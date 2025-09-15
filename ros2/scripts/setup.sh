@@ -10,6 +10,9 @@ export PYTHONPATH=$PYTHONPATH:$VENV_DIR/lib/python3.10/site-packages
 # and thus need to be added to PYTHONPATH so that ROS2 can find them
 export PYTHONPATH=$PYTHONPATH:$ROS_WS_DIR/aioros2:$PROJECT_DIR/ml/ml_utils:$PROJECT_DIR/ml/runner_segmentation_model
 
+# The below vars are needed for message loaning. In theory, assuming proper setup and sub/pub inits,
+# you could uncomment these lines and message-loaning would work since the xml is already setup.
+#-----------------------------------------------------------------------------------------------------
 # export FASTRTPS_DEFAULT_PROFILES_FILE=$ROS_WS_DIR/camera_control_interfaces/fastdds_qos_profiles.xml
 # export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 # export RMW_FASTRTPS_USE_QOS_FROM_XML=1

@@ -97,6 +97,11 @@ install(TARGETS camera
         RUNTIME DESTINATION bin
 )
 
+# Now, while this does follow the same general idea of detection's composableNode cmakelist as listed in the link below,
+# a key differnce comes from having to export the camera library as well. This comes down to having to add two new installs:
+# one for setting up the camera library and one for setting up the combined export. Finally, ament_export is moved to afterwards to
+# ensure everything is properly installed before pushing out.
+# Otherwise, follow this standard template: https://docs.ros.org/en/humble/Tutorials/Intermediate/Writing-a-Composable-Node.html
 # Node executable
 # add_executable(camera_control_node
 #   src/camera_control_node.cpp

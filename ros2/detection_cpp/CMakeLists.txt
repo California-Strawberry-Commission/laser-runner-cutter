@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
 project(detection_cpp)
 
+# Also this line is needed since ByteTrack is not compiled with a specific flag needed to enable composableNodes
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Default to C++17
@@ -104,6 +105,9 @@ target_include_directories(bytetrack PUBLIC
 # Add BS Thread Pool
 include_directories(third_party/bs_thread_pool/include)
 
+# The below didn't actually need that much to change into composable node architecture
+# Beyond changing some neaming conventions, you just add register_node, export_targets, and the special install
+# The following outlines the changes quite well: https://docs.ros.org/en/humble/Tutorials/Intermediate/Writing-a-Composable-Node.html
 # Node executable
 add_library(detection_node_component SHARED
   src/detection_node.cpp

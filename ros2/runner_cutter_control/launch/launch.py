@@ -174,6 +174,8 @@ def generate_launch_description():
     #     condition=IfCondition(launch_cutter_nodes),
     # )
 
+    # When launching composable nodes, a container is created with each of the nodes provisioned within this container.
+    # Otherwise, the container performs rather similarly to how other nodes are provisioned.
     camera_detection_container = ComposableNodeContainer(
         name="camera_detection_container",
         namespace="",
