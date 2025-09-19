@@ -5,6 +5,7 @@
 #include <atomic>
 #include <filesystem>
 #include <opencv2/opencv.hpp>
+#include <rclcpp_components/register_node_macro.hpp>
 
 #include "camera_control_cpp/camera/calibration.hpp"
 #include "camera_control_cpp/camera/lucid_camera.hpp"
@@ -60,7 +61,8 @@ std::string getCurrentTimeString() {
 
 class CameraControlNode : public rclcpp::Node {
  public:
-  explicit CameraControlNode() : Node("camera_control_node") {
+  explicit CameraControlNode(const rclcpp::NodeOptions& options)
+      : Node("camera_control_node", options) {
     /////////////
     // Parameters
     /////////////
@@ -86,10 +88,15 @@ class CameraControlNode : public rclcpp::Node {
     /////////
     // Topics
     /////////
+    // Note: we need to explicitly disable intra-process comms on latched topics
+    // as intra-process comms are only allowed with volatile durability
     rclcpp::QoS latchedQos(rclcpp::KeepLast(1));
     latchedQos.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
+    rclcpp::PublisherOptions intraProcessDisableOpts;
+    intraProcessDisableOpts.use_intra_process_comm =
+        rclcpp::IntraProcessSetting::Disable;
     statePublisher_ = create_publisher<camera_control_interfaces::msg::State>(
-        "~/state", latchedQos);
+        "~/state", latchedQos, intraProcessDisableOpts);
     // TODO: move debug frame topic publishing to detection node
     debugFramePublisher_ = create_publisher<sensor_msgs::msg::Image>(
         "~/debug_frame", rclcpp::SensorDataQoS());
@@ -738,20 +745,4 @@ class CameraControlNode : public rclcpp::Node {
   rclcpp::TimerBase::SharedPtr deviceTemperaturePublishTimer_;
 };
 
-int main(int argc, char* argv[]) {
-  rclcpp::init(argc, argv);
-
-  try {
-    // MultiThreadedExecutor allows callbacks to run in parallel
-    rclcpp::executors::MultiThreadedExecutor executor;
-    auto node{std::make_shared<CameraControlNode>()};
-    executor.add_node(node);
-    executor.spin();
-  } catch (const std::exception& e) {
-    rclcpp::shutdown();
-    return 1;
-  }
-
-  rclcpp::shutdown();
-  return 0;
-}
+RCLCPP_COMPONENTS_REGISTER_NODE(CameraControlNode)

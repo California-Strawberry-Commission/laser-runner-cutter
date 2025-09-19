@@ -14,6 +14,7 @@ endif()
 # Find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(camera_control_interfaces REQUIRED)
@@ -82,18 +83,24 @@ target_include_directories(camera PUBLIC
 )
 target_link_libraries(camera PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS})
 
-# Node executable
-add_executable(camera_control_node
+# Composable node
+add_library(camera_control_node_composable SHARED
   src/camera_control_node.cpp
 )
-target_link_libraries(camera_control_node PRIVATE fmt::fmt camera)
-ament_target_dependencies(camera_control_node PUBLIC
+target_link_libraries(camera_control_node_composable PRIVATE fmt::fmt camera)
+ament_target_dependencies(camera_control_node_composable PUBLIC
   rclcpp
+  rclcpp_components
   std_msgs
   std_srvs
   camera_control_interfaces
   cv_bridge
   OpenCV
+)
+rclcpp_components_register_node(
+  camera_control_node_composable
+  PLUGIN "CameraControlNode"
+  EXECUTABLE camera_control_node
 )
 
 # Tools
@@ -107,8 +114,15 @@ target_link_libraries(test_color_to_depth_pixel_coord PRIVATE camera CLI11::CLI1
 ## Install ##
 #############
 
+# Install composable node
+install(TARGETS camera_control_node_composable
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+# Install tools
 install(TARGETS
-  camera_control_node
   lucid_calibrate
   test_color_to_depth_pixel_coord
   DESTINATION lib/${PROJECT_NAME})

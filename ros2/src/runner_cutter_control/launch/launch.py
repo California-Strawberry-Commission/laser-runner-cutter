@@ -7,6 +7,8 @@ from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.actions import ComposableNodeContainer
+from launch_ros.descriptions import ComposableNode
 
 from aioros2.launch import launch
 from amiga_control import amiga_control_node
@@ -149,16 +151,23 @@ def generate_launch_description():
         condition=IfCondition(launch_cutter_nodes),
     )
 
-    camera_control_cpp_launch_node = Node(
-        package="camera_control_cpp",
-        executable="camera_control_node",
-        name="camera0",
-        parameters=[parameters_file],
+    camera_control_cpp_launch_node = ComposableNodeContainer(
+        name="camera_control_container",
+        namespace="",
+        package="rclcpp_components",
+        executable="component_container_mt",  # multithreaded executor
         respawn=True,
         respawn_delay=2.0,
         output="screen",
         emulate_tty=True,
-        condition=IfCondition(launch_cutter_nodes),
+        composable_node_descriptions=[
+            ComposableNode(
+                package="camera_control_cpp",
+                plugin="CameraControlNode",
+                name="camera0",
+                extra_arguments=[{"use_intra_process_comms": True}],
+            ),
+        ],
     )
 
     laser_control_launch_node = Node(
