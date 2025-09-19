@@ -28,7 +28,7 @@ pkg_check_modules(LIBUSB REQUIRED libusb-1.0)
 include_directories(include)
 
 # Add Helios DAC SDK
-set(HELIOS_DAC_SDK_DIR third_party/helios_dac/sdk)
+set(HELIOS_DAC_SDK_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/helios_dac/sdk)
 add_library(helios_dac_sdk SHARED
   ${HELIOS_DAC_SDK_DIR}/HeliosDac.cpp
 )
@@ -39,7 +39,7 @@ target_link_libraries(helios_dac_sdk PUBLIC ${LIBUSB_LIBRARIES})
 target_compile_options(helios_dac_sdk PUBLIC -fpermissive -Wno-write-strings -Wno-pedantic -Wno-unused-variable -Wno-address)
 
 # Add Ether Dream SDK
-set(ETHER_DREAM_SDK_DIR third_party/ether-dream-sdk/src)
+set(ETHER_DREAM_SDK_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ether-dream-sdk/src)
 add_library(ether_dream_sdk SHARED
   ${ETHER_DREAM_SDK_DIR}/etherdream.c
 )

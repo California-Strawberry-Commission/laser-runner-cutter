@@ -30,7 +30,7 @@ find_package(fmt REQUIRED)
 include_directories(include)
 
 # Add matplotlib-cpp
-set(MATPLOTLIB_DIR third_party/matplotlib-cpp)
+set(MATPLOTLIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/matplotlib-cpp)
 add_library(matplotlib_cpp INTERFACE)
 target_compile_features(matplotlib_cpp INTERFACE
   cxx_std_11
