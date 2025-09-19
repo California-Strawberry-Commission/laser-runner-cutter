@@ -1,10 +1,10 @@
 #!/bin/bash
 
 script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-ros_dir="$script_dir/../.."
+ros_dir="$script_dir/../../.."
 repo_dir="$ros_dir/.."
 
-# Check that ../../../.env exists
+# Check that repo/.env file exists
 if [ ! -f "$repo_dir/.env" ]; then
   echo "[ERROR] Missing .env file at $repo_dir/.env"
   exit 1

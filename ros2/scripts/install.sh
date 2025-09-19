@@ -26,8 +26,8 @@ if [ ! -f "$installed_file" ]; then
     bash ./install_ros.sh
     bash ./install_realsense_ros.sh
     bash ./install_requirements.sh
-    bash ../laser_control/scripts/create_heliosdac_udev.sh
-    bash ../livekit_ros2/scripts/install.sh
+    bash ../src/laser_control/scripts/create_heliosdac_udev.sh
+    bash ../src/livekit_ros2/scripts/install.sh
 
     echo "Building..."
     bash ./build.sh

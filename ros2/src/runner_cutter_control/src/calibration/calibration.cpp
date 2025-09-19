@@ -195,6 +195,11 @@ void Calibration::addPointCorrespondence(const LaserCoord& laserCoord,
 void Calibration::updateTransform() {
   pointCorrespondences_.updateTransformNonlinearLeastSquares();
   pointCorrespondences_.updateCameraPixelToLaserCoordJacobian();
+  spdlog::info(
+      "Updated transform. Reprojection error: {}, with {} total "
+      "correspondences.",
+      pointCorrespondences_.getReprojectionError(),
+      pointCorrespondences_.size());
 }
 
 bool Calibration::save(const std::string& filePath) {
@@ -267,7 +272,13 @@ bool Calibration::load(const std::string& filePath) {
   }
 
   isCalibrated_ = true;
-  spdlog::info("Successfully loaded calibration file {}", filePath);
+  spdlog::info(
+      "Successfully loaded calibration file {}. Reprojection error: {}, with "
+      "{} total "
+      "correspondences.",
+      filePath, pointCorrespondences_.getReprojectionError(),
+      pointCorrespondences_.size());
+
   return true;
 }
 

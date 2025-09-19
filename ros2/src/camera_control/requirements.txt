@@ -1,0 +1,8 @@
+opencv-contrib-python
+pyrealsense2
+numpy
+dvc
+dvc[s3]
+-e ../../../ml/runner_segmentation_model --config-settings editable_mode=strict
+-e ../../../ml/ml_utils --config-settings editable_mode=strict
+-e ../aioros2 --config-settings editable_mode=strict

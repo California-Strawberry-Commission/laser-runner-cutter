@@ -4,7 +4,7 @@ Laser Runner Cutter is a project by the California Strawberry Commission for aut
 
 ## Packages
 
-### ROS2/
+### ros2/
 
 - `amiga_control`: node for controlling the Farm-ng Amiga.
 - `amiga_control_interfaces`: custom interface definitions used in `amiga_control`.
@@ -21,20 +21,16 @@ Laser Runner Cutter is a project by the California Strawberry Commission for aut
 - `runner_cutter_control`: node for laser runner cutter control and automation.
 - `runner_cutter_control_interfaces`: custom interface definitions used in `runner_cutter_control`.
 
-### ML/
+### ml/
 
 - `laser_detection_model`: ML pipeline and models for object detection of lasers
 - `ml_utils`: shared logic used by the other ML projects
 - `runner_mask_instancing_model`: ML pipeline and models for instace segmentation of semantic segmented runner masks. Goal: given a single binary mask that represents runners, segment it into separate instances of runners.
 - `runner_segmentation_model`: ML pipeline and models for instance segmentation of runners
 
-### Apps/
+### apps/
 
 - `runner-cutter-app`: web app for laser runner cutter control and automation.
-
-### Tools/
-
-- `simulator`: Unity-based simulator.
 
 ## Setup and run
 
