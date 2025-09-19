@@ -14,7 +14,7 @@ services:
     volumes:
       - ./config:/config:ro
     env_file:
-      - ../../.env # uses LIVEKIT_KEYS
+      - ../../../.env # uses LIVEKIT_KEYS
 
   ingress:
     image: livekit/ingress:latest
@@ -27,4 +27,4 @@ services:
     volumes:
       - ./config:/config:ro
     env_file:
-      - ../../.env # uses LIVEKIT_API_KEY / LIVEKIT_API_SECRET
+      - ../../../.env # uses LIVEKIT_API_KEY / LIVEKIT_API_SECRET

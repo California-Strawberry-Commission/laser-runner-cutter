@@ -6,7 +6,7 @@ source $VENV_DIR/bin/activate
 source /opt/ros/$ROS_DISTRO/setup.sh
 
 # Build TensorRT models
-bash $script_dir/../camera_control/scripts/build_tensorrt_models.sh
+bash $script_dir/../src/camera_control/scripts/build_tensorrt_models.sh
 
 # Fresh build of ROS2 nodes
 cd $ROS_WS_DIR

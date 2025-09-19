@@ -1,6 +1,6 @@
 #!/bin/bash
 script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source $script_dir/../../scripts/env.sh
+source $script_dir/../../../scripts/env.sh
 models_dir=$script_dir/../models
 
 if [ ! -f "$models_dir/RunnerSegYoloV8l.engine" ]; then

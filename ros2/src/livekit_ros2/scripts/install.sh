@@ -32,6 +32,6 @@ sudo usermod -aG docker $USER
 newgrp docker
 
 # Install Python deps
-source $script_dir/../../scripts/env.sh
+source $script_dir/../../../scripts/env.sh
 source $VENV_DIR/bin/activate
 pip install -r $script_dir/../requirements.txt

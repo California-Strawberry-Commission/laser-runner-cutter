@@ -2,6 +2,7 @@
 realsense2*
 install
 build
+log
 installed 
 
 # VS Code ROS 2 specific settings

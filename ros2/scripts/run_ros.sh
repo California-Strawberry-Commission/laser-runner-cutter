@@ -7,7 +7,7 @@ pids=()
 # Run LiveKit
 (
   cd "$script_dir/.."
-  exec bash livekit_ros2/scripts/run.sh
+  exec bash src/livekit_ros2/scripts/run.sh
 ) &
 pids+=("$!")
 
