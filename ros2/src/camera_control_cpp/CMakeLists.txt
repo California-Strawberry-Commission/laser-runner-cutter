@@ -22,16 +22,6 @@ find_package(fmt REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(cv_bridge REQUIRED)
 
-include(FetchContent)
-
-# CLI11 (header-only)
-FetchContent_Declare(
-    CLI11
-    GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
-    GIT_TAG v2.5.0
-)
-FetchContent_MakeAvailable(CLI11)
-
 ###########
 ## Build ##
 ###########
@@ -75,7 +65,10 @@ set(ARENA_INCLUDE_DIRS
 )
 
 # Add BS Thread Pool
-include_directories(third_party/bs_thread_pool/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/bs_thread_pool/include)
+
+# Add CLI11
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/CLI11 ${CMAKE_CURRENT_BINARY_DIR}/cli11-build EXCLUDE_FROM_ALL)
 
 # camera
 add_library(camera SHARED
