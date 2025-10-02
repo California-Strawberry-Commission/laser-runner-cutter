@@ -175,5 +175,6 @@ class LucidCamera {
   };
   std::optional<GetDepthFrameResult> getDepthFrame();
   LucidFrame createRgbdFrame(const cv::Mat& colorFrame,
-                             const cv::Mat& depthFrameXyz);
+                             const cv::Mat& depthFrameXyz,
+                             const cv::Mat& depthFrameIntensity);
 };

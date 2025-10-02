@@ -698,16 +698,17 @@ std::optional<LucidCamera::GetDepthFrameResult> LucidCamera::getDepthFrame() {
 }
 
 LucidFrame LucidCamera::createRgbdFrame(const cv::Mat& colorFrame,
-                                        const cv::Mat& depthFrameXyz) {
+                                        const cv::Mat& depthFrameXyz,
+                                        const cv::Mat& depthFrameIntensity) {
   double timestampMillis{
       static_cast<double>(
           std::chrono::duration_cast<std::chrono::microseconds>(
               std::chrono::system_clock::now().time_since_epoch())
               .count()) /
       1000.0};
-  return LucidFrame(colorFrame, depthFrameXyz, timestampMillis,
-                    colorCameraIntrinsicMatrix_, colorCameraDistortionCoeffs_,
-                    depthCameraIntrinsicMatrix_, depthCameraDistortionCoeffs_,
-                    xyzToColorCameraExtrinsicMatrix_,
-                    xyzToDepthCameraExtrinsicMatrix_);
+  return LucidFrame(
+      colorFrame, depthFrameXyz, depthFrameIntensity, timestampMillis,
+      colorCameraIntrinsicMatrix_, colorCameraDistortionCoeffs_,
+      depthCameraIntrinsicMatrix_, depthCameraDistortionCoeffs_,
+      xyzToColorCameraExtrinsicMatrix_, xyzToDepthCameraExtrinsicMatrix_);
 }
