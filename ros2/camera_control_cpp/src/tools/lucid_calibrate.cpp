@@ -32,7 +32,7 @@ void captureFrame(double exposureUs, double gainDb,
 
   std::filesystem::path depthIntensityImagePath{
       std::filesystem::path(outputDirExpandedPath) / "helios_intensity.png"};
-  cv::imwrite(depthIntensityImagePath, frame.getDepthFrame());
+  cv::imwrite(depthIntensityImagePath, frame.getDepthFrameIntensity());
   spdlog::info("Saved depth camera intensity image to: {}",
                depthIntensityImagePath.string());
 
