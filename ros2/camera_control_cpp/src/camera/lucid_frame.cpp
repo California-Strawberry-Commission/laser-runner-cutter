@@ -118,6 +118,7 @@ LucidFrame::LucidFrame(const cv::Mat& colorFrame, const cv::Mat& depthFrameXyz,
                        std::pair<int, int> colorFrameOffset)
     : colorFrame_(colorFrame),
       depthFrameXyz_(depthFrameXyz),
+      depthFrameIntensity_(depthFrameIntensity),
       timestampMillis_(timestampMillis),
       colorCameraIntrinsicMatrix_(colorCameraIntrinsicMatrix),
       colorCameraDistortionCoeffs_(colorCameraDistortionCoeffs),
