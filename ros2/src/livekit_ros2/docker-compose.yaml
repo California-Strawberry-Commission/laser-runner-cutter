@@ -1,0 +1,30 @@
+services:
+  redis:
+    image: redis:7
+    container_name: lk-redis
+    network_mode: host
+
+  server:
+    image: livekit/livekit-server:latest
+    container_name: lk-server
+    network_mode: host
+    depends_on:
+      - redis
+    command: ["--config", "/config/livekit_server.yaml"]
+    volumes:
+      - ./config:/config:ro
+    env_file:
+      - ../../../.env # uses LIVEKIT_KEYS
+
+  ingress:
+    image: livekit/ingress:latest
+    container_name: lk-ingress
+    network_mode: host
+    depends_on:
+      - server
+      - redis
+    command: ["--config", "/config/ingress_server.yaml"]
+    volumes:
+      - ./config:/config:ro
+    env_file:
+      - ../../../.env # uses LIVEKIT_API_KEY / LIVEKIT_API_SECRET
