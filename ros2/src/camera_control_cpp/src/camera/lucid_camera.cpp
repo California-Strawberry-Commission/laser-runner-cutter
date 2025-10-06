@@ -535,7 +535,8 @@ std::optional<LucidFrame> LucidCamera::getNextFrame() {
     std::optional<cv::Mat> colorFrame{getColorFrame()};
     std::optional<LucidCamera::GetDepthFrameResult> depthFrame{getDepthFrame()};
     if (colorFrame && depthFrame) {
-      frame = createRgbdFrame(colorFrame.value(), depthFrame.value().xyz);
+      frame = createRgbdFrame(colorFrame.value(), depthFrame.value().xyz,
+                              depthFrame.value().intensity);
     }
   } catch (const std::exception& e) {
     spdlog::error(
@@ -604,7 +605,8 @@ void LucidCamera::acquisitionThreadFn(FrameCallback frameCallback) {
       }
 
       auto frame{std::make_shared<LucidFrame>(
-          createRgbdFrame(colorFrame.value(), depthFrame.value().xyz))};
+          createRgbdFrame(colorFrame.value(), depthFrame.value().xyz,
+                          depthFrame.value().intensity))};
       if (frameCallback) {
         frameCallback(frame);
       }
@@ -698,16 +700,17 @@ std::optional<LucidCamera::GetDepthFrameResult> LucidCamera::getDepthFrame() {
 }
 
 LucidFrame LucidCamera::createRgbdFrame(const cv::Mat& colorFrame,
-                                        const cv::Mat& depthFrameXyz) {
+                                        const cv::Mat& depthFrameXyz,
+                                        const cv::Mat& depthFrameIntensity) {
   double timestampMillis{
       static_cast<double>(
           std::chrono::duration_cast<std::chrono::microseconds>(
               std::chrono::system_clock::now().time_since_epoch())
               .count()) /
       1000.0};
-  return LucidFrame(colorFrame, depthFrameXyz, timestampMillis,
-                    colorCameraIntrinsicMatrix_, colorCameraDistortionCoeffs_,
-                    depthCameraIntrinsicMatrix_, depthCameraDistortionCoeffs_,
-                    xyzToColorCameraExtrinsicMatrix_,
-                    xyzToDepthCameraExtrinsicMatrix_);
+  return LucidFrame(
+      colorFrame, depthFrameXyz, depthFrameIntensity, timestampMillis,
+      colorCameraIntrinsicMatrix_, colorCameraDistortionCoeffs_,
+      depthCameraIntrinsicMatrix_, depthCameraDistortionCoeffs_,
+      xyzToColorCameraExtrinsicMatrix_, xyzToDepthCameraExtrinsicMatrix_);
 }

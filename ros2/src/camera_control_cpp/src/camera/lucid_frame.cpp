@@ -107,6 +107,7 @@ bool isPixelInLine(const cv::Point2i& curr, const cv::Point2i& start,
 }  // namespace
 
 LucidFrame::LucidFrame(const cv::Mat& colorFrame, const cv::Mat& depthFrameXyz,
+                       const cv::Mat& depthFrameIntensity,
                        double timestampMillis,
                        const cv::Mat& colorCameraIntrinsicMatrix,
                        const cv::Mat& colorCameraDistortionCoeffs,
@@ -117,6 +118,7 @@ LucidFrame::LucidFrame(const cv::Mat& colorFrame, const cv::Mat& depthFrameXyz,
                        std::pair<int, int> colorFrameOffset)
     : colorFrame_(colorFrame),
       depthFrameXyz_(depthFrameXyz),
+      depthFrameIntensity_(depthFrameIntensity),
       timestampMillis_(timestampMillis),
       colorCameraIntrinsicMatrix_(colorCameraIntrinsicMatrix),
       colorCameraDistortionCoeffs_(colorCameraDistortionCoeffs),
@@ -125,9 +127,12 @@ LucidFrame::LucidFrame(const cv::Mat& colorFrame, const cv::Mat& depthFrameXyz,
       xyzToColorCameraExtrinsicMatrix_(xyzToColorCameraExtrinsicMatrix),
       xyzToDepthCameraExtrinsicMatrix_(xyzToDepthCameraExtrinsicMatrix),
       colorFrameOffset_(colorFrameOffset) {
-  colorToDepthExtrinsicMatrix_ =
-      xyzToDepthCameraExtrinsicMatrix_ *
-      calibration::invertExtrinsicMatrix(xyzToColorCameraExtrinsicMatrix_);
+  if (!xyzToColorCameraExtrinsicMatrix_.empty() &&
+      !xyzToDepthCameraExtrinsicMatrix_.empty()) {
+    colorToDepthExtrinsicMatrix_ =
+        xyzToDepthCameraExtrinsicMatrix_ *
+        calibration::invertExtrinsicMatrix(xyzToColorCameraExtrinsicMatrix_);
+  }
 }
 
 LucidFrame::~LucidFrame() {}
