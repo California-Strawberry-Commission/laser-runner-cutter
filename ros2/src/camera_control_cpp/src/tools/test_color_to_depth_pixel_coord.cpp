@@ -96,6 +96,7 @@ int main(int argc, char* argv[]) {
       1000.0};
   LucidFrame frame{tritonImg,
                    xyzmm,
+                   heliosIntensityImg,
                    timestampMillis,
                    tritonIntrinsicMatrix,
                    tritonDistCoeffs,
