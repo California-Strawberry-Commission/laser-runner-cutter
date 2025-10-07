@@ -1,0 +1,40 @@
+# Layer to install custom dependencies for the laser runner cutter.
+# Works as a run_dev.sh layer: it expects BASE_IMAGE to be the prior layer.
+
+ARG BASE_IMAGE=ubuntu:22.04
+FROM ${BASE_IMAGE}
+
+# Disable terminal interaction for apt
+ENV DEBIAN_FRONTEND=noninteractive
+ENV SHELL=/bin/bash
+SHELL ["/bin/bash", "-c"]
+
+# Install GStreamer
+# The following is from https://gstreamer.freedesktop.org/documentation/installing/on-linux.html?gi-language=c
+RUN --mount=type=cache,target=/var/cache/apt \
+    apt-get update && apt-get install -y \
+    libgstreamer1.0-dev \
+    libgstreamer-plugins-base1.0-dev \
+    libgstreamer-plugins-bad1.0-dev \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-plugins-ugly \
+    gstreamer1.0-libav \
+    gstreamer1.0-tools \
+    gstreamer1.0-x \
+    gstreamer1.0-alsa \
+    gstreamer1.0-gl \
+    gstreamer1.0-gtk3 \
+    gstreamer1.0-qt5 \
+    gstreamer1.0-pulseaudio \
+    libcairo2-dev
+
+# Install RealSense ROS packages
+# The following is from https://github.com/IntelRealSense/realsense-ros?tab=readme-ov-file#installation-on-ubuntu
+RUN --mount=type=cache,target=/var/cache/apt \
+    apt-get update && apt-get install -y \
+    "ros-$ROS_DISTRO-librealsense2*" \
+    "ros-$ROS_DISTRO-realsense2-*"
+
+# TODO: Install pip deps

@@ -1,0 +1,31 @@
+# Layer to install Arena SDK.
+# Works as a run_dev.sh layer: it expects BASE_IMAGE to be the prior layer.
+
+ARG BASE_IMAGE=ubuntu:22.04
+FROM ${BASE_IMAGE}
+
+# disable terminal interaction for apt
+ENV DEBIAN_FRONTEND=noninteractive
+ENV SHELL=/bin/bash
+SHELL ["/bin/bash", "-c"]
+
+# Copy the Arena SDK into the image
+# Note: the source path is relative to the build context (isaac_ros_common/docker/)
+COPY ArenaSDK /tmp/arena
+
+# Install Arena SDK
+RUN ARCH=$(uname -m); \
+    echo "Installing Arena SDK for ${ARCH}"; \
+    mkdir -p /opt/ArenaSDK; \
+    if [ "${ARCH}" = "x86_64" ]; then \
+        cp -a /tmp/arena/x64/. /opt/ArenaSDK/ArenaSDK_Linux_x64/; \
+        cd /opt/ArenaSDK/ArenaSDK_Linux_x64; \
+        sh Arena_SDK_Linux_x64.conf; \
+    elif [ "${ARCH}" = "aarch64" ]; then \
+        cp -a /tmp/arena/ARM64/. /opt/ArenaSDK/ArenaSDK_Linux_ARM64/; \
+        cd /opt/ArenaSDK/ArenaSDK_Linux_ARM64; \
+        sh Arena_SDK_ARM64.conf; \
+    else \
+        echo "Unsupported architecture: ${ARCH}"; exit 1; \
+    fi; \
+    rm -rf /tmp/arena
