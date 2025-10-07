@@ -6,11 +6,6 @@ This project uses **Ubuntu 22.04 (Jammy Jellyfish)** and **ROS Humble**.
 
 Installation assumes a fresh version of **Ubuntu 22.04 desktop/server** on a dedicated deployment or development PC.
 
-1.  Install Git LFS
-
-        $ curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
-        $ sudo apt-get install git-lfs
-
 1.  Clone this repository into your home directory
 
         $ cd ~
@@ -45,6 +40,8 @@ Linux systems require udev rules to allow access to USB devices without root pri
 ### Using LUCID cameras (Triton and Helios2)
 
 LUCID cameras require the Arena SDK and Arena Python Package, which can be found at https://thinklucid.com/downloads-hub/. This is already set up as part of the auto-install process above, in `/opt/ArenaSDK`.
+
+In addition, in order to connect to the cameras, you will need to configure the network interfaces and camera IPs. To do this, run `laser-runner-cutter/ros2/scripts/configure_network.sh`.
 
 ## Development Environment
 
@@ -93,13 +90,6 @@ In addition, we can set up the machine to enable restarting the ROS2 nodes and r
 
         <username> ALL=(ALL) NOPASSWD: /bin/systemctl restart laser-runner-cutter-ros.service
         <username> ALL=(ALL) NOPASSWD: /sbin/reboot
-
-## Native libraries
-
-C/C++ libraries included were compiled for linux-x86_64 and linux-aarch64 from the following sources:
-
-- Helios DAC: https://github.com/Grix/helios_dac
-- Ether Dream 4 DAC: https://github.com/genkikondo/ether-dream-sdk
 
 ## LUCID camera calibration
 
