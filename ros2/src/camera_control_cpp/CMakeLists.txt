@@ -104,6 +104,8 @@ rclcpp_components_register_node(
 )
 
 # Tools
+add_executable(latency_clock src/tools/latency_clock.cpp)
+
 add_executable(lucid_calibrate src/tools/lucid_calibrate.cpp)
 target_link_libraries(lucid_calibrate PRIVATE camera CLI11::CLI11 spdlog::spdlog ${OpenCV_LIBS})
 
@@ -123,6 +125,7 @@ install(TARGETS camera_control_node_composable
 
 # Install tools
 install(TARGETS
+  latency_clock
   lucid_calibrate
   test_color_to_depth_pixel_coord
   DESTINATION lib/${PROJECT_NAME})
