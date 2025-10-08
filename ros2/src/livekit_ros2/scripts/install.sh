@@ -5,7 +5,25 @@ script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Install GStreamer
 # The following is from https://gstreamer.freedesktop.org/documentation/installing/on-linux.html?gi-language=c
-sudo apt install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-tools gstreamer1.0-x gstreamer1.0-alsa gstreamer1.0-gl gstreamer1.0-gtk3 gstreamer1.0-qt5 gstreamer1.0-pulseaudio
+sudo apt install -y \
+  libgstreamer1.0-dev \
+  libgstreamer-plugins-base1.0-dev \
+  libgstreamer-plugins-bad1.0-dev \
+  gstreamer1.0-plugins-base \
+  gstreamer1.0-plugins-good \
+  gstreamer1.0-plugins-bad \
+  gstreamer1.0-plugins-ugly \
+  gstreamer1.0-libav \
+  gstreamer1.0-tools \
+  gstreamer1.0-x \
+  gstreamer1.0-alsa \
+  gstreamer1.0-gl \
+  gstreamer1.0-gtk3 \
+  gstreamer1.0-qt5 \
+  gstreamer1.0-pulseaudio \
+  libcairo2-dev \
+  gstreamer1.0-nice \
+  libsrtp2-1
 
 # Install Docker
 # The following is from https://docs.docker.com/engine/install/ubuntu/
