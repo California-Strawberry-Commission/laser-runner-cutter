@@ -28,4 +28,5 @@ RUN ARCH=$(uname -m); \
     else \
         echo "Unsupported architecture: ${ARCH}"; exit 1; \
     fi; \
+    python3 -m pip install /tmp/arena/arena_api-2.5.9-py3-none-any.whl; \
     rm -rf /tmp/arena
