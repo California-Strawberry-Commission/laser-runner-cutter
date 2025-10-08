@@ -28,7 +28,9 @@ RUN --mount=type=cache,target=/var/cache/apt \
     gstreamer1.0-gtk3 \
     gstreamer1.0-qt5 \
     gstreamer1.0-pulseaudio \
-    libcairo2-dev
+    libcairo2-dev \
+    gstreamer1.0-nice \
+    libsrtp2-1
 
 # Install RealSense ROS packages
 # The following is from https://github.com/IntelRealSense/realsense-ros?tab=readme-ov-file#installation-on-ubuntu
