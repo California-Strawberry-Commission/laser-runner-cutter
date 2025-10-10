@@ -113,7 +113,7 @@ def upload_yolo_predictions(
 
             predictions.append(
                 lb_types.Label(
-                    data=lb_types.ImageData(global_key=img_name),
+                    data={"global_key": img_name},
                     annotations=[
                         lb_types.ObjectAnnotation(
                             name=list(CLASS_MAP.keys())[0],
@@ -137,7 +137,7 @@ def upload_yolo_predictions(
             name="mal_job" + str(uuid.uuid4()),
             predictions=predictions,
         )
-        upload_job.wait_until_done()
+        upload_job.wait_till_done()
         print(f"Successfully uploaded predictions")
     except Exception as exc:
         print(f"Failed to upload predictions: {exc}")

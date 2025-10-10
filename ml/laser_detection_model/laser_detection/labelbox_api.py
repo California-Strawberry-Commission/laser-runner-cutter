@@ -114,7 +114,7 @@ def upload_labels_from_yolo_labels(
             if len(annotations) > 0:
                 labels.append(
                     lb_types.Label(
-                        data=lb_types.ImageData(global_key=img_filename),
+                        data={"global_key": img_filename},
                         annotations=annotations,
                     )
                 )
@@ -129,7 +129,7 @@ def upload_labels_from_yolo_labels(
                 name="label_import_job" + str(uuid.uuid4()),
                 labels=labels,
             )
-            upload_job.wait_until_done()
+            upload_job.wait_till_done()
             print(f"Successfully uploaded labels for {img_filename}")
         except Exception as ex:
             print(f"Failed to upload labels for {img_filename}: {ex}")

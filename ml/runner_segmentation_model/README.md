@@ -8,7 +8,7 @@ Project for preparing training data and training a ML model for detecting instan
 
         $ ./scripts/env_setup.sh
 
-1.  Install MMDetection
+1.  [Optional] Install MMDetection
 
         $ pip install -U openmim
         $ mim install mmengine mmcv mmdet
