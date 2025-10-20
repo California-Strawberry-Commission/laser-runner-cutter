@@ -1,21 +1,21 @@
-[submodule "ros2/realsense-ros"]
+[submodule "ros2/src/realsense-ros"]
 	path = ros2/src/realsense-ros
 	url = https://github.com/IntelRealSense/realsense-ros.git
 	branch = ros2-master
-[submodule "ros2/web_video_server"]
+[submodule "ros2/src/web_video_server"]
 	path = ros2/src/web_video_server
 	url = https://github.com/RobotWebTools/web_video_server.git
 	branch = ros2
-[submodule "ros2/laser_control/third_party/helios_dac"]
+[submodule "ros2/third_party/helios_dac"]
 	path = ros2/third_party/helios_dac
 	url = https://github.com/Grix/helios_dac.git
-[submodule "ros2/laser_control/third_party/ether-dream-sdk"]
+[submodule "ros2/third_party/ether-dream-sdk"]
 	path = ros2/third_party/ether-dream-sdk
 	url = https://github.com/genkikondo/ether-dream-sdk.git
-[submodule "ros2/runner_cutter_control/third_party/matplotlib-cpp"]
+[submodule "ros2/third_party/matplotlib-cpp"]
 	path = ros2/third_party/matplotlib-cpp
 	url = https://github.com/lava/matplotlib-cpp.git
-[submodule "ros2/camera_control_cpp/third_party/bs_thread_pool"]
+[submodule "ros2/third_party/bs_thread_pool"]
 	path = ros2/third_party/bs_thread_pool
 	url = https://github.com/bshoshany/thread-pool.git
 [submodule "ros2/third_party/CLI11"]
