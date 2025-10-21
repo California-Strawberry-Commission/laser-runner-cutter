@@ -4,7 +4,7 @@
 #include "detection/detector/yolov8.hpp"
 
 int main(int argc, char *argv[]) {
-  CLI::App app{"Test runner detection"};
+  CLI::App app{"Test YoloV8"};
 
   std::string imageFile;
   std::string trtEngineFile;

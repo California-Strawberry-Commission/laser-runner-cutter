@@ -17,7 +17,7 @@ struct Object {
   int label{};
   // The detection's confidence probability
   float conf{};
-  // The object bounding box rectangle
+  // The object bounding box rectangle (TLWH)
   cv::Rect2f rect;
   // Semantic segmentation mask, inside the bounding box
   cv::Mat boxMask;

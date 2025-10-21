@@ -31,6 +31,7 @@ set(OpenCV_DIR "/usr/local/lib/cmake/opencv4")
 find_package(OpenCV REQUIRED)
 find_package(CUDA REQUIRED)
 find_package(TensorRT REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 ###########
 ## Build ##
@@ -41,17 +42,46 @@ include_directories(include)
 # Add CLI11
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/CLI11 ${CMAKE_CURRENT_BINARY_DIR}/cli11-build EXCLUDE_FROM_ALL)
 
+# Add ByteTrack-cpp
+set(BYTETRACK_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ByteTrack-cpp)
+set(BYTETRACK_INCLUDE_DIRS
+  ${BYTETRACK_DIR}/include
+)
+add_library(bytetrack SHARED
+  ${BYTETRACK_DIR}/src/BYTETracker.cpp
+  ${BYTETRACK_DIR}/src/KalmanFilter.cpp
+  ${BYTETRACK_DIR}/src/lapjv.cpp
+  ${BYTETRACK_DIR}/src/Object.cpp
+  ${BYTETRACK_DIR}/src/Rect.cpp
+  ${BYTETRACK_DIR}/src/STrack.cpp
+)
+target_include_directories(bytetrack PUBLIC
+  ${BYTETRACK_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
+)
+target_link_libraries(bytetrack PRIVATE Eigen3::Eigen)
+
 # detector
-add_library(detector SHARED src/detector/yolov8.cpp)
+add_library(detector SHARED
+  src/detector/yolov8.cpp
+  src/detector/runner_detector.cpp
+)
 target_include_directories(detector PUBLIC
   ${OpenCV_INCLUDE_DIRS}
   ${CUDA_INCLUDE_DIRS}
+  ${BYTETRACK_INCLUDE_DIRS}
 )
-target_link_libraries(detector PRIVATE
-  spdlog::spdlog
-  ${OpenCV_LIBS}
-  ${CUDA_LIBRARIES}
-  nvinfer
+target_link_libraries(detector
+  PUBLIC
+    bytetrack
+  PRIVATE
+    spdlog::spdlog
+    ${OpenCV_LIBS}
+    ${CUDA_LIBRARIES}
+    nvinfer
+)
+ament_target_dependencies(detector PUBLIC
+  ament_index_cpp
 )
 if(ENABLE_BENCHMARKS)
   target_compile_definitions(detector PRIVATE ENABLE_BENCHMARKS)
@@ -91,10 +121,15 @@ rclcpp_components_register_node(
 )
 
 # Tools
-add_executable(test_runner_detection
-  src/tools/test_runner_detection.cpp
+add_executable(test_yolov8
+  src/tools/test_yolov8.cpp
 )
-target_link_libraries(test_runner_detection PRIVATE CLI11::CLI11 detector ${OpenCV_LIBS})
+target_link_libraries(test_yolov8 PRIVATE CLI11::CLI11 detector ${OpenCV_LIBS})
+
+add_executable(test_runner_detector
+  src/tools/test_runner_detector.cpp
+)
+target_link_libraries(test_runner_detector PRIVATE CLI11::CLI11 detector ${OpenCV_LIBS})
 
 #############
 ## Install ##
@@ -111,12 +146,18 @@ install(TARGETS
 
 # Install tools
 install(TARGETS
-  test_runner_detection
+  test_yolov8
+  test_runner_detector
   DESTINATION lib/${PROJECT_NAME}
 )
 
 # Install launch files
 install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}/
+)
+
+# Install model files
+install(DIRECTORY models
   DESTINATION share/${PROJECT_NAME}/
 )
 

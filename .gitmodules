@@ -21,3 +21,6 @@
 [submodule "ros2/third_party/CLI11"]
 	path = ros2/third_party/CLI11
 	url = https://github.com/CLIUtils/CLI11.git
+[submodule "ros2/third_party/ByteTrack-cpp"]
+	path = ros2/third_party/ByteTrack-cpp
+	url = https://github.com/Vertical-Beach/ByteTrack-cpp.git
