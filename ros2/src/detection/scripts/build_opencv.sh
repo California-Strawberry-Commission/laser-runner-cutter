@@ -23,7 +23,7 @@ cmake -G Ninja \
       -D CMAKE_BUILD_TYPE=Release \
       -D CMAKE_INSTALL_PREFIX=/usr/local \
       -D BUILD_SHARED_LIBS=ON \
-      -D BUILD_LIST=core,imgproc,imgcodecs,videoio,video,calib3d,features2d,dnn,highgui,cudaarithm,cudaimgproc,cudawarping,cudev \
+      -D BUILD_LIST=core,imgproc,imgcodecs,videoio,video,calib3d,features2d,dnn,highgui,ximgproc,cudaarithm,cudaimgproc,cudawarping,cudev \
       -D WITH_TBB=ON \
       -D ENABLE_FAST_MATH=1 \
       -D CUDA_FAST_MATH=1 \
@@ -55,5 +55,5 @@ cmake -G Ninja \
       -D CUDNN_LIBRARY=/usr/lib/$(uname -m)-linux-gnu/libcudnn.so \
       ..
 
-ninja -j"$(nproc)" && ninja install && ldconfig
+ninja -j"$(nproc)" && sudo ninja install && sudo ldconfig
 rm -rf /tmp/opencv

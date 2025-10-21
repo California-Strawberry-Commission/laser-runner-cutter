@@ -36,9 +36,6 @@ class YoloV8 {
                               float segmentationThreshold = 0.5f,
                               int maxDetections = 300);
 
-  void drawObjectLabels(cv::Mat& image, const std::vector<Object>& objects,
-                        unsigned int scale = 1);
-
  private:
   static inline constexpr const char* INPUT_TENSOR_NAME{"images"};
   static inline constexpr const char* OUTPUT0_TENSOR_NAME{"output0"};

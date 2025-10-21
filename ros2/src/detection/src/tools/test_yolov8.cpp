@@ -3,7 +3,47 @@
 
 #include "detection/detector/yolov8.hpp"
 
-int main(int argc, char *argv[]) {
+void drawObjectLabels(cv::Mat& image, const std::vector<Object>& objects,
+                      unsigned int scale = 1) {
+  cv::Scalar color{0.0, 0.0, 1.0};
+
+  // Draw segmentation masks
+  if (!objects.empty() && !objects[0].boxMask.empty()) {
+    cv::Mat mask{image.clone()};
+    for (const auto& object : objects) {
+      mask(object.rect).setTo(color * 255, object.boxMask);
+    }
+    // Add all the masks to our image
+    cv::addWeighted(image, 0.5, mask, 0.8, 1, image);
+  }
+
+  // Bounding boxes and annotations
+  for (auto& object : objects) {
+    double meanColor{cv::mean(color)[0]};
+    cv::Scalar textColor{(meanColor > 0.5) ? cv::Scalar(0, 0, 0)
+                                           : cv::Scalar(255, 255, 255)};
+
+    // Draw rectangles and text
+    char text[256];
+    sprintf(text, "%.1f%%", object.conf * 100);
+    int baseLine{0};
+    cv::Size labelSize{cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX,
+                                       0.5 * scale, scale, &baseLine)};
+    cv::Scalar textBackgroundColor{color * 0.7 * 255};
+    cv::rectangle(image, object.rect, color * 255, scale + 1);
+    int x{static_cast<int>(std::round(object.rect.x))};
+    int y{static_cast<int>(std::round(object.rect.y)) + 1};
+    cv::rectangle(
+        image,
+        cv::Rect(cv::Point(x, y),
+                 cv::Size(labelSize.width, labelSize.height + baseLine)),
+        textBackgroundColor, -1);
+    cv::putText(image, text, cv::Point(x, y + labelSize.height),
+                cv::FONT_HERSHEY_SIMPLEX, 0.5 * scale, textColor, scale);
+  }
+}
+
+int main(int argc, char* argv[]) {
   CLI::App app{"Test YoloV8"};
 
   std::string imageFile;
@@ -53,7 +93,7 @@ int main(int argc, char *argv[]) {
 
   // Draw labels
   auto objects{yolo.predict(rgbImage)};
-  yolo.drawObjectLabels(img, objects);
+  drawObjectLabels(img, objects);
 
   // Save the image to disk
   std::filesystem::path imagePath{imageFile};

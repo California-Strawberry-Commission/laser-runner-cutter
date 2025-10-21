@@ -9,10 +9,14 @@
 struct Runner {
   // The detection's confidence probability
   float conf{};
-  // The detection's track ID
-  float trackId{-1};
   // The object bounding box rectangle (TLWH)
   cv::Rect2f rect;
+  // Semantic segmentation mask, inside the bounding box
+  cv::Mat boxMask;
+  // The representative point of the detected object
+  cv::Point point{-1, -1};
+  // The detection's track ID
+  int trackId{-1};
 };
 
 class RunnerDetector {
