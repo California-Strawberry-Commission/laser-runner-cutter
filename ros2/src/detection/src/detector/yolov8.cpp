@@ -269,9 +269,10 @@ std::vector<Object> YoloV8::predict(const cv::Mat& imageRGB,
   // we find detections, the box details are extrapolated and scaled to
   // full-size.
   for (int anchorIdx = 0; anchorIdx < numAnchors; ++anchorIdx) {
-    // Use pointer arithmetic here since cv::Mat::at has overhead
-    // The detections output is numAttrs x numAnchors (attribute-major)
-    // Attrs: [x, y, w, h, class_0, class_1, ..., mask_0, mask_1, ...]
+    // Use pointer arithmetic here since cv::Mat::at has overhead. Note
+    // that a full transpose of detectionsMat is expensive, so we stick with
+    // attribute-major (numAttrs x numAnchors). So, each column of detectionsMat
+    // is [x, y, w, h, class_0, class_1, ..., mask_0, mask_1, ...]
     const float* colPtr{detectionsMat.ptr<float>(0) + anchorIdx};
     // Attribute stride = numAnchors (since cols are contiguous across anchors)
     const int stride{numAnchors};
@@ -289,8 +290,8 @@ std::vector<Object> YoloV8::predict(const cv::Mat& imageRGB,
 
     if (maxConf > confThreshold) {
       // bbox
-      float x{colPtr[0 * stride]};
-      float y{colPtr[1 * stride]};
+      float x{colPtr[0 * stride]};  // x center of bbox
+      float y{colPtr[1 * stride]};  // y center of bbox
       float w{colPtr[2 * stride]};
       float h{colPtr[3 * stride]};
 
@@ -357,29 +358,70 @@ std::vector<Object> YoloV8::predict(const cv::Mat& imageRGB,
   // then only needs 32 coefficients to generate its mask using those shared
   // prototypes.
   if (!detectedObjectsMaskCoeffs.empty()) {
-    // detectedObjectsMaskCoeffs is (N x 32) where N is the number of NMS
-    // detections maskProtosMat is (32 x (segHeight * segWidth))
-    cv::Mat maskLogits{detectedObjectsMaskCoeffs *
-                       maskProtosMat};  // (N x (segHeight * segWidth))
+    for (int objIdx = 0; objIdx < detectedObjectsMaskCoeffs.rows; ++objIdx) {
+      // Note: for performance reasons, we only calculate logits and create the
+      // mask for the area inside the bbox
 
-    // Apply sigmoid to convert logits to probabilities
-    cv::Mat neg, expNeg, denom, maskProbs;
-    cv::multiply(maskLogits, -1, neg);
-    cv::exp(neg, expNeg);
-    cv::add(expNeg, 1.0, denom);
-    cv::divide(1.0, denom, maskProbs);  // values are now in [0, 1]
+      // Scale down bbox (which is at original image scale) to mask prototype
+      // scale (segWidth, segHeight)
+      const cv::Rect& bbox{detectedObjects[objIdx].rect};
+      int px0{std::max(0, int(std::floor(bbox.x * static_cast<float>(segWidth) /
+                                         imageWidth)))};
+      int py0{
+          std::max(0, int(std::floor(bbox.y * static_cast<float>(segHeight) /
+                                     imageHeight)))};
+      int px1{std::min(
+          segWidth, int(std::ceil((bbox.x + bbox.width) *
+                                  static_cast<float>(segWidth) / imageWidth)))};
+      int py1{std::min(segHeight, int(std::ceil((bbox.y + bbox.height) *
+                                                static_cast<float>(segHeight) /
+                                                imageHeight)))};
+      int pw{std::max(1, px1 - px0)};
+      int ph{std::max(1, py1 - py0)};
 
-    // Reshape each row (detection mask) to image dims
-    for (int nmsIdx = 0; nmsIdx < maskProbs.rows; ++nmsIdx) {
-      cv::Mat mask{maskProbs.row(nmsIdx).reshape(
-          1, segHeight)};  // (segHeight x segWidth)
+      // Accumulator for logits inside the ROI (ph x pw)
+      cv::Mat acc(ph, pw, CV_32F, cv::Scalar(0));
+      float* accBasePtr{acc.ptr<float>(0)};
 
-      // Upscale to original image size
-      cv::resize(mask, mask, cv::Size(imageWidth, imageHeight),
+      // For each mask coeff, multiply it to the corresponding mask proto, and
+      // accumulate into acc
+      const float* maskCoeffsPtr{detectedObjectsMaskCoeffs.ptr<float>(objIdx)};
+      for (int protoIdx = 0; protoIdx < segChannels; ++protoIdx) {
+        const float* protoPtr{maskProtosMat.ptr<float>(protoIdx)};
+        const float maskCoeff{maskCoeffsPtr[protoIdx]};
+
+        // Add maskCoeff * proto[ROI] into acc
+        for (int ry = 0; ry < ph; ++ry) {
+          const int srcOffset{(py0 + ry) * segWidth + px0};
+          const float* src{protoPtr + srcOffset};
+          float* dst{accBasePtr + ry * pw};
+
+          for (int rx = 0; rx < pw; ++rx) {
+            dst[rx] += maskCoeff * src[rx];
+          }
+        }
+      }
+
+      // Sigmoid on ROI to convert logits into probabilities
+      for (int ry = 0; ry < ph; ++ry) {
+        float* accRow{acc.ptr<float>(ry)};
+        for (int rx = 0; rx < pw; ++rx) {
+          // Sigmoid converts logits into probabilities
+          const float s{1.0f / (1.0f + std::exp(-accRow[rx]))};
+          accRow[rx] = s;
+        }
+      }
+
+      // Upscale to bbox, apply thresholding, and convert to U8
+      // Note that we intentionally upscale first before thresholding to smooth
+      // the mask contour
+      cv::Mat boxMask;
+      cv::resize(acc, boxMask, cv::Size(bbox.width, bbox.height), 0, 0,
                  cv::INTER_LINEAR);
-      // Threshold to CV_8U bitmask, and limit to only inside the bbox
-      detectedObjects[nmsIdx].boxMask =
-          mask(detectedObjects[nmsIdx].rect) > segmentationThreshold;
+      cv::threshold(boxMask, boxMask, segmentationThreshold, 1.0,
+                    cv::THRESH_BINARY);
+      boxMask.convertTo(boxMask, CV_8U, 255.0);
+      detectedObjects[objIdx].boxMask = boxMask;
     }
   }
 
