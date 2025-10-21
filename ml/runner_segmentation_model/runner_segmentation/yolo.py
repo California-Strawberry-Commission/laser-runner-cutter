@@ -168,6 +168,9 @@ class Yolo:
 
                 result.show()  # display to screen
 
+    def export_onnx(self):
+        self.model.export(format="onnx", device=0, imgsz=self.imgsz, dynamic=False, batch=1, half=True, simplify=True)
+
 
 def tuple_type(arg_string):
     try:
@@ -225,6 +228,15 @@ if __name__ == "__main__":
         "--show_result", action="store_true", help="Show inference results"
     )
 
+    export_onnx_parser = subparsers.add_parser("export_onnx", help="Export ONNX model file")
+    export_onnx_parser.add_argument("--weights_file")
+    export_onnx_parser.add_argument(
+        "--input_image_size",
+        type=tuple_type,
+        default=f"({DEFAULT_INPUT_IMAGE_SIZE[0]}, {DEFAULT_INPUT_IMAGE_SIZE[1]})",
+        help="(width, height) tuple",
+    )
+
     args = parser.parse_args()
 
     settings.update(
@@ -251,5 +263,7 @@ if __name__ == "__main__":
         print(json.dumps(summary))
     elif args.command == "debug":
         model.debug(args.image_path, show_result=args.show_result)
+    elif args.command == "export_onnx":
+        model.export_onnx()
     else:
         print("Invalid command.")
