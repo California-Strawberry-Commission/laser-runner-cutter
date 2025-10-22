@@ -28,6 +28,7 @@ if [ ! -f "$installed_file" ]; then
     bash ./install_requirements.sh
     bash ../src/laser_control/scripts/create_heliosdac_udev.sh
     bash ../src/livekit_ros2/scripts/install.sh
+    bash ../src/detection/scripts/build_opencv_cuda.sh
 
     echo "Building..."
     bash ./build.sh
