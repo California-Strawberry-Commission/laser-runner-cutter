@@ -1,3 +1,8 @@
+#!/bin/bash
+# -----------------------------------------------------------------------------
+# Builds OpenCV with CUDA support and installs it in /usr/local
+# -----------------------------------------------------------------------------
+
 OPENCV_VERSION=4.12.0
 
 # Starting with cuDNN v9, the header naming convention has changed. OpenCV (as of 4.12.0) still
