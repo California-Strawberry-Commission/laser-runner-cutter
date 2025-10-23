@@ -3,25 +3,15 @@
 #include <chrono>
 
 #include "BS_thread_pool.hpp"
+#include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/image_encodings.hpp"
 #include "spdlog/spdlog.h"
 
-LucidCamera::LucidCamera(const cv::Mat& colorCameraIntrinsicMatrix,
-                         const cv::Mat& colorCameraDistortionCoeffs,
-                         const cv::Mat& depthCameraIntrinsicMatrix,
-                         const cv::Mat& depthCameraDistortionCoeffs,
-                         const cv::Mat& xyzToColorCameraExtrinsicMatrix,
-                         const cv::Mat& xyzToDepthCameraExtrinsicMatrix,
-                         std::optional<std::string> colorCameraSerialNumber,
+LucidCamera::LucidCamera(std::optional<std::string> colorCameraSerialNumber,
                          std::optional<std::string> depthCameraSerialNumber,
                          std::pair<int, int> colorFrameSize,
                          StateChangeCallback stateChangeCallback)
     : arena_(Arena::OpenSystem()),
-      colorCameraIntrinsicMatrix_(colorCameraIntrinsicMatrix),
-      colorCameraDistortionCoeffs_(colorCameraDistortionCoeffs),
-      depthCameraIntrinsicMatrix_(depthCameraIntrinsicMatrix),
-      depthCameraDistortionCoeffs_(depthCameraDistortionCoeffs),
-      xyzToColorCameraExtrinsicMatrix_(xyzToColorCameraExtrinsicMatrix),
-      xyzToDepthCameraExtrinsicMatrix_(xyzToDepthCameraExtrinsicMatrix),
       colorCameraSerialNumber_(std::move(colorCameraSerialNumber)),
       depthCameraSerialNumber_(std::move(depthCameraSerialNumber)),
       colorFrameSize_(colorFrameSize),
@@ -515,7 +505,7 @@ void LucidCamera::waitForStreaming() {
   }
 }
 
-std::optional<LucidFrame> LucidCamera::getNextFrame() {
+std::optional<Frame> LucidCamera::getNextFrame() {
   if (getState() != LucidCamera::State::STREAMING) {
     return std::nullopt;
   }
@@ -530,13 +520,14 @@ std::optional<LucidFrame> LucidCamera::getNextFrame() {
     std::this_thread::sleep_for(100ms);
   }
 
-  std::optional<LucidFrame> frame;
+  std::optional<Frame> frameOpt;
   try {
-    std::optional<cv::Mat> colorFrame{getColorFrame()};
-    std::optional<LucidCamera::GetDepthFrameResult> depthFrame{getDepthFrame()};
-    if (colorFrame && depthFrame) {
-      frame = createRgbdFrame(colorFrame.value(), depthFrame.value().xyz,
-                              depthFrame.value().intensity);
+    auto colorFrame{getColorFrame()};
+    auto depthFrameOpt{getDepthFrame()};
+    if (colorFrame && depthFrameOpt) {
+      frameOpt =
+          Frame{std::move(colorFrame), std::move(depthFrameOpt.value().xyz),
+                std::move(depthFrameOpt.value().intensity)};
     }
   } catch (const std::exception& e) {
     spdlog::error(
@@ -546,7 +537,7 @@ std::optional<LucidFrame> LucidCamera::getNextFrame() {
     return std::nullopt;
   }
 
-  if (!frame.has_value()) {
+  if (!frameOpt.has_value()) {
     spdlog::error("No frame available. Signaling connection thread");
     cv_.notify_one();
     return std::nullopt;
@@ -557,7 +548,7 @@ std::optional<LucidFrame> LucidCamera::getNextFrame() {
     Arena::ExecuteNode(depthDevice_->GetNodeMap(), "AcquisitionStop");
   }
 
-  return frame;
+  return frameOpt;
 }
 
 void LucidCamera::stopStream() {
@@ -587,28 +578,26 @@ void LucidCamera::acquisitionThreadFn(FrameCallback frameCallback) {
   std::unique_lock<std::mutex> lock(cvMutex_);
   while (isRunning_) {
     try {
-      std::future<std::optional<cv::Mat>> colorFrameFuture{
+      auto colorFrameFuture{
           threadPool.submit_task([this] { return getColorFrame(); })};
-      std::future<std::optional<LucidCamera::GetDepthFrameResult>>
-          depthFrameFuture{
-              threadPool.submit_task([this] { return getDepthFrame(); })};
+      auto depthFrameFuture{
+          threadPool.submit_task([this] { return getDepthFrame(); })};
 
-      std::optional<cv::Mat> colorFrame{colorFrameFuture.get()};
-      std::optional<LucidCamera::GetDepthFrameResult> depthFrame{
-          depthFrameFuture.get()};
+      auto colorFrame{colorFrameFuture.get()};
+      auto depthFrameOpt{depthFrameFuture.get()};
 
-      if (!colorFrame || !depthFrame) {
+      if (!colorFrame || !depthFrameOpt) {
         spdlog::error("No frame available. Signaling connection thread");
         cv_.notify_one();
         cv_.wait(lock);
         continue;
       }
 
-      auto frame{std::make_shared<LucidFrame>(
-          createRgbdFrame(colorFrame.value(), depthFrame.value().xyz,
-                          depthFrame.value().intensity))};
+      auto depthFrame{std::move(depthFrameOpt.value())};
+      Frame frame{std::move(colorFrame), std::move(depthFrame.xyz),
+                  std::move(depthFrame.intensity)};
       if (frameCallback) {
-        frameCallback(frame);
+        frameCallback(std::move(frame));
       }
     } catch (...) {
       spdlog::error(
@@ -622,31 +611,37 @@ void LucidCamera::acquisitionThreadFn(FrameCallback frameCallback) {
   spdlog::info("Terminating acquisition thread");
 }
 
-std::optional<cv::Mat> LucidCamera::getColorFrame() {
+sensor_msgs::msg::Image::UniquePtr LucidCamera::getColorFrame() {
   if (!colorDevice_) {
-    return std::nullopt;
+    return nullptr;
   }
 
   // Note: `Arena::IDevice::GetImage()` must be called after
   // `Arena::IDevice::StartStream()` and before `Arena::IDevice::StopStream()`
   // (or `Arena::ISystem::DestroyDevice()`), and buffers must be requeued
   Arena::IImage* image{colorDevice_->GetImage(10000)};
+  const size_t height{image->GetHeight()};
+  const size_t width{image->GetWidth()};
+  const uint8_t* imageData{static_cast<const uint8_t*>(image->GetData())};
 
-  // Convert BayerRG8 to BGR8
-  // Note: `Arena::ImageFactory::Convert()` allocates memory and must be cleaned
-  // up with `Arena::ImageFactory::Destroy()`
-  Arena::IImage* convertedImage{Arena::ImageFactory::Convert(image, BGR8)};
-  int width{static_cast<int>(convertedImage->GetWidth())};
-  int height{static_cast<int>(convertedImage->GetHeight())};
+  auto imageMsg{std::make_unique<sensor_msgs::msg::Image>()};
+  imageMsg->header.stamp = rclcpp::Clock().now();
+  imageMsg->header.frame_id = "triton_color_camera";
+  imageMsg->height = height;
+  imageMsg->width = width;
+  imageMsg->encoding = sensor_msgs::image_encodings::BAYER_RGGB8;
+  imageMsg->is_bigendian = false;
+  imageMsg->step = width;  // 1 byte per pixel for BayerRG8
 
-  // Copy data into OpenCV matrix
-  cv::Mat cvImage(height, width, CV_8UC3);
-  std::memcpy(cvImage.data, convertedImage->GetData(), width * height * 3);
+  // Copy image data from Arena buffer to imageMsg
+  const size_t totalBytes{imageMsg->step * height};
+  imageMsg->data.resize(totalBytes);
+  std::memcpy(imageMsg->data.data(), imageData, totalBytes);
 
-  Arena::ImageFactory::Destroy(convertedImage);
+  // Return buffer to Arena
   colorDevice_->RequeueBuffer(image);
 
-  return cvImage;
+  return imageMsg;
 }
 
 std::optional<LucidCamera::GetDepthFrameResult> LucidCamera::getDepthFrame() {
@@ -658,59 +653,67 @@ std::optional<LucidCamera::GetDepthFrameResult> LucidCamera::getDepthFrame() {
   // `Arena::IDevice::StartStream()` and before `Arena::IDevice::StopStream()`
   // (or `Arena::ISystem::DestroyDevice()`), and buffers must be requeued
   Arena::IImage* image{depthDevice_->GetImage(10000)};
-  int width{static_cast<int>(image->GetWidth())};
-  int height{static_cast<int>(image->GetHeight())};
-
+  const size_t height{image->GetHeight()};
+  const size_t width{image->GetWidth()};
+  // Note: For Coord3D_ABCY16, each pixel is 4 U16 values
   const uint16_t* imageData{
       reinterpret_cast<const uint16_t*>(image->GetData())};
 
-  // Create OpenCV matrix headers pointing to the raw data
-  cv::Mat rawXYZ(height * width, 3, CV_16UC1, (void*)imageData,
-                 sizeof(uint16_t) * 4);
-  cv::Mat rawIntensity(height * width, 1, CV_16UC1, (void*)(imageData + 3),
-                       sizeof(uint16_t) * 4);
+  // Prepare image messages
+  auto xyzMsg{std::make_unique<sensor_msgs::msg::Image>()};
+  xyzMsg->header.stamp = rclcpp::Clock().now();
+  xyzMsg->header.frame_id = "helios_depth_camera";
+  xyzMsg->height = height;
+  xyzMsg->width = width;
+  xyzMsg->encoding = sensor_msgs::image_encodings::TYPE_32FC3;
+  xyzMsg->is_bigendian = false;
+  xyzMsg->step = static_cast<uint32_t>(width * 3 * sizeof(float));
 
-  // Convert 16-bit unsigned integer values to floating point and apply scale
-  // and offsets to convert (x, y, z) to mm
-  cv::Mat xyzFlat(height * width, 3, CV_32F);
-  // Apply scale
-  rawXYZ.convertTo(xyzFlat, CV_32F, xyzScale_);
-  // Apply offset
+  auto intensityMsg{std::make_unique<sensor_msgs::msg::Image>()};
+  intensityMsg->header = xyzMsg->header;
+  intensityMsg->height = height;
+  intensityMsg->width = width;
+  intensityMsg->encoding = sensor_msgs::image_encodings::MONO16;
+  intensityMsg->is_bigendian = false;
+  intensityMsg->step = static_cast<uint32_t>(width * sizeof(uint16_t));
+
+  // Prepare destination data buffers
+  xyzMsg->data.resize(xyzMsg->step * height);
+  intensityMsg->data.resize(intensityMsg->step * height);
+  float* xyzPtr{reinterpret_cast<float*>(xyzMsg->data.data())};
+  uint16_t* intensityPtr{
+      reinterpret_cast<uint16_t*>(intensityMsg->data.data())};
+
+  float scale{static_cast<float>(xyzScale_)};
   auto [xOffset, yOffset, zOffset]{xyzOffset_};
-  cv::add(xyzFlat, cv::Scalar(xOffset, yOffset, zOffset), xyzFlat);
+  size_t numPixels{static_cast<size_t>(width) * height};
+  for (size_t pxIdx = 0; pxIdx < numPixels; ++pxIdx) {
+    const uint16_t rawX{imageData[pxIdx * 4 + 0]};
+    const uint16_t rawY{imageData[pxIdx * 4 + 1]};
+    const uint16_t rawZ{imageData[pxIdx * 4 + 2]};
+    const uint16_t rawI{imageData[pxIdx * 4 + 3]};
 
-  // Copy intensity values
-  cv::Mat intensityFlat(height * width, 1, CV_16UC1);
-  rawIntensity.copyTo(intensityFlat);
+    intensityPtr[pxIdx] = rawI;
 
-  // Reshape to desired dimensions
-  cv::Mat xyzMm{xyzFlat.reshape(3, height)};
-  cv::Mat intensityImage{intensityFlat.reshape(1, height)};
+    // In unsigned pixel formats (such as ABCY16), values below the confidence
+    // threshold will have their x, y, z, and intensity values set to 0xFFFF
+    // (denoting invalid). For these invalid pixels, set (x, y, z) to (-1, -1,
+    // -1).
+    if (rawI == 0xFFFFu) {
+      // Invalid
+      xyzPtr[pxIdx * 3 + 0] = -1.0f;
+      xyzPtr[pxIdx * 3 + 1] = -1.0f;
+      xyzPtr[pxIdx * 3 + 2] = -1.0f;
+    } else {
+      // Apply scale, then offset
+      xyzPtr[pxIdx * 3 + 0] = rawX * scale + static_cast<float>(xOffset);
+      xyzPtr[pxIdx * 3 + 1] = rawY * scale + static_cast<float>(yOffset);
+      xyzPtr[pxIdx * 3 + 2] = rawZ * scale + static_cast<float>(zOffset);
+    }
+  }
 
-  // In unsigned pixel formats (such as ABCY16), values below the confidence
-  // threshold will have their x, y, z, and intensity values set to 0xFFFF
-  // (denoting invalid). For these invalid pixels, set (x, y, z) to (-1, -1,
-  // -1).
-  cv::Mat mask{(intensityImage == 65535)};
-  xyzMm.setTo(cv::Scalar(-1.0, -1.0, -1.0), mask);
-
+  // Return buffer to Arena
   depthDevice_->RequeueBuffer(image);
 
-  return GetDepthFrameResult{xyzMm, intensityImage};
-}
-
-LucidFrame LucidCamera::createRgbdFrame(const cv::Mat& colorFrame,
-                                        const cv::Mat& depthFrameXyz,
-                                        const cv::Mat& depthFrameIntensity) {
-  double timestampMillis{
-      static_cast<double>(
-          std::chrono::duration_cast<std::chrono::microseconds>(
-              std::chrono::system_clock::now().time_since_epoch())
-              .count()) /
-      1000.0};
-  return LucidFrame(
-      colorFrame, depthFrameXyz, depthFrameIntensity, timestampMillis,
-      colorCameraIntrinsicMatrix_, colorCameraDistortionCoeffs_,
-      depthCameraIntrinsicMatrix_, depthCameraDistortionCoeffs_,
-      xyzToColorCameraExtrinsicMatrix_, xyzToDepthCameraExtrinsicMatrix_);
+  return GetDepthFrameResult{std::move(xyzMsg), std::move(intensityMsg)};
 }

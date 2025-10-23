@@ -75,13 +75,16 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/CLI11 ${CMAKE_CUR
 add_library(camera SHARED
   src/camera/calibration.cpp
   src/camera/lucid_camera.cpp
-  src/camera/lucid_frame.cpp
 )
 target_include_directories(camera PUBLIC
   ${ARENA_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
 )
 target_link_libraries(camera PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS})
+ament_target_dependencies(camera PUBLIC
+  rclcpp
+  sensor_msgs
+)
 
 # Composable node
 add_library(camera_control_node_composable SHARED
@@ -109,9 +112,6 @@ add_executable(latency_clock src/tools/latency_clock.cpp)
 add_executable(lucid_calibrate src/tools/lucid_calibrate.cpp)
 target_link_libraries(lucid_calibrate PRIVATE camera CLI11::CLI11 spdlog::spdlog ${OpenCV_LIBS})
 
-add_executable(test_color_to_depth_pixel_coord src/tools/test_color_to_depth_pixel_coord.cpp)
-target_link_libraries(test_color_to_depth_pixel_coord PRIVATE camera CLI11::CLI11 spdlog::spdlog ${OpenCV_LIBS})
-
 #############
 ## Install ##
 #############
@@ -127,7 +127,6 @@ install(TARGETS camera_control_node_composable
 install(TARGETS
   latency_clock
   lucid_calibrate
-  test_color_to_depth_pixel_coord
   DESTINATION lib/${PROJECT_NAME})
 
 # Install launch files

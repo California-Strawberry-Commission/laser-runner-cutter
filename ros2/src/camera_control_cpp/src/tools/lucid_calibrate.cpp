@@ -7,9 +7,7 @@
 
 void captureFrame(double exposureUs, double gainDb,
                   const std::string& outputDir) {
-  cv::Mat dummyMat;
-  LucidCamera camera{dummyMat, dummyMat, dummyMat,
-                     dummyMat, dummyMat, dummyMat};
+  LucidCamera camera;
   camera.start(LucidCamera::CaptureMode::SINGLE_FRAME, exposureUs, gainDb);
   camera.waitForStreaming();
 
@@ -24,22 +22,39 @@ void captureFrame(double exposureUs, double gainDb,
       calibration::expandUser(outputDir)};
   std::filesystem::create_directories(outputDirExpandedPath);
 
-  auto frame{frameOpt.value()};
+  Frame frame{std::move(frameOpt.value())};
+
+  // Demosaic color image (which is BayerRG8) and write to file
+  cv::Mat raw(frame.colorImage->height, frame.colorImage->width, CV_8UC1,
+              const_cast<uint8_t*>(frame.colorImage->data.data()),
+              frame.colorImage->step);
+  cv::Mat rgb;
+  cv::cvtColor(raw, rgb, cv::COLOR_BayerRG2RGB);
   std::filesystem::path colorImagePath{
       std::filesystem::path(outputDirExpandedPath) / "triton.png"};
-  cv::imwrite(colorImagePath, frame.getColorFrame());
+  cv::imwrite(colorImagePath, rgb);
   spdlog::info("Saved color camera image to: {}", colorImagePath.string());
 
+  // Depth intensity is MONO16
+  // Wrap image buffer as cv::Mat
+  cv::Mat intens(frame.depthIntensity->height, frame.depthIntensity->width,
+                 CV_16UC1,
+                 const_cast<uint8_t*>(frame.depthIntensity->data.data()),
+                 frame.depthIntensity->step);
   std::filesystem::path depthIntensityImagePath{
       std::filesystem::path(outputDirExpandedPath) / "helios_intensity.png"};
-  cv::imwrite(depthIntensityImagePath, frame.getDepthFrameIntensity());
+  cv::imwrite(depthIntensityImagePath, intens);
   spdlog::info("Saved depth camera intensity image to: {}",
                depthIntensityImagePath.string());
 
+  // Wrap image buffer as cv::Mat
+  cv::Mat xyzMat(frame.depthXyz->height, frame.depthXyz->width, CV_32FC3,
+                 const_cast<uint8_t*>(frame.depthXyz->data.data()),
+                 frame.depthXyz->step);
   std::filesystem::path xyzPath{std::filesystem::path(outputDirExpandedPath) /
                                 "helios_xyz.yml"};
   cv::FileStorage fs{xyzPath, cv::FileStorage::WRITE};
-  fs << "xyz" << frame.getDepthFrameXyz();
+  fs << "xyz" << xyzMat;
   fs.release();
   spdlog::info("Saved xyz data to: {}", xyzPath.string());
 }

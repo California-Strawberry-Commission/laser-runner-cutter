@@ -4,13 +4,18 @@
 #include <condition_variable>
 #include <functional>
 #include <mutex>
-#include <opencv2/opencv.hpp>
 #include <optional>
 #include <thread>
 
 #include "ArenaApi.h"
 #include "BS_thread_pool.hpp"
-#include "camera_control_cpp/camera/lucid_frame.hpp"
+#include "sensor_msgs/msg/image.hpp"
+
+struct Frame {
+  sensor_msgs::msg::Image::UniquePtr colorImage;
+  sensor_msgs::msg::Image::UniquePtr depthXyz;
+  sensor_msgs::msg::Image::UniquePtr depthIntensity;
+};
 
 class LucidCamera {
  public:
@@ -23,13 +28,7 @@ class LucidCamera {
   enum class CaptureMode { CONTINUOUS, SINGLE_FRAME };
 
   using StateChangeCallback = std::function<void(State)>;
-  LucidCamera(const cv::Mat& colorCameraIntrinsicMatrix,
-              const cv::Mat& colorCameraDistortionCoeffs,
-              const cv::Mat& depthCameraIntrinsicMatrix,
-              const cv::Mat& depthCameraDistortionCoeffs,
-              const cv::Mat& xyzToColorCameraExtrinsicMatrix,
-              const cv::Mat& xyzToDepthCameraExtrinsicMatrix,
-              std::optional<std::string> colorCameraSerialNumber = std::nullopt,
+  LucidCamera(std::optional<std::string> colorCameraSerialNumber = std::nullopt,
               std::optional<std::string> depthCameraSerialNumber = std::nullopt,
               std::pair<int, int> colorFrameSize = {2048, 1536},
               StateChangeCallback stateChangeCallback = nullptr);
@@ -46,7 +45,7 @@ class LucidCamera {
    * @param frameCallback Callback that gets called when a new frame is
    * available.
    */
-  using FrameCallback = std::function<void(std::shared_ptr<LucidFrame>)>;
+  using FrameCallback = std::function<void(Frame)>;
   void start(CaptureMode captureMode = CaptureMode::CONTINUOUS,
              double exposureUs = -1.0, double gainDb = -1.0,
              FrameCallback frameCallback = nullptr);
@@ -117,7 +116,7 @@ class LucidCamera {
    *
    * @return The next available frame.
    */
-  std::optional<LucidFrame> getNextFrame();
+  std::optional<Frame> getNextFrame();
 
  private:
   std::condition_variable
@@ -130,12 +129,6 @@ class LucidCamera {
   std::mutex streamingStateCvMutex_;
   Arena::ISystem* arena_{nullptr};
   std::atomic<bool> isRunning_{false};
-  cv::Mat colorCameraIntrinsicMatrix_;
-  cv::Mat colorCameraDistortionCoeffs_;
-  cv::Mat depthCameraIntrinsicMatrix_;
-  cv::Mat depthCameraDistortionCoeffs_;
-  cv::Mat xyzToColorCameraExtrinsicMatrix_;
-  cv::Mat xyzToDepthCameraExtrinsicMatrix_;
   std::optional<std::string> colorCameraSerialNumber_{std::nullopt};
   std::optional<std::string> depthCameraSerialNumber_{std::nullopt};
   std::pair<int, int> colorFrameSize_{0, 0};
@@ -168,13 +161,10 @@ class LucidCamera {
   void stopStream();
   void callStateChangeCallback();
   void acquisitionThreadFn(FrameCallback frameCallback = nullptr);
-  std::optional<cv::Mat> getColorFrame();
+  sensor_msgs::msg::Image::UniquePtr getColorFrame();
   struct GetDepthFrameResult {
-    cv::Mat xyz;
-    cv::Mat intensity;
+    sensor_msgs::msg::Image::UniquePtr xyz;
+    sensor_msgs::msg::Image::UniquePtr intensity;
   };
   std::optional<GetDepthFrameResult> getDepthFrame();
-  LucidFrame createRgbdFrame(const cv::Mat& colorFrame,
-                             const cv::Mat& depthFrameXyz,
-                             const cv::Mat& depthFrameIntensity);
 };
