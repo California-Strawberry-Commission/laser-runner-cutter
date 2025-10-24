@@ -21,6 +21,8 @@ test -e opencv-${OPENCV_VERSION} || unzip ${OPENCV_VERSION}.zip
 test -e opencv_extra_${OPENCV_VERSION}.zip || wget -O opencv_extra_${OPENCV_VERSION}.zip https://github.com/opencv/opencv_contrib/archive/refs/tags/${OPENCV_VERSION}.zip
 test -e opencv_contrib-${OPENCV_VERSION} || unzip opencv_extra_${OPENCV_VERSION}.zip
 
+sudo apt install -y cmake ninja-build
+
 cd opencv-${OPENCV_VERSION}
 mkdir build
 cd build
