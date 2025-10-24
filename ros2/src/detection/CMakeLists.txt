@@ -32,6 +32,7 @@ find_package(OpenCV REQUIRED)
 find_package(CUDA REQUIRED)
 find_package(TensorRT REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(cv_bridge REQUIRED)
 
 ###########
 ## Build ##
@@ -91,11 +92,14 @@ endif()
 add_library(detection_node_composable SHARED
   src/detection_node.cpp
 )
+target_link_libraries(detection_node_composable PRIVATE detector ${OpenCV_LIBS})
 ament_target_dependencies(detection_node_composable PUBLIC
   rclcpp
   rclcpp_components
   std_msgs
   std_srvs
+  sensor_msgs
+  cv_bridge
 )
 rclcpp_components_register_node(
   detection_node_composable

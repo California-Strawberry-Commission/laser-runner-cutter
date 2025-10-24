@@ -137,8 +137,14 @@ RunnerDetector::RunnerDetector() {
   tracker_ = std::make_unique<byte_track::BYTETracker>();
 }
 
-std::vector<Runner> RunnerDetector::track(const cv::Mat& imageRGB) {
-  std::vector<Object> predictionResult{model_->predict(imageRGB)};
+std::vector<Runner> RunnerDetector::track(const cv::Mat& imageRgb) {
+  cv::cuda::GpuMat gpuImg;
+  gpuImg.upload(imageRgb);
+  return track(gpuImg);
+}
+
+std::vector<Runner> RunnerDetector::track(const cv::cuda::GpuMat& imageRgb) {
+  std::vector<Object> predictionResult{model_->predict(imageRgb)};
   std::vector<Runner> runners;
   runners.reserve(predictionResult.size());
 

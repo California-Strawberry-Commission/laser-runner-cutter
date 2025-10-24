@@ -8,7 +8,6 @@
 #include <optional>
 #include <rclcpp_components/register_node_macro.hpp>
 
-#include "camera_control_cpp/camera/calibration.hpp"
 #include "camera_control_cpp/camera/lucid_camera.hpp"
 #include "camera_control_interfaces/msg/device_state.hpp"
 #include "camera_control_interfaces/msg/state.hpp"
@@ -63,10 +62,6 @@ class CameraControlNode : public rclcpp::Node {
     // Parameters
     /////////////
     declare_parameter<int>("camera_index", 0);
-    declare_parameter<std::string>(
-        "calibration_id",
-        "1c0faf4b115d1c0faf4d17ce");  // calibration ID is <Triton MAC><Helios
-                                      // MAC>
     declare_parameter<double>("exposure_us", -1.0);
     declare_parameter<double>("gain_db", -1.0);
     declare_parameter<std::string>("save_dir", "~/runner_cutter/camera");
@@ -166,10 +161,6 @@ class CameraControlNode : public rclcpp::Node {
 
   int getParamDacIndex() {
     return static_cast<int>(get_parameter("camera_index").as_int());
-  }
-
-  std::string getParamCalibrationId() {
-    return get_parameter("calibration_id").as_string();
   }
 
   double getParamExposureUs() {

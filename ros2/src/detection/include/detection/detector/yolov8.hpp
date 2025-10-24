@@ -30,7 +30,12 @@ class YoloV8 {
   YoloV8(const YoloV8&) = delete;
   YoloV8& operator=(const YoloV8&) = delete;
 
-  std::vector<Object> predict(const cv::Mat& imageRGB,
+  std::vector<Object> predict(const cv::Mat& imageRgb,
+                              float confThreshold = 0.25f,
+                              float nmsThreshold = 0.6f,
+                              float segmentationThreshold = 0.5f,
+                              int maxDetections = 300);
+  std::vector<Object> predict(const cv::cuda::GpuMat& imageRgb,
                               float confThreshold = 0.25f,
                               float nmsThreshold = 0.6f,
                               float segmentationThreshold = 0.5f,
@@ -59,4 +64,9 @@ class YoloV8 {
   // Host pinned memory pointers
   void* hostOutput0Ptr_{nullptr};
   void* hostOutput1Ptr_{nullptr};
+  // Reused temp buffers for input preprocessing
+  cv::cuda::GpuMat resizeBuf_;  // for resizing to model input size
+  cv::cuda::GpuMat floatBuf_;   // for conversion to float
+  cv::cuda::GpuMat nchwBuf_;    // for NHWC -> NCHW conversion
+  std::array<cv::cuda::GpuMat, 3> nchwPlanes_;  // views into nchwBuf_
 };

@@ -158,63 +158,87 @@ YoloV8::~YoloV8() {
   }
 }
 
-std::vector<Object> YoloV8::predict(const cv::Mat& imageRGB,
+std::vector<Object> YoloV8::predict(const cv::Mat& imageRgb,
                                     float confThreshold, float nmsThreshold,
                                     float segmentationThreshold,
                                     int maxDetections) {
-  // Validate
-  if (imageRGB.empty() ||
-      (imageRGB.type() != CV_8UC3 && imageRGB.type() != CV_32FC3)) {
+  cv::cuda::GpuMat gpuImg;
+  gpuImg.upload(imageRgb, cvStream_);
+  return predict(gpuImg, confThreshold, nmsThreshold, segmentationThreshold,
+                 maxDetections);
+}
+
+std::vector<Object> YoloV8::predict(const cv::cuda::GpuMat& imageRgb,
+                                    float confThreshold, float nmsThreshold,
+                                    float segmentationThreshold,
+                                    int maxDetections) {
+  // Validate image
+  if (imageRgb.empty() ||
+      (imageRgb.type() != CV_8UC3 && imageRgb.type() != CV_32FC3)) {
     throw std::invalid_argument(
         "Expected non-empty CV_8UC3 or CV_32FC3 RGB image");
   }
 
-  int imageWidth{imageRGB.cols};
-  int imageHeight{imageRGB.rows};
+  int imageWidth{imageRgb.cols};
+  int imageHeight{imageRgb.rows};
 
 #ifdef ENABLE_BENCHMARKS
   static int numIterations{1};
   preciseStopwatch s1;
 #endif
 
-  // Note: be sure to run all GPU operations on the same CUDA stream for best
-  // performance
+  // Use a single CUDA stream for prediction to enable concurrency for CUDA
+  // operations and host <-> device copies
   auto cudaStream{cv::cuda::StreamAccessor::getStream(cvStream_)};
-
-  // Upload the image to GPU memory
-  cv::cuda::GpuMat gpuImg;
-  gpuImg.upload(imageRGB, cvStream_);
 
   ////////////////
   // PREPROCESSING
   ////////////////
 
+  // We reuse temp buffers across predictions in order to minimize allocation
+  // overhead and memory fragmentation
+
   // Resize image to the model input size
   int inputWidth{static_cast<int>(inputDims_.d[3])};
   int inputHeight{static_cast<int>(inputDims_.d[2])};
-  if (gpuImg.rows != inputHeight || gpuImg.cols != inputWidth) {
-    cv::cuda::resize(gpuImg, gpuImg, cv::Size(inputWidth, inputHeight), 0.0,
-                     0.0, cv::INTER_LINEAR, cvStream_);
+  cv::Size inputSize(inputWidth, inputHeight);
+  const cv::cuda::GpuMat* rgbResized{&imageRgb};
+  if (imageRgb.size() != inputSize) {
+    // Note: GpuMat::create is a no-op if size/type already matches
+    resizeBuf_.create(inputSize, imageRgb.type());
+    cv::cuda::resize(imageRgb, resizeBuf_, cv::Size(inputWidth, inputHeight),
+                     0.0, 0.0, cv::INTER_LINEAR, cvStream_);
+    rgbResized = &resizeBuf_;
   }
 
   // Convert input to float and normalize to [0, 1]
-  if (gpuImg.type() == CV_8UC3) {
-    gpuImg.convertTo(gpuImg, CV_32FC3, 1.0 / 255.0, 0.0, cvStream_);
+  const cv::cuda::GpuMat* rgbFloat{rgbResized};
+  if (rgbResized->type() == CV_8UC3) {
+    floatBuf_.create(inputSize, CV_32FC3);
+    rgbResized->convertTo(floatBuf_, CV_32FC3, 1.0 / 255.0, 0.0, cvStream_);
+    rgbFloat = &floatBuf_;
   }
 
-  // Convert the image from NHWC (cv image) to NCHW (what TensorRT expects) by
-  // channel-splitting and stacking (zero extra host copies)
+  // Convert from NHWC to NCHW (what TensorRT expects) by channel-splitting and
+  // stacking
   // TODO: Can we keep NHWC but add shuffle in engine?
-  std::vector<cv::cuda::GpuMat> channels(3);
-  cv::cuda::split(gpuImg, channels, cvStream_);
-  cv::cuda::GpuMat nchw(channels[0].rows * 3, channels[0].cols,
-                        channels[0].type());
-  for (int channelIdx = 0; channelIdx < 3; ++channelIdx) {
-    cv::cuda::GpuMat roi(nchw, cv::Rect(0, channelIdx * channels[0].rows,
-                                        channels[0].cols, channels[0].rows));
-    channels[channelIdx].copyTo(roi, cvStream_);
+
+  // Ensure temp buffer (a single contiguous buffer with 3 planes stacked
+  // vertically) size/type is what we want
+  nchwBuf_.create(3 * inputHeight, inputWidth, CV_32FC1);
+
+  // Update plane headers to point into nchwBuf_ (no copy)
+  for (int cIdx = 0; cIdx < 3; ++cIdx) {
+    float* basePtr{
+        reinterpret_cast<float*>(nchwBuf_.ptr<float>(cIdx * inputHeight))};
+    nchwPlanes_[cIdx] = cv::cuda::GpuMat(inputHeight, inputWidth, CV_32FC1,
+                                         basePtr, nchwBuf_.step);
   }
-  nvContext_->setTensorAddress(INPUT_TENSOR_NAME, nchw.ptr<void>());
+
+  // Split directly into NCHW planes
+  cv::cuda::split(*rgbFloat, nchwPlanes_.data(), cvStream_);
+
+  nvContext_->setTensorAddress(INPUT_TENSOR_NAME, nchwBuf_.ptr<void>());
 
   ////////////
   // INFERENCE
@@ -359,8 +383,8 @@ std::vector<Object> YoloV8::predict(const cv::Mat& imageRGB,
   // prototypes.
   if (!detectedObjectsMaskCoeffs.empty()) {
     for (int objIdx = 0; objIdx < detectedObjectsMaskCoeffs.rows; ++objIdx) {
-      // Note: for performance reasons, we only calculate logits and create the
-      // mask for the area inside the bbox
+      // Note: we only calculate logits and create the mask for the area inside
+      // the bbox for performance reasons
 
       // Scale down bbox (which is at original image scale) to mask prototype
       // scale (segWidth, segHeight)

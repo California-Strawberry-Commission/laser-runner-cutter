@@ -2,6 +2,7 @@
 
 #include <ByteTrack/BYTETracker.h>
 
+#include <opencv2/core/cuda.hpp>
 #include <opencv2/opencv.hpp>
 
 #include "detection/detector/yolov8.hpp"
@@ -28,7 +29,8 @@ class RunnerDetector {
   RunnerDetector& operator=(RunnerDetector&&) noexcept = default;
   ~RunnerDetector() = default;
 
-  std::vector<Runner> track(const cv::Mat& imageRGB);
+  std::vector<Runner> track(const cv::Mat& imageRgb);
+  std::vector<Runner> track(const cv::cuda::GpuMat& imageRgb);
 
  private:
   std::unique_ptr<YoloV8> model_;

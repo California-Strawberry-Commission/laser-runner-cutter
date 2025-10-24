@@ -74,7 +74,7 @@ class LiveKitWhipNode(Node):
         self.declare_parameter("livekit_url", "ws://localhost:7880")
         self.declare_parameter("fps", 30)
         # TODO: Support multiple topics on demand, and one pipeline per topic
-        self.declare_parameter("topic", "/camera0/debug_frame")
+        self.declare_parameter("topic", "image_raw")
 
         livekit_url = (
             self.get_parameter("livekit_url").get_parameter_value().string_value
