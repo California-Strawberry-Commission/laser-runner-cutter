@@ -10,7 +10,12 @@
 #include <opencv2/opencv.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 
+#include "detection/detector/circle_detector.hpp"
+#include "detection/detector/laser_detector.hpp"
 #include "detection/detector/runner_detector.hpp"
+#include "detection_interfaces/msg/detection_type.hpp"
+#include "detection_interfaces/srv/start_detection.hpp"
+#include "detection_interfaces/srv/stop_detection.hpp"
 #include "rcl_interfaces/msg/log.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
@@ -29,19 +34,21 @@ std::string expandUser(const std::string& path) {
   return std::string(home) + path.substr(1);
 }
 
-void drawRunners(const cv::Mat& image, const std::vector<Runner>& runners,
-                 const cv::Size& runnerImageSize,
-                 cv::Scalar color = {255, 0, 0}, unsigned int scale = 1) {
-  if (image.empty() || runnerImageSize.width <= 0 ||
-      runnerImageSize.height <= 0) {
+void drawRunnerDetections(const cv::Mat& image,
+                          const std::vector<Runner>& runners,
+                          const cv::Size& originalImageSize,
+                          cv::Scalar color = {255, 0, 0},
+                          unsigned int scale = 1) {
+  if (image.empty() || originalImageSize.width <= 0 ||
+      originalImageSize.height <= 0) {
     return;
   }
 
   // The image we are drawing on may not be the size of the image that the
   // runner detection was run on. Thus, we'll need to scale the bbox, mask, and
   // point of each runner to the image we are drawing on.
-  double xScale{static_cast<double>(image.cols) / runnerImageSize.width};
-  double yScale{static_cast<double>(image.rows) / runnerImageSize.height};
+  double xScale{static_cast<double>(image.cols) / originalImageSize.width};
+  double yScale{static_cast<double>(image.rows) / originalImageSize.height};
 
   // Draw segmentation masks
   if (!runners.empty() && !runners[0].boxMask.empty()) {
@@ -117,6 +124,45 @@ void drawRunners(const cv::Mat& image, const std::vector<Runner>& runners,
   }
 }
 
+void drawLaserDetections(const cv::Mat& image, const std::vector<Laser>& lasers,
+                         const cv::Size& originalImageSize,
+                         cv::Scalar color = {255, 0, 255}) {
+  // The image we are drawing on may not be the size of the image that the
+  // runner detection was run on. Thus, we'll need to scale the bbox, mask, and
+  // point of each runner to the image we are drawing on.
+  double xScale{static_cast<double>(image.cols) / originalImageSize.width};
+  double yScale{static_cast<double>(image.rows) / originalImageSize.height};
+
+  for (const auto& laser : lasers) {
+    if (laser.point.x >= 0 && laser.point.y >= 0) {
+      int x{static_cast<int>(std::round(laser.point.x * xScale))};
+      int y{static_cast<int>(std::round(laser.point.y * yScale))};
+      cv::drawMarker(image, cv::Point2i(x, y), color, cv::MARKER_TILTED_CROSS,
+                     20, 2);
+    }
+  }
+}
+
+void drawCircleDetections(const cv::Mat& image,
+                          const std::vector<Circle>& circles,
+                          const cv::Size& originalImageSize,
+                          cv::Scalar color = {255, 0, 255}) {
+  // The image we are drawing on may not be the size of the image that the
+  // runner detection was run on. Thus, we'll need to scale the bbox, mask, and
+  // point of each runner to the image we are drawing on.
+  double xScale{static_cast<double>(image.cols) / originalImageSize.width};
+  double yScale{static_cast<double>(image.rows) / originalImageSize.height};
+
+  for (const auto& circle : circles) {
+    if (circle.point.x >= 0 && circle.point.y >= 0) {
+      int x{static_cast<int>(std::round(circle.point.x * xScale))};
+      int y{static_cast<int>(std::round(circle.point.y * yScale))};
+      cv::drawMarker(image, cv::Point2i(x, y), color, cv::MARKER_TILTED_CROSS,
+                     20, 2);
+    }
+  }
+}
+
 /**
  * Concurrency primitive that provides a shared flag that can be set and waited
  * on.
@@ -188,6 +234,23 @@ class DetectionNode : public rclcpp::Node {
     ///////////
     serviceCallbackGroup_ =
         create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+    startDetectionService_ =
+        create_service<detection_interfaces::srv::StartDetection>(
+            "~/start_detection",
+            std::bind(&DetectionNode::onStartDetection, this,
+                      std::placeholders::_1, std::placeholders::_2),
+            rmw_qos_profile_services_default, serviceCallbackGroup_);
+    stopDetectionService_ =
+        create_service<detection_interfaces::srv::StopDetection>(
+            "~/stop_detection",
+            std::bind(&DetectionNode::onStopDetection, this,
+                      std::placeholders::_1, std::placeholders::_2),
+            rmw_qos_profile_services_default, serviceCallbackGroup_);
+    stopAllDetectionsService_ = create_service<std_srvs::srv::Trigger>(
+        "~/stop_all_detections",
+        std::bind(&DetectionNode::onStopAllDetections, this,
+                  std::placeholders::_1, std::placeholders::_2),
+        rmw_qos_profile_services_default, serviceCallbackGroup_);
     startRecordingVideoService_ = create_service<std_srvs::srv::Trigger>(
         "~/start_recording_video",
         std::bind(&DetectionNode::onStartRecordingVideo, this,
@@ -199,7 +262,9 @@ class DetectionNode : public rclcpp::Node {
                   std::placeholders::_1, std::placeholders::_2),
         rmw_qos_profile_services_default, serviceCallbackGroup_);
 
+    laserDetector_ = std::make_unique<LaserDetector>();
     runnerDetector_ = std::make_unique<RunnerDetector>();
+    circleDetector_ = std::make_unique<CircleDetector>();
 
     detectionThread_ = std::thread(&DetectionNode::detectionThreadFn, this);
 
@@ -254,6 +319,7 @@ class DetectionNode : public rclcpp::Node {
     cv::cuda::GpuMat gpuRaw;
     cv::cuda::GpuMat gpuRgb;
     cv::cuda::GpuMat gpuDebugImage;
+    cv::Mat rgbImage;
     cv::Mat debugImage;
 
     while (!detectionStopSignal_) {
@@ -286,12 +352,6 @@ class DetectionNode : public rclcpp::Node {
 
       cvStream0_.waitForCompletion();
 
-      ////////////
-      // Detection
-      ////////////
-      // TODO: Control this via service calls
-      auto runners{runnerDetector_->track(gpuRgb)};
-
       /////////////////////
       // Create debug image
       /////////////////////
@@ -312,18 +372,125 @@ class DetectionNode : public rclcpp::Node {
       // Synchronize stream before using debugImage
       cvStream1_.waitForCompletion();
 
-      drawRunners(debugImage, runners, cv::Size(imgMsg->width, imgMsg->height));
+      ////////////
+      // Detection
+      ////////////
+      if (enabledDetections_.find(
+              detection_interfaces::msg::DetectionType::RUNNER) !=
+          enabledDetections_.end()) {
+        // TODO: if bounds is defined, the runners' representative points should
+        // be calculated only based on the portion of the mask that lies inside
+        // the bounds
+        auto runners{runnerDetector_->track(gpuRgb)};
+        // TODO: filter out any detections that have no representative point
 
+        // TODO: publish detections
+
+        drawRunnerDetections(debugImage, runners,
+                             cv::Size(imgMsg->width, imgMsg->height));
+      }
+
+      if (enabledDetections_.find(
+              detection_interfaces::msg::DetectionType::LASER) !=
+          enabledDetections_.end()) {
+        // Copy RGB back to host
+        rgbImage.create(imgMsg->height, imgMsg->width, CV_8UC3);
+        gpuRgb.download(rgbImage);
+
+        auto lasers{laserDetector_->detect(rgbImage)};
+
+        // TODO: publish detections
+
+        drawLaserDetections(debugImage, lasers,
+                            cv::Size(imgMsg->width, imgMsg->height));
+      }
+
+      if (enabledDetections_.find(
+              detection_interfaces::msg::DetectionType::CIRCLE) !=
+          enabledDetections_.end()) {
+        // Copy RGB back to host
+        rgbImage.create(imgMsg->height, imgMsg->width, CV_8UC3);
+        gpuRgb.download(rgbImage);
+
+        auto circles{circleDetector_->detect(rgbImage)};
+
+        // TODO: publish detections
+
+        drawCircleDetections(debugImage, circles,
+                             cv::Size(imgMsg->width, imgMsg->height));
+      }
+
+      //////////////////////
+      // Publish debug image
+      //////////////////////
       {
         std::lock_guard<std::mutex> lock(debugImageMutex_);
         lastDebugImage_ = debugImage;
       }
-
-      // Publish debug image
       auto debugImageMsg{
           cv_bridge::CvImage(imgMsg->header, "rgb8", debugImage).toImageMsg()};
       debugImagePublisher_->publish(*debugImageMsg);
     }
+  }
+
+  void onStartDetection(
+      const std::shared_ptr<detection_interfaces::srv::StartDetection::Request>
+          request,
+      std::shared_ptr<detection_interfaces::srv::StartDetection::Response>
+          response) {
+    if (enabledDetections_.find(request->detection_type) !=
+        enabledDetections_.end()) {
+      // Detection already enabled for the requested DetectionType. Do nothing.
+      response->success = false;
+      return;
+    }
+
+    // If normalized bounds are all zero, set to full bounds (0, 0, 1, 1)
+    if (request->normalized_bounds.w == 0.0 &&
+        request->normalized_bounds.x == 0.0 &&
+        request->normalized_bounds.y == 0.0 &&
+        request->normalized_bounds.z == 0.0) {
+      enabledDetections_[request->detection_type] =
+          cv::Rect2d{0.0, 0.0, 1.0, 1.0};
+    } else {
+      enabledDetections_[request->detection_type] = cv::Rect2d{
+          request->normalized_bounds.w, request->normalized_bounds.x,
+          request->normalized_bounds.y, request->normalized_bounds.z};
+    }
+
+    publishState();
+    response->success = true;
+  }
+
+  void onStopDetection(
+      const std::shared_ptr<detection_interfaces::srv::StopDetection::Request>
+          request,
+      std::shared_ptr<detection_interfaces::srv::StopDetection::Response>
+          response) {
+    if (enabledDetections_.find(request->detection_type) ==
+        enabledDetections_.end()) {
+      // Detection not enabled for the requested DetectionType. Do nothing.
+      response->success = false;
+      return;
+    }
+
+    enabledDetections_.erase(request->detection_type);
+    publishState();
+    response->success = true;
+  }
+
+  void onStopAllDetections(
+      const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+      std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+    if (enabledDetections_.empty()) {
+      // No detections are enabled. Do nothing.
+      response->success = false;
+      return;
+    }
+
+    enabledDetections_.clear();
+    publishState();
+    response->success = true;
   }
 
   void onStartRecordingVideo(
@@ -476,17 +643,27 @@ class DetectionNode : public rclcpp::Node {
   rclcpp::Publisher<rcl_interfaces::msg::Log>::SharedPtr
       notificationsPublisher_;
   rclcpp::CallbackGroup::SharedPtr serviceCallbackGroup_;
+  rclcpp::Service<detection_interfaces::srv::StartDetection>::SharedPtr
+      startDetectionService_;
+  rclcpp::Service<detection_interfaces::srv::StopDetection>::SharedPtr
+      stopDetectionService_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr stopAllDetectionsService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr
       startRecordingVideoService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr stopRecordingVideoService_;
 
+  std::unique_ptr<LaserDetector> laserDetector_;
   std::unique_ptr<RunnerDetector> runnerDetector_;
+  std::unique_ptr<CircleDetector> circleDetector_;
   std::thread detectionThread_;
   std::atomic<bool> detectionStopSignal_{false};
   sensor_msgs::msg::Image::ConstSharedPtr lastColorImage_{nullptr};
   std::mutex lastColorImageMutex_;
   // Notifies the detection thread that a new image is available
   Event colorImageEvent_;
+  // DetectionType -> normalized [0, 1] rect bounds {min x, min y, width,
+  // height}
+  std::unordered_map<int, cv::Rect2d> enabledDetections_;
   rclcpp::TimerBase::SharedPtr videoRecordingTimer_;
   cv::VideoWriter videoWriter_;
   std::mutex videoWriterMutex_;

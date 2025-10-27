@@ -23,7 +23,7 @@ find_package(rclcpp_components REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
-find_package(camera_control_interfaces REQUIRED)
+find_package(detection_interfaces REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 # Use locally built OpenCV with CUDA support
@@ -64,8 +64,10 @@ target_link_libraries(bytetrack PRIVATE Eigen3::Eigen)
 
 # detector
 add_library(detector SHARED
-  src/detector/yolov8.cpp
+  src/detector/circle_detector.cpp
+  src/detector/laser_detector.cpp
   src/detector/runner_detector.cpp
+  src/detector/yolov8.cpp
 )
 target_include_directories(detector PUBLIC
   ${OpenCV_INCLUDE_DIRS}
@@ -99,6 +101,7 @@ ament_target_dependencies(detection_node_composable PUBLIC
   std_msgs
   std_srvs
   sensor_msgs
+  detection_interfaces
   cv_bridge
 )
 rclcpp_components_register_node(

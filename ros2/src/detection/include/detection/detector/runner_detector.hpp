@@ -9,7 +9,7 @@
 
 struct Runner {
   // The detection's confidence probability
-  float conf{};
+  float conf{0.0f};
   // The object bounding box rectangle (TLWH)
   cv::Rect2f rect;
   // Semantic segmentation mask, inside the bounding box

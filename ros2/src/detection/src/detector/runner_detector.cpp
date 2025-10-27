@@ -161,12 +161,12 @@ std::vector<Runner> RunnerDetector::track(const cv::cuda::GpuMat& imageRgb) {
       point.y = obj.rect.y + repPoint.y;
     }
 
-    Runner r;
-    r.conf = obj.conf;
-    r.rect = obj.rect;
-    r.boxMask = obj.boxMask;
-    r.point = point;
-    runners.push_back(r);
+    Runner runner;
+    runner.conf = obj.conf;
+    runner.rect = obj.rect;
+    runner.boxMask = obj.boxMask;
+    runner.point = point;
+    runners.push_back(runner);
   }
 
   // Run through ByteTrack
