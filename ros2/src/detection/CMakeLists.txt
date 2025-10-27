@@ -92,7 +92,7 @@ endif()
 add_library(detection_node_composable SHARED
   src/detection_node.cpp
 )
-target_link_libraries(detection_node_composable PRIVATE detector ${OpenCV_LIBS})
+target_link_libraries(detection_node_composable PRIVATE detector fmt::fmt ${OpenCV_LIBS})
 ament_target_dependencies(detection_node_composable PUBLIC
   rclcpp
   rclcpp_components
