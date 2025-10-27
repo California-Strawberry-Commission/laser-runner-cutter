@@ -11,7 +11,7 @@ struct Circle {
 
 class CircleDetector {
  public:
-  explicit CircleDetector();
+  explicit CircleDetector() = default;
   CircleDetector(const CircleDetector&) = delete;
   CircleDetector& operator=(const CircleDetector&) = delete;
   CircleDetector(CircleDetector&&) noexcept = default;

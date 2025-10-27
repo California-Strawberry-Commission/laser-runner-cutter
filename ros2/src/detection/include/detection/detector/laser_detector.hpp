@@ -11,7 +11,7 @@ struct Laser {
 
 class LaserDetector {
  public:
-  explicit LaserDetector();
+  explicit LaserDetector() = default;
   LaserDetector(const LaserDetector&) = delete;
   LaserDetector& operator=(const LaserDetector&) = delete;
   LaserDetector(LaserDetector&&) noexcept = default;

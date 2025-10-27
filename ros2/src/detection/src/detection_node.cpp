@@ -14,6 +14,8 @@
 #include "detection/detector/laser_detector.hpp"
 #include "detection/detector/runner_detector.hpp"
 #include "detection_interfaces/msg/detection_type.hpp"
+#include "detection_interfaces/msg/state.hpp"
+#include "detection_interfaces/srv/get_state.hpp"
 #include "detection_interfaces/srv/start_detection.hpp"
 #include "detection_interfaces/srv/stop_detection.hpp"
 #include "rcl_interfaces/msg/log.hpp"
@@ -213,7 +215,17 @@ class DetectionNode : public rclcpp::Node {
     /////////////
     // Publishers
     /////////////
-    // TODO: State
+    // Note: we need to explicitly disable intra-process comms on latched topics
+    // as intra-process comms are only allowed with volatile durability
+    rclcpp::QoS latchedQos(rclcpp::KeepLast(1));
+    latchedQos.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
+    rclcpp::PublisherOptions intraProcessDisableOpts;
+    intraProcessDisableOpts.use_intra_process_comm =
+        rclcpp::IntraProcessSetting::Disable;
+    statePublisher_ = create_publisher<detection_interfaces::msg::State>(
+        "~/state", latchedQos, intraProcessDisableOpts);
+    notificationsPublisher_ =
+        create_publisher<rcl_interfaces::msg::Log>("/notifications", 1);
     debugImagePublisher_ = create_publisher<sensor_msgs::msg::Image>(
         "debug_image", rclcpp::SensorDataQoS());
 
@@ -260,6 +272,11 @@ class DetectionNode : public rclcpp::Node {
         "~/stop_recording_video",
         std::bind(&DetectionNode::onStopRecordingVideo, this,
                   std::placeholders::_1, std::placeholders::_2),
+        rmw_qos_profile_services_default, serviceCallbackGroup_);
+    getStateService_ = create_service<detection_interfaces::srv::GetState>(
+        "~/get_state",
+        std::bind(&DetectionNode::onGetState, this, std::placeholders::_1,
+                  std::placeholders::_2),
         rmw_qos_profile_services_default, serviceCallbackGroup_);
 
     laserDetector_ = std::make_unique<LaserDetector>();
@@ -589,13 +606,28 @@ class DetectionNode : public rclcpp::Node {
     videoWriter_.write(debugImage);
   }
 
+  void onGetState(
+      const std::shared_ptr<detection_interfaces::srv::GetState::Request>,
+      std::shared_ptr<detection_interfaces::srv::GetState::Response> response) {
+    response->state = std::move(*getStateMsg());
+  }
+
 #pragma endregion
 
 #pragma region State and notifs publishing
 
-  void publishState() {
-    // TODO
+  detection_interfaces::msg::State::UniquePtr getStateMsg() {
+    auto msg{std::make_unique<detection_interfaces::msg::State>()};
+    std::vector<uint8_t> enabledDetectionTypes;
+    for (const auto& [key, value] : enabledDetections_) {
+      enabledDetectionTypes.push_back(key);
+    }
+    msg->enabled_detection_types = enabledDetectionTypes;
+    msg->recording_video = videoRecordingTimer_ != nullptr;
+    return msg;
   }
+
+  void publishState() { statePublisher_->publish(std::move(getStateMsg())); }
 
   void publishNotification(
       const std::string& msg,
@@ -640,6 +672,8 @@ class DetectionNode : public rclcpp::Node {
   rclcpp::CallbackGroup::SharedPtr subscriberCallbackGroup_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr
       colorImageSubscriber_;
+  rclcpp::Publisher<detection_interfaces::msg::State>::SharedPtr
+      statePublisher_;
   rclcpp::Publisher<rcl_interfaces::msg::Log>::SharedPtr
       notificationsPublisher_;
   rclcpp::CallbackGroup::SharedPtr serviceCallbackGroup_;
@@ -651,6 +685,8 @@ class DetectionNode : public rclcpp::Node {
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr
       startRecordingVideoService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr stopRecordingVideoService_;
+  rclcpp::Service<detection_interfaces::srv::GetState>::SharedPtr
+      getStateService_;
 
   std::unique_ptr<LaserDetector> laserDetector_;
   std::unique_ptr<RunnerDetector> runnerDetector_;

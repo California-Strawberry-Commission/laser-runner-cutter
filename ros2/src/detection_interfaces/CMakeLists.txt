@@ -29,7 +29,9 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DetectionResult.msg"
   "msg/DetectionType.msg"
   "msg/ObjectInstance.msg"
+  "msg/State.msg"
   "srv/GetDetectionResult.srv"
+  "srv/GetState.srv"
   "srv/StartDetection.srv"
   "srv/StopDetection.srv"
   DEPENDENCIES sensor_msgs common_interfaces
