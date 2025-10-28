@@ -1,6 +1,7 @@
 #include <cv_bridge/cv_bridge.h>
 #include <fmt/core.h>
 
+#include <Eigen/Geometry>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <atomic>
 #include <filesystem>
@@ -8,6 +9,7 @@
 #include <optional>
 #include <rclcpp_components/register_node_macro.hpp>
 
+#include "camera_control_cpp/camera/calibration.hpp"
 #include "camera_control_cpp/camera/lucid_camera.hpp"
 #include "camera_control_interfaces/msg/device_state.hpp"
 #include "camera_control_interfaces/msg/state.hpp"
@@ -15,12 +17,15 @@
 #include "camera_control_interfaces/srv/get_state.hpp"
 #include "camera_control_interfaces/srv/start_device.hpp"
 #include "camera_control_interfaces/srv/start_interval_capture.hpp"
+#include "geometry_msgs/msg/transform_stamped.hpp"
 #include "rcl_interfaces/msg/log.hpp"
 #include "rclcpp/qos.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/msg/camera_info.hpp"
 #include "sensor_msgs/msg/compressed_image.hpp"
 #include "sensor_msgs/msg/image.hpp"
 #include "std_srvs/srv/trigger.hpp"
+#include "tf2_ros/static_transform_broadcaster.h"
 
 std::string expandUser(const std::string& path) {
   if (path.empty() || path[0] != '~') {
@@ -52,6 +57,122 @@ std::string formatRosTimestamp(const builtin_interfaces::msg::Time& stamp) {
   return oss.str();
 }
 
+struct CalibrationParams {
+  cv::Mat tritonIntrinsicMatrix;
+  cv::Mat tritonDistCoeffs;
+  cv::Mat heliosIntrinsicMatrix;
+  cv::Mat heliosDistCoeffs;
+  cv::Mat xyzToTritonExtrinsicMatrix;
+  cv::Mat xyzToHeliosExtrinsicMatrix;
+};
+CalibrationParams readCalibrationParams(
+    const std::string& calib_id = "1c0faf4b115d1c0faf4d17ce") {
+  std::string packageShareDirectory{
+      ament_index_cpp::get_package_share_directory("camera_control")};
+  std::filesystem::path calibParamsDir{
+      std::filesystem::path(packageShareDirectory) / "calibration_params" /
+      calib_id};
+  std::filesystem::path tritonIntrinsicsPath{calibParamsDir /
+                                             "triton_intrinsics.yml"};
+  std::filesystem::path heliosIntrinsicsPath{calibParamsDir /
+                                             "helios_intrinsics.yml"};
+  std::filesystem::path xyzToTritonIntrinsicsPath{
+      calibParamsDir / "xyz_to_triton_extrinsics.yml"};
+  std::filesystem::path xyzToHeliosIntrinsicsPath{
+      calibParamsDir / "xyz_to_helios_extrinsics.yml"};
+  auto tritonIntrinsicsOpt{
+      calibration::readIntrinsicsFile(tritonIntrinsicsPath.string())};
+  if (!tritonIntrinsicsOpt) {
+    throw std::runtime_error(fmt::format("Could not read calibration file {}",
+                                         tritonIntrinsicsPath.string()));
+  }
+  auto [tritonIntrinsicMatrix, tritonDistCoeffs]{tritonIntrinsicsOpt.value()};
+  auto heliosIntrinsicsOpt{
+      calibration::readIntrinsicsFile(heliosIntrinsicsPath.string())};
+  if (!heliosIntrinsicsOpt) {
+    throw std::runtime_error(fmt::format("Could not read calibration file {}",
+                                         heliosIntrinsicsPath.string()));
+  }
+  auto [heliosIntrinsicMatrix, heliosDistCoeffs]{heliosIntrinsicsOpt.value()};
+  auto xyzToTritonExtrinsicsOpt{
+      calibration::readExtrinsicsFile(xyzToTritonIntrinsicsPath.string())};
+  if (!xyzToTritonExtrinsicsOpt) {
+    throw std::runtime_error(fmt::format("Could not read calibration file {}",
+                                         xyzToTritonIntrinsicsPath.string()));
+  }
+  auto xyzToTritonExtrinsicMatrix{xyzToTritonExtrinsicsOpt.value()};
+  auto xyzToHeliosExtrinsicsOpt{
+      calibration::readExtrinsicsFile(xyzToHeliosIntrinsicsPath.string())};
+  if (!xyzToHeliosExtrinsicsOpt) {
+    throw std::runtime_error(fmt::format("Could not read calibration file {}",
+                                         xyzToHeliosIntrinsicsPath.string()));
+  }
+  auto xyzToHeliosExtrinsicMatrix{xyzToHeliosExtrinsicsOpt.value()};
+
+  CalibrationParams result;
+  result.tritonIntrinsicMatrix = tritonIntrinsicMatrix;
+  result.tritonDistCoeffs = tritonDistCoeffs;
+  result.heliosIntrinsicMatrix = heliosIntrinsicMatrix;
+  result.heliosDistCoeffs = heliosDistCoeffs;
+  result.xyzToTritonExtrinsicMatrix = xyzToTritonExtrinsicMatrix;
+  result.xyzToHeliosExtrinsicMatrix = xyzToHeliosExtrinsicMatrix;
+
+  return result;
+}
+
+void populateCameraInfo(sensor_msgs::msg::CameraInfo& cameraInfo,
+                        const cv::Mat& distCoeffs,
+                        const cv::Mat& intrinsicMatrix) {
+  if (intrinsicMatrix.rows != 3 || intrinsicMatrix.cols != 3) {
+    throw std::runtime_error("Intrinsic matrix must be 3x3");
+  }
+
+  cameraInfo.distortion_model = "plumb_bob";
+  cameraInfo.d.resize(distCoeffs.total());
+  for (size_t i = 0; i < distCoeffs.total(); ++i) {
+    cameraInfo.d[i] = distCoeffs.at<double>(static_cast<int>(i));
+  }
+  cameraInfo.p[0] = intrinsicMatrix.at<double>(0, 0);  // fx
+  cameraInfo.p[2] = intrinsicMatrix.at<double>(0, 2);  // cx
+  cameraInfo.p[5] = intrinsicMatrix.at<double>(1, 1);  // fy
+  cameraInfo.p[6] = intrinsicMatrix.at<double>(1, 2);  // cy
+  cameraInfo.p[10] = 1.0;
+}
+
+void populateTransform(geometry_msgs::msg::TransformStamped& transformMsg,
+                       const cv::Mat& extrinsicMatrix) {
+  if (extrinsicMatrix.rows != 4 || extrinsicMatrix.cols != 4) {
+    throw std::runtime_error("Extrinsic matrix must be 4x4");
+  }
+
+  // Ensure double precision for safety
+  cv::Matx44d T;
+  extrinsicMatrix.convertTo(T, CV_64F);
+
+  // Extract rotation (top-left 3x3) and translation (top-right 3x1)
+  Eigen::Matrix3d R;
+  Eigen::Vector3d t;
+  for (int r = 0; r < 3; ++r) {
+    for (int c = 0; c < 3; ++c) {
+      R(r, c) = T(r, c);
+    }
+    t(r) = T(r, 3);
+  }
+
+  // Convert to quaternion
+  Eigen::Quaterniond q(R);
+  q.normalize();
+
+  // Fill TransformStamped
+  transformMsg.transform.translation.x = t.x();
+  transformMsg.transform.translation.y = t.y();
+  transformMsg.transform.translation.z = t.z();
+  transformMsg.transform.rotation.x = q.x();
+  transformMsg.transform.rotation.y = q.y();
+  transformMsg.transform.rotation.z = q.z();
+  transformMsg.transform.rotation.w = q.w();
+}
+
 class CameraControlNode : public rclcpp::Node {
  public:
   explicit CameraControlNode(const rclcpp::NodeOptions& options)
@@ -60,6 +181,10 @@ class CameraControlNode : public rclcpp::Node {
     // Parameters
     /////////////
     declare_parameter<int>("camera_index", 0);
+    declare_parameter<std::string>(
+        "calibration_id",
+        "1c0faf4b115d1c0faf4d17ce");  // calibration ID is <Triton MAC><Helios
+                                      // MAC>
     declare_parameter<double>("exposure_us", -1.0);
     declare_parameter<double>("gain_db", -1.0);
     declare_parameter<std::string>("save_dir", "~/runner_cutter/camera");
@@ -87,11 +212,17 @@ class CameraControlNode : public rclcpp::Node {
     notificationsPublisher_ =
         create_publisher<rcl_interfaces::msg::Log>("/notifications", 1);
     colorImagePublisher_ = create_publisher<sensor_msgs::msg::Image>(
-        "~/color_image", rclcpp::SensorDataQoS());
+        "~/color/image_raw", rclcpp::SensorDataQoS());
+    colorCameraInfoPublisher_ = create_publisher<sensor_msgs::msg::CameraInfo>(
+        "~/color/camera_info", rclcpp::SensorDataQoS());
     depthXyzPublisher_ = create_publisher<sensor_msgs::msg::Image>(
-        "~/depth_xyz", rclcpp::SensorDataQoS());
+        "~/depth/xyz", rclcpp::SensorDataQoS());
     depthIntensityPublisher_ = create_publisher<sensor_msgs::msg::Image>(
-        "~/depth_intensity", rclcpp::SensorDataQoS());
+        "~/depth/intensity", rclcpp::SensorDataQoS());
+    depthCameraInfoPublisher_ = create_publisher<sensor_msgs::msg::CameraInfo>(
+        "~/depth/camera_info", rclcpp::SensorDataQoS());
+    tfStaticBroadcaster_ =
+        std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
 
     ///////////
     // Services
@@ -140,11 +271,31 @@ class CameraControlNode : public rclcpp::Node {
     ///////////////
     // Camera Setup
     ///////////////
+    calibrationParams_ = readCalibrationParams(getParamCalibrationId());
+    populateCameraInfo(colorCameraInfo_, calibrationParams_.tritonDistCoeffs,
+                       calibrationParams_.tritonIntrinsicMatrix);
+    populateCameraInfo(depthCameraInfo_, calibrationParams_.heliosDistCoeffs,
+                       calibrationParams_.heliosIntrinsicMatrix);
+
     LucidCamera::StateChangeCallback stateChangeCallback =
         [this](LucidCamera::State) { publishState(); };
     camera_ = std::make_unique<LucidCamera>(std::nullopt, std::nullopt,
                                             std::pair<int, int>{2048, 1536},
                                             stateChangeCallback);
+
+    // Publish extrinsics via tf2's StaticTransformBroadcaster once at startup
+    geometry_msgs::msg::TransformStamped worldToColorTransform;
+    worldToColorTransform.header.frame_id = "world";
+    worldToColorTransform.child_frame_id = "color_camera";
+    populateTransform(worldToColorTransform,
+                      calibrationParams_.xyzToTritonExtrinsicMatrix);
+    geometry_msgs::msg::TransformStamped worldToDepthTransform;
+    worldToDepthTransform.header.frame_id = "world";
+    worldToDepthTransform.child_frame_id = "depth_camera";
+    populateTransform(worldToDepthTransform,
+                      calibrationParams_.xyzToHeliosExtrinsicMatrix);
+    tfStaticBroadcaster_->sendTransform(worldToColorTransform);
+    tfStaticBroadcaster_->sendTransform(worldToDepthTransform);
 
     // Publish initial state
     publishState();
@@ -159,6 +310,10 @@ class CameraControlNode : public rclcpp::Node {
 
   int getParamDacIndex() {
     return static_cast<int>(get_parameter("camera_index").as_int());
+  }
+
+  std::string getParamCalibrationId() {
+    return get_parameter("calibration_id").as_string();
   }
 
   double getParamExposureUs() {
@@ -215,9 +370,18 @@ class CameraControlNode : public rclcpp::Node {
             }
           }
 
+          // Copy template
+          auto cameraInfo{
+              std::make_unique<sensor_msgs::msg::CameraInfo>(colorCameraInfo_)};
+          // Ensure header/timing/size match the image exactly
+          cameraInfo->header = colorImage->header;
+          cameraInfo->width = colorImage->width;
+          cameraInfo->height = colorImage->height;
+
           // Important: publish frames via zero-copy intra-process. Note that
           // the message needs to be a unique_ptr.
           colorImagePublisher_->publish(std::move(colorImage));
+          colorCameraInfoPublisher_->publish(std::move(cameraInfo));
         }};
 
     LucidCamera::DepthCallback depthCallback{
@@ -228,10 +392,19 @@ class CameraControlNode : public rclcpp::Node {
             return;
           }
 
+          // Copy template
+          auto cameraInfo{
+              std::make_unique<sensor_msgs::msg::CameraInfo>(depthCameraInfo_)};
+          // Ensure header/timing/size match the image exactly
+          cameraInfo->header = depthXyz->header;
+          cameraInfo->width = depthXyz->width;
+          cameraInfo->height = depthXyz->height;
+
           // Important: publish frames via zero-copy intra-process. Note that
           // the message needs to be a unique_ptr.
           depthXyzPublisher_->publish(std::move(depthXyz));
           depthIntensityPublisher_->publish(std::move(depthIntensity));
+          depthCameraInfoPublisher_->publish(std::move(cameraInfo));
         }};
 
     camera_->start(static_cast<LucidCamera::CaptureMode>(request->capture_mode),
@@ -465,9 +638,14 @@ class CameraControlNode : public rclcpp::Node {
   rclcpp::Publisher<rcl_interfaces::msg::Log>::SharedPtr
       notificationsPublisher_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr colorImagePublisher_;
+  rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr
+      colorCameraInfoPublisher_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr depthXyzPublisher_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr
       depthIntensityPublisher_;
+  rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr
+      depthCameraInfoPublisher_;
+  std::shared_ptr<tf2_ros::StaticTransformBroadcaster> tfStaticBroadcaster_;
   rclcpp::CallbackGroup::SharedPtr serviceCallbackGroup_;
   rclcpp::Service<camera_control_interfaces::srv::StartDevice>::SharedPtr
       startDeviceService_;
@@ -490,6 +668,9 @@ class CameraControlNode : public rclcpp::Node {
   std::atomic<bool> cameraStarted_{false};
   std::mutex lastColorImageMutex_;
   std::optional<sensor_msgs::msg::Image> lastColorImage_;
+  CalibrationParams calibrationParams_;
+  sensor_msgs::msg::CameraInfo colorCameraInfo_;
+  sensor_msgs::msg::CameraInfo depthCameraInfo_;
 };
 
 RCLCPP_COMPONENTS_REGISTER_NODE(CameraControlNode)

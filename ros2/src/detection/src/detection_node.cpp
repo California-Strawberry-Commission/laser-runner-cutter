@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <deque>
 #include <filesystem>
 #include <opencv2/core/cuda.hpp>
 #include <opencv2/cudaimgproc.hpp>
@@ -20,6 +21,7 @@
 #include "detection_interfaces/srv/stop_detection.hpp"
 #include "rcl_interfaces/msg/log.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/msg/camera_info.hpp"
 #include "sensor_msgs/msg/image.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
@@ -227,7 +229,7 @@ class DetectionNode : public rclcpp::Node {
     notificationsPublisher_ =
         create_publisher<rcl_interfaces::msg::Log>("/notifications", 1);
     debugImagePublisher_ = create_publisher<sensor_msgs::msg::Image>(
-        "debug_image", rclcpp::SensorDataQoS());
+        "debug/image", rclcpp::SensorDataQoS());
 
     //////////////
     // Subscribers
@@ -236,9 +238,16 @@ class DetectionNode : public rclcpp::Node {
     subscriberCallbackGroup_ =
         create_callback_group(rclcpp::CallbackGroupType::Reentrant);
     subOptions.callback_group = subscriberCallbackGroup_;
+    // Note: I attempted to use message_filters to fire a callback when both
+    // color image and xyz data came in with close timestamps, but it resulted
+    // in a significant delay; instead, we use manual matching.
     colorImageSubscriber_ = create_subscription<sensor_msgs::msg::Image>(
-        "color_image", rclcpp::SensorDataQoS(),
+        "color/image_raw", rclcpp::SensorDataQoS(),
         std::bind(&DetectionNode::onColorImage, this, std::placeholders::_1),
+        subOptions);
+    depthXyzSubscriber_ = create_subscription<sensor_msgs::msg::Image>(
+        "depth/xyz", rclcpp::SensorDataQoS(),
+        std::bind(&DetectionNode::onDepthXyz, this, std::placeholders::_1),
         subOptions);
 
     ///////////
@@ -317,10 +326,26 @@ class DetectionNode : public rclcpp::Node {
 
 #pragma region Callbacks
 
-  void onColorImage(const sensor_msgs::msg::Image::ConstSharedPtr imgMsg) {
+  void onColorImage(const sensor_msgs::msg::Image::ConstSharedPtr msg) {
     std::lock_guard<std::mutex> lock(lastColorImageMutex_);
-    lastColorImage_ = imgMsg;
+    lastColorImage_ = msg;
     colorImageEvent_.set();
+  }
+
+  void onDepthXyz(const sensor_msgs::msg::Image::ConstSharedPtr msg) {
+    std::lock_guard<std::mutex> lock(depthXyzQueueMutex_);
+
+    // Append and prune depth frames older than keepDuration_
+    depthXyzQueue_.push_back(msg);
+    const rclcpp::Time newest{depthXyzQueue_.back()->header.stamp};
+    while (!depthXyzQueue_.empty()) {
+      rclcpp::Time oldest{depthXyzQueue_.front()->header.stamp};
+      if ((newest - oldest) > keepDuration_) {
+        depthXyzQueue_.pop_front();
+      } else {
+        break;
+      }
+    }
   }
 
   void detectionThreadFn() {
@@ -447,6 +472,39 @@ class DetectionNode : public rclcpp::Node {
       auto debugImageMsg{
           cv_bridge::CvImage(imgMsg->header, "rgb8", debugImage).toImageMsg()};
       debugImagePublisher_->publish(*debugImageMsg);
+    }
+  }
+
+  sensor_msgs::msg::Image::ConstSharedPtr getDepthXyz(
+      const sensor_msgs::msg::Image::ConstSharedPtr colorImage) {
+    sensor_msgs::msg::Image::ConstSharedPtr bestDepthXyz;
+    rclcpp::Duration bestDelta{rclcpp::Duration::from_seconds(1e9)};
+
+    std::lock_guard<std::mutex> lock(depthXyzQueueMutex_);
+
+    if (depthXyzQueue_.empty()) {
+      return nullptr;
+    }
+
+    const rclcpp::Time tc{colorImage->header.stamp};
+
+    // Find closest depth by absolute time difference
+    size_t bestIdx{depthXyzQueue_.size()};
+    for (size_t i = 0; i < depthXyzQueue_.size(); ++i) {
+      rclcpp::Time td{depthXyzQueue_[i]->header.stamp};
+      rclcpp::Duration delta{(td > tc) ? (td - tc) : (tc - td)};
+      if (delta < bestDelta) {
+        bestDelta = delta;
+        bestDepthXyz = depthXyzQueue_[i];
+        bestIdx = i;
+      }
+    }
+
+    if (bestIdx < depthXyzQueue_.size() && bestDelta <= maxIntervalDuration_) {
+      // We have a match
+      return bestDepthXyz;
+    } else {
+      return nullptr;
     }
   }
 
@@ -672,6 +730,7 @@ class DetectionNode : public rclcpp::Node {
   rclcpp::CallbackGroup::SharedPtr subscriberCallbackGroup_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr
       colorImageSubscriber_;
+  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr depthXyzSubscriber_;
   rclcpp::Publisher<detection_interfaces::msg::State>::SharedPtr
       statePublisher_;
   rclcpp::Publisher<rcl_interfaces::msg::Log>::SharedPtr
@@ -688,6 +747,13 @@ class DetectionNode : public rclcpp::Node {
   rclcpp::Service<detection_interfaces::srv::GetState>::SharedPtr
       getStateService_;
 
+  // For color-depth matching: how close the stamps must be to accept a pair
+  // TODO: reduce this when cameras are synced
+  const rclcpp::Duration maxIntervalDuration_{
+      rclcpp::Duration::from_seconds(0.030)};
+  // For color-depth matching: how long to keep unmatched depth frames around
+  const rclcpp::Duration keepDuration_{rclcpp::Duration::from_seconds(0.200)};
+
   std::unique_ptr<LaserDetector> laserDetector_;
   std::unique_ptr<RunnerDetector> runnerDetector_;
   std::unique_ptr<CircleDetector> circleDetector_;
@@ -700,6 +766,8 @@ class DetectionNode : public rclcpp::Node {
   // DetectionType -> normalized [0, 1] rect bounds {min x, min y, width,
   // height}
   std::unordered_map<int, cv::Rect2d> enabledDetections_;
+  std::mutex depthXyzQueueMutex_;
+  std::deque<sensor_msgs::msg::Image::ConstSharedPtr> depthXyzQueue_;
   rclcpp::TimerBase::SharedPtr videoRecordingTimer_;
   cv::VideoWriter videoWriter_;
   std::mutex videoWriterMutex_;

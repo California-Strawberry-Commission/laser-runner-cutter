@@ -17,11 +17,15 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
 find_package(camera_control_interfaces REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(cv_bridge REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 ###########
 ## Build ##
@@ -90,12 +94,15 @@ ament_target_dependencies(camera PUBLIC
 add_library(camera_control_node_composable SHARED
   src/camera_control_node.cpp
 )
-target_link_libraries(camera_control_node_composable PRIVATE fmt::fmt camera)
+target_link_libraries(camera_control_node_composable PRIVATE fmt::fmt Eigen3::Eigen camera)
 ament_target_dependencies(camera_control_node_composable PUBLIC
   rclcpp
   rclcpp_components
   std_msgs
   std_srvs
+  geometry_msgs
+  tf2
+  tf2_ros 
   camera_control_interfaces
   cv_bridge
   OpenCV
