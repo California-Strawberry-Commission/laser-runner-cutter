@@ -199,30 +199,44 @@ class CameraControlNode : public rclcpp::Node {
       return;
     }
 
-    LucidCamera::FrameCallback frameCallback = [this](Frame frame) {
-      if (!cameraStarted_ ||
-          camera_->getState() != LucidCamera::State::STREAMING) {
-        return;
-      }
+    LucidCamera::ColorCallback colorCallback{
+        [this](sensor_msgs::msg::Image::UniquePtr colorImage) {
+          if (!cameraStarted_ ||
+              camera_->getState() != LucidCamera::State::STREAMING) {
+            return;
+          }
 
-      {
-        std::lock_guard<std::mutex> lock(lastColorImageMutex_);
-        if (frame.colorImage) {
-          lastColorImage_ = *frame.colorImage;
-        } else {
-          lastColorImage_.reset();
-        }
-      }
+          {
+            std::lock_guard<std::mutex> lock(lastColorImageMutex_);
+            if (colorImage) {
+              lastColorImage_ = *colorImage;
+            } else {
+              lastColorImage_.reset();
+            }
+          }
 
-      // Publish frames via zero-copy intra-process. Note that the message needs
-      // to be a unique_ptr.
-      colorImagePublisher_->publish(std::move(frame.colorImage));
-      depthXyzPublisher_->publish(std::move(frame.depthXyz));
-      depthIntensityPublisher_->publish(std::move(frame.depthIntensity));
-    };
+          // Important: publish frames via zero-copy intra-process. Note that
+          // the message needs to be a unique_ptr.
+          colorImagePublisher_->publish(std::move(colorImage));
+        }};
+
+    LucidCamera::DepthCallback depthCallback{
+        [this](sensor_msgs::msg::Image::UniquePtr depthXyz,
+               sensor_msgs::msg::Image::UniquePtr depthIntensity) {
+          if (!cameraStarted_ ||
+              camera_->getState() != LucidCamera::State::STREAMING) {
+            return;
+          }
+
+          // Important: publish frames via zero-copy intra-process. Note that
+          // the message needs to be a unique_ptr.
+          depthXyzPublisher_->publish(std::move(depthXyz));
+          depthIntensityPublisher_->publish(std::move(depthIntensity));
+        }};
 
     camera_->start(static_cast<LucidCamera::CaptureMode>(request->capture_mode),
-                   getParamExposureUs(), getParamGainDb(), frameCallback);
+                   getParamExposureUs(), getParamGainDb(), colorCallback,
+                   depthCallback);
 
     cameraStarted_ = true;
     response->success = true;

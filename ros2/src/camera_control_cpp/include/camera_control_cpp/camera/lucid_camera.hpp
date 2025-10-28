@@ -45,10 +45,13 @@ class LucidCamera {
    * @param frameCallback Callback that gets called when a new frame is
    * available.
    */
-  using FrameCallback = std::function<void(Frame)>;
+  using ColorCallback = std::function<void(sensor_msgs::msg::Image::UniquePtr)>;
+  using DepthCallback = std::function<void(sensor_msgs::msg::Image::UniquePtr,
+                                           sensor_msgs::msg::Image::UniquePtr)>;
   void start(CaptureMode captureMode = CaptureMode::CONTINUOUS,
              double exposureUs = -1.0, double gainDb = -1.0,
-             FrameCallback frameCallback = nullptr);
+             ColorCallback colorCallback = nullptr,
+             DepthCallback depthCallback = nullptr);
 
   /**
    * Stops streaming and disconnects device.
@@ -160,7 +163,8 @@ class LucidCamera {
   void setNetworkSettings(Arena::IDevice* device);
   void stopStream();
   void callStateChangeCallback();
-  void acquisitionThreadFn(FrameCallback frameCallback = nullptr);
+  void acquisitionThreadFn(ColorCallback colorCallback = nullptr,
+                           DepthCallback depthCallback = nullptr);
   sensor_msgs::msg::Image::UniquePtr getColorFrame();
   struct GetDepthFrameResult {
     sensor_msgs::msg::Image::UniquePtr xyz;

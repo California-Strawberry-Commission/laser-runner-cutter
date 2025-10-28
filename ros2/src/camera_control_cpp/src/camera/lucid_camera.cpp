@@ -34,7 +34,8 @@ LucidCamera::State LucidCamera::getState() const {
 }
 
 void LucidCamera::start(CaptureMode captureMode, double exposureUs,
-                        double gainDb, FrameCallback frameCallback) {
+                        double gainDb, ColorCallback colorCallback,
+                        DepthCallback depthCallback) {
   if (isRunning_) {
     return;
   }
@@ -47,8 +48,8 @@ void LucidCamera::start(CaptureMode captureMode, double exposureUs,
                                   captureMode, exposureUs, gainDb);
   // We don't use an acquisition loop when doing single frame captures
   if (captureMode != CaptureMode::SINGLE_FRAME) {
-    acquisitionThread_ =
-        std::thread(&LucidCamera::acquisitionThreadFn, this, frameCallback);
+    acquisitionThread_ = std::thread(&LucidCamera::acquisitionThreadFn, this,
+                                     colorCallback, depthCallback);
   }
 }
 
@@ -572,32 +573,45 @@ void LucidCamera::callStateChangeCallback() {
   }
 }
 
-void LucidCamera::acquisitionThreadFn(FrameCallback frameCallback) {
+void LucidCamera::acquisitionThreadFn(ColorCallback colorCallback,
+                                      DepthCallback depthCallback) {
   BS::thread_pool threadPool;
 
   std::unique_lock<std::mutex> lock(cvMutex_);
   while (isRunning_) {
     try {
-      auto colorFrameFuture{
-          threadPool.submit_task([this] { return getColorFrame(); })};
-      auto depthFrameFuture{
-          threadPool.submit_task([this] { return getDepthFrame(); })};
+      auto colorFrameFuture{threadPool.submit_task([this, colorCallback] {
+        auto colorFrame{getColorFrame()};
+        if (!colorFrame) {
+          return false;
+        }
 
-      auto colorFrame{colorFrameFuture.get()};
-      auto depthFrameOpt{depthFrameFuture.get()};
+        if (colorCallback) {
+          colorCallback(std::move(colorFrame));
+        }
+        return true;
+      })};
 
-      if (!colorFrame || !depthFrameOpt) {
+      auto depthFrameFuture{threadPool.submit_task([this, depthCallback] {
+        auto depthFrameOpt{getDepthFrame()};
+        if (!depthFrameOpt) {
+          return false;
+        }
+
+        if (depthCallback) {
+          depthCallback(std::move(depthFrameOpt.value().xyz),
+                        std::move(depthFrameOpt.value().intensity));
+        }
+        return true;
+      })};
+
+      bool colorFrameSuccess{colorFrameFuture.get()};
+      bool depthFrameSuccess{depthFrameFuture.get()};
+
+      if (!colorFrameSuccess || !depthFrameSuccess) {
         spdlog::error("No frame available. Signaling connection thread");
         cv_.notify_one();
         cv_.wait(lock);
-        continue;
-      }
-
-      auto depthFrame{std::move(depthFrameOpt.value())};
-      Frame frame{std::move(colorFrame), std::move(depthFrame.xyz),
-                  std::move(depthFrame.intensity)};
-      if (frameCallback) {
-        frameCallback(std::move(frame));
       }
     } catch (...) {
       spdlog::error(
@@ -624,6 +638,9 @@ sensor_msgs::msg::Image::UniquePtr LucidCamera::getColorFrame() {
   const size_t width{image->GetWidth()};
   const uint8_t* imageData{static_cast<const uint8_t*>(image->GetData())};
 
+  // Note: we only do a single copy from the Arena buffer into an Image message,
+  // and we leverage zero-copy intra-process comms to publish the image data to
+  // other nodes
   auto imageMsg{std::make_unique<sensor_msgs::msg::Image>()};
   imageMsg->header.stamp = rclcpp::Clock().now();
   imageMsg->header.frame_id = "triton_color_camera";
@@ -659,7 +676,11 @@ std::optional<LucidCamera::GetDepthFrameResult> LucidCamera::getDepthFrame() {
   const uint16_t* imageData{
       reinterpret_cast<const uint16_t*>(image->GetData())};
 
-  // Prepare image messages
+  // Note: we only do a single copy from the Arena buffer into Image messages,
+  // and we leverage zero-copy intra-process comms to publish the data to
+  // other nodes
+
+  // Prepare Image messages
   auto xyzMsg{std::make_unique<sensor_msgs::msg::Image>()};
   xyzMsg->header.stamp = rclcpp::Clock().now();
   xyzMsg->header.frame_id = "helios_depth_camera";
