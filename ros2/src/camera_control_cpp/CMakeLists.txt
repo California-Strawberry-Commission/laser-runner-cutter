@@ -90,6 +90,18 @@ ament_target_dependencies(camera PUBLIC
   sensor_msgs
 )
 
+# utils
+add_library(utils SHARED
+  src/utils/rgbd_alignment.cpp
+)
+target_include_directories(utils PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_link_libraries(utils PRIVATE
+  spdlog::spdlog
+  ${OpenCV_LIBS}
+)
+
 # Composable node
 add_library(camera_control_node_composable SHARED
   src/camera_control_node.cpp
@@ -102,7 +114,7 @@ ament_target_dependencies(camera_control_node_composable PUBLIC
   std_srvs
   geometry_msgs
   tf2
-  tf2_ros 
+  tf2_ros
   camera_control_interfaces
   cv_bridge
   OpenCV
@@ -122,6 +134,26 @@ target_link_libraries(lucid_calibrate PRIVATE camera CLI11::CLI11 spdlog::spdlog
 #############
 ## Install ##
 #############
+
+# Install lib + headers that should be available to other packages
+install(TARGETS utils
+  EXPORT export_camera_control_cpp_targets
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+  INCLUDES DESTINATION include
+)
+install(DIRECTORY include/ DESTINATION include)
+
+# Export the targets with a namespace so downstream sees camera_control_cpp::utils
+install(EXPORT export_camera_control_cpp_targets
+  NAMESPACE camera_control_cpp::
+  DESTINATION share/${PROJECT_NAME}/cmake
+)
+
+# ament export metadata
+ament_export_targets(export_camera_control_cpp_targets HAS_LIBRARY_TARGET)
+ament_export_include_directories(include)
 
 # Install composable node
 install(TARGETS camera_control_node_composable

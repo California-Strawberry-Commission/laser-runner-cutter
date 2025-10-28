@@ -129,25 +129,6 @@ std::pair<cv::Mat, cv::Mat> calibration::extractPoseFromExtrinsic(
   return {rvec, tvec};
 }
 
-cv::Mat calibration::invertExtrinsicMatrix(const cv::Mat& extrinsic) {
-  // Extract the rotation matrix and the translation vetor
-  cv::Mat R{extrinsic(cv::Range(0, 3), cv::Range(0, 3))};
-  cv::Mat t{extrinsic(cv::Range(0, 3), cv::Range(3, 4))};
-
-  // Compute the inverse rotation matrix
-  cv::Mat R_inv{R.t()};
-
-  // Compute the new translation vector
-  cv::Mat t_inv{-R_inv * t};
-
-  // Construct the new extrinsic matrix
-  cv::Mat extrinsic_inv{cv::Mat::eye(4, 4, R.type())};
-  R_inv.copyTo(extrinsic_inv(cv::Range(0, 3), cv::Range(0, 3)));
-  t_inv.copyTo(extrinsic_inv(cv::Range(0, 3), cv::Range(3, 4)));
-
-  return extrinsic_inv;
-}
-
 std::optional<cv::Point2f> calibration::distortPixelCoords(
     const cv::Point2f& undistortedPixelCoords, const cv::Mat& intrinsicMatrix,
     const cv::Mat& distCoeffs) {

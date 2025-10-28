@@ -23,7 +23,11 @@ find_package(rclcpp_components REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
 find_package(detection_interfaces REQUIRED)
+find_package(camera_control_cpp REQUIRED) 
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 # Use locally built OpenCV with CUDA support
@@ -61,6 +65,10 @@ target_include_directories(bytetrack PUBLIC
   ${EIGEN3_INCLUDE_DIRS}
 )
 target_link_libraries(bytetrack PRIVATE Eigen3::Eigen)
+target_compile_options(bytetrack PRIVATE
+  -Wno-unused-parameter
+  -Wno-class-memaccess
+)
 
 # detector
 add_library(detector SHARED
@@ -94,13 +102,16 @@ endif()
 add_library(detection_node_composable SHARED
   src/detection_node.cpp
 )
-target_link_libraries(detection_node_composable PRIVATE detector fmt::fmt ${OpenCV_LIBS})
+target_link_libraries(detection_node_composable PRIVATE detector camera_control_cpp::utils fmt::fmt ${OpenCV_LIBS})
 ament_target_dependencies(detection_node_composable PUBLIC
   rclcpp
   rclcpp_components
   std_msgs
   std_srvs
   sensor_msgs
+  geometry_msgs
+  tf2
+  tf2_ros
   detection_interfaces
   cv_bridge
 )

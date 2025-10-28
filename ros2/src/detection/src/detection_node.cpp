@@ -11,6 +11,7 @@
 #include <opencv2/opencv.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 
+#include "camera_control_cpp/utils/rgbd_alignment.hpp"
 #include "detection/detector/circle_detector.hpp"
 #include "detection/detector/laser_detector.hpp"
 #include "detection/detector/runner_detector.hpp"
@@ -19,11 +20,14 @@
 #include "detection_interfaces/srv/get_state.hpp"
 #include "detection_interfaces/srv/start_detection.hpp"
 #include "detection_interfaces/srv/stop_detection.hpp"
+#include "geometry_msgs/msg/transform_stamped.hpp"
 #include "rcl_interfaces/msg/log.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
 #include "sensor_msgs/msg/image.hpp"
 #include "std_srvs/srv/trigger.hpp"
+#include "tf2_ros/buffer.h"
+#include "tf2_ros/transform_listener.h"
 
 std::string expandUser(const std::string& path) {
   if (path.empty() || path[0] != '~') {
@@ -167,6 +171,60 @@ void drawCircleDetections(const cv::Mat& image,
   }
 }
 
+std::pair<cv::Mat, cv::Mat> getCameraMatrices(
+    const sensor_msgs::msg::CameraInfo::ConstSharedPtr& cameraInfo) {
+  // Intrinsic matrix (3x3)
+  cv::Mat K =
+      (cv::Mat_<double>(3, 3) << cameraInfo->k[0], cameraInfo->k[1],
+       cameraInfo->k[2], cameraInfo->k[3], cameraInfo->k[4], cameraInfo->k[5],
+       cameraInfo->k[6], cameraInfo->k[7], cameraInfo->k[8]);
+
+  // Distortion coefficients (Nx1)
+  size_t numCoeffs{cameraInfo->d.size()};
+  cv::Mat D(static_cast<int>(numCoeffs), 1, CV_64F);
+  for (size_t i = 0; i < numCoeffs; ++i) {
+    D.at<double>(static_cast<int>(i), 0) = cameraInfo->d[i];
+  }
+
+  return {K, D};
+}
+
+std::optional<cv::Mat> getTransformMatrix(
+    const geometry_msgs::msg::TransformStamped& transformStamped) {
+  const auto& t{transformStamped.transform.translation};
+  const auto& q{transformStamped.transform.rotation};
+
+  // Build and normalize quaternion
+  tf2::Quaternion quat(q.x, q.y, q.z, q.w);
+  if (quat.length2() == 0.0 || !std::isfinite(q.x) || !std::isfinite(q.y) ||
+      !std::isfinite(q.z) || !std::isfinite(q.w)) {
+    // Invalid quaternion
+    return std::nullopt;
+  }
+  quat.normalize();
+
+  // Convert to 3x3 rotation
+  tf2::Matrix3x3 rotationMatrix(quat);
+
+  cv::Mat T{cv::Mat::eye(4, 4, CV_64F)};
+  // Rotation
+  T.at<double>(0, 0) = rotationMatrix[0][0];
+  T.at<double>(0, 1) = rotationMatrix[0][1];
+  T.at<double>(0, 2) = rotationMatrix[0][2];
+  T.at<double>(1, 0) = rotationMatrix[1][0];
+  T.at<double>(1, 1) = rotationMatrix[1][1];
+  T.at<double>(1, 2) = rotationMatrix[1][2];
+  T.at<double>(2, 0) = rotationMatrix[2][0];
+  T.at<double>(2, 1) = rotationMatrix[2][1];
+  T.at<double>(2, 2) = rotationMatrix[2][2];
+  // Translation
+  T.at<double>(0, 3) = t.x;
+  T.at<double>(1, 3) = t.y;
+  T.at<double>(2, 3) = t.z;
+
+  return T;
+}
+
 /**
  * Concurrency primitive that provides a shared flag that can be set and waited
  * on.
@@ -245,10 +303,25 @@ class DetectionNode : public rclcpp::Node {
         "color/image_raw", rclcpp::SensorDataQoS(),
         std::bind(&DetectionNode::onColorImage, this, std::placeholders::_1),
         subOptions);
+    colorCameraInfoSubscriber_ =
+        create_subscription<sensor_msgs::msg::CameraInfo>(
+            "color/camera_info", rclcpp::SensorDataQoS(),
+            std::bind(&DetectionNode::onColorCameraInfo, this,
+                      std::placeholders::_1),
+            subOptions);
     depthXyzSubscriber_ = create_subscription<sensor_msgs::msg::Image>(
         "depth/xyz", rclcpp::SensorDataQoS(),
         std::bind(&DetectionNode::onDepthXyz, this, std::placeholders::_1),
         subOptions);
+    depthCameraInfoSubscriber_ =
+        create_subscription<sensor_msgs::msg::CameraInfo>(
+            "depth/camera_info", rclcpp::SensorDataQoS(),
+            std::bind(&DetectionNode::onDepthCameraInfo, this,
+                      std::placeholders::_1),
+            subOptions);
+    // Use tf2 to read camera extrinsic matrices
+    tfBuffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+    tfListener_ = std::make_shared<tf2_ros::TransformListener>(*tfBuffer_);
 
     ///////////
     // Services
@@ -332,6 +405,12 @@ class DetectionNode : public rclcpp::Node {
     colorImageEvent_.set();
   }
 
+  void onColorCameraInfo(
+      const sensor_msgs::msg::CameraInfo::ConstSharedPtr msg) {
+    std::lock_guard<std::mutex> lock(colorCameraInfoMutex_);
+    colorCameraInfo_ = msg;
+  }
+
   void onDepthXyz(const sensor_msgs::msg::Image::ConstSharedPtr msg) {
     std::lock_guard<std::mutex> lock(depthXyzQueueMutex_);
 
@@ -346,6 +425,12 @@ class DetectionNode : public rclcpp::Node {
         break;
       }
     }
+  }
+
+  void onDepthCameraInfo(
+      const sensor_msgs::msg::CameraInfo::ConstSharedPtr msg) {
+    std::lock_guard<std::mutex> lock(depthCameraInfoMutex_);
+    depthCameraInfo_ = msg;
   }
 
   void detectionThreadFn() {
@@ -726,11 +811,77 @@ class DetectionNode : public rclcpp::Node {
 
 #pragma endregion
 
+  std::shared_ptr<RgbdAlignment> getOrCreateRgbdAlignment() {
+    if (rgbdAlignment_) {
+      return rgbdAlignment_;
+    }
+
+    // Color camera intrinsics
+    sensor_msgs::msg::CameraInfo::ConstSharedPtr colorCameraInfo;
+    {
+      std::lock_guard<std::mutex> lock(colorCameraInfoMutex_);
+      if (!colorCameraInfo_) {
+        return nullptr;
+      }
+      colorCameraInfo = colorCameraInfo_;
+    }
+    auto [colorCameraIntrinsicMatrix,
+          colorCameraDistortionCoeffs]{getCameraMatrices(colorCameraInfo)};
+
+    // Depth camera intrinsics
+    sensor_msgs::msg::CameraInfo::ConstSharedPtr depthCameraInfo;
+    {
+      std::lock_guard<std::mutex> lock(depthCameraInfoMutex_);
+      if (!depthCameraInfo_) {
+        return nullptr;
+      }
+      depthCameraInfo = depthCameraInfo_;
+    }
+    auto [depthCameraIntrinsicMatrix,
+          depthCameraDistortionCoeffs]{getCameraMatrices(depthCameraInfo)};
+
+    // World -> color camera extrinsics
+    geometry_msgs::msg::TransformStamped xyzToColorTransform;
+    geometry_msgs::msg::TransformStamped xyzToDepthTransform;
+    try {
+      xyzToColorTransform = tfBuffer_->lookupTransform("color_camera", "world",
+                                                       tf2::TimePointZero);
+      xyzToDepthTransform = tfBuffer_->lookupTransform("depth_camera", "world",
+                                                       tf2::TimePointZero);
+    } catch (const tf2::TransformException& ex) {
+      return nullptr;
+    }
+
+    auto xyzToColorExtrinsicMatrixOpt{getTransformMatrix(xyzToColorTransform)};
+    if (!xyzToColorExtrinsicMatrixOpt) {
+      return nullptr;
+    }
+    auto xyzToColorExtrinsicMatrix{xyzToColorExtrinsicMatrixOpt.value()};
+
+    auto xyzToDepthExtrinsicMatrixOpt{getTransformMatrix(xyzToDepthTransform)};
+    if (!xyzToDepthExtrinsicMatrixOpt) {
+      return nullptr;
+    }
+    auto xyzToDepthExtrinsicMatrix{xyzToDepthExtrinsicMatrixOpt.value()};
+
+    rgbdAlignment_ = std::make_shared<RgbdAlignment>(
+        colorCameraIntrinsicMatrix, colorCameraDistortionCoeffs,
+        depthCameraIntrinsicMatrix, depthCameraDistortionCoeffs,
+        xyzToColorExtrinsicMatrix, xyzToDepthExtrinsicMatrix);
+    return rgbdAlignment_;
+  }
+
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr debugImagePublisher_;
   rclcpp::CallbackGroup::SharedPtr subscriberCallbackGroup_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr
       colorImageSubscriber_;
+  rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr
+      colorCameraInfoSubscriber_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr depthXyzSubscriber_;
+  rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr
+      depthCameraInfoSubscriber_;
+  std::shared_ptr<tf2_ros::TransformListener> tfListener_;
+  std::unique_ptr<tf2_ros::Buffer> tfBuffer_;
   rclcpp::Publisher<detection_interfaces::msg::State>::SharedPtr
       statePublisher_;
   rclcpp::Publisher<rcl_interfaces::msg::Log>::SharedPtr
@@ -759,10 +910,15 @@ class DetectionNode : public rclcpp::Node {
   std::unique_ptr<CircleDetector> circleDetector_;
   std::thread detectionThread_;
   std::atomic<bool> detectionStopSignal_{false};
-  sensor_msgs::msg::Image::ConstSharedPtr lastColorImage_{nullptr};
-  std::mutex lastColorImageMutex_;
+  sensor_msgs::msg::CameraInfo::ConstSharedPtr colorCameraInfo_;
+  std::mutex colorCameraInfoMutex_;
+  sensor_msgs::msg::CameraInfo::ConstSharedPtr depthCameraInfo_;
+  std::mutex depthCameraInfoMutex_;
   // Notifies the detection thread that a new image is available
   Event colorImageEvent_;
+  sensor_msgs::msg::Image::ConstSharedPtr lastColorImage_;
+  std::mutex lastColorImageMutex_;
+  std::shared_ptr<RgbdAlignment> rgbdAlignment_;
   // DetectionType -> normalized [0, 1] rect bounds {min x, min y, width,
   // height}
   std::unordered_map<int, cv::Rect2d> enabledDetections_;

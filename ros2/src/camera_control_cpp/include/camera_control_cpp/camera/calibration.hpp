@@ -53,14 +53,6 @@ std::pair<cv::Mat, cv::Mat> extractPoseFromExtrinsic(
     const cv::Mat& extrinsicMatrix);
 
 /**
- * Inverts a 4x4 extrinsic transformation matrix.
- *
- * @param extrinsic The 4x4 extrinsic transformation matrix (CV_64F).
- * @return The inverted 4x4 extrinsic transformation matrix.
- */
-cv::Mat invertExtrinsicMatrix(const cv::Mat& extrinsic);
-
-/**
  * Applies lens distortion to undistorted pixel coordinates using camera
  * intrinsics and distortion coefficients.
  *

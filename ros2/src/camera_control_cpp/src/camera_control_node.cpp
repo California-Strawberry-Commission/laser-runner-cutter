@@ -120,27 +120,35 @@ CalibrationParams readCalibrationParams(
   return result;
 }
 
-void populateCameraInfo(sensor_msgs::msg::CameraInfo& cameraInfo,
-                        const cv::Mat& distCoeffs,
-                        const cv::Mat& intrinsicMatrix) {
+void populateCameraInfo(const cv::Mat& distCoeffs,
+                        const cv::Mat& intrinsicMatrix,
+                        sensor_msgs::msg::CameraInfo& cameraInfo) {
   if (intrinsicMatrix.rows != 3 || intrinsicMatrix.cols != 3) {
     throw std::runtime_error("Intrinsic matrix must be 3x3");
   }
 
   cameraInfo.distortion_model = "plumb_bob";
+
+  // Distortion coeffs (D)
   cameraInfo.d.resize(distCoeffs.total());
   for (size_t i = 0; i < distCoeffs.total(); ++i) {
     cameraInfo.d[i] = distCoeffs.at<double>(static_cast<int>(i));
   }
-  cameraInfo.p[0] = intrinsicMatrix.at<double>(0, 0);  // fx
-  cameraInfo.p[2] = intrinsicMatrix.at<double>(0, 2);  // cx
-  cameraInfo.p[5] = intrinsicMatrix.at<double>(1, 1);  // fy
-  cameraInfo.p[6] = intrinsicMatrix.at<double>(1, 2);  // cy
-  cameraInfo.p[10] = 1.0;
+
+  // Intrinsic matrix (K)
+  cameraInfo.k[0] = intrinsicMatrix.at<double>(0, 0);  // fx
+  cameraInfo.k[1] = intrinsicMatrix.at<double>(0, 1);  // skew
+  cameraInfo.k[2] = intrinsicMatrix.at<double>(0, 2);  // cx
+  cameraInfo.k[3] = intrinsicMatrix.at<double>(1, 0);
+  cameraInfo.k[4] = intrinsicMatrix.at<double>(1, 1);  // fy
+  cameraInfo.k[5] = intrinsicMatrix.at<double>(1, 2);  // cy
+  cameraInfo.k[6] = intrinsicMatrix.at<double>(2, 0);
+  cameraInfo.k[7] = intrinsicMatrix.at<double>(2, 1);
+  cameraInfo.k[8] = intrinsicMatrix.at<double>(2, 2);
 }
 
-void populateTransform(geometry_msgs::msg::TransformStamped& transformMsg,
-                       const cv::Mat& extrinsicMatrix) {
+void populateTransform(const cv::Mat& extrinsicMatrix,
+                       geometry_msgs::msg::TransformStamped& transformMsg) {
   if (extrinsicMatrix.rows != 4 || extrinsicMatrix.cols != 4) {
     throw std::runtime_error("Extrinsic matrix must be 4x4");
   }
@@ -272,10 +280,12 @@ class CameraControlNode : public rclcpp::Node {
     // Camera Setup
     ///////////////
     calibrationParams_ = readCalibrationParams(getParamCalibrationId());
-    populateCameraInfo(colorCameraInfo_, calibrationParams_.tritonDistCoeffs,
-                       calibrationParams_.tritonIntrinsicMatrix);
-    populateCameraInfo(depthCameraInfo_, calibrationParams_.heliosDistCoeffs,
-                       calibrationParams_.heliosIntrinsicMatrix);
+    populateCameraInfo(calibrationParams_.tritonDistCoeffs,
+                       calibrationParams_.tritonIntrinsicMatrix,
+                       colorCameraInfo_);
+    populateCameraInfo(calibrationParams_.heliosDistCoeffs,
+                       calibrationParams_.heliosIntrinsicMatrix,
+                       depthCameraInfo_);
 
     LucidCamera::StateChangeCallback stateChangeCallback =
         [this](LucidCamera::State) { publishState(); };
@@ -287,13 +297,13 @@ class CameraControlNode : public rclcpp::Node {
     geometry_msgs::msg::TransformStamped worldToColorTransform;
     worldToColorTransform.header.frame_id = "world";
     worldToColorTransform.child_frame_id = "color_camera";
-    populateTransform(worldToColorTransform,
-                      calibrationParams_.xyzToTritonExtrinsicMatrix);
+    populateTransform(calibrationParams_.xyzToTritonExtrinsicMatrix,
+                      worldToColorTransform);
     geometry_msgs::msg::TransformStamped worldToDepthTransform;
     worldToDepthTransform.header.frame_id = "world";
     worldToDepthTransform.child_frame_id = "depth_camera";
-    populateTransform(worldToDepthTransform,
-                      calibrationParams_.xyzToHeliosExtrinsicMatrix);
+    populateTransform(calibrationParams_.xyzToHeliosExtrinsicMatrix,
+                      worldToDepthTransform);
     tfStaticBroadcaster_->sendTransform(worldToColorTransform);
     tfStaticBroadcaster_->sendTransform(worldToDepthTransform);
 

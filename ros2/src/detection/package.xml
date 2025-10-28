@@ -14,15 +14,25 @@
   <build_depend>std_msgs</build_depend>
   <build_depend>std_srvs</build_depend>
   <build_depend>sensor_msgs</build_depend>
-  <build_depend>camera_control_interfaces</build_depend>
-  
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>tf2</build_depend>
+  <build_depend>tf2_ros</build_depend>
+  <build_depend>detection_interfaces</build_depend>
+  <build_depend>camera_control_cpp</build_depend>
+  <build_depend>cv_bridge</build_depend>
+
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>rclcpp</exec_depend>
   <exec_depend>rclcpp_components</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>std_srvs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
-  <exec_depend>camera_control_interfaces</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>tf2</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>detection_interfaces</exec_depend>
+  <exec_depend>camera_control_cpp</exec_depend>
+  <exec_depend>cv_bridge</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
