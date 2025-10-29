@@ -12,10 +12,14 @@
 #include <rclcpp_components/register_node_macro.hpp>
 
 #include "camera_control_cpp/utils/rgbd_alignment.hpp"
+#include "common_interfaces/msg/vector2.hpp"
+#include "common_interfaces/msg/vector3.hpp"
 #include "detection/detector/circle_detector.hpp"
 #include "detection/detector/laser_detector.hpp"
 #include "detection/detector/runner_detector.hpp"
+#include "detection_interfaces/msg/detection_result.hpp"
 #include "detection_interfaces/msg/detection_type.hpp"
+#include "detection_interfaces/msg/object_instance.hpp"
 #include "detection_interfaces/msg/state.hpp"
 #include "detection_interfaces/srv/get_state.hpp"
 #include "detection_interfaces/srv/start_detection.hpp"
@@ -29,7 +33,7 @@
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
 
-std::string expandUser(const std::string& path) {
+static std::string expandUser(const std::string& path) {
   if (path.empty() || path[0] != '~') {
     return path;
   }
@@ -42,7 +46,7 @@ std::string expandUser(const std::string& path) {
   return std::string(home) + path.substr(1);
 }
 
-std::pair<cv::Mat, cv::Mat> getCameraMatrices(
+static std::pair<cv::Mat, cv::Mat> getCameraMatrices(
     const sensor_msgs::msg::CameraInfo::ConstSharedPtr& cameraInfo) {
   // Intrinsic matrix (3x3)
   cv::Mat K =
@@ -60,7 +64,7 @@ std::pair<cv::Mat, cv::Mat> getCameraMatrices(
   return {K, D};
 }
 
-std::optional<cv::Mat> getTransformMatrix(
+static std::optional<cv::Mat> getTransformMatrix(
     const geometry_msgs::msg::TransformStamped& transformStamped) {
   const auto& t{transformStamped.transform.translation};
   const auto& q{transformStamped.transform.rotation};
@@ -155,6 +159,9 @@ class DetectionNode : public rclcpp::Node {
         rclcpp::IntraProcessSetting::Disable;
     statePublisher_ = create_publisher<detection_interfaces::msg::State>(
         "~/state", latchedQos, intraProcessDisableOpts);
+    detectionsPublisher_ =
+        create_publisher<detection_interfaces::msg::DetectionResult>(
+            "~/detections", rclcpp::SensorDataQoS());
     notificationsPublisher_ =
         create_publisher<rcl_interfaces::msg::Log>("/notifications", 1);
     debugImagePublisher_ = create_publisher<sensor_msgs::msg::Image>(
@@ -380,10 +387,12 @@ class DetectionNode : public rclcpp::Node {
         // be calculated only based on the portion of the mask that lies inside
         // the bounds
         auto runners{runnerDetector_->track(gpuRgb)};
-        // TODO: filter out any detections that have no representative point
 
-        // TODO: publish detections
+        // Create and publish DetectionResult
+        auto detectionResult{createDetectionResult(runners, imgMsg)};
+        detectionsPublisher_->publish(detectionResult);
 
+        // Draw detections to debug image
         RunnerDetector::drawDetections(debugImage, runners,
                                        cv::Size(imgMsg->width, imgMsg->height));
       }
@@ -395,10 +404,14 @@ class DetectionNode : public rclcpp::Node {
         rgbImage.create(imgMsg->height, imgMsg->width, CV_8UC3);
         gpuRgb.download(rgbImage);
 
+        // Run detection
         auto lasers{laserDetector_->detect(rgbImage)};
 
-        // TODO: publish detections
+        // Create and publish DetectionResult
+        auto detectionResult{createDetectionResult(lasers, imgMsg)};
+        detectionsPublisher_->publish(detectionResult);
 
+        // Draw detections to debug image
         LaserDetector::drawDetections(debugImage, lasers,
                                       cv::Size(imgMsg->width, imgMsg->height));
       }
@@ -410,10 +423,14 @@ class DetectionNode : public rclcpp::Node {
         rgbImage.create(imgMsg->height, imgMsg->width, CV_8UC3);
         gpuRgb.download(rgbImage);
 
+        // Run detection
         auto circles{circleDetector_->detect(rgbImage)};
 
-        // TODO: publish detections
+        // Create and publish DetectionResult
+        auto detectionResult{createDetectionResult(circles, imgMsg)};
+        detectionsPublisher_->publish(detectionResult);
 
+        // Draw detections to debug image
         CircleDetector::drawDetections(debugImage, circles,
                                        cv::Size(imgMsg->width, imgMsg->height));
       }
@@ -429,6 +446,139 @@ class DetectionNode : public rclcpp::Node {
           cv_bridge::CvImage(imgMsg->header, "rgb8", debugImage).toImageMsg()};
       debugImagePublisher_->publish(*debugImageMsg);
     }
+  }
+
+  detection_interfaces::msg::DetectionResult createDetectionResult(
+      const std::vector<RunnerDetector::Runner>& detections,
+      const sensor_msgs::msg::Image::ConstSharedPtr image) {
+    auto rgbdAlignment{getOrCreateRgbdAlignment()};
+    auto depthXyz{getDepthXyz(image)};
+    // Wrap the depthXyz data pointer (no copy)
+    cv::Mat depthXyzMat(depthXyz->height, depthXyz->width, CV_32FC3,
+                        const_cast<uint8_t*>(depthXyz->data.data()),
+                        depthXyz->step);
+
+    detection_interfaces::msg::DetectionResult detectionResult;
+    detectionResult.detection_type =
+        detection_interfaces::msg::DetectionType::RUNNER;
+    detectionResult.timestamp =
+        static_cast<double>(image->header.stamp.sec) +
+        static_cast<double>(image->header.stamp.nanosec) * 1e-9;
+    for (const auto& runner : detections) {
+      common_interfaces::msg::Vector2 pointMsg;
+      pointMsg.x = static_cast<double>(runner.point.x);
+      pointMsg.y = static_cast<double>(runner.point.y);
+      if (pointMsg.x < 0.0 || pointMsg.y < 0.0) {
+        continue;
+      }
+
+      auto positionOpt{rgbdAlignment->getPosition(runner.point, depthXyzMat)};
+      if (positionOpt) {
+        common_interfaces::msg::Vector3 positionMsg;
+        positionMsg.x = positionOpt.value()[0];
+        positionMsg.y = positionOpt.value()[1];
+        positionMsg.z = positionOpt.value()[2];
+
+        detection_interfaces::msg::ObjectInstance objectInstance;
+        objectInstance.confidence = runner.conf;
+        objectInstance.point = pointMsg;
+        objectInstance.position = positionMsg;
+        objectInstance.track_id = runner.trackId;
+        detectionResult.instances.push_back(objectInstance);
+      } else {
+        detectionResult.invalid_points.push_back(pointMsg);
+      }
+    }
+
+    return detectionResult;
+  }
+
+  detection_interfaces::msg::DetectionResult createDetectionResult(
+      const std::vector<LaserDetector::Laser>& detections,
+      const sensor_msgs::msg::Image::ConstSharedPtr image) {
+    auto rgbdAlignment{getOrCreateRgbdAlignment()};
+    auto depthXyz{getDepthXyz(image)};
+    // Wrap the depthXyz data pointer (no copy)
+    cv::Mat depthXyzMat(depthXyz->height, depthXyz->width, CV_32FC3,
+                        const_cast<uint8_t*>(depthXyz->data.data()),
+                        depthXyz->step);
+
+    detection_interfaces::msg::DetectionResult detectionResult;
+    detectionResult.detection_type =
+        detection_interfaces::msg::DetectionType::LASER;
+    detectionResult.timestamp =
+        static_cast<double>(image->header.stamp.sec) +
+        static_cast<double>(image->header.stamp.nanosec) * 1e-9;
+    for (const auto& laser : detections) {
+      common_interfaces::msg::Vector2 pointMsg;
+      pointMsg.x = static_cast<double>(laser.point.x);
+      pointMsg.y = static_cast<double>(laser.point.y);
+      if (pointMsg.x < 0.0 || pointMsg.y < 0.0) {
+        continue;
+      }
+
+      auto positionOpt{rgbdAlignment->getPosition(laser.point, depthXyzMat)};
+      if (positionOpt) {
+        common_interfaces::msg::Vector3 positionMsg;
+        positionMsg.x = positionOpt.value()[0];
+        positionMsg.y = positionOpt.value()[1];
+        positionMsg.z = positionOpt.value()[2];
+
+        detection_interfaces::msg::ObjectInstance objectInstance;
+        objectInstance.confidence = laser.conf;
+        objectInstance.point = pointMsg;
+        objectInstance.position = positionMsg;
+        detectionResult.instances.push_back(objectInstance);
+      } else {
+        detectionResult.invalid_points.push_back(pointMsg);
+      }
+    }
+
+    return detectionResult;
+  }
+
+  detection_interfaces::msg::DetectionResult createDetectionResult(
+      const std::vector<CircleDetector::Circle>& detections,
+      const sensor_msgs::msg::Image::ConstSharedPtr image) {
+    auto rgbdAlignment{getOrCreateRgbdAlignment()};
+    auto depthXyz{getDepthXyz(image)};
+    // Wrap the depthXyz data pointer (no copy)
+    cv::Mat depthXyzMat(depthXyz->height, depthXyz->width, CV_32FC3,
+                        const_cast<uint8_t*>(depthXyz->data.data()),
+                        depthXyz->step);
+
+    detection_interfaces::msg::DetectionResult detectionResult;
+    detectionResult.detection_type =
+        detection_interfaces::msg::DetectionType::CIRCLE;
+    detectionResult.timestamp =
+        static_cast<double>(image->header.stamp.sec) +
+        static_cast<double>(image->header.stamp.nanosec) * 1e-9;
+    for (const auto& circle : detections) {
+      common_interfaces::msg::Vector2 pointMsg;
+      pointMsg.x = static_cast<double>(circle.point.x);
+      pointMsg.y = static_cast<double>(circle.point.y);
+      if (pointMsg.x < 0.0 || pointMsg.y < 0.0) {
+        continue;
+      }
+
+      auto positionOpt{rgbdAlignment->getPosition(circle.point, depthXyzMat)};
+      if (positionOpt) {
+        common_interfaces::msg::Vector3 positionMsg;
+        positionMsg.x = positionOpt.value()[0];
+        positionMsg.y = positionOpt.value()[1];
+        positionMsg.z = positionOpt.value()[2];
+
+        detection_interfaces::msg::ObjectInstance objectInstance;
+        objectInstance.confidence = circle.conf;
+        objectInstance.point = pointMsg;
+        objectInstance.position = positionMsg;
+        detectionResult.instances.push_back(objectInstance);
+      } else {
+        detectionResult.invalid_points.push_back(pointMsg);
+      }
+    }
+
+    return detectionResult;
   }
 
   sensor_msgs::msg::Image::ConstSharedPtr getDepthXyz(
@@ -760,6 +910,8 @@ class DetectionNode : public rclcpp::Node {
   std::unique_ptr<tf2_ros::Buffer> tfBuffer_;
   rclcpp::Publisher<detection_interfaces::msg::State>::SharedPtr
       statePublisher_;
+  rclcpp::Publisher<detection_interfaces::msg::DetectionResult>::SharedPtr
+      detectionsPublisher_;
   rclcpp::Publisher<rcl_interfaces::msg::Log>::SharedPtr
       notificationsPublisher_;
   rclcpp::CallbackGroup::SharedPtr serviceCallbackGroup_;

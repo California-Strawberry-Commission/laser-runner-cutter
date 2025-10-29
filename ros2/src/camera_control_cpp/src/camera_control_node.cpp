@@ -27,7 +27,7 @@
 #include "std_srvs/srv/trigger.hpp"
 #include "tf2_ros/static_transform_broadcaster.h"
 
-std::string expandUser(const std::string& path) {
+static std::string expandUser(const std::string& path) {
   if (path.empty() || path[0] != '~') {
     return path;
   }
@@ -40,7 +40,8 @@ std::string expandUser(const std::string& path) {
   return std::string(home) + path.substr(1);
 }
 
-std::string formatRosTimestamp(const builtin_interfaces::msg::Time& stamp) {
+static std::string formatRosTimestamp(
+    const builtin_interfaces::msg::Time& stamp) {
   rclcpp::Time rosTime(stamp);
   auto sec{static_cast<time_t>(rosTime.seconds())};
   auto nsec{rosTime.nanoseconds() % 1'000'000'000};
@@ -65,7 +66,7 @@ struct CalibrationParams {
   cv::Mat xyzToTritonExtrinsicMatrix;
   cv::Mat xyzToHeliosExtrinsicMatrix;
 };
-CalibrationParams readCalibrationParams(
+static CalibrationParams readCalibrationParams(
     const std::string& calib_id = "1c0faf4b115d1c0faf4d17ce") {
   std::string packageShareDirectory{
       ament_index_cpp::get_package_share_directory("camera_control")};
@@ -122,13 +123,13 @@ CalibrationParams readCalibrationParams(
   return result;
 }
 
-void populateCameraInfo(const cv::Mat& distCoeffs,
-                        const cv::Mat& intrinsicMatrix,
-                        sensor_msgs::msg::CameraInfo& cameraInfo) {
+static sensor_msgs::msg::CameraInfo createCameraInfo(
+    const cv::Mat& distCoeffs, const cv::Mat& intrinsicMatrix) {
   if (intrinsicMatrix.rows != 3 || intrinsicMatrix.cols != 3) {
     throw std::runtime_error("Intrinsic matrix must be 3x3");
   }
 
+  sensor_msgs::msg::CameraInfo cameraInfo;
   cameraInfo.distortion_model = "plumb_bob";
 
   // Distortion coeffs (D)
@@ -147,10 +148,13 @@ void populateCameraInfo(const cv::Mat& distCoeffs,
   cameraInfo.k[6] = intrinsicMatrix.at<double>(2, 0);
   cameraInfo.k[7] = intrinsicMatrix.at<double>(2, 1);
   cameraInfo.k[8] = intrinsicMatrix.at<double>(2, 2);
+
+  return cameraInfo;
 }
 
-void populateTransform(const cv::Mat& extrinsicMatrix,
-                       geometry_msgs::msg::TransformStamped& transformMsg) {
+static geometry_msgs::msg::TransformStamped createTransformStamped(
+    const std::string& sourceFrame, const std::string& targetFrame,
+    const cv::Mat& extrinsicMatrix) {
   if (extrinsicMatrix.rows != 4 || extrinsicMatrix.cols != 4) {
     throw std::runtime_error("Extrinsic matrix must be 4x4");
   }
@@ -174,13 +178,18 @@ void populateTransform(const cv::Mat& extrinsicMatrix,
   q.normalize();
 
   // Fill TransformStamped
-  transformMsg.transform.translation.x = t.x();
-  transformMsg.transform.translation.y = t.y();
-  transformMsg.transform.translation.z = t.z();
-  transformMsg.transform.rotation.x = q.x();
-  transformMsg.transform.rotation.y = q.y();
-  transformMsg.transform.rotation.z = q.z();
-  transformMsg.transform.rotation.w = q.w();
+  geometry_msgs::msg::TransformStamped transformStamped;
+  transformStamped.header.frame_id = sourceFrame;
+  transformStamped.child_frame_id = targetFrame;
+  transformStamped.transform.translation.x = t.x();
+  transformStamped.transform.translation.y = t.y();
+  transformStamped.transform.translation.z = t.z();
+  transformStamped.transform.rotation.x = q.x();
+  transformStamped.transform.rotation.y = q.y();
+  transformStamped.transform.rotation.z = q.z();
+  transformStamped.transform.rotation.w = q.w();
+
+  return transformStamped;
 }
 
 class CameraControlNode : public rclcpp::Node {
@@ -282,12 +291,12 @@ class CameraControlNode : public rclcpp::Node {
     // Camera Setup
     ///////////////
     calibrationParams_ = readCalibrationParams(getParamCalibrationId());
-    populateCameraInfo(calibrationParams_.tritonDistCoeffs,
-                       calibrationParams_.tritonIntrinsicMatrix,
-                       colorCameraInfo_);
-    populateCameraInfo(calibrationParams_.heliosDistCoeffs,
-                       calibrationParams_.heliosIntrinsicMatrix,
-                       depthCameraInfo_);
+    colorCameraInfo_ =
+        createCameraInfo(calibrationParams_.tritonDistCoeffs,
+                         calibrationParams_.tritonIntrinsicMatrix);
+    depthCameraInfo_ =
+        createCameraInfo(calibrationParams_.heliosDistCoeffs,
+                         calibrationParams_.heliosIntrinsicMatrix);
 
     LucidCamera::StateChangeCallback stateChangeCallback =
         [this](LucidCamera::State) { publishState(); };
@@ -296,16 +305,12 @@ class CameraControlNode : public rclcpp::Node {
                                             stateChangeCallback);
 
     // Publish extrinsics via tf2's StaticTransformBroadcaster once at startup
-    geometry_msgs::msg::TransformStamped worldToColorTransform;
-    worldToColorTransform.header.frame_id = "world";
-    worldToColorTransform.child_frame_id = "color_camera";
-    populateTransform(calibrationParams_.xyzToTritonExtrinsicMatrix,
-                      worldToColorTransform);
-    geometry_msgs::msg::TransformStamped worldToDepthTransform;
-    worldToDepthTransform.header.frame_id = "world";
-    worldToDepthTransform.child_frame_id = "depth_camera";
-    populateTransform(calibrationParams_.xyzToHeliosExtrinsicMatrix,
-                      worldToDepthTransform);
+    auto worldToColorTransform{
+        createTransformStamped("world", "color_camera",
+                               calibrationParams_.xyzToTritonExtrinsicMatrix)};
+    auto worldToDepthTransform{
+        createTransformStamped("world", "depth_camera",
+                               calibrationParams_.xyzToHeliosExtrinsicMatrix)};
     tfStaticBroadcaster_->sendTransform(worldToColorTransform);
     tfStaticBroadcaster_->sendTransform(worldToDepthTransform);
 

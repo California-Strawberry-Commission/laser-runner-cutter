@@ -68,7 +68,7 @@ class Event {
   bool flag_;
 };
 
-std::pair<int, int> millisecondsToRosTime(double milliseconds) {
+static std::pair<int, int> millisecondsToRosTime(double milliseconds) {
   // ROS timestamps consist of two integers, one for seconds and one for
   // nanoseconds
   int seconds = static_cast<int>(milliseconds / 1000);
@@ -77,7 +77,7 @@ std::pair<int, int> millisecondsToRosTime(double milliseconds) {
   return {seconds, nanoseconds};
 }
 
-std::string expandUser(const std::string& path) {
+static std::string expandUser(const std::string& path) {
   if (path.empty() || path[0] != '~') {
     return path;
   }
