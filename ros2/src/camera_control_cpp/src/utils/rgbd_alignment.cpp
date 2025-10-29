@@ -185,14 +185,16 @@ std::optional<cv::Point2i> RgbdAlignment::getCorrespondingDepthPixel(
   if (!minDepthPositionColorSpaceOpt) {
     return std::nullopt;
   }
-  cv::Vec3f minDepthPositionColorSpace{minDepthPositionColorSpaceOpt.value()};
+  cv::Vec3f minDepthPositionColorSpace{
+      std::move(*minDepthPositionColorSpaceOpt)};
   auto maxDepthPositionColorSpaceOpt{deprojectPixel(
       fullFrameColorPixel, DEPTH_MAX_MM, colorCameraIntrinsicMatrix_,
       colorCameraDistortionCoeffs_)};
   if (!maxDepthPositionColorSpaceOpt) {
     return std::nullopt;
   }
-  cv::Vec3f maxDepthPositionColorSpace{maxDepthPositionColorSpaceOpt.value()};
+  cv::Vec3f maxDepthPositionColorSpace{
+      std::move(*maxDepthPositionColorSpaceOpt)};
 
   // Min-depth and max-depth positions in depth camera-space
   cv::Vec3f minDepthPositionDepthSpace{transformPosition(
@@ -207,14 +209,14 @@ std::optional<cv::Point2i> RgbdAlignment::getCorrespondingDepthPixel(
   if (!minDepthPixelOpt) {
     return std::nullopt;
   }
-  cv::Point2i minDepthPixel{minDepthPixelOpt.value()};
+  cv::Point2i minDepthPixel{std::move(*minDepthPixelOpt)};
   auto maxDepthPixelOpt{projectPosition(maxDepthPositionDepthSpace,
                                         depthCameraIntrinsicMatrix_,
                                         depthCameraDistortionCoeffs_)};
   if (!maxDepthPixelOpt) {
     return std::nullopt;
   }
-  cv::Point2i maxDepthPixel{maxDepthPixelOpt.value()};
+  cv::Point2i maxDepthPixel{std::move(*maxDepthPixelOpt)};
 
   // Make sure pixel coords are in boundary
   cv::Point2i minDepthPixelAdjusted{
@@ -235,7 +237,7 @@ std::optional<cv::Point2i> RgbdAlignment::getCorrespondingDepthPixel(
     if (!currColorPixelOpt) {
       return std::nullopt;
     }
-    cv::Point2i currColorPixel{currColorPixelOpt.value()};
+    cv::Point2i currColorPixel{std::move(*currColorPixelOpt)};
     double distance{cv::norm(cv::Point2f(currColorPixel) -
                              cv::Point2f(fullFrameColorPixel))};
     if (distance < minDist || minDist < 0) {
@@ -263,7 +265,7 @@ std::optional<cv::Vec3f> RgbdAlignment::getPosition(
   if (!depthPixelOpt) {
     return std::nullopt;
   }
-  cv::Point2i depthPixel{depthPixelOpt.value()};
+  cv::Point2i depthPixel{std::move(*depthPixelOpt)};
 
   cv::Vec3f position{depthXyz.at<cv::Vec3f>(depthPixel.y, depthPixel.x)};
   // Negative depth indicates an invalid position. Depth greater than 2^14 - 1

@@ -3,7 +3,8 @@
 
 #include "detection/detector/yolov8.hpp"
 
-void drawObjectLabels(cv::Mat& image, const std::vector<Object>& objects,
+void drawObjectLabels(cv::Mat& image,
+                      const std::vector<YoloV8::Object>& objects,
                       unsigned int scale = 1) {
   cv::Scalar color{0.0, 0.0, 1.0};
 

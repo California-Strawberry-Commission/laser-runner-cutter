@@ -42,135 +42,6 @@ std::string expandUser(const std::string& path) {
   return std::string(home) + path.substr(1);
 }
 
-void drawRunnerDetections(const cv::Mat& image,
-                          const std::vector<Runner>& runners,
-                          const cv::Size& originalImageSize,
-                          cv::Scalar color = {255, 0, 0},
-                          unsigned int scale = 1) {
-  if (image.empty() || originalImageSize.width <= 0 ||
-      originalImageSize.height <= 0) {
-    return;
-  }
-
-  // The image we are drawing on may not be the size of the image that the
-  // runner detection was run on. Thus, we'll need to scale the bbox, mask, and
-  // point of each runner to the image we are drawing on.
-  double xScale{static_cast<double>(image.cols) / originalImageSize.width};
-  double yScale{static_cast<double>(image.rows) / originalImageSize.height};
-
-  // Draw segmentation masks
-  if (!runners.empty() && !runners[0].boxMask.empty()) {
-    cv::Mat mask{image.clone()};
-    for (const auto& runner : runners) {
-      // Scale rect to current image space
-      cv::Rect2f rect{runner.rect};
-      rect.x = static_cast<float>(rect.x * xScale);
-      rect.y = static_cast<float>(rect.y * yScale);
-      rect.width = static_cast<float>(rect.width * xScale);
-      rect.height = static_cast<float>(rect.height * yScale);
-      cv::Rect rectInt = rect;  // implicit float -> int conversion
-      cv::Rect imgRect(0, 0, image.cols, image.rows);
-      cv::Rect roi{rectInt & imgRect};  // clip to image
-      if (roi.width <= 0 || roi.height <= 0) {
-        continue;
-      }
-
-      // Scale boxMask to current image space
-      cv::Mat boxMask{runner.boxMask};
-      cv::Mat resizedBoxMask;
-      cv::resize(boxMask, resizedBoxMask, cv::Size(roi.width, roi.height), 0, 0,
-                 cv::INTER_NEAREST);
-
-      mask(roi).setTo(color, resizedBoxMask);
-    }
-    // Add all the masks to our image
-    cv::addWeighted(image, 0.5, mask, 0.8, 1, image);
-  }
-
-  // Bounding boxes and annotations
-  double meanColor{cv::mean(color)[0]};
-  cv::Scalar textColor{(meanColor > 128) ? cv::Scalar(0, 0, 0)
-                                         : cv::Scalar(255, 255, 255)};
-  cv::Scalar markerColor{255, 255, 255};
-  for (const auto& runner : runners) {
-    // Scale rect to current image space
-    cv::Rect2f rect{runner.rect};
-    rect.x = static_cast<float>(rect.x * xScale);
-    rect.y = static_cast<float>(rect.y * yScale);
-    rect.width = static_cast<float>(rect.width * xScale);
-    rect.height = static_cast<float>(rect.height * yScale);
-    cv::Rect rectInt = rect;  // implicit float -> int conversion
-    cv::Rect imgRect(0, 0, image.cols, image.rows);
-    cv::Rect roi{rectInt & imgRect};  // clip to image
-    if (roi.width <= 0 || roi.height <= 0) {
-      continue;
-    }
-
-    // Draw rectangles and text
-    char text[256];
-    sprintf(text, "%d: %.1f%%", runner.trackId, runner.conf * 100);
-    int baseLine{0};
-    cv::Size labelSize{cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX,
-                                       0.5 * scale, scale, &baseLine)};
-    cv::Scalar textBackgroundColor{color * 0.7};
-    cv::rectangle(image, roi, color, scale + 1);
-    cv::rectangle(
-        image,
-        cv::Rect(cv::Point(roi.x, roi.y),
-                 cv::Size(labelSize.width, labelSize.height + baseLine)),
-        textBackgroundColor, -1);
-    cv::putText(image, text, cv::Point(roi.x, roi.y + labelSize.height),
-                cv::FONT_HERSHEY_SIMPLEX, 0.5 * scale, textColor, scale);
-
-    // Draw representative point
-    if (runner.point.x >= 0 && runner.point.y >= 0) {
-      int x{static_cast<int>(std::round(runner.point.x * xScale))};
-      int y{static_cast<int>(std::round(runner.point.y * yScale))};
-      cv::drawMarker(image, cv::Point2i(x, y), markerColor,
-                     cv::MARKER_TILTED_CROSS, 20, 2);
-    }
-  }
-}
-
-void drawLaserDetections(const cv::Mat& image, const std::vector<Laser>& lasers,
-                         const cv::Size& originalImageSize,
-                         cv::Scalar color = {255, 0, 255}) {
-  // The image we are drawing on may not be the size of the image that the
-  // runner detection was run on. Thus, we'll need to scale the bbox, mask, and
-  // point of each runner to the image we are drawing on.
-  double xScale{static_cast<double>(image.cols) / originalImageSize.width};
-  double yScale{static_cast<double>(image.rows) / originalImageSize.height};
-
-  for (const auto& laser : lasers) {
-    if (laser.point.x >= 0 && laser.point.y >= 0) {
-      int x{static_cast<int>(std::round(laser.point.x * xScale))};
-      int y{static_cast<int>(std::round(laser.point.y * yScale))};
-      cv::drawMarker(image, cv::Point2i(x, y), color, cv::MARKER_TILTED_CROSS,
-                     20, 2);
-    }
-  }
-}
-
-void drawCircleDetections(const cv::Mat& image,
-                          const std::vector<Circle>& circles,
-                          const cv::Size& originalImageSize,
-                          cv::Scalar color = {255, 0, 255}) {
-  // The image we are drawing on may not be the size of the image that the
-  // runner detection was run on. Thus, we'll need to scale the bbox, mask, and
-  // point of each runner to the image we are drawing on.
-  double xScale{static_cast<double>(image.cols) / originalImageSize.width};
-  double yScale{static_cast<double>(image.rows) / originalImageSize.height};
-
-  for (const auto& circle : circles) {
-    if (circle.point.x >= 0 && circle.point.y >= 0) {
-      int x{static_cast<int>(std::round(circle.point.x * xScale))};
-      int y{static_cast<int>(std::round(circle.point.y * yScale))};
-      cv::drawMarker(image, cv::Point2i(x, y), color, cv::MARKER_TILTED_CROSS,
-                     20, 2);
-    }
-  }
-}
-
 std::pair<cv::Mat, cv::Mat> getCameraMatrices(
     const sensor_msgs::msg::CameraInfo::ConstSharedPtr& cameraInfo) {
   // Intrinsic matrix (3x3)
@@ -513,8 +384,8 @@ class DetectionNode : public rclcpp::Node {
 
         // TODO: publish detections
 
-        drawRunnerDetections(debugImage, runners,
-                             cv::Size(imgMsg->width, imgMsg->height));
+        RunnerDetector::drawDetections(debugImage, runners,
+                                       cv::Size(imgMsg->width, imgMsg->height));
       }
 
       if (enabledDetections_.find(
@@ -528,8 +399,8 @@ class DetectionNode : public rclcpp::Node {
 
         // TODO: publish detections
 
-        drawLaserDetections(debugImage, lasers,
-                            cv::Size(imgMsg->width, imgMsg->height));
+        LaserDetector::drawDetections(debugImage, lasers,
+                                      cv::Size(imgMsg->width, imgMsg->height));
       }
 
       if (enabledDetections_.find(
@@ -543,8 +414,8 @@ class DetectionNode : public rclcpp::Node {
 
         // TODO: publish detections
 
-        drawCircleDetections(debugImage, circles,
-                             cv::Size(imgMsg->width, imgMsg->height));
+        CircleDetector::drawDetections(debugImage, circles,
+                                       cv::Size(imgMsg->width, imgMsg->height));
       }
 
       //////////////////////
@@ -812,6 +683,11 @@ class DetectionNode : public rclcpp::Node {
 #pragma endregion
 
   std::shared_ptr<RgbdAlignment> getOrCreateRgbdAlignment() {
+    // We create RgbdAlignment lazily, since the necessary calibration params
+    // come from various async sources:
+    // - Intrinsics come from CameraInfo messages via topic subscription
+    // - Extrinsics come from tf2
+
     if (rgbdAlignment_) {
       return rgbdAlignment_;
     }
@@ -856,13 +732,13 @@ class DetectionNode : public rclcpp::Node {
     if (!xyzToColorExtrinsicMatrixOpt) {
       return nullptr;
     }
-    auto xyzToColorExtrinsicMatrix{xyzToColorExtrinsicMatrixOpt.value()};
+    auto xyzToColorExtrinsicMatrix{std::move(*xyzToColorExtrinsicMatrixOpt)};
 
     auto xyzToDepthExtrinsicMatrixOpt{getTransformMatrix(xyzToDepthTransform)};
     if (!xyzToDepthExtrinsicMatrixOpt) {
       return nullptr;
     }
-    auto xyzToDepthExtrinsicMatrix{xyzToDepthExtrinsicMatrixOpt.value()};
+    auto xyzToDepthExtrinsicMatrix{std::move(*xyzToDepthExtrinsicMatrixOpt)};
 
     rgbdAlignment_ = std::make_shared<RgbdAlignment>(
         colorCameraIntrinsicMatrix, colorCameraDistortionCoeffs,

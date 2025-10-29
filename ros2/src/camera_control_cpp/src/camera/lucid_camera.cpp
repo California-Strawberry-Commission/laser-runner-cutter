@@ -506,7 +506,7 @@ void LucidCamera::waitForStreaming() {
   }
 }
 
-std::optional<Frame> LucidCamera::getNextFrame() {
+std::optional<LucidCamera::Frame> LucidCamera::getNextFrame() {
   if (getState() != LucidCamera::State::STREAMING) {
     return std::nullopt;
   }

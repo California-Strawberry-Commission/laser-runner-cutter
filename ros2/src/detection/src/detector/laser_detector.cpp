@@ -1,6 +1,28 @@
 #include "detection/detector/laser_detector.hpp"
 
-std::vector<Laser> LaserDetector::detect(const cv::Mat& imageRgb) {
+void LaserDetector::drawDetections(
+    cv::Mat& targetImage, const std::vector<LaserDetector::Laser>& lasers,
+    const cv::Size& originalImageSize, cv::Scalar color) {
+  // The image we are drawing on may not be the size of the image that the
+  // runner detection was run on. Thus, we'll need to scale the bbox, mask, and
+  // point of each runner to the image we are drawing on.
+  double xScale{static_cast<double>(targetImage.cols) /
+                originalImageSize.width};
+  double yScale{static_cast<double>(targetImage.rows) /
+                originalImageSize.height};
+
+  for (const auto& laser : lasers) {
+    if (laser.point.x >= 0 && laser.point.y >= 0) {
+      int x{static_cast<int>(std::round(laser.point.x * xScale))};
+      int y{static_cast<int>(std::round(laser.point.y * yScale))};
+      cv::drawMarker(targetImage, cv::Point2i(x, y), color,
+                     cv::MARKER_TILTED_CROSS, 20, 2);
+    }
+  }
+}
+
+std::vector<LaserDetector::Laser> LaserDetector::detect(
+    const cv::Mat& imageRgb) {
   cv::Mat gray;
   cv::cvtColor(imageRgb, gray, cv::COLOR_RGB2GRAY);
 

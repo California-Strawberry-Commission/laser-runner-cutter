@@ -7,12 +7,12 @@
 #include <opencv2/ximgproc.hpp>
 #include <optional>
 
-std::optional<cv::Point> findRepresentativePoint(const cv::Mat& mask) {
+static std::optional<cv::Point> findRepresentativePoint(const cv::Mat& mask) {
   if (mask.empty()) {
     return std::nullopt;
   }
 
-  cv::Mat skeleton = cv::Mat::zeros(mask.size(), CV_8U);
+  cv::Mat skeleton{cv::Mat::zeros(mask.size(), CV_8U)};
   cv::ximgproc::thinning(mask, skeleton, cv::ximgproc::THINNING_ZHANGSUEN);
 
   // Find non-zero pixels in the skeleton
@@ -29,12 +29,12 @@ std::optional<cv::Point> findRepresentativePoint(const cv::Mat& mask) {
 
   // Find the point in the skeleton that is closest to the centroid of the mask
   // Compute centroid of the original mask
-  cv::Moments m = cv::moments(mask, /*binaryImage=*/true);
+  cv::Moments m{cv::moments(mask, /*binaryImage=*/true)};
   if (m.m00 == 0.0) {
     // If there's no area, return first skeleton point
     return pts.front();
   }
-  cv::Point2d centroid(m.m10 / m.m00, m.m01 / m.m00);  // (x, y)
+  cv::Point2d centroid{m.m10 / m.m00, m.m01 / m.m00};  // (x, y)
 
   // Pick skeleton point closest to centroid
   double bestD2{std::numeric_limits<double>::infinity()};
@@ -51,14 +51,14 @@ std::optional<cv::Point> findRepresentativePoint(const cv::Mat& mask) {
   return best;
 }
 
-static inline float calculateIou(const cv::Rect2f& a, const cv::Rect2f& b) {
+static float calculateIou(const cv::Rect2f& a, const cv::Rect2f& b) {
   float inter{(a & b).area()};
   float uni{a.area() + b.area() - inter};
   return (uni > 0.0f) ? inter / uni : 0.0f;
 }
 
-static inline cv::Rect2f toCvRect(const byte_track::Rect<float>& btRect) {
-  return cv::Rect2f(btRect.x(), btRect.y(), btRect.width(), btRect.height());
+static cv::Rect2f toCvRect(const byte_track::Rect<float>& btRect) {
+  return cv::Rect2f{btRect.x(), btRect.y(), btRect.width(), btRect.height()};
 }
 
 /**
@@ -67,7 +67,7 @@ static inline cv::Rect2f toCvRect(const byte_track::Rect<float>& btRect) {
  */
 static std::unordered_map<int, int> matchTracksToDetections(
     const std::vector<byte_track::BYTETracker::STrackPtr>& tracks,
-    const std::vector<Object>& detections, float iouThreshold = 0.8f) {
+    const std::vector<YoloV8::Object>& detections, float iouThreshold = 0.8f) {
   std::unordered_map<int, int> trackToDetection;
   trackToDetection.reserve(tracks.size());
 
@@ -115,6 +115,96 @@ static std::unordered_map<int, int> matchTracksToDetections(
   return trackToDetection;
 }
 
+void RunnerDetector::drawDetections(
+    cv::Mat& targetImage, const std::vector<RunnerDetector::Runner>& runners,
+    const cv::Size& originalImageSize, cv::Scalar color, unsigned int scale) {
+  if (targetImage.empty() || originalImageSize.width <= 0 ||
+      originalImageSize.height <= 0) {
+    return;
+  }
+
+  // The image we are drawing on may not be the size of the image that the
+  // runner detection was run on. Thus, we'll need to scale the bbox, mask, and
+  // point of each runner to the image we are drawing on.
+  double xScale{static_cast<double>(targetImage.cols) /
+                originalImageSize.width};
+  double yScale{static_cast<double>(targetImage.rows) /
+                originalImageSize.height};
+
+  // Draw segmentation masks
+  if (!runners.empty() && !runners[0].boxMask.empty()) {
+    cv::Mat mask{targetImage.clone()};
+    for (const auto& runner : runners) {
+      // Scale rect to current image space
+      cv::Rect2f rect{runner.rect};
+      rect.x = static_cast<float>(rect.x * xScale);
+      rect.y = static_cast<float>(rect.y * yScale);
+      rect.width = static_cast<float>(rect.width * xScale);
+      rect.height = static_cast<float>(rect.height * yScale);
+      cv::Rect rectInt = rect;  // implicit float -> int conversion
+      cv::Rect imgRect(0, 0, targetImage.cols, targetImage.rows);
+      cv::Rect roi{rectInt & imgRect};  // clip to image
+      if (roi.width <= 0 || roi.height <= 0) {
+        continue;
+      }
+
+      // Scale boxMask to current image space
+      cv::Mat boxMask{runner.boxMask};
+      cv::Mat resizedBoxMask;
+      cv::resize(boxMask, resizedBoxMask, cv::Size(roi.width, roi.height), 0, 0,
+                 cv::INTER_NEAREST);
+
+      mask(roi).setTo(color, resizedBoxMask);
+    }
+    // Add all the masks to our image
+    cv::addWeighted(targetImage, 0.5, mask, 0.8, 1, targetImage);
+  }
+
+  // Bounding boxes and annotations
+  double meanColor{cv::mean(color)[0]};
+  cv::Scalar textColor{(meanColor > 128) ? cv::Scalar(0, 0, 0)
+                                         : cv::Scalar(255, 255, 255)};
+  cv::Scalar markerColor{255, 255, 255};
+  for (const auto& runner : runners) {
+    // Scale rect to current image space
+    cv::Rect2f rect{runner.rect};
+    rect.x = static_cast<float>(rect.x * xScale);
+    rect.y = static_cast<float>(rect.y * yScale);
+    rect.width = static_cast<float>(rect.width * xScale);
+    rect.height = static_cast<float>(rect.height * yScale);
+    cv::Rect rectInt = rect;  // implicit float -> int conversion
+    cv::Rect imgRect(0, 0, targetImage.cols, targetImage.rows);
+    cv::Rect roi{rectInt & imgRect};  // clip to image
+    if (roi.width <= 0 || roi.height <= 0) {
+      continue;
+    }
+
+    // Draw rectangles and text
+    char text[256];
+    sprintf(text, "%d: %.1f%%", runner.trackId, runner.conf * 100);
+    int baseLine{0};
+    cv::Size labelSize{cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX,
+                                       0.5 * scale, scale, &baseLine)};
+    cv::Scalar textBackgroundColor{color * 0.7};
+    cv::rectangle(targetImage, roi, color, scale + 1);
+    cv::rectangle(
+        targetImage,
+        cv::Rect(cv::Point(roi.x, roi.y),
+                 cv::Size(labelSize.width, labelSize.height + baseLine)),
+        textBackgroundColor, -1);
+    cv::putText(targetImage, text, cv::Point(roi.x, roi.y + labelSize.height),
+                cv::FONT_HERSHEY_SIMPLEX, 0.5 * scale, textColor, scale);
+
+    // Draw representative point
+    if (runner.point.x >= 0 && runner.point.y >= 0) {
+      int x{static_cast<int>(std::round(runner.point.x * xScale))};
+      int y{static_cast<int>(std::round(runner.point.y * yScale))};
+      cv::drawMarker(targetImage, cv::Point2i(x, y), markerColor,
+                     cv::MARKER_TILTED_CROSS, 20, 2);
+    }
+  }
+}
+
 RunnerDetector::RunnerDetector() {
   // Locate the package share directory
   std::string packageShareDir{
@@ -137,14 +227,16 @@ RunnerDetector::RunnerDetector() {
   tracker_ = std::make_unique<byte_track::BYTETracker>();
 }
 
-std::vector<Runner> RunnerDetector::track(const cv::Mat& imageRgb) {
+std::vector<RunnerDetector::Runner> RunnerDetector::track(
+    const cv::Mat& imageRgb) {
   cv::cuda::GpuMat gpuImg;
   gpuImg.upload(imageRgb);
   return track(gpuImg);
 }
 
-std::vector<Runner> RunnerDetector::track(const cv::cuda::GpuMat& imageRgb) {
-  std::vector<Object> predictionResult{model_->predict(imageRgb)};
+std::vector<RunnerDetector::Runner> RunnerDetector::track(
+    const cv::cuda::GpuMat& imageRgb) {
+  std::vector<YoloV8::Object> predictionResult{model_->predict(imageRgb)};
   std::vector<Runner> runners;
   runners.reserve(predictionResult.size());
 
@@ -154,11 +246,10 @@ std::vector<Runner> RunnerDetector::track(const cv::cuda::GpuMat& imageRgb) {
     auto repPointOpt{findRepresentativePoint(obj.boxMask)};
     cv::Point point{-1, -1};
     if (repPointOpt) {
-      cv::Point repPoint{repPointOpt.value()};
       // The representative point is relative to the bounding box, so we need to
       // convert it to be relative to the image pixel coords
-      point.x = obj.rect.x + repPoint.x;
-      point.y = obj.rect.y + repPoint.y;
+      point.x = obj.rect.x + repPointOpt.value().x;
+      point.y = obj.rect.y + repPointOpt.value().y;
     }
 
     Runner runner;

@@ -11,12 +11,6 @@
 #include "BS_thread_pool.hpp"
 #include "sensor_msgs/msg/image.hpp"
 
-struct Frame {
-  sensor_msgs::msg::Image::UniquePtr colorImage;
-  sensor_msgs::msg::Image::UniquePtr depthXyz;
-  sensor_msgs::msg::Image::UniquePtr depthIntensity;
-};
-
 class LucidCamera {
  public:
   const std::vector<std::string> COLOR_CAMERA_MODEL_PREFIXES{
@@ -26,6 +20,12 @@ class LucidCamera {
 
   enum class State { STREAMING, CONNECTING, DISCONNECTED };
   enum class CaptureMode { CONTINUOUS, SINGLE_FRAME };
+
+  struct Frame {
+    sensor_msgs::msg::Image::UniquePtr colorImage;
+    sensor_msgs::msg::Image::UniquePtr depthXyz;
+    sensor_msgs::msg::Image::UniquePtr depthIntensity;
+  };
 
   using StateChangeCallback = std::function<void(State)>;
   LucidCamera(std::optional<std::string> colorCameraSerialNumber = std::nullopt,

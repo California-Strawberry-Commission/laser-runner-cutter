@@ -1,6 +1,28 @@
 #include "detection/detector/circle_detector.hpp"
 
-std::vector<Circle> CircleDetector::detect(const cv::Mat& imageRgb) {
+void CircleDetector::drawDetections(
+    cv::Mat& targetImage, const std::vector<CircleDetector::Circle>& circles,
+    const cv::Size& originalImageSize, cv::Scalar color) {
+  // The image we are drawing on may not be the size of the image that the
+  // runner detection was run on. Thus, we'll need to scale the bbox, mask, and
+  // point of each runner to the image we are drawing on.
+  double xScale{static_cast<double>(targetImage.cols) /
+                originalImageSize.width};
+  double yScale{static_cast<double>(targetImage.rows) /
+                originalImageSize.height};
+
+  for (const auto& circle : circles) {
+    if (circle.point.x >= 0 && circle.point.y >= 0) {
+      int x{static_cast<int>(std::round(circle.point.x * xScale))};
+      int y{static_cast<int>(std::round(circle.point.y * yScale))};
+      cv::drawMarker(targetImage, cv::Point2i(x, y), color,
+                     cv::MARKER_TILTED_CROSS, 20, 2);
+    }
+  }
+}
+
+std::vector<CircleDetector::Circle> CircleDetector::detect(
+    const cv::Mat& imageRgb) {
   cv::Mat gray;
   cv::cvtColor(imageRgb, gray, cv::COLOR_RGB2GRAY);
 

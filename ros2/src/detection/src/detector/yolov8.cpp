@@ -12,34 +12,12 @@
 
 #include "detection/detector/stopwatch.hpp"
 
-void Logger::log(Severity severity, const char* msg) noexcept {
-  switch (severity) {
-    case Severity::kVERBOSE:
-      spdlog::debug(msg);
-      break;
-    case Severity::kINFO:
-      spdlog::info(msg);
-      break;
-    case Severity::kWARNING:
-      spdlog::warn(msg);
-      break;
-    case Severity::kERROR:
-      spdlog::error(msg);
-      break;
-    case Severity::kINTERNAL_ERROR:
-      spdlog::critical(msg);
-      break;
-    default:
-      spdlog::info("Unexpected severity level");
-  }
-}
-
-inline bool fileExists(const std::string& filepath) {
+static bool fileExists(const std::string& filepath) {
   std::ifstream f(filepath.c_str());
   return f.good();
 }
 
-inline void checkCudaErrorCode(cudaError_t code) {
+static void checkCudaErrorCode(cudaError_t code) {
   if (code != cudaSuccess) {
     throw std::runtime_error(
         "CUDA operation failed with code: " + std::to_string(code) + " (" +
@@ -48,7 +26,7 @@ inline void checkCudaErrorCode(cudaError_t code) {
   }
 }
 
-size_t getDataTypeSize(nvinfer1::DataType dataType) {
+static size_t getDataTypeSize(nvinfer1::DataType dataType) {
   switch (dataType) {
     case nvinfer1::DataType::kFLOAT:
       return 4;
@@ -69,6 +47,28 @@ size_t getDataTypeSize(nvinfer1::DataType dataType) {
     default:
       throw std::runtime_error("Unhandled TensorRT DataType enum value: " +
                                std::to_string(int(dataType)));
+  }
+}
+
+void YoloV8::Logger::log(Severity severity, const char* msg) noexcept {
+  switch (severity) {
+    case Severity::kVERBOSE:
+      spdlog::debug(msg);
+      break;
+    case Severity::kINFO:
+      spdlog::info(msg);
+      break;
+    case Severity::kWARNING:
+      spdlog::warn(msg);
+      break;
+    case Severity::kERROR:
+      spdlog::error(msg);
+      break;
+    case Severity::kINTERNAL_ERROR:
+      spdlog::critical(msg);
+      break;
+    default:
+      spdlog::info("Unexpected severity level");
   }
 }
 
@@ -158,20 +158,22 @@ YoloV8::~YoloV8() {
   }
 }
 
-std::vector<Object> YoloV8::predict(const cv::Mat& imageRgb,
-                                    float confThreshold, float nmsThreshold,
-                                    float segmentationThreshold,
-                                    int maxDetections) {
+std::vector<YoloV8::Object> YoloV8::predict(const cv::Mat& imageRgb,
+                                            float confThreshold,
+                                            float nmsThreshold,
+                                            float segmentationThreshold,
+                                            int maxDetections) {
   cv::cuda::GpuMat gpuImg;
   gpuImg.upload(imageRgb, cvStream_);
   return predict(gpuImg, confThreshold, nmsThreshold, segmentationThreshold,
                  maxDetections);
 }
 
-std::vector<Object> YoloV8::predict(const cv::cuda::GpuMat& imageRgb,
-                                    float confThreshold, float nmsThreshold,
-                                    float segmentationThreshold,
-                                    int maxDetections) {
+std::vector<YoloV8::Object> YoloV8::predict(const cv::cuda::GpuMat& imageRgb,
+                                            float confThreshold,
+                                            float nmsThreshold,
+                                            float segmentationThreshold,
+                                            int maxDetections) {
   // Validate image
   if (imageRgb.empty() ||
       (imageRgb.type() != CV_8UC3 && imageRgb.type() != CV_32FC3)) {

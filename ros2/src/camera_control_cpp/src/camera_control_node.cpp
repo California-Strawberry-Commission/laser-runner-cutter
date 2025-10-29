@@ -86,28 +86,30 @@ CalibrationParams readCalibrationParams(
     throw std::runtime_error(fmt::format("Could not read calibration file {}",
                                          tritonIntrinsicsPath.string()));
   }
-  auto [tritonIntrinsicMatrix, tritonDistCoeffs]{tritonIntrinsicsOpt.value()};
+  auto [tritonIntrinsicMatrix,
+        tritonDistCoeffs]{std::move(*tritonIntrinsicsOpt)};
   auto heliosIntrinsicsOpt{
       calibration::readIntrinsicsFile(heliosIntrinsicsPath.string())};
   if (!heliosIntrinsicsOpt) {
     throw std::runtime_error(fmt::format("Could not read calibration file {}",
                                          heliosIntrinsicsPath.string()));
   }
-  auto [heliosIntrinsicMatrix, heliosDistCoeffs]{heliosIntrinsicsOpt.value()};
+  auto [heliosIntrinsicMatrix,
+        heliosDistCoeffs]{std::move(*heliosIntrinsicsOpt)};
   auto xyzToTritonExtrinsicsOpt{
       calibration::readExtrinsicsFile(xyzToTritonIntrinsicsPath.string())};
   if (!xyzToTritonExtrinsicsOpt) {
     throw std::runtime_error(fmt::format("Could not read calibration file {}",
                                          xyzToTritonIntrinsicsPath.string()));
   }
-  auto xyzToTritonExtrinsicMatrix{xyzToTritonExtrinsicsOpt.value()};
+  auto xyzToTritonExtrinsicMatrix{std::move(*xyzToTritonExtrinsicsOpt)};
   auto xyzToHeliosExtrinsicsOpt{
       calibration::readExtrinsicsFile(xyzToHeliosIntrinsicsPath.string())};
   if (!xyzToHeliosExtrinsicsOpt) {
     throw std::runtime_error(fmt::format("Could not read calibration file {}",
                                          xyzToHeliosIntrinsicsPath.string()));
   }
-  auto xyzToHeliosExtrinsicMatrix{xyzToHeliosExtrinsicsOpt.value()};
+  auto xyzToHeliosExtrinsicMatrix{std::move(*xyzToHeliosExtrinsicsOpt)};
 
   CalibrationParams result;
   result.tritonIntrinsicMatrix = tritonIntrinsicMatrix;
@@ -374,7 +376,9 @@ class CameraControlNode : public rclcpp::Node {
           {
             std::lock_guard<std::mutex> lock(lastColorImageMutex_);
             if (colorImage) {
-              lastColorImage_ = *colorImage;
+              // TODO: eliminate this copy. It's only used for saving an image
+              lastColorImage_ =
+                  std::make_shared<sensor_msgs::msg::Image>(*colorImage);
             } else {
               lastColorImage_.reset();
             }
@@ -450,13 +454,13 @@ class CameraControlNode : public rclcpp::Node {
       std::shared_ptr<
           camera_control_interfaces::srv::AcquireSingleFrame::Response>
           response) {
-    std::optional<Frame> frameOpt{camera_->getNextFrame()};
+    auto frameOpt{camera_->getNextFrame()};
     if (!frameOpt) {
       publishNotification("Failed to acquire frame",
                           rclcpp::Logger::Level::Error);
       return;
     }
-    Frame frame{std::move(frameOpt.value())};
+    LucidCamera::Frame frame{std::move(*frameOpt)};
 
     publishNotification("Successfully acquired frame");
 
@@ -534,15 +538,14 @@ class CameraControlNode : public rclcpp::Node {
 #pragma endregion
 
   std::optional<std::string> saveImage() {
-    std::optional<sensor_msgs::msg::Image> colorImageOpt;
+    sensor_msgs::msg::Image::SharedPtr colorImage;
     {
       std::lock_guard<std::mutex> lock(lastColorImageMutex_);
-      if (!lastColorImage_) {
-        return std::nullopt;
-      }
-      colorImageOpt = lastColorImage_;
+      colorImage = lastColorImage_;
     }
-    auto colorImage{colorImageOpt.value()};
+    if (!colorImage) {
+      return std::nullopt;
+    }
 
     // Create the save directory if it doesn't exist
     std::string saveDir{getParamSaveDir()};
@@ -551,11 +554,12 @@ class CameraControlNode : public rclcpp::Node {
 
     // Generate the image file name and path
     std::string filepath{fmt::format(
-        "{}/{}.jpg", saveDir, formatRosTimestamp(colorImage.header.stamp))};
+        "{}/{}.jpg", saveDir, formatRosTimestamp(colorImage->header.stamp))};
 
     // Demosaic color image (which is BayerRG8) and save the image
-    cv::Mat raw(colorImage.height, colorImage.width, CV_8UC1,
-                const_cast<uint8_t*>(colorImage.data.data()), colorImage.step);
+    cv::Mat raw(colorImage->height, colorImage->width, CV_8UC1,
+                const_cast<uint8_t*>(colorImage->data.data()),
+                colorImage->step);
     cv::Mat rgb;
     cv::cvtColor(raw, rgb, cv::COLOR_BayerRG2RGB);
     cv::imwrite(filepath, rgb);
@@ -677,7 +681,7 @@ class CameraControlNode : public rclcpp::Node {
   // camera device has been stopped
   std::atomic<bool> cameraStarted_{false};
   std::mutex lastColorImageMutex_;
-  std::optional<sensor_msgs::msg::Image> lastColorImage_;
+  sensor_msgs::msg::Image::SharedPtr lastColorImage_;
   CalibrationParams calibrationParams_;
   sensor_msgs::msg::CameraInfo colorCameraInfo_;
   sensor_msgs::msg::CameraInfo depthCameraInfo_;

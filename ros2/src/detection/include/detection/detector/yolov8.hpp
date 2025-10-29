@@ -7,24 +7,24 @@
 #include <opencv2/opencv.hpp>
 #include <string>
 
-// Class to extend TensorRT logger
-class Logger : public nvinfer1::ILogger {
-  void log(Severity severity, const char* msg) noexcept override;
-};
-
-struct Object {
-  // The object class
-  int label{};
-  // The detection's confidence probability
-  float conf{};
-  // The object bounding box rectangle (TLWH)
-  cv::Rect2f rect;
-  // Semantic segmentation mask, inside the bounding box
-  cv::Mat boxMask;
-};
-
 class YoloV8 {
  public:
+  struct Object {
+    // The object class
+    int label{};
+    // The detection's confidence probability
+    float conf{};
+    // The object bounding box rectangle (TLWH)
+    cv::Rect2f rect;
+    // Semantic segmentation mask, inside the bounding box
+    cv::Mat boxMask;
+  };
+
+  // Class to extend TensorRT logger
+  class Logger : public nvinfer1::ILogger {
+    void log(Severity severity, const char* msg) noexcept override;
+  };
+
   explicit YoloV8(const std::string& trtEngineFile);
   ~YoloV8();
   YoloV8(const YoloV8&) = delete;
