@@ -10,3 +10,7 @@ string save_directory
 float32 image_capture_interval_secs
 float32 color_device_temperature
 float32 depth_device_temperature
+uint32 color_width
+uint32 color_height
+uint32 depth_width
+uint32 depth_height

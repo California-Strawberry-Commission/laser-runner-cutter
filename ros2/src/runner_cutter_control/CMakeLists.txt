@@ -19,6 +19,7 @@ find_package(std_srvs REQUIRED)
 find_package(runner_cutter_control_interfaces REQUIRED)
 find_package(laser_control_interfaces REQUIRED)
 find_package(camera_control_interfaces REQUIRED)
+find_package(detection_interfaces REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(fmt REQUIRED)
@@ -58,8 +59,9 @@ endif()
 
 # clients
 add_library(clients SHARED
-  src/clients/laser_control_client.cpp
   src/clients/camera_control_client.cpp
+  src/clients/detection_client.cpp
+  src/clients/laser_control_client.cpp
   src/clients/laser_detection_context.cpp
 )
 ament_target_dependencies(clients PUBLIC
@@ -67,6 +69,7 @@ ament_target_dependencies(clients PUBLIC
   std_srvs
   laser_control_interfaces
   camera_control_interfaces
+  detection_interfaces
 )
 
 # calibration
@@ -104,6 +107,7 @@ ament_target_dependencies(runner_cutter_control_node PUBLIC
   runner_cutter_control_interfaces
   laser_control_interfaces
   camera_control_interfaces
+  detection_interfaces
 )
 
 # Tools

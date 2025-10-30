@@ -1,6 +1,7 @@
 #include <cv_bridge/cv_bridge.h>
 #include <fmt/core.h>
 
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -21,6 +22,8 @@
 #include "detection_interfaces/msg/detection_type.hpp"
 #include "detection_interfaces/msg/object_instance.hpp"
 #include "detection_interfaces/msg/state.hpp"
+#include "detection_interfaces/srv/get_detection_result.hpp"
+#include "detection_interfaces/srv/get_positions.hpp"
 #include "detection_interfaces/srv/get_state.hpp"
 #include "detection_interfaces/srv/start_detection.hpp"
 #include "detection_interfaces/srv/stop_detection.hpp"
@@ -210,6 +213,12 @@ class DetectionNode : public rclcpp::Node {
     ///////////
     serviceCallbackGroup_ =
         create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+    getDetectionService_ =
+        create_service<detection_interfaces::srv::GetDetectionResult>(
+            "~/get_detection",
+            std::bind(&DetectionNode::onGetDetection, this,
+                      std::placeholders::_1, std::placeholders::_2),
+            rmw_qos_profile_services_default, serviceCallbackGroup_);
     startDetectionService_ =
         create_service<detection_interfaces::srv::StartDetection>(
             "~/start_detection",
@@ -242,6 +251,12 @@ class DetectionNode : public rclcpp::Node {
         std::bind(&DetectionNode::onGetState, this, std::placeholders::_1,
                   std::placeholders::_2),
         rmw_qos_profile_services_default, serviceCallbackGroup_);
+    getPositionsService_ =
+        create_service<detection_interfaces::srv::GetPositions>(
+            "~/get_positions",
+            std::bind(&DetectionNode::onGetPositions, this,
+                      std::placeholders::_1, std::placeholders::_2),
+            rmw_qos_profile_services_default, serviceCallbackGroup_);
 
     laserDetector_ = std::make_unique<LaserDetector>();
     runnerDetector_ = std::make_unique<RunnerDetector>();
@@ -485,10 +500,11 @@ class DetectionNode : public rclcpp::Node {
 
       auto positionOpt{rgbdAlignment->getPosition(runner.point, depthXyzMat)};
       if (positionOpt) {
+        const auto& pos{*positionOpt};
         common_interfaces::msg::Vector3 positionMsg;
-        positionMsg.x = positionOpt.value()[0];
-        positionMsg.y = positionOpt.value()[1];
-        positionMsg.z = positionOpt.value()[2];
+        positionMsg.x = pos[0];
+        positionMsg.y = pos[1];
+        positionMsg.z = pos[2];
 
         detection_interfaces::msg::ObjectInstance objectInstance;
         objectInstance.confidence = runner.conf;
@@ -530,10 +546,11 @@ class DetectionNode : public rclcpp::Node {
 
       auto positionOpt{rgbdAlignment->getPosition(laser.point, depthXyzMat)};
       if (positionOpt) {
+        const auto& pos{*positionOpt};
         common_interfaces::msg::Vector3 positionMsg;
-        positionMsg.x = positionOpt.value()[0];
-        positionMsg.y = positionOpt.value()[1];
-        positionMsg.z = positionOpt.value()[2];
+        positionMsg.x = pos[0];
+        positionMsg.y = pos[1];
+        positionMsg.z = pos[2];
 
         detection_interfaces::msg::ObjectInstance objectInstance;
         objectInstance.confidence = laser.conf;
@@ -574,10 +591,11 @@ class DetectionNode : public rclcpp::Node {
 
       auto positionOpt{rgbdAlignment->getPosition(circle.point, depthXyzMat)};
       if (positionOpt) {
+        const auto& pos{*positionOpt};
         common_interfaces::msg::Vector3 positionMsg;
-        positionMsg.x = positionOpt.value()[0];
-        positionMsg.y = positionOpt.value()[1];
-        positionMsg.z = positionOpt.value()[2];
+        positionMsg.x = pos[0];
+        positionMsg.y = pos[1];
+        positionMsg.z = pos[2];
 
         detection_interfaces::msg::ObjectInstance objectInstance;
         objectInstance.confidence = circle.conf;
@@ -622,6 +640,50 @@ class DetectionNode : public rclcpp::Node {
       return bestDepthXyz;
     } else {
       return nullptr;
+    }
+  }
+
+  void onGetDetection(
+      const std::shared_ptr<
+          detection_interfaces::srv::GetDetectionResult::Request>
+          request,
+      std::shared_ptr<detection_interfaces::srv::GetDetectionResult::Response>
+          response) {
+    sensor_msgs::msg::Image::ConstSharedPtr image{nullptr};
+    {
+      std::lock_guard<std::mutex> lock(lastColorImageMutex_);
+      image = lastColorImage_;
+    }
+
+    if (!image) {
+      return;
+    }
+
+    // Wrap raw Bayer bytes with stride (no copy)
+    cv::Mat raw(image->height, image->width, CV_8UC1,
+                const_cast<uint8_t*>(image->data.data()),
+                static_cast<size_t>(image->step));
+
+    // Demosaic
+    cv::Mat rgb;
+    cv::cvtColor(raw, rgb, cv::COLOR_BayerRG2RGB);
+
+    switch (request->detection_type) {
+      case detection_interfaces::msg::DetectionType::RUNNER: {
+        auto runners{runnerDetector_->track(rgb)};
+        response->result = createDetectionResult(runners, image);
+        break;
+      }
+      case detection_interfaces::msg::DetectionType::LASER: {
+        auto lasers{laserDetector_->detect(rgb)};
+        response->result = createDetectionResult(lasers, image);
+        break;
+      }
+      case detection_interfaces::msg::DetectionType::CIRCLE: {
+        auto circles{circleDetector_->detect(rgb)};
+        response->result = createDetectionResult(circles, image);
+        break;
+      }
     }
   }
 
@@ -787,6 +849,55 @@ class DetectionNode : public rclcpp::Node {
     response->state = std::move(*getStateMsg());
   }
 
+  void onGetPositions(
+      const std::shared_ptr<detection_interfaces::srv::GetPositions::Request>
+          request,
+      std::shared_ptr<detection_interfaces::srv::GetPositions::Response>
+          response) {
+    sensor_msgs::msg::Image::ConstSharedPtr image{nullptr};
+    {
+      std::lock_guard<std::mutex> lock(lastColorImageMutex_);
+      image = lastColorImage_;
+    }
+
+    if (!image) {
+      return;
+    }
+
+    for (const auto& p : request->normalized_pixel_coords) {
+      // Clamp normalized coordinates to [0, 1]
+      double nx{std::clamp(p.x, 0.0, 1.0)};
+      double ny{std::clamp(p.y, 0.0, 1.0)};
+
+      // Convert to pixel coordinates
+      int x{static_cast<int>(std::round(nx * image->width))};
+      int y{static_cast<int>(std::round(ny * image->height))};
+
+      // Get 3D position
+      auto rgbdAlignment{getOrCreateRgbdAlignment()};
+      auto depthXyz{getDepthXyz(image)};
+      // Wrap the depthXyz data pointer (no copy)
+      cv::Mat depthXyzMat(depthXyz->height, depthXyz->width, CV_32FC3,
+                          const_cast<uint8_t*>(depthXyz->data.data()),
+                          depthXyz->step);
+      auto positionOpt{
+          rgbdAlignment->getPosition(cv::Point(x, y), depthXyzMat)};
+
+      // Create position msg and add to response
+      common_interfaces::msg::Vector3 positionMsg;
+      if (positionOpt) {
+        const auto& pos{*positionOpt};
+        positionMsg.x = pos[0];
+        positionMsg.y = pos[1];
+        positionMsg.z = pos[2];
+      } else {
+        positionMsg.x = positionMsg.y = positionMsg.z = -1.0;
+      }
+
+      response->positions.push_back(positionMsg);
+    }
+  }
+
 #pragma endregion
 
 #pragma region State and notifs publishing
@@ -926,6 +1037,8 @@ class DetectionNode : public rclcpp::Node {
   rclcpp::Publisher<rcl_interfaces::msg::Log>::SharedPtr
       notificationsPublisher_;
   rclcpp::CallbackGroup::SharedPtr serviceCallbackGroup_;
+  rclcpp::Service<detection_interfaces::srv::GetDetectionResult>::SharedPtr
+      getDetectionService_;
   rclcpp::Service<detection_interfaces::srv::StartDetection>::SharedPtr
       startDetectionService_;
   rclcpp::Service<detection_interfaces::srv::StopDetection>::SharedPtr
@@ -936,6 +1049,8 @@ class DetectionNode : public rclcpp::Node {
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr stopRecordingVideoService_;
   rclcpp::Service<detection_interfaces::srv::GetState>::SharedPtr
       getStateService_;
+  rclcpp::Service<detection_interfaces::srv::GetPositions>::SharedPtr
+      getPositionsService_;
 
   // For color-depth matching: how close the stamps must be to accept a pair
   // TODO: reduce this when cameras are synced
