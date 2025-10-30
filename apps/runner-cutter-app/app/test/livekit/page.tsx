@@ -7,7 +7,7 @@ export default function LiveKit() {
       <div className="items-center justify-center">
         <FramePreviewLiveKit
           className="w-full h-[480px]"
-          topicName="/camera0/debug_frame"
+          topicName="/detection0/debug/image"
           enableStream
           showRotateButton
           enableOverlay

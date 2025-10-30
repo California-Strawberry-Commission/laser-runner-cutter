@@ -4,9 +4,8 @@ LaserDetectionContext::LaserDetectionContext(
     std::shared_ptr<LaserControlClient> laser,
     std::shared_ptr<CameraControlClient> camera)
     : laser_{std::move(laser)}, camera_{std::move(camera)}, restored_{false} {
-  auto state{camera_->getState()};
-  prevExposureUs_ = state->exposure_us;
-  prevGainDb_ = state->gain_db;
+  prevExposureUs_ = camera_->getExposure();
+  prevGainDb_ = camera_->getGain();
 
   laser_->clearPoint();
   laser_->play();
