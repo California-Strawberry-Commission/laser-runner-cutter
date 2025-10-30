@@ -5,12 +5,12 @@
 #include "spdlog/spdlog.h"
 
 namespace {
+
 struct ReprojectErrors {
   float meanError;
   std::vector<float> perImageErrors;
 };
-
-ReprojectErrors _calcReprojectionError(
+ReprojectErrors calcReprojectionError(
     const std::vector<std::vector<cv::Point3f>>& objectPoints,
     const std::vector<std::vector<cv::Point2f>>& imagePoints,
     const std::vector<cv::Mat>& rvecs, const std::vector<cv::Mat>& tvecs,
@@ -29,6 +29,7 @@ ReprojectErrors _calcReprojectionError(
   retVals.meanError = totalError / objectPoints.size();
   return retVals;
 }
+
 }  // namespace
 
 std::optional<calibration::IntrinsicsResult> calibration::calculateIntrinsics(
@@ -86,8 +87,8 @@ std::optional<calibration::IntrinsicsResult> calibration::calculateIntrinsics(
         result.distCoeffs, rvecs, tvecs);
     if (retval) {
       ReprojectErrors projErrors{
-          _calcReprojectionError(objPoints, imgPoints, rvecs, tvecs,
-                                 result.intrinsicMatrix, result.distCoeffs)};
+          calcReprojectionError(objPoints, imgPoints, rvecs, tvecs,
+                                result.intrinsicMatrix, result.distCoeffs)};
       spdlog::info(
           "Calibration successful. Used {} images. Mean reprojection error: {}",
           objPoints.size(), projErrors.meanError);

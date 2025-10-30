@@ -12,12 +12,14 @@
 
 #include "detection/detector/stopwatch.hpp"
 
-static bool fileExists(const std::string& filepath) {
+namespace {
+
+bool fileExists(const std::string& filepath) {
   std::ifstream f(filepath.c_str());
   return f.good();
 }
 
-static void checkCudaErrorCode(cudaError_t code) {
+void checkCudaErrorCode(cudaError_t code) {
   if (code != cudaSuccess) {
     throw std::runtime_error(
         "CUDA operation failed with code: " + std::to_string(code) + " (" +
@@ -26,7 +28,7 @@ static void checkCudaErrorCode(cudaError_t code) {
   }
 }
 
-static size_t getDataTypeSize(nvinfer1::DataType dataType) {
+size_t getDataTypeSize(nvinfer1::DataType dataType) {
   switch (dataType) {
     case nvinfer1::DataType::kFLOAT:
       return 4;
@@ -49,6 +51,8 @@ static size_t getDataTypeSize(nvinfer1::DataType dataType) {
                                std::to_string(int(dataType)));
   }
 }
+
+}  // namespace
 
 void YoloV8::Logger::log(Severity severity, const char* msg) noexcept {
   switch (severity) {
@@ -333,7 +337,7 @@ std::vector<YoloV8::Object> YoloV8::predict(const cv::cuda::GpuMat& imageRgb,
       float y1{std::clamp((y + 0.5f * h) * yRatio, 0.f,
                           static_cast<float>(imageHeight))};
 
-      cv::Rect2f bbox;
+      cv::Rect bbox;
       bbox.x = x0;
       bbox.y = y0;
       bbox.width = x1 - x0;

@@ -35,7 +35,8 @@ int main(int argc, char* argv[]) {
   auto runners{runnerDetector.track(rgbImage)};
 
   // Draw labels
-  RunnerDetector::drawDetections(img, runners, cv::Size(img.cols, img.rows));
+  RunnerDetector::drawDetections(rgbImage, runners,
+                                 cv::Size(img.cols, img.rows));
 
   // Save the image to disk
   std::filesystem::path imagePath{imageFile};
@@ -43,7 +44,9 @@ int main(int argc, char* argv[]) {
   std::filesystem::path outputFilename{filename.string() + "_annotated.jpg"};
   std::filesystem::path outputPath{std::filesystem::path(outputDir) /
                                    outputFilename};
-  cv::imwrite(outputPath.string(), img);
+  cv::Mat outImage;
+  cv::cvtColor(rgbImage, outImage, cv::COLOR_RGB2BGR);
+  cv::imwrite(outputPath.string(), outImage);
   std::cout << "Saved annotated image to: " << outputPath.string() << std::endl;
 
   return 0;

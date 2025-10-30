@@ -27,7 +27,9 @@
 #include "std_srvs/srv/trigger.hpp"
 #include "tf2_ros/static_transform_broadcaster.h"
 
-static std::string expandUser(const std::string& path) {
+namespace {
+
+std::string expandUser(const std::string& path) {
   if (path.empty() || path[0] != '~') {
     return path;
   }
@@ -40,8 +42,7 @@ static std::string expandUser(const std::string& path) {
   return std::string(home) + path.substr(1);
 }
 
-static std::string formatRosTimestamp(
-    const builtin_interfaces::msg::Time& stamp) {
+std::string formatRosTimestamp(const builtin_interfaces::msg::Time& stamp) {
   rclcpp::Time rosTime(stamp);
   auto sec{static_cast<time_t>(rosTime.seconds())};
   auto nsec{rosTime.nanoseconds() % 1'000'000'000};
@@ -66,7 +67,7 @@ struct CalibrationParams {
   cv::Mat xyzToTritonExtrinsicMatrix;
   cv::Mat xyzToHeliosExtrinsicMatrix;
 };
-static CalibrationParams readCalibrationParams(
+CalibrationParams readCalibrationParams(
     const std::string& calib_id = "1c0faf4b115d1c0faf4d17ce") {
   std::string packageShareDirectory{
       ament_index_cpp::get_package_share_directory("camera_control")};
@@ -123,8 +124,8 @@ static CalibrationParams readCalibrationParams(
   return result;
 }
 
-static sensor_msgs::msg::CameraInfo createCameraInfo(
-    const cv::Mat& distCoeffs, const cv::Mat& intrinsicMatrix) {
+sensor_msgs::msg::CameraInfo createCameraInfo(const cv::Mat& distCoeffs,
+                                              const cv::Mat& intrinsicMatrix) {
   if (intrinsicMatrix.rows != 3 || intrinsicMatrix.cols != 3) {
     throw std::runtime_error("Intrinsic matrix must be 3x3");
   }
@@ -152,7 +153,7 @@ static sensor_msgs::msg::CameraInfo createCameraInfo(
   return cameraInfo;
 }
 
-static geometry_msgs::msg::TransformStamped createTransformStamped(
+geometry_msgs::msg::TransformStamped createTransformStamped(
     const std::string& sourceFrame, const std::string& targetFrame,
     const cv::Mat& extrinsicMatrix) {
   if (extrinsicMatrix.rows != 4 || extrinsicMatrix.cols != 4) {
@@ -191,6 +192,8 @@ static geometry_msgs::msg::TransformStamped createTransformStamped(
 
   return transformStamped;
 }
+
+}  // namespace
 
 class CameraControlNode : public rclcpp::Node {
  public:

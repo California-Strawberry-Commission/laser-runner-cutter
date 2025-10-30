@@ -33,72 +33,7 @@
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
 
-static std::string expandUser(const std::string& path) {
-  if (path.empty() || path[0] != '~') {
-    return path;
-  }
-
-  const char* home{std::getenv("HOME")};
-  if (!home) {
-    throw std::runtime_error("HOME environment variable not set");
-  }
-
-  return std::string(home) + path.substr(1);
-}
-
-static std::pair<cv::Mat, cv::Mat> getCameraMatrices(
-    const sensor_msgs::msg::CameraInfo::ConstSharedPtr& cameraInfo) {
-  // Intrinsic matrix (3x3)
-  cv::Mat K =
-      (cv::Mat_<double>(3, 3) << cameraInfo->k[0], cameraInfo->k[1],
-       cameraInfo->k[2], cameraInfo->k[3], cameraInfo->k[4], cameraInfo->k[5],
-       cameraInfo->k[6], cameraInfo->k[7], cameraInfo->k[8]);
-
-  // Distortion coefficients (Nx1)
-  size_t numCoeffs{cameraInfo->d.size()};
-  cv::Mat D(static_cast<int>(numCoeffs), 1, CV_64F);
-  for (size_t i = 0; i < numCoeffs; ++i) {
-    D.at<double>(static_cast<int>(i), 0) = cameraInfo->d[i];
-  }
-
-  return {K, D};
-}
-
-static std::optional<cv::Mat> getTransformMatrix(
-    const geometry_msgs::msg::TransformStamped& transformStamped) {
-  const auto& t{transformStamped.transform.translation};
-  const auto& q{transformStamped.transform.rotation};
-
-  // Build and normalize quaternion
-  tf2::Quaternion quat(q.x, q.y, q.z, q.w);
-  if (quat.length2() == 0.0 || !std::isfinite(q.x) || !std::isfinite(q.y) ||
-      !std::isfinite(q.z) || !std::isfinite(q.w)) {
-    // Invalid quaternion
-    return std::nullopt;
-  }
-  quat.normalize();
-
-  // Convert to 3x3 rotation
-  tf2::Matrix3x3 rotationMatrix(quat);
-
-  cv::Mat T{cv::Mat::eye(4, 4, CV_64F)};
-  // Rotation
-  T.at<double>(0, 0) = rotationMatrix[0][0];
-  T.at<double>(0, 1) = rotationMatrix[0][1];
-  T.at<double>(0, 2) = rotationMatrix[0][2];
-  T.at<double>(1, 0) = rotationMatrix[1][0];
-  T.at<double>(1, 1) = rotationMatrix[1][1];
-  T.at<double>(1, 2) = rotationMatrix[1][2];
-  T.at<double>(2, 0) = rotationMatrix[2][0];
-  T.at<double>(2, 1) = rotationMatrix[2][1];
-  T.at<double>(2, 2) = rotationMatrix[2][2];
-  // Translation
-  T.at<double>(0, 3) = t.x;
-  T.at<double>(1, 3) = t.y;
-  T.at<double>(2, 3) = t.z;
-
-  return T;
-}
+namespace {
 
 /**
  * Concurrency primitive that provides a shared flag that can be set and waited
@@ -135,6 +70,75 @@ class Event {
   std::condition_variable cv_;
   bool flag_;
 };
+
+std::string expandUser(const std::string& path) {
+  if (path.empty() || path[0] != '~') {
+    return path;
+  }
+
+  const char* home{std::getenv("HOME")};
+  if (!home) {
+    throw std::runtime_error("HOME environment variable not set");
+  }
+
+  return std::string(home) + path.substr(1);
+}
+
+std::pair<cv::Mat, cv::Mat> getCameraMatrices(
+    const sensor_msgs::msg::CameraInfo::ConstSharedPtr& cameraInfo) {
+  // Intrinsic matrix (3x3)
+  cv::Mat K =
+      (cv::Mat_<double>(3, 3) << cameraInfo->k[0], cameraInfo->k[1],
+       cameraInfo->k[2], cameraInfo->k[3], cameraInfo->k[4], cameraInfo->k[5],
+       cameraInfo->k[6], cameraInfo->k[7], cameraInfo->k[8]);
+
+  // Distortion coefficients (Nx1)
+  size_t numCoeffs{cameraInfo->d.size()};
+  cv::Mat D(static_cast<int>(numCoeffs), 1, CV_64F);
+  for (size_t i = 0; i < numCoeffs; ++i) {
+    D.at<double>(static_cast<int>(i), 0) = cameraInfo->d[i];
+  }
+
+  return {K, D};
+}
+
+std::optional<cv::Mat> getTransformMatrix(
+    const geometry_msgs::msg::TransformStamped& transformStamped) {
+  const auto& t{transformStamped.transform.translation};
+  const auto& q{transformStamped.transform.rotation};
+
+  // Build and normalize quaternion
+  tf2::Quaternion quat(q.x, q.y, q.z, q.w);
+  if (quat.length2() == 0.0 || !std::isfinite(q.x) || !std::isfinite(q.y) ||
+      !std::isfinite(q.z) || !std::isfinite(q.w)) {
+    // Invalid quaternion
+    return std::nullopt;
+  }
+  quat.normalize();
+
+  // Convert to 3x3 rotation
+  tf2::Matrix3x3 rotationMatrix(quat);
+
+  cv::Mat T{cv::Mat::eye(4, 4, CV_64F)};
+  // Rotation
+  T.at<double>(0, 0) = rotationMatrix[0][0];
+  T.at<double>(0, 1) = rotationMatrix[0][1];
+  T.at<double>(0, 2) = rotationMatrix[0][2];
+  T.at<double>(1, 0) = rotationMatrix[1][0];
+  T.at<double>(1, 1) = rotationMatrix[1][1];
+  T.at<double>(1, 2) = rotationMatrix[1][2];
+  T.at<double>(2, 0) = rotationMatrix[2][0];
+  T.at<double>(2, 1) = rotationMatrix[2][1];
+  T.at<double>(2, 2) = rotationMatrix[2][2];
+  // Translation
+  T.at<double>(0, 3) = t.x;
+  T.at<double>(1, 3) = t.y;
+  T.at<double>(2, 3) = t.z;
+
+  return T;
+}
+
+}  // namespace
 
 class DetectionNode : public rclcpp::Node {
  public:
@@ -383,10 +387,17 @@ class DetectionNode : public rclcpp::Node {
       if (enabledDetections_.find(
               detection_interfaces::msg::DetectionType::RUNNER) !=
           enabledDetections_.end()) {
-        // TODO: if bounds is defined, the runners' representative points should
-        // be calculated only based on the portion of the mask that lies inside
-        // the bounds
-        auto runners{runnerDetector_->track(gpuRgb)};
+        cv::Rect2d normalizedBounds{
+            enabledDetections_
+                [detection_interfaces::msg::DetectionType::RUNNER]};
+        cv::Rect bounds{
+            static_cast<int>(std::ceil(normalizedBounds.x * imgMsg->width)),
+            static_cast<int>(std::ceil(normalizedBounds.y * imgMsg->height)),
+            static_cast<int>(
+                std::floor(normalizedBounds.width * imgMsg->width)),
+            static_cast<int>(
+                std::floor(normalizedBounds.height * imgMsg->height))};
+        auto runners{runnerDetector_->track(gpuRgb, bounds)};
 
         // Create and publish DetectionResult
         auto detectionResult{createDetectionResult(runners, imgMsg)};

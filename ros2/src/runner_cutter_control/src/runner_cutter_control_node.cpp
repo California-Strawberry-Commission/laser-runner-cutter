@@ -32,6 +32,8 @@
 #include "runner_cutter_control_interfaces/srv/manual_target_laser.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
+namespace {
+
 /**
  * Concurrency primitive that provides a shared flag that can be set and waited
  * on.
@@ -68,7 +70,7 @@ class Event {
   bool flag_;
 };
 
-static std::pair<int, int> millisecondsToRosTime(double milliseconds) {
+std::pair<int, int> millisecondsToRosTime(double milliseconds) {
   // ROS timestamps consist of two integers, one for seconds and one for
   // nanoseconds
   int seconds = static_cast<int>(milliseconds / 1000);
@@ -77,7 +79,7 @@ static std::pair<int, int> millisecondsToRosTime(double milliseconds) {
   return {seconds, nanoseconds};
 }
 
-static std::string expandUser(const std::string& path) {
+std::string expandUser(const std::string& path) {
   if (path.empty() || path[0] != '~') {
     return path;
   }
@@ -89,6 +91,8 @@ static std::string expandUser(const std::string& path) {
 
   return std::string(home) + path.substr(1);
 }
+
+}  // namespace
 
 class RunnerCutterControlNode : public rclcpp::Node {
  public:
