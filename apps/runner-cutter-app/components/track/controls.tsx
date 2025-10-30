@@ -15,21 +15,24 @@ import CircleFollowerCard, {
 import { Card, CardContent } from "@/components/ui/card";
 import useCameraNode, {
   DeviceState as CameraDeviceState,
-  DetectionType,
 } from "@/lib/useCameraNode";
+import useDetectionNode, { DetectionType } from "@/lib/useDetectionNode";
 import useControlNode from "@/lib/useControlNode";
 import useLaserNode from "@/lib/useLaserNode";
 
 export default function Controls({
   cameraNodeName,
+  detectionNodeName,
   laserNodeName,
   controlNodeName,
 }: {
   cameraNodeName: string;
+  detectionNodeName: string;
   laserNodeName: string;
   controlNodeName: string;
 }) {
   const cameraNode = useCameraNode(cameraNodeName);
+  const detectionNode = useDetectionNode(detectionNodeName);
   const laserNode = useLaserNode(laserNodeName);
   const controlNode = useControlNode(controlNodeName);
 
@@ -60,7 +63,7 @@ export default function Controls({
   ) {
     if (controlNode.state.state === "idle") {
       if (
-        cameraNode.state.enabledDetectionTypes.includes(DetectionType.CIRCLE)
+        detectionNode.state.enabledDetectionTypes.includes(DetectionType.CIRCLE)
       ) {
         circleFollowerState = CircleFollowerState.TRACKING;
       } else {
@@ -100,9 +103,9 @@ export default function Controls({
           />
           <CircleFollowerCard
             circleFollowerState={circleFollowerState}
-            onTrackClick={() => cameraNode.startDetection(DetectionType.CIRCLE)}
+            onTrackClick={() => detectionNode.startDetection(DetectionType.CIRCLE)}
             onTrackStopClick={() =>
-              cameraNode.stopDetection(DetectionType.CIRCLE)
+              detectionNode.stopDetection(DetectionType.CIRCLE)
             }
             onFollowClick={() => controlNode.startCircleFollower()}
             onFollowStopClick={() => controlNode.stop()}
@@ -111,7 +114,7 @@ export default function Controls({
       </Card>
       <FramePreviewLiveKit
         className="w-full h-[480px]"
-        topicName={`${cameraNodeName}/debug_frame`}
+        topicName={`${detectionNodeName}/debug/image`}
         enableStream={
           cameraNode.state.deviceState === CameraDeviceState.STREAMING
         }

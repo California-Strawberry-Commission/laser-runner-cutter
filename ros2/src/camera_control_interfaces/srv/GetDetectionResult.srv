@@ -1,4 +1,0 @@
-uint8 detection_type  # DetectionType.msg
-bool wait_for_next_frame
----
-DetectionResult result

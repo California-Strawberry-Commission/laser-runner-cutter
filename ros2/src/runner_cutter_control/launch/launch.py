@@ -12,7 +12,6 @@ from launch_ros.descriptions import ComposableNode
 
 from aioros2.launch import launch
 from amiga_control import amiga_control_node
-from camera_control import camera_control_node
 from furrow_perceiver import furrow_perceiver_node
 from guidance_brain import guidance_brain_node
 
@@ -140,18 +139,7 @@ def generate_launch_description():
 
     # region Cutter nodes
 
-    camera_control_launch_node = launch(
-        camera_control_node,
-        name="camera0",
-        parameters=[parameters_file],
-        respawn=True,
-        respawn_delay=2.0,
-        output="screen",
-        emulate_tty=True,
-        condition=IfCondition(launch_cutter_nodes),
-    )
-
-    camera_detection_cpp_launch_node = ComposableNodeContainer(
+    camera_detection_launch_node = ComposableNodeContainer(
         name="camera_detection_container",
         namespace="",
         package="rclcpp_components",
@@ -165,12 +153,14 @@ def generate_launch_description():
                 package="camera_control_cpp",
                 plugin="CameraControlNode",
                 name="camera0",
+                parameters=[parameters_file],
                 extra_arguments=[{"use_intra_process_comms": True}],
             ),
             ComposableNode(
                 package="detection",
                 plugin="DetectionNode",
                 name="detection0",
+                parameters=[parameters_file],
                 extra_arguments=[{"use_intra_process_comms": True}],
                 remappings=[
                     (
@@ -191,8 +181,8 @@ def generate_launch_description():
                     ),  # sub, depth camera info
                     (
                         "debug/image",
-                        "/camera0/debug_frame",
-                    ),  # pub, naming temporary for compatibility
+                        "/detection0/debug/image",
+                    ),  # pub
                 ],
             ),
         ],
@@ -235,8 +225,7 @@ def generate_launch_description():
             amiga_launch_node,
             guidance_brain_launch_node,
             laser_control_launch_node,
-            camera_control_launch_node,
-            # camera_detection_cpp_launch_node,
+            camera_detection_launch_node,
             runner_cutter_control_launch_node,
         ]
     )  # type: ignore

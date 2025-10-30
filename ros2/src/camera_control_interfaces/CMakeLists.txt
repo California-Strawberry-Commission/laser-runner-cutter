@@ -27,23 +27,12 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/CaptureMode.msg"
-  "msg/DetectionResult.msg"
-  "msg/DetectionType.msg"
   "msg/DeviceState.msg"
-  "msg/ObjectInstance.msg"
   "msg/State.msg"
   "srv/AcquireSingleFrame.srv"
-  "srv/GetDetectionResult.srv"
-  "srv/GetFrame.srv"
-  "srv/GetPositions.srv"
   "srv/GetState.srv"
-  "srv/SetExposure.srv"
-  "srv/SetGain.srv"
-  "srv/SetSaveDirectory.srv"
-  "srv/StartDetection.srv"
   "srv/StartDevice.srv"
   "srv/StartIntervalCapture.srv"
-  "srv/StopDetection.srv"
   DEPENDENCIES sensor_msgs common_interfaces
 )
 if(BUILD_TESTING)
