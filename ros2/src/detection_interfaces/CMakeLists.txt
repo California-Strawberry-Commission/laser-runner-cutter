@@ -31,6 +31,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ObjectInstance.msg"
   "msg/State.msg"
   "srv/GetDetectionResult.srv"
+  "srv/GetPositions.srv"
   "srv/GetState.srv"
   "srv/StartDetection.srv"
   "srv/StopDetection.srv"

@@ -608,6 +608,12 @@ class CameraControlNode : public rclcpp::Node {
         static_cast<float>(camera_->getColorDeviceTemperature());
     msg->depth_device_temperature =
         static_cast<float>(camera_->getDepthDeviceTemperature());
+    auto colorFrameSize{camera_->getColorFrameSize()};
+    msg->color_width = colorFrameSize.first > 0 ? colorFrameSize.first : 0;
+    msg->color_height = colorFrameSize.second > 0 ? colorFrameSize.second : 0;
+    auto depthFrameSize{camera_->getDepthFrameSize()};
+    msg->depth_width = depthFrameSize.first > 0 ? depthFrameSize.first : 0;
+    msg->depth_height = depthFrameSize.second > 0 ? depthFrameSize.second : 0;
     return msg;
   }
 

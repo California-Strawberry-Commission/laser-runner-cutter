@@ -389,6 +389,14 @@ LucidCamera::CaptureMode LucidCamera::getCaptureMode() const {
   return captureMode_;
 }
 
+std::pair<int, int> LucidCamera::getColorFrameSize() const {
+  return colorFrameSize_;
+}
+
+std::pair<int, int> LucidCamera::getDepthFrameSize() const {
+  return depthFrameSize_;
+}
+
 double LucidCamera::getExposureUs() const {
   if (getState() != LucidCamera::State::STREAMING) {
     return 0.0;

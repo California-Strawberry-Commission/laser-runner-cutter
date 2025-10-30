@@ -64,6 +64,16 @@ class LucidCamera {
   CaptureMode getCaptureMode() const;
 
   /**
+   * @return Frame size of the color camera.
+   */
+  std::pair<int, int> getColorFrameSize() const;
+
+  /**
+   * @return Frame size of the depth camera.
+   */
+  std::pair<int, int> getDepthFrameSize() const;
+
+  /**
    * @return Exposure time of the color camera in microseconds.
    */
   double getExposureUs() const;
