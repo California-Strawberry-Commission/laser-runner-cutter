@@ -1,10 +1,12 @@
 #include <cv_bridge/cv_bridge.h>
 #include <fmt/core.h>
 
+#include <Eigen/Geometry>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <atomic>
 #include <filesystem>
 #include <opencv2/opencv.hpp>
+#include <optional>
 #include <rclcpp_components/register_node_macro.hpp>
 
 #include "camera_control_cpp/camera/calibration.hpp"
@@ -12,26 +14,20 @@
 #include "camera_control_interfaces/msg/device_state.hpp"
 #include "camera_control_interfaces/msg/state.hpp"
 #include "camera_control_interfaces/srv/acquire_single_frame.hpp"
-#include "camera_control_interfaces/srv/get_frame.hpp"
 #include "camera_control_interfaces/srv/get_state.hpp"
 #include "camera_control_interfaces/srv/start_device.hpp"
 #include "camera_control_interfaces/srv/start_interval_capture.hpp"
-#include "common_interfaces/srv/get_bool.hpp"
+#include "geometry_msgs/msg/transform_stamped.hpp"
 #include "rcl_interfaces/msg/log.hpp"
 #include "rclcpp/qos.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/msg/camera_info.hpp"
 #include "sensor_msgs/msg/compressed_image.hpp"
 #include "sensor_msgs/msg/image.hpp"
 #include "std_srvs/srv/trigger.hpp"
+#include "tf2_ros/static_transform_broadcaster.h"
 
-std::pair<int, int> millisecondsToRosTime(double milliseconds) {
-  // ROS timestamps consist of two integers, one for seconds and one for
-  // nanoseconds
-  int seconds{static_cast<int>(milliseconds / 1000)};
-  int nanoseconds{
-      static_cast<int>((static_cast<int>(milliseconds) % 1000) * 1e6)};
-  return {seconds, nanoseconds};
-}
+namespace {
 
 std::string expandUser(const std::string& path) {
   if (path.empty() || path[0] != '~') {
@@ -46,18 +42,158 @@ std::string expandUser(const std::string& path) {
   return std::string(home) + path.substr(1);
 }
 
-std::string getCurrentTimeString() {
-  // Get the current timestamp and format it as a string
-  auto now{std::chrono::system_clock::now()};
-  auto timestamp{std::chrono::system_clock::to_time_t(now)};
-  std::stringstream datetimeString;
-  datetimeString << std::put_time(std::localtime(&timestamp), "%Y%m%d%H%M%S");
-  auto ms{std::chrono::duration_cast<std::chrono::milliseconds>(
-              now.time_since_epoch()) %
-          1000};
-  datetimeString << std::setw(3) << std::setfill('0') << ms.count();
-  return datetimeString.str();
+std::string formatRosTimestamp(const builtin_interfaces::msg::Time& stamp) {
+  rclcpp::Time rosTime(stamp);
+  auto sec{static_cast<time_t>(rosTime.seconds())};
+  auto nsec{rosTime.nanoseconds() % 1'000'000'000};
+
+  // Format date + time
+  std::tm tm;
+  localtime_r(&sec, &tm);
+  std::ostringstream oss;
+  oss << std::put_time(&tm, "%Y%m%d%H%M%S");
+
+  // Add milliseconds
+  oss << std::setw(3) << std::setfill('0') << (nsec / 1'000'000);
+
+  return oss.str();
 }
+
+struct CalibrationParams {
+  cv::Mat tritonIntrinsicMatrix;
+  cv::Mat tritonDistCoeffs;
+  cv::Mat heliosIntrinsicMatrix;
+  cv::Mat heliosDistCoeffs;
+  cv::Mat xyzToTritonExtrinsicMatrix;
+  cv::Mat xyzToHeliosExtrinsicMatrix;
+};
+CalibrationParams readCalibrationParams(
+    const std::string& calib_id = "1c0faf4b115d1c0faf4d17ce") {
+  std::string packageShareDirectory{
+      ament_index_cpp::get_package_share_directory("camera_control")};
+  std::filesystem::path calibParamsDir{
+      std::filesystem::path(packageShareDirectory) / "calibration_params" /
+      calib_id};
+  std::filesystem::path tritonIntrinsicsPath{calibParamsDir /
+                                             "triton_intrinsics.yml"};
+  std::filesystem::path heliosIntrinsicsPath{calibParamsDir /
+                                             "helios_intrinsics.yml"};
+  std::filesystem::path xyzToTritonIntrinsicsPath{
+      calibParamsDir / "xyz_to_triton_extrinsics.yml"};
+  std::filesystem::path xyzToHeliosIntrinsicsPath{
+      calibParamsDir / "xyz_to_helios_extrinsics.yml"};
+  auto tritonIntrinsicsOpt{
+      calibration::readIntrinsicsFile(tritonIntrinsicsPath.string())};
+  if (!tritonIntrinsicsOpt) {
+    throw std::runtime_error(fmt::format("Could not read calibration file {}",
+                                         tritonIntrinsicsPath.string()));
+  }
+  auto [tritonIntrinsicMatrix,
+        tritonDistCoeffs]{std::move(*tritonIntrinsicsOpt)};
+  auto heliosIntrinsicsOpt{
+      calibration::readIntrinsicsFile(heliosIntrinsicsPath.string())};
+  if (!heliosIntrinsicsOpt) {
+    throw std::runtime_error(fmt::format("Could not read calibration file {}",
+                                         heliosIntrinsicsPath.string()));
+  }
+  auto [heliosIntrinsicMatrix,
+        heliosDistCoeffs]{std::move(*heliosIntrinsicsOpt)};
+  auto xyzToTritonExtrinsicsOpt{
+      calibration::readExtrinsicsFile(xyzToTritonIntrinsicsPath.string())};
+  if (!xyzToTritonExtrinsicsOpt) {
+    throw std::runtime_error(fmt::format("Could not read calibration file {}",
+                                         xyzToTritonIntrinsicsPath.string()));
+  }
+  auto xyzToTritonExtrinsicMatrix{std::move(*xyzToTritonExtrinsicsOpt)};
+  auto xyzToHeliosExtrinsicsOpt{
+      calibration::readExtrinsicsFile(xyzToHeliosIntrinsicsPath.string())};
+  if (!xyzToHeliosExtrinsicsOpt) {
+    throw std::runtime_error(fmt::format("Could not read calibration file {}",
+                                         xyzToHeliosIntrinsicsPath.string()));
+  }
+  auto xyzToHeliosExtrinsicMatrix{std::move(*xyzToHeliosExtrinsicsOpt)};
+
+  CalibrationParams result;
+  result.tritonIntrinsicMatrix = tritonIntrinsicMatrix;
+  result.tritonDistCoeffs = tritonDistCoeffs;
+  result.heliosIntrinsicMatrix = heliosIntrinsicMatrix;
+  result.heliosDistCoeffs = heliosDistCoeffs;
+  result.xyzToTritonExtrinsicMatrix = xyzToTritonExtrinsicMatrix;
+  result.xyzToHeliosExtrinsicMatrix = xyzToHeliosExtrinsicMatrix;
+
+  return result;
+}
+
+sensor_msgs::msg::CameraInfo createCameraInfo(const cv::Mat& distCoeffs,
+                                              const cv::Mat& intrinsicMatrix) {
+  if (intrinsicMatrix.rows != 3 || intrinsicMatrix.cols != 3) {
+    throw std::runtime_error("Intrinsic matrix must be 3x3");
+  }
+
+  sensor_msgs::msg::CameraInfo cameraInfo;
+  cameraInfo.distortion_model = "plumb_bob";
+
+  // Distortion coeffs (D)
+  cameraInfo.d.resize(distCoeffs.total());
+  for (size_t i = 0; i < distCoeffs.total(); ++i) {
+    cameraInfo.d[i] = distCoeffs.at<double>(static_cast<int>(i));
+  }
+
+  // Intrinsic matrix (K)
+  cameraInfo.k[0] = intrinsicMatrix.at<double>(0, 0);  // fx
+  cameraInfo.k[1] = intrinsicMatrix.at<double>(0, 1);  // skew
+  cameraInfo.k[2] = intrinsicMatrix.at<double>(0, 2);  // cx
+  cameraInfo.k[3] = intrinsicMatrix.at<double>(1, 0);
+  cameraInfo.k[4] = intrinsicMatrix.at<double>(1, 1);  // fy
+  cameraInfo.k[5] = intrinsicMatrix.at<double>(1, 2);  // cy
+  cameraInfo.k[6] = intrinsicMatrix.at<double>(2, 0);
+  cameraInfo.k[7] = intrinsicMatrix.at<double>(2, 1);
+  cameraInfo.k[8] = intrinsicMatrix.at<double>(2, 2);
+
+  return cameraInfo;
+}
+
+geometry_msgs::msg::TransformStamped createTransformStamped(
+    const std::string& sourceFrame, const std::string& targetFrame,
+    const cv::Mat& extrinsicMatrix) {
+  if (extrinsicMatrix.rows != 4 || extrinsicMatrix.cols != 4) {
+    throw std::runtime_error("Extrinsic matrix must be 4x4");
+  }
+
+  // Ensure double precision for safety
+  cv::Matx44d T;
+  extrinsicMatrix.convertTo(T, CV_64F);
+
+  // Extract rotation (top-left 3x3) and translation (top-right 3x1)
+  Eigen::Matrix3d R;
+  Eigen::Vector3d t;
+  for (int r = 0; r < 3; ++r) {
+    for (int c = 0; c < 3; ++c) {
+      R(r, c) = T(r, c);
+    }
+    t(r) = T(r, 3);
+  }
+
+  // Convert to quaternion
+  Eigen::Quaterniond q(R);
+  q.normalize();
+
+  // Fill TransformStamped
+  geometry_msgs::msg::TransformStamped transformStamped;
+  transformStamped.header.frame_id = sourceFrame;
+  transformStamped.child_frame_id = targetFrame;
+  transformStamped.transform.translation.x = t.x();
+  transformStamped.transform.translation.y = t.y();
+  transformStamped.transform.translation.z = t.z();
+  transformStamped.transform.rotation.x = q.x();
+  transformStamped.transform.rotation.y = q.y();
+  transformStamped.transform.rotation.z = q.z();
+  transformStamped.transform.rotation.w = q.w();
+
+  return transformStamped;
+}
+
+}  // namespace
 
 class CameraControlNode : public rclcpp::Node {
  public:
@@ -74,8 +210,6 @@ class CameraControlNode : public rclcpp::Node {
     declare_parameter<double>("exposure_us", -1.0);
     declare_parameter<double>("gain_db", -1.0);
     declare_parameter<std::string>("save_dir", "~/runner_cutter/camera");
-    declare_parameter<int>("debug_frame_width", 640);
-    declare_parameter<float>("debug_video_fps", 30.0f);
     declare_parameter<float>("image_capture_interval_secs", 5.0f);
     paramSubscriber_ = std::make_shared<rclcpp::ParameterEventHandler>(this);
     exposureUsParamCallback_ = paramSubscriber_->add_parameter_callback(
@@ -85,9 +219,9 @@ class CameraControlNode : public rclcpp::Node {
         "gain_db", std::bind(&CameraControlNode::onGainDbChanged, this,
                              std::placeholders::_1));
 
-    /////////
-    // Topics
-    /////////
+    /////////////
+    // Publishers
+    /////////////
     // Note: we need to explicitly disable intra-process comms on latched topics
     // as intra-process comms are only allowed with volatile durability
     rclcpp::QoS latchedQos(rclcpp::KeepLast(1));
@@ -97,11 +231,20 @@ class CameraControlNode : public rclcpp::Node {
         rclcpp::IntraProcessSetting::Disable;
     statePublisher_ = create_publisher<camera_control_interfaces::msg::State>(
         "~/state", latchedQos, intraProcessDisableOpts);
-    // TODO: move debug frame topic publishing to detection node
-    debugFramePublisher_ = create_publisher<sensor_msgs::msg::Image>(
-        "~/debug_frame", rclcpp::SensorDataQoS());
     notificationsPublisher_ =
         create_publisher<rcl_interfaces::msg::Log>("/notifications", 1);
+    colorImagePublisher_ = create_publisher<sensor_msgs::msg::Image>(
+        "~/color/image_raw", rclcpp::SensorDataQoS());
+    colorCameraInfoPublisher_ = create_publisher<sensor_msgs::msg::CameraInfo>(
+        "~/color/camera_info", rclcpp::SensorDataQoS());
+    depthXyzPublisher_ = create_publisher<sensor_msgs::msg::Image>(
+        "~/depth/xyz", rclcpp::SensorDataQoS());
+    depthIntensityPublisher_ = create_publisher<sensor_msgs::msg::Image>(
+        "~/depth/intensity", rclcpp::SensorDataQoS());
+    depthCameraInfoPublisher_ = create_publisher<sensor_msgs::msg::CameraInfo>(
+        "~/depth/camera_info", rclcpp::SensorDataQoS());
+    tfStaticBroadcaster_ =
+        std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
 
     ///////////
     // Services
@@ -119,32 +262,12 @@ class CameraControlNode : public rclcpp::Node {
         std::bind(&CameraControlNode::onCloseDevice, this,
                   std::placeholders::_1, std::placeholders::_2),
         rmw_qos_profile_services_default, serviceCallbackGroup_);
-    hasFramesService_ = create_service<common_interfaces::srv::GetBool>(
-        "~/has_frames",
-        std::bind(&CameraControlNode::onHasFrames, this, std::placeholders::_1,
-                  std::placeholders::_2),
-        rmw_qos_profile_services_default, serviceCallbackGroup_);
-    getFrameService_ = create_service<camera_control_interfaces::srv::GetFrame>(
-        "~/get_frame",
-        std::bind(&CameraControlNode::onGetFrame, this, std::placeholders::_1,
-                  std::placeholders::_2),
-        rmw_qos_profile_services_default, serviceCallbackGroup_);
     acquireSingleFrameService_ =
         create_service<camera_control_interfaces::srv::AcquireSingleFrame>(
             "~/acquire_single_frame",
             std::bind(&CameraControlNode::onAcquireSingleFrame, this,
                       std::placeholders::_1, std::placeholders::_2),
             rmw_qos_profile_services_default, serviceCallbackGroup_);
-    startRecordingVideoService_ = create_service<std_srvs::srv::Trigger>(
-        "~/start_recording_video",
-        std::bind(&CameraControlNode::onStartRecordingVideo, this,
-                  std::placeholders::_1, std::placeholders::_2),
-        rmw_qos_profile_services_default, serviceCallbackGroup_);
-    stopRecordingVideoService_ = create_service<std_srvs::srv::Trigger>(
-        "~/stop_recording_video",
-        std::bind(&CameraControlNode::onStopRecordingVideo, this,
-                  std::placeholders::_1, std::placeholders::_2),
-        rmw_qos_profile_services_default, serviceCallbackGroup_);
     saveImageService_ = create_service<std_srvs::srv::Trigger>(
         "~/save_image",
         std::bind(&CameraControlNode::onSaveImage, this, std::placeholders::_1,
@@ -170,17 +293,29 @@ class CameraControlNode : public rclcpp::Node {
     ///////////////
     // Camera Setup
     ///////////////
-    auto calibrationParams{readCalibrationParams(getParamCalibrationId())};
+    calibrationParams_ = readCalibrationParams(getParamCalibrationId());
+    colorCameraInfo_ =
+        createCameraInfo(calibrationParams_.tritonDistCoeffs,
+                         calibrationParams_.tritonIntrinsicMatrix);
+    depthCameraInfo_ =
+        createCameraInfo(calibrationParams_.heliosDistCoeffs,
+                         calibrationParams_.heliosIntrinsicMatrix);
+
     LucidCamera::StateChangeCallback stateChangeCallback =
         [this](LucidCamera::State) { publishState(); };
-    camera_ = std::make_shared<LucidCamera>(
-        calibrationParams.tritonIntrinsicMatrix,
-        calibrationParams.tritonDistCoeffs,
-        calibrationParams.heliosIntrinsicMatrix,
-        calibrationParams.heliosDistCoeffs,
-        calibrationParams.xyzToTritonExtrinsicMatrix,
-        calibrationParams.xyzToHeliosExtrinsicMatrix, std::nullopt,
-        std::nullopt, std::pair<int, int>{2048, 1536}, stateChangeCallback);
+    camera_ = std::make_unique<LucidCamera>(std::nullopt, std::nullopt,
+                                            std::pair<int, int>{2048, 1536},
+                                            stateChangeCallback);
+
+    // Publish extrinsics via tf2's StaticTransformBroadcaster once at startup
+    auto worldToColorTransform{
+        createTransformStamped("world", "color_camera",
+                               calibrationParams_.xyzToTritonExtrinsicMatrix)};
+    auto worldToDepthTransform{
+        createTransformStamped("world", "depth_camera",
+                               calibrationParams_.xyzToHeliosExtrinsicMatrix)};
+    tfStaticBroadcaster_->sendTransform(worldToColorTransform);
+    tfStaticBroadcaster_->sendTransform(worldToDepthTransform);
 
     // Publish initial state
     publishState();
@@ -211,14 +346,6 @@ class CameraControlNode : public rclcpp::Node {
     return get_parameter("save_dir").as_string();
   }
 
-  int getParamDebugFrameWidth() {
-    return static_cast<int>(get_parameter("debug_frame_width").as_int());
-  }
-
-  float getParamDebugVideoFps() {
-    return static_cast<float>(get_parameter("debug_video_fps").as_double());
-  }
-
   float getParamImageCaptureIntervalSecs() {
     return static_cast<float>(
         get_parameter("image_capture_interval_secs").as_double());
@@ -247,40 +374,64 @@ class CameraControlNode : public rclcpp::Node {
       return;
     }
 
-    LucidCamera::FrameCallback frameCallback =
-        [this](std::shared_ptr<LucidFrame> frame) {
+    LucidCamera::ColorCallback colorCallback{
+        [this](sensor_msgs::msg::Image::UniquePtr colorImage) {
           if (!cameraStarted_ ||
               camera_->getState() != LucidCamera::State::STREAMING) {
             return;
           }
 
           {
-            std::lock_guard<std::mutex> lock(frameMutex_);
-            currentFrame_ = frame;
+            std::lock_guard<std::mutex> lock(lastColorImageMutex_);
+            if (colorImage) {
+              // TODO: eliminate this copy. It's only used for saving an image
+              lastColorImage_ =
+                  std::make_shared<sensor_msgs::msg::Image>(*colorImage);
+            } else {
+              lastColorImage_.reset();
+            }
           }
 
-          // Create debug frame as a copy of the color frame
-          auto debugFrame{frame->getColorFrame().clone()};
+          // Copy template
+          auto cameraInfo{
+              std::make_unique<sensor_msgs::msg::CameraInfo>(colorCameraInfo_)};
+          // Ensure header/timing/size match the image exactly
+          cameraInfo->header = colorImage->header;
+          cameraInfo->width = colorImage->width;
+          cameraInfo->height = colorImage->height;
 
-          // Downscale debug_frame using INTER_NEAREST for best performance
-          double aspectRatio{static_cast<double>(debugFrame.rows) /
-                             debugFrame.cols};
-          int newWidth{getParamDebugFrameWidth()};
-          int newHeight{static_cast<int>(std::round(newWidth * aspectRatio))};
-          cv::resize(debugFrame, debugFrame, cv::Size(newWidth, newHeight), 0,
-                     0, cv::INTER_NEAREST);
+          // Important: publish frames via zero-copy intra-process. Note that
+          // the message needs to be a unique_ptr.
+          colorImagePublisher_->publish(std::move(colorImage));
+          colorCameraInfoPublisher_->publish(std::move(cameraInfo));
+        }};
 
-          {
-            std::lock_guard<std::mutex> lock(debugFrameMutex_);
-            currentDebugFrame_ = debugFrame;
+    LucidCamera::DepthCallback depthCallback{
+        [this](sensor_msgs::msg::Image::UniquePtr depthXyz,
+               sensor_msgs::msg::Image::UniquePtr depthIntensity) {
+          if (!cameraStarted_ ||
+              camera_->getState() != LucidCamera::State::STREAMING) {
+            return;
           }
 
-          sensor_msgs::msg::Image::SharedPtr debugFrameMsg{
-              getColorImageMsg(debugFrame, frame->getTimestampMillis())};
-          debugFramePublisher_->publish(*debugFrameMsg);
-        };
+          // Copy template
+          auto cameraInfo{
+              std::make_unique<sensor_msgs::msg::CameraInfo>(depthCameraInfo_)};
+          // Ensure header/timing/size match the image exactly
+          cameraInfo->header = depthXyz->header;
+          cameraInfo->width = depthXyz->width;
+          cameraInfo->height = depthXyz->height;
+
+          // Important: publish frames via zero-copy intra-process. Note that
+          // the message needs to be a unique_ptr.
+          depthXyzPublisher_->publish(std::move(depthXyz));
+          depthIntensityPublisher_->publish(std::move(depthIntensity));
+          depthCameraInfoPublisher_->publish(std::move(cameraInfo));
+        }};
+
     camera_->start(static_cast<LucidCamera::CaptureMode>(request->capture_mode),
-                   getParamExposureUs(), getParamGainDb(), frameCallback);
+                   getParamExposureUs(), getParamGainDb(), colorCallback,
+                   depthCallback);
 
     cameraStarted_ = true;
     response->success = true;
@@ -298,39 +449,11 @@ class CameraControlNode : public rclcpp::Node {
     cameraStarted_ = false;
     camera_->stop();
     {
-      std::lock_guard<std::mutex> lock(frameMutex_);
-      currentFrame_ = nullptr;
+      std::lock_guard<std::mutex> lock(lastColorImageMutex_);
+      lastColorImage_.reset();
     }
 
     response->success = true;
-  }
-
-  void onHasFrames(
-      const std::shared_ptr<common_interfaces::srv::GetBool::Request>,
-      std::shared_ptr<common_interfaces::srv::GetBool::Response> response) {
-    std::lock_guard<std::mutex> lock(frameMutex_);
-    response->data = (currentFrame_ != nullptr);
-  }
-
-  void onGetFrame(
-      const std::shared_ptr<camera_control_interfaces::srv::GetFrame::Request>,
-      std::shared_ptr<camera_control_interfaces::srv::GetFrame::Response>
-          response) {
-    std::shared_ptr<LucidFrame> frame;
-    {
-      std::lock_guard<std::mutex> lock(frameMutex_);
-      if (currentFrame_ == nullptr) {
-        return;
-      }
-      frame = currentFrame_;
-    }
-
-    auto colorImageMsg{
-        getColorImageMsg(frame->getColorFrame(), frame->getTimestampMillis())};
-    response->color_frame = *colorImageMsg;
-    auto depthImageMsg{
-        getDepthImageMsg(frame->getDepthFrame(), frame->getTimestampMillis())};
-    response->depth_frame = *depthImageMsg;
   }
 
   void onAcquireSingleFrame(
@@ -339,66 +462,33 @@ class CameraControlNode : public rclcpp::Node {
       std::shared_ptr<
           camera_control_interfaces::srv::AcquireSingleFrame::Response>
           response) {
-    std::optional<LucidFrame> frame{camera_->getNextFrame()};
-    if (!frame) {
+    auto frameOpt{camera_->getNextFrame()};
+    if (!frameOpt) {
       publishNotification("Failed to acquire frame",
                           rclcpp::Logger::Level::Error);
       return;
     }
+    LucidCamera::Frame frame{std::move(*frameOpt)};
 
     publishNotification("Successfully acquired frame");
-    auto colorImageMsg{getColorCompressedImageMsg(frame->getColorFrame(),
-                                                  frame->getTimestampMillis())};
-    response->preview_image = *colorImageMsg;
-  }
 
-  void onStartRecordingVideo(
-      const std::shared_ptr<std_srvs::srv::Trigger::Request>,
-      std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-    if (videoRecordingTimer_ && videoRecordingTimer_->is_canceled() == false) {
-      videoRecordingTimer_->cancel();
-      videoRecordingTimer_.reset();
-      std::lock_guard<std::mutex> lock(videoWriterMutex_);
-      if (videoWriter_.isOpened()) {
-        videoWriter_.release();
-      }
+    // Demosaic color image (which is BayerRG8)
+    cv::Mat raw(frame.colorImage->height, frame.colorImage->width, CV_8UC1,
+                const_cast<uint8_t*>(frame.colorImage->data.data()),
+                frame.colorImage->step);
+    cv::Mat rgb;
+    cv::cvtColor(raw, rgb, cv::COLOR_BayerRG2RGB);
+
+    // Compress to JPEG and write to response
+    sensor_msgs::msg::CompressedImage compressedImgMsg;
+    compressedImgMsg.header = frame.colorImage->header;
+    compressedImgMsg.format = "jpeg";
+    if (!cv::imencode(".jpg", rgb, compressedImgMsg.data,
+                      {cv::IMWRITE_JPEG_QUALITY, 90})) {
+      throw std::runtime_error("imencode failed (bayer->jpeg)");
     }
 
-    float fps{getParamDebugVideoFps()};
-    if (fps <= 0.0f) {
-      response->success = false;
-      response->message = "Invalid FPS value";
-      return;
-    }
-
-    videoRecordingTimer_ =
-        create_wall_timer(std::chrono::duration<double>(1.0 / fps),
-                          [this]() { writeVideoFrame(); });
-
-    publishState();
-    response->success = true;
-  }
-
-  void onStopRecordingVideo(
-      const std::shared_ptr<std_srvs::srv::Trigger::Request>,
-      std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-    if (!videoRecordingTimer_) {
-      response->success = false;
-      response->message = "Video recording was not active";
-      return;
-    }
-
-    videoRecordingTimer_->cancel();
-    videoRecordingTimer_.reset();
-    {
-      std::lock_guard<std::mutex> lock(videoWriterMutex_);
-      if (videoWriter_.isOpened()) {
-        videoWriter_.release();
-      }
-    }
-    publishState();
-    publishNotification("Stopped recording video");
-    response->success = true;
+    response->preview_image = compressedImgMsg;
   }
 
   void onSaveImage(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
@@ -456,13 +546,13 @@ class CameraControlNode : public rclcpp::Node {
 #pragma endregion
 
   std::optional<std::string> saveImage() {
-    std::shared_ptr<LucidFrame> frame;
+    sensor_msgs::msg::Image::SharedPtr colorImage;
     {
-      std::lock_guard<std::mutex> lock(frameMutex_);
-      if (currentFrame_ == nullptr) {
-        return std::nullopt;
-      }
-      frame = currentFrame_;
+      std::lock_guard<std::mutex> lock(lastColorImageMutex_);
+      colorImage = lastColorImage_;
+    }
+    if (!colorImage) {
+      return std::nullopt;
     }
 
     // Create the save directory if it doesn't exist
@@ -471,55 +561,20 @@ class CameraControlNode : public rclcpp::Node {
     std::filesystem::create_directories(saveDir);
 
     // Generate the image file name and path
-    std::string filepath{
-        fmt::format("{}/{}.png", saveDir, getCurrentTimeString())};
+    std::string filepath{fmt::format(
+        "{}/{}.jpg", saveDir, formatRosTimestamp(colorImage->header.stamp))};
 
-    // Convert the frame color format (if needed) and save the image
-    cv::Mat colorFrameBgr;
-    cv::cvtColor(frame->getColorFrame(), colorFrameBgr, cv::COLOR_RGB2BGR);
-    cv::imwrite(filepath, colorFrameBgr);
+    // Demosaic color image (which is BayerRG8) and save the image
+    cv::Mat raw(colorImage->height, colorImage->width, CV_8UC1,
+                const_cast<uint8_t*>(colorImage->data.data()),
+                colorImage->step);
+    cv::Mat rgb;
+    cv::cvtColor(raw, rgb, cv::COLOR_BayerRG2RGB);
+    cv::imwrite(filepath, rgb);
 
     publishNotification("Saved image: " + filepath);
 
     return filepath;
-  }
-
-  void writeVideoFrame() {
-    std::lock_guard<std::mutex> lock(videoWriterMutex_);
-
-    cv::Mat frame;
-    {
-      std::lock_guard<std::mutex> lock(debugFrameMutex_);
-      if (currentDebugFrame_.empty()) {
-        return;
-      }
-      frame = currentDebugFrame_;
-    }
-
-    if (!videoWriter_.isOpened()) {
-      // Create the save directory if it doesn't exist
-      std::string saveDir{getParamSaveDir()};
-      saveDir = expandUser(saveDir);
-      std::filesystem::create_directories(saveDir);
-
-      // Generate the video file name and path
-      std::string filepath{
-          fmt::format("{}/{}.avi", saveDir, getCurrentTimeString())};
-
-      int width{frame.cols};
-      int height{frame.rows};
-      videoWriter_.open(filepath, cv::VideoWriter::fourcc('X', 'V', 'I', 'D'),
-                        getParamDebugVideoFps(), cv::Size(width, height));
-
-      if (!videoWriter_.isOpened()) {
-        RCLCPP_ERROR(get_logger(), "Failed to open video writer.");
-        return;
-      }
-
-      publishNotification("Started recording video: " + filepath);
-    }
-
-    videoWriter_.write(frame);
   }
 
 #pragma region State and notifs publishing
@@ -542,7 +597,6 @@ class CameraControlNode : public rclcpp::Node {
     // State
     auto msg{std::make_unique<camera_control_interfaces::msg::State>()};
     msg->device_state = getDeviceState();
-    msg->recording_video = (videoRecordingTimer_ != nullptr);
     msg->interval_capture_active = (intervalCaptureTimer_ != nullptr);
     auto exposureUsRange{camera_->getExposureUsRange()};
     msg->exposure_us_range.x = exposureUsRange.first;
@@ -589,17 +643,8 @@ class CameraControlNode : public rclcpp::Node {
         return;
     }
 
-    // Get current time in milliseconds
-    double timestampMillis{
-        static_cast<double>(
-            std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::system_clock::now().time_since_epoch())
-                .count()) /
-        1000.0};
-    auto [sec, nanosec]{millisecondsToRosTime(timestampMillis)};
     auto logMsg{rcl_interfaces::msg::Log()};
-    logMsg.stamp.sec = sec;
-    logMsg.stamp.nanosec = nanosec;
+    logMsg.stamp = rclcpp::Clock().now();
     logMsg.level = logMsgLevel;
     logMsg.msg = msg;
     notificationsPublisher_->publish(std::move(logMsg));
@@ -607,121 +652,28 @@ class CameraControlNode : public rclcpp::Node {
 
 #pragma endregion
 
-#pragma region Message builders
-
-  sensor_msgs::msg::Image::SharedPtr getColorImageMsg(const cv::Mat& colorFrame,
-                                                      double timestampMillis) {
-    auto [sec, nanosec]{millisecondsToRosTime(timestampMillis)};
-    auto header{std_msgs::msg::Header()};
-    header.stamp.sec = sec;
-    header.stamp.nanosec = nanosec;
-    return cv_bridge::CvImage(header, "bgr8", colorFrame).toImageMsg();
-  }
-
-  sensor_msgs::msg::Image::SharedPtr getDepthImageMsg(const cv::Mat& depthFrame,
-                                                      double timestampMillis) {
-    auto [sec, nanosec]{millisecondsToRosTime(timestampMillis)};
-    auto header{std_msgs::msg::Header()};
-    header.stamp.sec = sec;
-    header.stamp.nanosec = nanosec;
-    return cv_bridge::CvImage(header, "mono16", depthFrame).toImageMsg();
-  }
-
-  sensor_msgs::msg::CompressedImage::SharedPtr getColorCompressedImageMsg(
-      const cv::Mat& colorFrame, double timestampMillis) {
-    auto [sec, nanosec]{millisecondsToRosTime(timestampMillis)};
-    auto header{std_msgs::msg::Header()};
-    header.stamp.sec = sec;
-    header.stamp.nanosec = nanosec;
-    return cv_bridge::CvImage(header, "bgr8", colorFrame)
-        .toCompressedImageMsg(cv_bridge::JPG);
-  }
-
-#pragma endregion
-
-  struct CalibrationParams {
-    cv::Mat tritonIntrinsicMatrix;
-    cv::Mat tritonDistCoeffs;
-    cv::Mat heliosIntrinsicMatrix;
-    cv::Mat heliosDistCoeffs;
-    cv::Mat xyzToTritonExtrinsicMatrix;
-    cv::Mat xyzToHeliosExtrinsicMatrix;
-  };
-  CalibrationParams readCalibrationParams(
-      const std::string& calib_id = "1c0faf4b115d1c0faf4d17ce") {
-    std::string packageShareDirectory{
-        ament_index_cpp::get_package_share_directory("camera_control")};
-    std::filesystem::path calibParamsDir{
-        std::filesystem::path(packageShareDirectory) / "calibration_params" /
-        calib_id};
-    std::filesystem::path tritonIntrinsicsPath{calibParamsDir /
-                                               "triton_intrinsics.yml"};
-    std::filesystem::path heliosIntrinsicsPath{calibParamsDir /
-                                               "helios_intrinsics.yml"};
-    std::filesystem::path xyzToTritonIntrinsicsPath{
-        calibParamsDir / "xyz_to_triton_extrinsics.yml"};
-    std::filesystem::path xyzToHeliosIntrinsicsPath{
-        calibParamsDir / "xyz_to_helios_extrinsics.yml"};
-    auto tritonIntrinsicsOpt{
-        calibration::readIntrinsicsFile(tritonIntrinsicsPath.string())};
-    if (!tritonIntrinsicsOpt) {
-      throw std::runtime_error(fmt::format("Could not read calibration file {}",
-                                           tritonIntrinsicsPath.string()));
-    }
-    auto [tritonIntrinsicMatrix, tritonDistCoeffs]{tritonIntrinsicsOpt.value()};
-    auto heliosIntrinsicsOpt{
-        calibration::readIntrinsicsFile(heliosIntrinsicsPath.string())};
-    if (!heliosIntrinsicsOpt) {
-      throw std::runtime_error(fmt::format("Could not read calibration file {}",
-                                           heliosIntrinsicsPath.string()));
-    }
-    auto [heliosIntrinsicMatrix, heliosDistCoeffs]{heliosIntrinsicsOpt.value()};
-    auto xyzToTritonExtrinsicsOpt{
-        calibration::readExtrinsicsFile(xyzToTritonIntrinsicsPath.string())};
-    if (!xyzToTritonExtrinsicsOpt) {
-      throw std::runtime_error(fmt::format("Could not read calibration file {}",
-                                           xyzToTritonIntrinsicsPath.string()));
-    }
-    auto xyzToTritonExtrinsicMatrix{xyzToTritonExtrinsicsOpt.value()};
-    auto xyzToHeliosExtrinsicsOpt{
-        calibration::readExtrinsicsFile(xyzToHeliosIntrinsicsPath.string())};
-    if (!xyzToHeliosExtrinsicsOpt) {
-      throw std::runtime_error(fmt::format("Could not read calibration file {}",
-                                           xyzToHeliosIntrinsicsPath.string()));
-    }
-    auto xyzToHeliosExtrinsicMatrix{xyzToHeliosExtrinsicsOpt.value()};
-
-    CalibrationParams result;
-    result.tritonIntrinsicMatrix = tritonIntrinsicMatrix;
-    result.tritonDistCoeffs = tritonDistCoeffs;
-    result.heliosIntrinsicMatrix = heliosIntrinsicMatrix;
-    result.heliosDistCoeffs = heliosDistCoeffs;
-    result.xyzToTritonExtrinsicMatrix = xyzToTritonExtrinsicMatrix;
-    result.xyzToHeliosExtrinsicMatrix = xyzToHeliosExtrinsicMatrix;
-
-    return result;
-  }
-
   std::shared_ptr<rclcpp::ParameterEventHandler> paramSubscriber_;
   std::shared_ptr<rclcpp::ParameterCallbackHandle> exposureUsParamCallback_;
   std::shared_ptr<rclcpp::ParameterCallbackHandle> gainDbParamCallback_;
   rclcpp::Publisher<camera_control_interfaces::msg::State>::SharedPtr
       statePublisher_;
-  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr debugFramePublisher_;
   rclcpp::Publisher<rcl_interfaces::msg::Log>::SharedPtr
       notificationsPublisher_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr colorImagePublisher_;
+  rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr
+      colorCameraInfoPublisher_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr depthXyzPublisher_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr
+      depthIntensityPublisher_;
+  rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr
+      depthCameraInfoPublisher_;
+  std::shared_ptr<tf2_ros::StaticTransformBroadcaster> tfStaticBroadcaster_;
   rclcpp::CallbackGroup::SharedPtr serviceCallbackGroup_;
   rclcpp::Service<camera_control_interfaces::srv::StartDevice>::SharedPtr
       startDeviceService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr closeDeviceService_;
-  rclcpp::Service<common_interfaces::srv::GetBool>::SharedPtr hasFramesService_;
-  rclcpp::Service<camera_control_interfaces::srv::GetFrame>::SharedPtr
-      getFrameService_;
   rclcpp::Service<camera_control_interfaces::srv::AcquireSingleFrame>::SharedPtr
       acquireSingleFrameService_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr
-      startRecordingVideoService_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr stopRecordingVideoService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr saveImageService_;
   rclcpp::Service<camera_control_interfaces::srv::StartIntervalCapture>::
       SharedPtr startIntervalCaptureService_;
@@ -729,20 +681,18 @@ class CameraControlNode : public rclcpp::Node {
       stopIntervalCaptureService_;
   rclcpp::Service<camera_control_interfaces::srv::GetState>::SharedPtr
       getStateService_;
+  rclcpp::TimerBase::SharedPtr intervalCaptureTimer_;
+  rclcpp::TimerBase::SharedPtr deviceTemperaturePublishTimer_;
 
-  std::shared_ptr<LucidCamera> camera_;
+  std::unique_ptr<LucidCamera> camera_;
   // Used to prevent frame callback from updating the current frame after the
   // camera device has been stopped
   std::atomic<bool> cameraStarted_{false};
-  std::shared_ptr<LucidFrame> currentFrame_;
-  std::mutex frameMutex_;
-  cv::Mat currentDebugFrame_;
-  std::mutex debugFrameMutex_;
-  rclcpp::TimerBase::SharedPtr intervalCaptureTimer_;
-  rclcpp::TimerBase::SharedPtr videoRecordingTimer_;
-  cv::VideoWriter videoWriter_;
-  std::mutex videoWriterMutex_;
-  rclcpp::TimerBase::SharedPtr deviceTemperaturePublishTimer_;
+  std::mutex lastColorImageMutex_;
+  sensor_msgs::msg::Image::SharedPtr lastColorImage_;
+  CalibrationParams calibrationParams_;
+  sensor_msgs::msg::CameraInfo colorCameraInfo_;
+  sensor_msgs::msg::CameraInfo depthCameraInfo_;
 };
 
 RCLCPP_COMPONENTS_REGISTER_NODE(CameraControlNode)

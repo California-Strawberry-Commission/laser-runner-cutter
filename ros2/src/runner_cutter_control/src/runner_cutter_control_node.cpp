@@ -32,6 +32,8 @@
 #include "runner_cutter_control_interfaces/srv/manual_target_laser.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
+namespace {
+
 /**
  * Concurrency primitive that provides a shared flag that can be set and waited
  * on.
@@ -89,6 +91,8 @@ std::string expandUser(const std::string& path) {
 
   return std::string(home) + path.substr(1);
 }
+
+}  // namespace
 
 class RunnerCutterControlNode : public rclcpp::Node {
  public:
@@ -493,8 +497,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
           if (!trackOpt) {
             continue;
           }
+          auto track{std::move(*trackOpt)};
 
-          auto track{trackOpt.value()};
           track->setPixel({-1, -1});
           track->setPosition({-1.0f, -1.0f, -1.0f});
           if (track->getState() == Track::State::PENDING) {
@@ -725,7 +729,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
     if (!positionsOpt) {
       return;
     }
-    auto positions{positionsOpt.value()};
+    auto positions{std::move(*positionsOpt)};
 
     // Filter out any invalid positions (x, y, and z are all negative)
     positions.erase(std::remove_if(positions.begin(), positions.end(),
@@ -769,7 +773,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
       return;
     }
 
-    auto positions{positionsOpt.value()};
+    auto positions{std::move(*positionsOpt)};
     auto targetPosition{positions[0]};
     auto [frameWidth, frameHeight]{calibration_->getCameraFrameSize()};
     PixelCoord targetPixel{
@@ -785,7 +789,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
         return;
       }
       RCLCPP_INFO(get_logger(), "Aim laser successful");
-      laserCoord = laserCoordOpt.value();
+      laserCoord = std::move(*laserCoordOpt);
     } else {
       laserCoord = calibration_->cameraPositionToLaserCoord(targetPosition);
     }
@@ -846,7 +850,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
         continue;
       }
 
-      auto target{targetOpt.value()};
+      auto target{std::move(*targetOpt)};
       if (!enableDetectionDuringBurn) {
         // Temporarily disable runner detection during aim/burn
         camera_->stopDetection(detectionType);
@@ -862,7 +866,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
           tracker_->processTrack(target->getId(), Track::State::FAILED);
           continue;
         }
-        laserCoord = laserCoordOpt.value();
+        laserCoord = std::move(*laserCoordOpt);
       } else {
         laserCoord =
             calibration_->cameraPositionToLaserCoord(target->getPosition());
@@ -896,7 +900,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
         return std::nullopt;
       }
 
-      auto track{trackOpt.value()};
+      auto track{std::move(*trackOpt)};
       RCLCPP_INFO(get_logger(), "Processing pending track [%u]",
                   track->getId());
 
@@ -949,7 +953,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
         continue;
       }
 
-      auto track{trackOpt.value()};
+      auto track{std::move(*trackOpt)};
 
       if (track->getState() != Track::State::PENDING) {
         continue;
@@ -1076,7 +1080,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
       }
 
       // Calculate camera pixel distance
-      auto [laserPixel, laserPosition]{detectResultOpt.value()};
+      auto [laserPixel, laserPosition]{std::move(*detectResultOpt)};
       PixelCoord cameraPixelDelta{targetCameraPixel.u - laserPixel.u,
                                   targetCameraPixel.v - laserPixel.v};
       float dist{static_cast<float>(

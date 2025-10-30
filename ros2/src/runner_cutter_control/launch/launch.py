@@ -151,8 +151,8 @@ def generate_launch_description():
         condition=IfCondition(launch_cutter_nodes),
     )
 
-    camera_control_cpp_launch_node = ComposableNodeContainer(
-        name="camera_control_container",
+    camera_detection_cpp_launch_node = ComposableNodeContainer(
+        name="camera_detection_container",
         namespace="",
         package="rclcpp_components",
         executable="component_container_mt",  # multithreaded executor
@@ -166,6 +166,34 @@ def generate_launch_description():
                 plugin="CameraControlNode",
                 name="camera0",
                 extra_arguments=[{"use_intra_process_comms": True}],
+            ),
+            ComposableNode(
+                package="detection",
+                plugin="DetectionNode",
+                name="detection0",
+                extra_arguments=[{"use_intra_process_comms": True}],
+                remappings=[
+                    (
+                        "color/image_raw",
+                        "/camera0/color/image_raw",
+                    ),  # sub, raw color camera image
+                    (
+                        "color/camera_info",
+                        "/camera0/color/camera_info",
+                    ),  # sub, color camera info
+                    (
+                        "depth/xyz",
+                        "/camera0/depth/xyz",
+                    ),  # sub, depth xyz data
+                    (
+                        "depth/camera_info",
+                        "/camera0/depth/camera_info",
+                    ),  # sub, depth camera info
+                    (
+                        "debug/image",
+                        "/camera0/debug_frame",
+                    ),  # pub, naming temporary for compatibility
+                ],
             ),
         ],
     )
@@ -208,7 +236,7 @@ def generate_launch_description():
             guidance_brain_launch_node,
             laser_control_launch_node,
             camera_control_launch_node,
-            # camera_control_cpp_launch_node,
+            # camera_detection_cpp_launch_node,
             runner_cutter_control_launch_node,
         ]
     )  # type: ignore

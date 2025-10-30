@@ -1,0 +1,5 @@
+uint8 detection_type  # DetectionType.msg
+# The rect (min x, min y, width, height), normalized to the camera frame size
+common_interfaces/Vector4 normalized_bounds
+---
+bool success

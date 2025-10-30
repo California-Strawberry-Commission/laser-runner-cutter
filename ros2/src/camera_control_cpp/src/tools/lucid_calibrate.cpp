@@ -7,9 +7,7 @@
 
 void captureFrame(double exposureUs, double gainDb,
                   const std::string& outputDir) {
-  cv::Mat dummyMat;
-  LucidCamera camera{dummyMat, dummyMat, dummyMat,
-                     dummyMat, dummyMat, dummyMat};
+  LucidCamera camera;
   camera.start(LucidCamera::CaptureMode::SINGLE_FRAME, exposureUs, gainDb);
   camera.waitForStreaming();
 
@@ -24,22 +22,39 @@ void captureFrame(double exposureUs, double gainDb,
       calibration::expandUser(outputDir)};
   std::filesystem::create_directories(outputDirExpandedPath);
 
-  auto frame{frameOpt.value()};
+  LucidCamera::Frame frame{std::move(*frameOpt)};
+
+  // Demosaic color image (which is BayerRG8) and write to file
+  cv::Mat raw(frame.colorImage->height, frame.colorImage->width, CV_8UC1,
+              const_cast<uint8_t*>(frame.colorImage->data.data()),
+              frame.colorImage->step);
+  cv::Mat rgb;
+  cv::cvtColor(raw, rgb, cv::COLOR_BayerRG2RGB);
   std::filesystem::path colorImagePath{
       std::filesystem::path(outputDirExpandedPath) / "triton.png"};
-  cv::imwrite(colorImagePath, frame.getColorFrame());
+  cv::imwrite(colorImagePath, rgb);
   spdlog::info("Saved color camera image to: {}", colorImagePath.string());
 
+  // Depth intensity is MONO16
+  // Wrap image buffer as cv::Mat
+  cv::Mat intens(frame.depthIntensity->height, frame.depthIntensity->width,
+                 CV_16UC1,
+                 const_cast<uint8_t*>(frame.depthIntensity->data.data()),
+                 frame.depthIntensity->step);
   std::filesystem::path depthIntensityImagePath{
       std::filesystem::path(outputDirExpandedPath) / "helios_intensity.png"};
-  cv::imwrite(depthIntensityImagePath, frame.getDepthFrameIntensity());
+  cv::imwrite(depthIntensityImagePath, intens);
   spdlog::info("Saved depth camera intensity image to: {}",
                depthIntensityImagePath.string());
 
+  // Wrap image buffer as cv::Mat
+  cv::Mat xyzMat(frame.depthXyz->height, frame.depthXyz->width, CV_32FC3,
+                 const_cast<uint8_t*>(frame.depthXyz->data.data()),
+                 frame.depthXyz->step);
   std::filesystem::path xyzPath{std::filesystem::path(outputDirExpandedPath) /
                                 "helios_xyz.yml"};
   cv::FileStorage fs{xyzPath, cv::FileStorage::WRITE};
-  fs << "xyz" << frame.getDepthFrameXyz();
+  fs << "xyz" << xyzMat;
   fs.release();
   spdlog::info("Saved xyz data to: {}", xyzPath.string());
 }
@@ -87,7 +102,7 @@ void calculateIntrinsics(const std::string& imagesDir,
     return;
   }
 
-  auto calibrateResults{calibrateResultsOpt.value()};
+  auto calibrateResults{std::move(*calibrateResultsOpt)};
   std::ostringstream oss1, oss2;
   oss1 << calibrateResults.intrinsicMatrix;
   oss2 << calibrateResults.distCoeffs;
@@ -115,7 +130,7 @@ void undistortImage(const std::string& intrinsicsFile,
   if (!intrinsicsOpt) {
     return;
   }
-  auto [intrinsicMatrix, distCoeffs]{intrinsicsOpt.value()};
+  auto [intrinsicMatrix, distCoeffs]{std::move(*intrinsicsOpt)};
 
   // Read image file
   std::filesystem::path imageFileExpandedPath{
@@ -144,7 +159,7 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
   if (!intrinsicsOpt) {
     return;
   }
-  auto [intrinsicMatrix, distCoeffs]{intrinsicsOpt.value()};
+  auto [intrinsicMatrix, distCoeffs]{std::move(*intrinsicsOpt)};
 
   // Find camera image paths
   std::filesystem::path cameraImagesExpandedPath{
@@ -339,7 +354,7 @@ void visualizeExtrinsics(const std::string& cameraImageFile,
   if (!intrinsicsOpt) {
     return;
   }
-  auto [intrinsicMatrix, distCoeffs]{intrinsicsOpt.value()};
+  auto [intrinsicMatrix, distCoeffs]{std::move(*intrinsicsOpt)};
 
   // Parse extrinsics file
   auto extrinsicMatrixOpt{
@@ -347,7 +362,7 @@ void visualizeExtrinsics(const std::string& cameraImageFile,
   if (!extrinsicMatrixOpt) {
     return;
   }
-  cv::Mat extrinsicMatrix{extrinsicMatrixOpt.value()};
+  cv::Mat extrinsicMatrix{std::move(*extrinsicMatrixOpt)};
   auto [rvec, tvec]{calibration::extractPoseFromExtrinsic(extrinsicMatrix)};
 
   // Read image files
@@ -365,7 +380,7 @@ void visualizeExtrinsics(const std::string& cameraImageFile,
   if (!heliosXyzOpt) {
     return;
   }
-  auto heliosXyz{heliosXyzOpt.value()};
+  auto heliosXyz{std::move(*heliosXyzOpt)};
 
   // Prepare object points
   int h{heliosXyz.rows};

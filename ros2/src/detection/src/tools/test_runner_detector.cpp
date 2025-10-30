@@ -3,53 +3,6 @@
 
 #include "detection/detector/runner_detector.hpp"
 
-void drawDetections(cv::Mat& image, const std::vector<Runner>& runners,
-                    unsigned int scale = 1) {
-  cv::Scalar color{0.0, 0.0, 1.0};
-
-  // Draw segmentation masks
-  if (!runners.empty() && !runners[0].boxMask.empty()) {
-    cv::Mat mask{image.clone()};
-    for (const auto& object : runners) {
-      mask(object.rect).setTo(color * 255, object.boxMask);
-    }
-    // Add all the masks to our image
-    cv::addWeighted(image, 0.5, mask, 0.8, 1, image);
-  }
-
-  // Bounding boxes and annotations
-  for (auto& runner : runners) {
-    double meanColor{cv::mean(color)[0]};
-    cv::Scalar textColor{(meanColor > 0.5) ? cv::Scalar(0, 0, 0)
-                                           : cv::Scalar(255, 255, 255)};
-
-    // Draw rectangles and text
-    char text[256];
-    sprintf(text, "%d: %.1f%%", runner.trackId, runner.conf * 100);
-    int baseLine{0};
-    cv::Size labelSize{cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX,
-                                       0.5 * scale, scale, &baseLine)};
-    cv::Scalar textBackgroundColor{color * 0.7 * 255};
-    cv::rectangle(image, runner.rect, color * 255, scale + 1);
-    int x{static_cast<int>(std::round(runner.rect.x))};
-    int y{static_cast<int>(std::round(runner.rect.y)) + 1};
-    cv::rectangle(
-        image,
-        cv::Rect(cv::Point(x, y),
-                 cv::Size(labelSize.width, labelSize.height + baseLine)),
-        textBackgroundColor, -1);
-    cv::putText(image, text, cv::Point(x, y + labelSize.height),
-                cv::FONT_HERSHEY_SIMPLEX, 0.5 * scale, textColor, scale);
-
-    // Draw representative point
-    if (runner.point.x >= 0 && runner.point.y >= 0) {
-      cv::Scalar markerColor{1.0, 1.0, 1.0};
-      cv::drawMarker(image, runner.point, markerColor * 255,
-                     cv::MARKER_TILTED_CROSS, 20, 2);
-    }
-  }
-}
-
 int main(int argc, char* argv[]) {
   CLI::App app{"Test runner detector"};
 
@@ -82,7 +35,8 @@ int main(int argc, char* argv[]) {
   auto runners{runnerDetector.track(rgbImage)};
 
   // Draw labels
-  drawDetections(img, runners);
+  RunnerDetector::drawDetections(rgbImage, runners,
+                                 cv::Size(img.cols, img.rows));
 
   // Save the image to disk
   std::filesystem::path imagePath{imageFile};
@@ -90,7 +44,9 @@ int main(int argc, char* argv[]) {
   std::filesystem::path outputFilename{filename.string() + "_annotated.jpg"};
   std::filesystem::path outputPath{std::filesystem::path(outputDir) /
                                    outputFilename};
-  cv::imwrite(outputPath.string(), img);
+  cv::Mat outImage;
+  cv::cvtColor(rgbImage, outImage, cv::COLOR_RGB2BGR);
+  cv::imwrite(outputPath.string(), outImage);
   std::cout << "Saved annotated image to: " << outputPath.string() << std::endl;
 
   return 0;

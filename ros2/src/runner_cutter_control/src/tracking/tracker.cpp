@@ -91,7 +91,7 @@ void Tracker::processTrack(uint32_t trackId, Track::State newState) {
     return;
   }
 
-  auto track{trackOpt.value()};
+  auto track{std::move(*trackOpt)};
   if (track->getState() == newState) {
     return;
   }

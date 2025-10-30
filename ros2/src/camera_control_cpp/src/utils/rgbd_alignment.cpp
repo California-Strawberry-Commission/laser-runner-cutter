@@ -1,7 +1,6 @@
-#include "camera_control_cpp/camera/lucid_frame.hpp"
+#include "camera_control_cpp/utils/rgbd_alignment.hpp"
 
-#include "camera_control_cpp/camera/calibration.hpp"
-#include "spdlog/spdlog.h"
+#include <spdlog/spdlog.h>
 
 namespace {
 
@@ -104,23 +103,35 @@ bool isPixelInLine(const cv::Point2i& curr, const cv::Point2i& start,
          (minY <= curr.y && curr.y <= maxY);
 }
 
+cv::Mat invertExtrinsicMatrix(const cv::Mat& extrinsic) {
+  // Extract the rotation matrix and the translation vetor
+  cv::Mat R{extrinsic(cv::Range(0, 3), cv::Range(0, 3))};
+  cv::Mat t{extrinsic(cv::Range(0, 3), cv::Range(3, 4))};
+
+  // Compute the inverse rotation matrix
+  cv::Mat R_inv{R.t()};
+
+  // Compute the new translation vector
+  cv::Mat t_inv{-R_inv * t};
+
+  // Construct the new extrinsic matrix
+  cv::Mat extrinsic_inv{cv::Mat::eye(4, 4, R.type())};
+  R_inv.copyTo(extrinsic_inv(cv::Range(0, 3), cv::Range(0, 3)));
+  t_inv.copyTo(extrinsic_inv(cv::Range(0, 3), cv::Range(3, 4)));
+
+  return extrinsic_inv;
+}
+
 }  // namespace
 
-LucidFrame::LucidFrame(const cv::Mat& colorFrame, const cv::Mat& depthFrameXyz,
-                       const cv::Mat& depthFrameIntensity,
-                       double timestampMillis,
-                       const cv::Mat& colorCameraIntrinsicMatrix,
-                       const cv::Mat& colorCameraDistortionCoeffs,
-                       const cv::Mat& depthCameraIntrinsicMatrix,
-                       const cv::Mat& depthCameraDistortionCoeffs,
-                       const cv::Mat& xyzToColorCameraExtrinsicMatrix,
-                       const cv::Mat& xyzToDepthCameraExtrinsicMatrix,
-                       std::pair<int, int> colorFrameOffset)
-    : colorFrame_(colorFrame),
-      depthFrameXyz_(depthFrameXyz),
-      depthFrameIntensity_(depthFrameIntensity),
-      timestampMillis_(timestampMillis),
-      colorCameraIntrinsicMatrix_(colorCameraIntrinsicMatrix),
+RgbdAlignment::RgbdAlignment(const cv::Mat& colorCameraIntrinsicMatrix,
+                             const cv::Mat& colorCameraDistortionCoeffs,
+                             const cv::Mat& depthCameraIntrinsicMatrix,
+                             const cv::Mat& depthCameraDistortionCoeffs,
+                             const cv::Mat& xyzToColorCameraExtrinsicMatrix,
+                             const cv::Mat& xyzToDepthCameraExtrinsicMatrix,
+                             std::pair<int, int> colorFrameOffset)
+    : colorCameraIntrinsicMatrix_(colorCameraIntrinsicMatrix),
       colorCameraDistortionCoeffs_(colorCameraDistortionCoeffs),
       depthCameraIntrinsicMatrix_(depthCameraIntrinsicMatrix),
       depthCameraDistortionCoeffs_(depthCameraDistortionCoeffs),
@@ -131,32 +142,12 @@ LucidFrame::LucidFrame(const cv::Mat& colorFrame, const cv::Mat& depthFrameXyz,
       !xyzToDepthCameraExtrinsicMatrix_.empty()) {
     colorToDepthExtrinsicMatrix_ =
         xyzToDepthCameraExtrinsicMatrix_ *
-        calibration::invertExtrinsicMatrix(xyzToColorCameraExtrinsicMatrix_);
+        invertExtrinsicMatrix(xyzToColorCameraExtrinsicMatrix_);
   }
 }
 
-LucidFrame::~LucidFrame() {}
-
-cv::Mat LucidFrame::getDepthFrame() const {
-  // Split into separate X, Y, Z components
-  std::vector<cv::Mat> channels(3);
-  cv::split(depthFrameXyz_, channels);
-
-  // Compute the L2 norm
-  cv::Mat depthFrame;
-  depthFrame = channels[0].mul(channels[0]) + channels[1].mul(channels[1]) +
-               channels[2].mul(channels[2]);
-  cv::sqrt(depthFrame, depthFrame);
-
-  // Convert to 16-bit unsigned integer (mono16 format)
-  cv::Mat depthFrameMono16;
-  depthFrame.convertTo(depthFrameMono16, CV_16U);
-
-  return depthFrameMono16;
-}
-
-std::optional<cv::Point2i> LucidFrame::getCorrespondingDepthPixel(
-    const cv::Point2i& colorPixel) const {
+std::optional<cv::Point2i> RgbdAlignment::getCorrespondingDepthPixel(
+    const cv::Point2i& colorPixel, const cv::Mat& depthXyz) const {
   /*
   Given an (x, y) coordinate in the color frame, return the corresponding (x, y)
   coordinate in the depth frame.
@@ -194,14 +185,16 @@ std::optional<cv::Point2i> LucidFrame::getCorrespondingDepthPixel(
   if (!minDepthPositionColorSpaceOpt) {
     return std::nullopt;
   }
-  cv::Vec3f minDepthPositionColorSpace{minDepthPositionColorSpaceOpt.value()};
+  cv::Vec3f minDepthPositionColorSpace{
+      std::move(*minDepthPositionColorSpaceOpt)};
   auto maxDepthPositionColorSpaceOpt{deprojectPixel(
       fullFrameColorPixel, DEPTH_MAX_MM, colorCameraIntrinsicMatrix_,
       colorCameraDistortionCoeffs_)};
   if (!maxDepthPositionColorSpaceOpt) {
     return std::nullopt;
   }
-  cv::Vec3f maxDepthPositionColorSpace{maxDepthPositionColorSpaceOpt.value()};
+  cv::Vec3f maxDepthPositionColorSpace{
+      std::move(*maxDepthPositionColorSpaceOpt)};
 
   // Min-depth and max-depth positions in depth camera-space
   cv::Vec3f minDepthPositionDepthSpace{transformPosition(
@@ -216,20 +209,20 @@ std::optional<cv::Point2i> LucidFrame::getCorrespondingDepthPixel(
   if (!minDepthPixelOpt) {
     return std::nullopt;
   }
-  cv::Point2i minDepthPixel{minDepthPixelOpt.value()};
+  cv::Point2i minDepthPixel{std::move(*minDepthPixelOpt)};
   auto maxDepthPixelOpt{projectPosition(maxDepthPositionDepthSpace,
                                         depthCameraIntrinsicMatrix_,
                                         depthCameraDistortionCoeffs_)};
   if (!maxDepthPixelOpt) {
     return std::nullopt;
   }
-  cv::Point2i maxDepthPixel{maxDepthPixelOpt.value()};
+  cv::Point2i maxDepthPixel{std::move(*maxDepthPixelOpt)};
 
   // Make sure pixel coords are in boundary
-  cv::Point2i minDepthPixelAdjusted{adjustPixelToBounds(
-      minDepthPixel, depthFrameXyz_.cols, depthFrameXyz_.rows)};
-  cv::Point2i maxDepthPixelAdjusted{adjustPixelToBounds(
-      maxDepthPixel, depthFrameXyz_.cols, depthFrameXyz_.rows)};
+  cv::Point2i minDepthPixelAdjusted{
+      adjustPixelToBounds(minDepthPixel, depthXyz.cols, depthXyz.rows)};
+  cv::Point2i maxDepthPixelAdjusted{
+      adjustPixelToBounds(maxDepthPixel, depthXyz.cols, depthXyz.rows)};
 
   // Search along the line for the depth pixel for which its corresponding
   // projected color pixel is the closest to the target color pixel
@@ -237,15 +230,14 @@ std::optional<cv::Point2i> LucidFrame::getCorrespondingDepthPixel(
   cv::Point2i closestDepthPixel{minDepthPixelAdjusted};
   cv::Point2i currDepthPixel{minDepthPixelAdjusted};
   while (true) {
-    cv::Vec3f xyzmm{
-        depthFrameXyz_.at<cv::Vec3f>(currDepthPixel.y, currDepthPixel.x)};
+    cv::Vec3f xyzmm{depthXyz.at<cv::Vec3f>(currDepthPixel.y, currDepthPixel.x)};
     auto currColorPixelOpt{projectPosition(xyzmm, colorCameraIntrinsicMatrix_,
                                            colorCameraDistortionCoeffs_,
                                            xyzToColorCameraExtrinsicMatrix_)};
     if (!currColorPixelOpt) {
       return std::nullopt;
     }
-    cv::Point2i currColorPixel{currColorPixelOpt.value()};
+    cv::Point2i currColorPixel{std::move(*currColorPixelOpt)};
     double distance{cv::norm(cv::Point2f(currColorPixel) -
                              cv::Point2f(fullFrameColorPixel))};
     if (distance < minDist || minDist < 0) {
@@ -267,15 +259,15 @@ std::optional<cv::Point2i> LucidFrame::getCorrespondingDepthPixel(
   return closestDepthPixel;
 }
 
-std::optional<cv::Vec3f> LucidFrame::getPosition(
-    const cv::Point2i& colorPixel) const {
-  auto depthPixelOpt{getCorrespondingDepthPixel(colorPixel)};
+std::optional<cv::Vec3f> RgbdAlignment::getPosition(
+    const cv::Point2i& colorPixel, const cv::Mat& depthXyz) const {
+  auto depthPixelOpt{getCorrespondingDepthPixel(colorPixel, depthXyz)};
   if (!depthPixelOpt) {
     return std::nullopt;
   }
-  cv::Point2i depthPixel{depthPixelOpt.value()};
+  cv::Point2i depthPixel{std::move(*depthPixelOpt)};
 
-  cv::Vec3f position{depthFrameXyz_.at<cv::Vec3f>(depthPixel.y, depthPixel.x)};
+  cv::Vec3f position{depthXyz.at<cv::Vec3f>(depthPixel.y, depthPixel.x)};
   // Negative depth indicates an invalid position. Depth greater than 2^14 - 1
   // also indicates invalid position.
   if (position[2] < 0.0f || position[2] > ((1 << 14) - 1)) {

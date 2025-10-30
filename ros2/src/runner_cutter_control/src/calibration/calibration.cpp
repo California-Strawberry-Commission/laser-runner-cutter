@@ -48,9 +48,10 @@ bool Calibration::calibrate(
   if (!frameOpt) {
     return false;
   }
-  auto colorFrame{frameOpt.value().colorFrame};
-  cameraFrameSize_ = {static_cast<int>(colorFrame->width),
-                      static_cast<int>(colorFrame->height)};
+  auto frame{std::move(*frameOpt)};
+
+  cameraFrameSize_ = {static_cast<int>(frame.colorFrame->width),
+                      static_cast<int>(frame.colorFrame->height)};
 
   // Get calibration points
   float xMin{xBounds.first};
@@ -160,7 +161,7 @@ std::size_t Calibration::addCalibrationPoints(
         continue;
       }
 
-      auto [cameraPixelCoord, cameraPosition]{resultOpt.value()};
+      auto [cameraPixelCoord, cameraPosition]{std::move(*resultOpt)};
       addPointCorrespondence(laserCoord, cameraPixelCoord, cameraPosition);
       ++numPointCorrespondencesAdded;
 

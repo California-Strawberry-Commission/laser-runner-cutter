@@ -17,11 +17,15 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
 find_package(camera_control_interfaces REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(cv_bridge REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 ###########
 ## Build ##
@@ -75,24 +79,42 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/CLI11 ${CMAKE_CUR
 add_library(camera SHARED
   src/camera/calibration.cpp
   src/camera/lucid_camera.cpp
-  src/camera/lucid_frame.cpp
 )
 target_include_directories(camera PUBLIC
   ${ARENA_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
 )
 target_link_libraries(camera PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS})
+ament_target_dependencies(camera PUBLIC
+  rclcpp
+  sensor_msgs
+)
+
+# utils
+add_library(utils SHARED
+  src/utils/rgbd_alignment.cpp
+)
+target_include_directories(utils PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_link_libraries(utils PRIVATE
+  spdlog::spdlog
+  ${OpenCV_LIBS}
+)
 
 # Composable node
 add_library(camera_control_node_composable SHARED
   src/camera_control_node.cpp
 )
-target_link_libraries(camera_control_node_composable PRIVATE fmt::fmt camera)
+target_link_libraries(camera_control_node_composable PRIVATE fmt::fmt Eigen3::Eigen camera)
 ament_target_dependencies(camera_control_node_composable PUBLIC
   rclcpp
   rclcpp_components
   std_msgs
   std_srvs
+  geometry_msgs
+  tf2
+  tf2_ros
   camera_control_interfaces
   cv_bridge
   OpenCV
@@ -109,12 +131,29 @@ add_executable(latency_clock src/tools/latency_clock.cpp)
 add_executable(lucid_calibrate src/tools/lucid_calibrate.cpp)
 target_link_libraries(lucid_calibrate PRIVATE camera CLI11::CLI11 spdlog::spdlog ${OpenCV_LIBS})
 
-add_executable(test_color_to_depth_pixel_coord src/tools/test_color_to_depth_pixel_coord.cpp)
-target_link_libraries(test_color_to_depth_pixel_coord PRIVATE camera CLI11::CLI11 spdlog::spdlog ${OpenCV_LIBS})
-
 #############
 ## Install ##
 #############
+
+# Install lib + headers that should be available to other packages
+install(TARGETS utils
+  EXPORT export_camera_control_cpp_targets
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+  INCLUDES DESTINATION include
+)
+install(DIRECTORY include/ DESTINATION include)
+
+# Export the targets with a namespace so downstream sees camera_control_cpp::utils
+install(EXPORT export_camera_control_cpp_targets
+  NAMESPACE camera_control_cpp::
+  DESTINATION share/${PROJECT_NAME}/cmake
+)
+
+# ament export metadata
+ament_export_targets(export_camera_control_cpp_targets HAS_LIBRARY_TARGET)
+ament_export_include_directories(include)
 
 # Install composable node
 install(TARGETS camera_control_node_composable
@@ -127,7 +166,6 @@ install(TARGETS camera_control_node_composable
 install(TARGETS
   latency_clock
   lucid_calibrate
-  test_color_to_depth_pixel_coord
   DESTINATION lib/${PROJECT_NAME})
 
 # Install launch files

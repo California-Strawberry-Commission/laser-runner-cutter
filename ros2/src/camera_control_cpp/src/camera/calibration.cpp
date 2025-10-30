@@ -5,12 +5,12 @@
 #include "spdlog/spdlog.h"
 
 namespace {
+
 struct ReprojectErrors {
   float meanError;
   std::vector<float> perImageErrors;
 };
-
-ReprojectErrors _calcReprojectionError(
+ReprojectErrors calcReprojectionError(
     const std::vector<std::vector<cv::Point3f>>& objectPoints,
     const std::vector<std::vector<cv::Point2f>>& imagePoints,
     const std::vector<cv::Mat>& rvecs, const std::vector<cv::Mat>& tvecs,
@@ -29,6 +29,7 @@ ReprojectErrors _calcReprojectionError(
   retVals.meanError = totalError / objectPoints.size();
   return retVals;
 }
+
 }  // namespace
 
 std::optional<calibration::IntrinsicsResult> calibration::calculateIntrinsics(
@@ -86,8 +87,8 @@ std::optional<calibration::IntrinsicsResult> calibration::calculateIntrinsics(
         result.distCoeffs, rvecs, tvecs);
     if (retval) {
       ReprojectErrors projErrors{
-          _calcReprojectionError(objPoints, imgPoints, rvecs, tvecs,
-                                 result.intrinsicMatrix, result.distCoeffs)};
+          calcReprojectionError(objPoints, imgPoints, rvecs, tvecs,
+                                result.intrinsicMatrix, result.distCoeffs)};
       spdlog::info(
           "Calibration successful. Used {} images. Mean reprojection error: {}",
           objPoints.size(), projErrors.meanError);
@@ -127,25 +128,6 @@ std::pair<cv::Mat, cv::Mat> calibration::extractPoseFromExtrinsic(
   cv::Rodrigues(R, rvec);
 
   return {rvec, tvec};
-}
-
-cv::Mat calibration::invertExtrinsicMatrix(const cv::Mat& extrinsic) {
-  // Extract the rotation matrix and the translation vetor
-  cv::Mat R{extrinsic(cv::Range(0, 3), cv::Range(0, 3))};
-  cv::Mat t{extrinsic(cv::Range(0, 3), cv::Range(3, 4))};
-
-  // Compute the inverse rotation matrix
-  cv::Mat R_inv{R.t()};
-
-  // Compute the new translation vector
-  cv::Mat t_inv{-R_inv * t};
-
-  // Construct the new extrinsic matrix
-  cv::Mat extrinsic_inv{cv::Mat::eye(4, 4, R.type())};
-  R_inv.copyTo(extrinsic_inv(cv::Range(0, 3), cv::Range(0, 3)));
-  t_inv.copyTo(extrinsic_inv(cv::Range(0, 3), cv::Range(3, 4)));
-
-  return extrinsic_inv;
 }
 
 std::optional<cv::Point2f> calibration::distortPixelCoords(
