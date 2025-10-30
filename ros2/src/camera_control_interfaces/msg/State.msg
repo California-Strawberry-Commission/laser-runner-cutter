@@ -1,13 +1,7 @@
 uint8 device_state  # DeviceState.msg
-uint8[] enabled_detection_types  # DetectionType.msg
-bool recording_video
 bool interval_capture_active
-float32 exposure_us
 common_interfaces/Vector2 exposure_us_range
-float32 gain_db
 common_interfaces/Vector2 gain_db_range
-string save_directory
-float32 image_capture_interval_secs
 float32 color_device_temperature
 float32 depth_device_temperature
 uint32 color_width

@@ -1,6 +1,7 @@
 // TODO: add ability to set node names
 export const LIFECYCLE_MANAGER_NODE_NAME = "/lifecycle_manager";
 export const CAMERA_NODE_NAME = "/camera0";
+export const DETECTION_NODE_NAME = "/detection0";
 export const LASER_NODE_NAME = "/laser0";
 export const CONTROL_NODE_NAME = "/control0";
 export const FURROW_PERCEIVER_FORWARD_NODE_NAME = "/furrow_perceiver_forward";

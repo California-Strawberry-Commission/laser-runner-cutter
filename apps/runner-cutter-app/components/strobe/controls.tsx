@@ -27,16 +27,28 @@ export default function Controls({
 
   // Sync text inputs to node state
   useEffect(() => {
-    setExposureUs(cameraNode.state.exposureUs);
-    setGainDb(cameraNode.state.gainDb);
-    setSaveDir(cameraNode.state.saveDirectory);
-  }, [
+    async function fetchParams() {
+      if (cameraNode.connected) {
+        const exposureUs = await cameraNode.getExposureUs();
+        setExposureUs(exposureUs);
+
+        const gainDb = await cameraNode.getGainDb();
+        setGainDb(gainDb);
+
+        const saveDir = await cameraNode.getSaveDir();
+        setSaveDir(saveDir);
+      }
+    }
+
+    fetchParams();
+  },
+  // We intentionally did not add cameraNode to deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [
+    cameraNode.connected,
     setExposureUs,
-    cameraNode.state.exposureUs,
     setGainDb,
-    cameraNode.state.gainDb,
     setSaveDir,
-    cameraNode.state.saveDirectory,
   ]);
 
   return (
@@ -75,7 +87,7 @@ export default function Controls({
                   className="rounded-none"
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.setExposure(exposureUs);
+                    cameraNode.setExposureUs(exposureUs);
                   }}
                 >
                   Set
@@ -84,7 +96,7 @@ export default function Controls({
                   className="rounded-l-none"
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.autoExposure();
+                    cameraNode.setExposureUs(-1);
                   }}
                 >
                   Auto
@@ -111,7 +123,7 @@ export default function Controls({
                   className="rounded-none"
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.setGain(gainDb);
+                    cameraNode.setGainDb(gainDb);
                   }}
                 >
                   Set
@@ -120,7 +132,7 @@ export default function Controls({
                   className="rounded-l-none"
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.autoGain();
+                    cameraNode.setGainDb(-1);
                   }}
                 >
                   Auto
@@ -144,7 +156,7 @@ export default function Controls({
                   className="rounded-l-none"
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.setSaveDirectory(saveDir);
+                    cameraNode.setSaveDir(saveDir);
                   }}
                 >
                   Set
