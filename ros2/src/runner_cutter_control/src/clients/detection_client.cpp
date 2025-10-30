@@ -34,6 +34,10 @@ DetectionClient::DetectionClient(rclcpp::Node& callerNode,
       callerNode.create_client<detection_interfaces::srv::GetState>(
           servicePrefix + "/get_state", rmw_qos_profile_services_default,
           clientCallbackGroup_);
+  getPositionsClient_ =
+      callerNode.create_client<detection_interfaces::srv::GetPositions>(
+          servicePrefix + "/get_positions", rmw_qos_profile_services_default,
+          clientCallbackGroup_);
 }
 
 detection_interfaces::msg::DetectionResult::SharedPtr
@@ -161,4 +165,31 @@ detection_interfaces::msg::State::SharedPtr DetectionClient::getState() {
 
   auto result{future.get()};
   return std::make_shared<detection_interfaces::msg::State>(result->state);
+}
+
+std::optional<std::vector<Position>> DetectionClient::getPositions(
+    const std::vector<NormalizedPixelCoord>& normalizedPixelCoords) {
+  auto request{
+      std::make_shared<detection_interfaces::srv::GetPositions::Request>()};
+  for (const auto& coord : normalizedPixelCoords) {
+    common_interfaces::msg::Vector2 coordMsg;
+    coordMsg.x = coord.u;
+    coordMsg.y = coord.v;
+    request->normalized_pixel_coords.push_back(coordMsg);
+  }
+  auto future{getPositionsClient_->async_send_request(request)};
+  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
+      std::future_status::ready) {
+    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
+    return std::nullopt;
+  }
+
+  auto result{future.get()};
+  std::vector<Position> positions;
+  for (const auto& position : result->positions) {
+    positions.push_back(Position{static_cast<float>(position.x),
+                                 static_cast<float>(position.y),
+                                 static_cast<float>(position.z)});
+  }
+  return positions;
 }
