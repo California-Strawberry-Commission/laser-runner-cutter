@@ -3,6 +3,7 @@
 #include "detection_interfaces/msg/detection_result.hpp"
 #include "detection_interfaces/msg/state.hpp"
 #include "detection_interfaces/srv/get_detection_result.hpp"
+#include "detection_interfaces/srv/get_positions.hpp"
 #include "detection_interfaces/srv/get_state.hpp"
 #include "detection_interfaces/srv/start_detection.hpp"
 #include "detection_interfaces/srv/stop_detection.hpp"
@@ -28,6 +29,8 @@ class DetectionClient {
   bool stopRecordingVideo();
   bool setSaveDirectory(const std::string& saveDirectory);
   detection_interfaces::msg::State::SharedPtr getState();
+  std::optional<std::vector<Position>> getPositions(
+      const std::vector<NormalizedPixelCoord>& normalizedPixelCoords);
 
  private:
   rclcpp::Node& node_;
@@ -46,4 +49,6 @@ class DetectionClient {
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr stopRecordingVideoClient_;
   rclcpp::Client<detection_interfaces::srv::GetState>::SharedPtr
       getStateClient_;
+  rclcpp::Client<detection_interfaces::srv::GetPositions>::SharedPtr
+      getPositionsClient_;
 };
