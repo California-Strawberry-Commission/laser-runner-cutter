@@ -19,10 +19,12 @@ import { useCallback } from "react";
 
 export default function Controls({
   cameraNodeName,
+  detectionNodeName,
   laserNodeName,
   controlNodeName,
 }: {
   cameraNodeName: string;
+  detectionNodeName: string;
   laserNodeName: string;
   controlNodeName: string;
 }) {
@@ -93,7 +95,7 @@ export default function Controls({
       </p>
       <FramePreviewLiveKit
         className="w-full h-[480px]"
-        topicName={`${cameraNodeName}/debug_frame`}
+        topicName={`${detectionNodeName}/debug/image`}
         enableStream={
           cameraNode.state.deviceState === CameraDeviceState.STREAMING
         }

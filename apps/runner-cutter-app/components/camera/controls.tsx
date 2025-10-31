@@ -9,17 +9,20 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { InputWithLabel } from "@/components/ui/input-with-label";
 import useCameraNode, {
-  DeviceState as CameraDeviceState,
-  DetectionType,
+  DeviceState as CameraDeviceState
 } from "@/lib/useCameraNode";
+import useDetectionNode, {DetectionType} from "@/lib/useDetectionNode";
 import { useEffect, useState } from "react";
 
 export default function Controls({
   cameraNodeName,
+  detectionNodeName,
 }: {
   cameraNodeName: string;
+  detectionNodeName: string;
 }) {
   const cameraNode = useCameraNode(cameraNodeName);
+  const detectionNode = useDetectionNode(detectionNodeName);
   const [exposureUs, setExposureUs] = useState<number>(0.0);
   const [gainDb, setGainDb] = useState<number>(0.0);
   const [saveDir, setSaveDir] = useState<string>("");
@@ -28,21 +31,34 @@ export default function Controls({
   const cameraDeviceState = convertCameraNodeDeviceState(cameraNode);
   const disableButtons = cameraDeviceState !== DeviceState.CONNECTED;
 
-  // Sync text inputs to node state
+  // Sync text inputs to node params
   useEffect(() => {
-    setExposureUs(cameraNode.state.exposureUs);
-    setGainDb(cameraNode.state.gainDb);
-    setSaveDir(cameraNode.state.saveDirectory);
-    setIntervalSecs(cameraNode.state.imageCaptureIntervalSecs);
-  }, [
+    async function fetchParams() {
+      if (cameraNode.connected) {
+        const exposureUs = await cameraNode.getExposureUs();
+        setExposureUs(exposureUs);
+
+        const gainDb = await cameraNode.getGainDb();
+        setGainDb(gainDb);
+
+        const saveDir = await cameraNode.getSaveDir();
+        setSaveDir(saveDir);
+
+        const imageCaptureIntervalSecs = await cameraNode.getImageCaptureIntervalSecs();
+        setIntervalSecs(imageCaptureIntervalSecs);
+      }
+    }
+
+    fetchParams();
+  },
+  // We intentionally did not add cameraNode to deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [
+    cameraNode.connected,
     setExposureUs,
-    cameraNode.state.exposureUs,
     setGainDb,
-    cameraNode.state.gainDb,
     setSaveDir,
-    cameraNode.state.saveDirectory,
     setIntervalSecs,
-    cameraNode.state.imageCaptureIntervalSecs,
   ]);
 
   return (
@@ -79,7 +95,7 @@ export default function Controls({
                   className="rounded-none"
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.setExposure(exposureUs);
+                    cameraNode.setExposureUs(exposureUs);
                   }}
                 >
                   Set
@@ -88,7 +104,8 @@ export default function Controls({
                   className="rounded-l-none"
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.autoExposure();
+                    cameraNode.setExposureUs(-1);
+                    setExposureUs(-1);
                   }}
                 >
                   Auto
@@ -115,7 +132,7 @@ export default function Controls({
                   className="rounded-none"
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.setGain(gainDb);
+                    cameraNode.setGainDb(gainDb);
                   }}
                 >
                   Set
@@ -124,7 +141,8 @@ export default function Controls({
                   className="rounded-l-none"
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.autoGain();
+                    cameraNode.setGainDb(-1);
+                    setGainDb(-1);
                   }}
                 >
                   Auto
@@ -146,7 +164,8 @@ export default function Controls({
                   className="rounded-l-none"
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.setSaveDirectory(saveDir);
+                    cameraNode.setSaveDir(saveDir);
+                    detectionNode.setSaveDir(saveDir);
                   }}
                 >
                   Set
@@ -154,11 +173,11 @@ export default function Controls({
               </div>
             </div>
             <div className="flex flex-row items-center gap-4">
-              {cameraNode.state.recordingVideo ? (
+              {detectionNode.state.recordingVideo ? (
                 <Button
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.stopRecordingVideo();
+                    detectionNode.stopRecordingVideo();
                   }}
                 >
                   Stop Recording Video
@@ -167,7 +186,7 @@ export default function Controls({
                 <Button
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.startRecordingVideo();
+                    detectionNode.startRecordingVideo();
                   }}
                 >
                   Start Recording Video
@@ -221,13 +240,13 @@ export default function Controls({
               </div>
             </div>
             <div className="flex flex-row items-center gap-4">
-              {cameraNode.state.enabledDetectionTypes.includes(
+              {detectionNode.state.enabledDetectionTypes.includes(
                 DetectionType.LASER
               ) ? (
                 <Button
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.stopDetection(DetectionType.LASER);
+                    detectionNode.stopDetection(DetectionType.LASER);
                   }}
                 >
                   Stop Laser Detection
@@ -236,19 +255,19 @@ export default function Controls({
                 <Button
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.startDetection(DetectionType.LASER);
+                    detectionNode.startDetection(DetectionType.LASER);
                   }}
                 >
                   Start Laser Detection
                 </Button>
               )}
-              {cameraNode.state.enabledDetectionTypes.includes(
+              {detectionNode.state.enabledDetectionTypes.includes(
                 DetectionType.RUNNER
               ) ? (
                 <Button
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.stopDetection(DetectionType.RUNNER);
+                    detectionNode.stopDetection(DetectionType.RUNNER);
                   }}
                 >
                   Stop Runner Detection
@@ -257,19 +276,19 @@ export default function Controls({
                 <Button
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.startDetection(DetectionType.RUNNER);
+                    detectionNode.startDetection(DetectionType.RUNNER);
                   }}
                 >
                   Start Runner Detection
                 </Button>
               )}
-              {cameraNode.state.enabledDetectionTypes.includes(
+              {detectionNode.state.enabledDetectionTypes.includes(
                 DetectionType.CIRCLE
               ) ? (
                 <Button
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.stopDetection(DetectionType.CIRCLE);
+                    detectionNode.stopDetection(DetectionType.CIRCLE);
                   }}
                 >
                   Stop Circle Detection
@@ -278,7 +297,7 @@ export default function Controls({
                 <Button
                   disabled={disableButtons}
                   onClick={() => {
-                    cameraNode.startDetection(DetectionType.CIRCLE);
+                    detectionNode.startDetection(DetectionType.CIRCLE);
                   }}
                 >
                   Start Circle Detection
@@ -290,7 +309,7 @@ export default function Controls({
       </div>
       <FramePreviewLiveKit
         className="w-full h-[480px]"
-        topicName={`${cameraNodeName}/debug_frame`}
+        topicName={`${detectionNodeName}/debug/image`}
         enableStream={
           cameraNode.state.deviceState === CameraDeviceState.STREAMING
         }

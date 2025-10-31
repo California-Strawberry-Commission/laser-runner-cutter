@@ -56,9 +56,7 @@ done
 
 # Build TensorRT models
 echo "Building TensorRT models"
-bash "$script_dir/../src/camera_control/scripts/build_tensorrt_models.sh"
-# TODO: uncomment below when we switch over to using the detection package
-# bash "$script_dir/../src/detection/scripts/build_tensorrt_engines.sh"
+bash "$script_dir/../src/detection/scripts/build_tensorrt_engines.sh"
 
 # Build ROS2 nodes
 cd "$ROS_WS_DIR"

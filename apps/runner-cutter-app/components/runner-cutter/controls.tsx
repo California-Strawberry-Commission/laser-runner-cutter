@@ -28,11 +28,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import useROS from "@/lib/ros/useROS";
-import useCameraNode, {
-  DeviceState as CameraDeviceState,
-  DetectionType,
-} from "@/lib/useCameraNode";
+import useCameraNode, { DeviceState as CameraDeviceState } from "@/lib/useCameraNode";
 import useControlNode, { TrackState } from "@/lib/useControlNode";
+import useDetectionNode, { DetectionType } from "@/lib/useDetectionNode";
 import useLaserNode from "@/lib/useLaserNode";
 import useLifecycleManagerNode from "@/lib/useLifecycleManagerNode";
 import { enumToLabel } from "@/lib/utils";
@@ -44,11 +42,13 @@ const DEVICE_TEMPERATURE_ALERT_THRESHOLD = 70.0;
 export default function Controls({
   lifecycleManagerNodeName,
   cameraNodeName,
+  detectionNodeName,
   laserNodeName,
   controlNodeName,
 }: {
   lifecycleManagerNodeName: string;
   cameraNodeName: string;
+  detectionNodeName: string;
   laserNodeName: string;
   controlNodeName: string;
 }) {
@@ -58,6 +58,7 @@ export default function Controls({
     lifecycleManagerNodeName
   );
   const cameraNode = useCameraNode(cameraNodeName);
+  const detectionNode = useDetectionNode(detectionNodeName);
   const laserNode = useLaserNode(laserNodeName);
   const controlNode = useControlNode(controlNodeName);
 
@@ -87,10 +88,11 @@ export default function Controls({
       rosbridgeNodeInfo,
       lifecycleManagerNode,
       cameraNode,
+      detectionNode,
       laserNode,
       controlNode,
     ];
-  }, [rosConnected, lifecycleManagerNode, cameraNode, laserNode, controlNode]);
+  }, [rosConnected, lifecycleManagerNode, cameraNode, detectionNode, laserNode, controlNode]);
 
   const restartServiceDialog = (
     <Dialog>
@@ -189,7 +191,7 @@ export default function Controls({
   ) {
     if (controlNode.state.state === "idle") {
       if (
-        cameraNode.state.enabledDetectionTypes.includes(DetectionType.RUNNER)
+        detectionNode.state.enabledDetectionTypes.includes(DetectionType.RUNNER)
       ) {
         runnerCutterState = RunnerCutterState.TRACKING;
       } else if (manualMode) {
@@ -269,7 +271,7 @@ export default function Controls({
             onStartClick={(mode: RunnerCutterMode) => {
               switch (mode) {
                 case RunnerCutterMode.TRACKING_ONLY:
-                  cameraNode.startDetection(DetectionType.RUNNER);
+                  detectionNode.startDetection(DetectionType.RUNNER);
                   break;
                 case RunnerCutterMode.AUTO:
                   controlNode.startRunnerCutter();
@@ -284,7 +286,7 @@ export default function Controls({
             onStopClick={() => {
               switch (runnerCutterState) {
                 case RunnerCutterState.TRACKING:
-                  cameraNode.stopDetection(DetectionType.RUNNER);
+                  detectionNode.stopDetection(DetectionType.RUNNER);
                   break;
                 case RunnerCutterState.ARMED_AUTO:
                   controlNode.stop();
@@ -302,7 +304,7 @@ export default function Controls({
       {deviceTemperatureAlert}
       <FramePreviewLiveKit
         className="w-full h-[360px]"
-        topicName={`${cameraNodeName}/debug_frame`}
+        topicName={`${detectionNodeName}/debug/image`}
         enableStream={
           cameraNode.state.deviceState === CameraDeviceState.STREAMING
         }

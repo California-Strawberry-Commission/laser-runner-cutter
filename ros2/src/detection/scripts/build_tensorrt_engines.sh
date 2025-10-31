@@ -12,6 +12,13 @@ fi
 for onnx_file in "$models_dir"/*.onnx; do
   filename="$(basename "$onnx_file" .onnx)"
   engine_file="$models_dir/${filename}.engine"
+
+  # Check if the engine file already exists
+  if [ -f "$engine_file" ]; then
+    echo "Skipping ${filename}: engine already exists at $engine_file"
+    continue
+  fi
+
   echo "Converting: $onnx_file"
   echo "Output:     $engine_file"
   echo "----------------------------------"

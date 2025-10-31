@@ -5,13 +5,15 @@
 
 #include "runner_cutter_control/calibration/point_correspondences.hpp"
 #include "runner_cutter_control/clients/camera_control_client.hpp"
+#include "runner_cutter_control/clients/detection_client.hpp"
 #include "runner_cutter_control/clients/laser_control_client.hpp"
 #include "runner_cutter_control/common_types.hpp"
 
 class Calibration {
  public:
   explicit Calibration(std::shared_ptr<LaserControlClient> laser,
-                       std::shared_ptr<CameraControlClient> camera);
+                       std::shared_ptr<CameraControlClient> camera,
+                       std::shared_ptr<DetectionClient> detection);
   ~Calibration() = default;
 
   FrameSize getCameraFrameSize() const;
@@ -142,6 +144,7 @@ class Calibration {
 
   std::shared_ptr<LaserControlClient> laser_;
   std::shared_ptr<CameraControlClient> camera_;
+  std::shared_ptr<DetectionClient> detection_;
   FrameSize cameraFrameSize_{0, 0};
   PointCorrespondences pointCorrespondences_{};
   bool isCalibrated_{false};

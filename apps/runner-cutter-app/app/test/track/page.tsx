@@ -2,6 +2,7 @@ import Controls from "@/components/track/controls";
 import {
   CAMERA_NODE_NAME,
   CONTROL_NODE_NAME,
+  DETECTION_NODE_NAME,
   LASER_NODE_NAME,
 } from "@/constants/node_names";
 
@@ -12,6 +13,7 @@ export default function Track() {
       <div className="items-center justify-center">
         <Controls
           cameraNodeName={CAMERA_NODE_NAME}
+          detectionNodeName={DETECTION_NODE_NAME}
           controlNodeName={CONTROL_NODE_NAME}
           laserNodeName={LASER_NODE_NAME}
         />

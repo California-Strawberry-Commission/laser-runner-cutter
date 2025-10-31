@@ -23,7 +23,7 @@ ros_launch() {
 # Run ROS nodes
 ros_launch "lifecycle_manager launch.py"
 ros_launch "runner_cutter_control rosbridge_websocket_launch.xml"
-ros_launch "runner_cutter_control launch.py"
+ros_launch "runner_cutter_control launch.py launch_nav_nodes:=False"
 
 # On Ctrl+C, forward SIGINT to all
 trap '
