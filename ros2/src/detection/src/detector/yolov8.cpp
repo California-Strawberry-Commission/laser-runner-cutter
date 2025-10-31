@@ -464,8 +464,6 @@ std::vector<YoloV8::Object> YoloV8::predict(const cv::cuda::GpuMat& imageRgb,
   ++numIterations;
 #endif
 
-  spdlog::info("Detected {} objects", detectedObjects.size());
-
   return detectedObjects;
 }
 

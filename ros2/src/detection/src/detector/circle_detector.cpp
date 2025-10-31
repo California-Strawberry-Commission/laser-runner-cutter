@@ -31,7 +31,7 @@ std::vector<CircleDetector::Circle> CircleDetector::detect(
   cv::GaussianBlur(gray, blurred, cv::Size(9, 9), 2);
 
   // Detect circles using HoughCircles
-  std::vector<cv::Vec3f> circles;
+  std::vector<cv::Vec4f> circles;
   cv::HoughCircles(blurred, circles, cv::HOUGH_GRADIENT,
                    1.2,  // dp: inverse ratio of accumulator resolution
                    50,   // minDist: minimum distance between centers
@@ -49,7 +49,7 @@ std::vector<CircleDetector::Circle> CircleDetector::detect(
 
     Circle circle;
     circle.point = cv::Point{x, y};
-    circle.conf = 1.0f;
+    circle.conf = c[3];  // votes
     detections.push_back(circle);
   }
 

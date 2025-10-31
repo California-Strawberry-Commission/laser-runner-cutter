@@ -23,6 +23,8 @@ void LaserDetector::drawDetections(
 
 std::vector<LaserDetector::Laser> LaserDetector::detect(
     const cv::Mat& imageRgb) {
+  // Note: this is an extremely simplistic approach and will only work well when
+  // the camera exposure is as low as possible
   cv::Mat gray;
   cv::cvtColor(imageRgb, gray, cv::COLOR_RGB2GRAY);
 
@@ -34,25 +36,16 @@ std::vector<LaserDetector::Laser> LaserDetector::detect(
   cv::findContours(thresh, contours, cv::RETR_EXTERNAL,
                    cv::CHAIN_APPROX_SIMPLE);
 
-  // Sort contours by area (descending)
-  std::sort(
-      contours.begin(), contours.end(),
-      [](const std::vector<cv::Point>& a, const std::vector<cv::Point>& b) {
-        return cv::contourArea(a) > cv::contourArea(b);
-      });
-
   std::vector<Laser> detections;
-
-  // Assume only one detection at most for now
-  if (!contours.empty()) {
-    cv::Moments M{cv::moments(contours[0])};
-    if (M.m00 != 0.0) {
-      int cx{static_cast<int>(M.m10 / M.m00)};
-      int cy{static_cast<int>(M.m01 / M.m00)};
+  for (const auto& contour : contours) {
+    cv::Moments m{cv::moments(contour)};
+    if (m.m00 != 0.0) {
+      int cx{static_cast<int>(m.m10 / m.m00)};
+      int cy{static_cast<int>(m.m01 / m.m00)};
 
       Laser laser;
       laser.point = cv::Point{cx, cy};
-      laser.conf = 1.0f;
+      laser.conf = cv::contourArea(contour);
       detections.push_back(laser);
     }
   }
