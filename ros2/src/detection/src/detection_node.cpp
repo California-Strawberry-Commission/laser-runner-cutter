@@ -477,19 +477,26 @@ class DetectionNode : public rclcpp::Node {
   detection_interfaces::msg::DetectionResult createDetectionResult(
       const std::vector<RunnerDetector::Runner>& detections,
       const sensor_msgs::msg::Image::ConstSharedPtr image) {
-    auto rgbdAlignment{getOrCreateRgbdAlignment()};
-    auto depthXyz{getDepthXyz(image)};
-    // Wrap the depthXyz data pointer (no copy)
-    cv::Mat depthXyzMat(depthXyz->height, depthXyz->width, CV_32FC3,
-                        const_cast<uint8_t*>(depthXyz->data.data()),
-                        depthXyz->step);
-
     detection_interfaces::msg::DetectionResult detectionResult;
     detectionResult.detection_type =
         detection_interfaces::msg::DetectionType::RUNNER;
     detectionResult.timestamp =
         static_cast<double>(image->header.stamp.sec) +
         static_cast<double>(image->header.stamp.nanosec) * 1e-9;
+
+    auto rgbdAlignment{getOrCreateRgbdAlignment()};
+    auto depthXyz{getDepthXyz(image)};
+    if (!rgbdAlignment || !depthXyz) {
+      RCLCPP_WARN(get_logger(),
+                  "[createDetectionResult] RgbdAlignment or depth XYZ is not "
+                  "available");
+      return detectionResult;
+    }
+    // Wrap the depthXyz data pointer (no copy)
+    cv::Mat depthXyzMat(depthXyz->height, depthXyz->width, CV_32FC3,
+                        const_cast<uint8_t*>(depthXyz->data.data()),
+                        depthXyz->step);
+
     for (const auto& runner : detections) {
       common_interfaces::msg::Vector2 pointMsg;
       pointMsg.x = static_cast<double>(runner.point.x);
@@ -523,19 +530,26 @@ class DetectionNode : public rclcpp::Node {
   detection_interfaces::msg::DetectionResult createDetectionResult(
       const std::vector<LaserDetector::Laser>& detections,
       const sensor_msgs::msg::Image::ConstSharedPtr image) {
-    auto rgbdAlignment{getOrCreateRgbdAlignment()};
-    auto depthXyz{getDepthXyz(image)};
-    // Wrap the depthXyz data pointer (no copy)
-    cv::Mat depthXyzMat(depthXyz->height, depthXyz->width, CV_32FC3,
-                        const_cast<uint8_t*>(depthXyz->data.data()),
-                        depthXyz->step);
-
     detection_interfaces::msg::DetectionResult detectionResult;
     detectionResult.detection_type =
         detection_interfaces::msg::DetectionType::LASER;
     detectionResult.timestamp =
         static_cast<double>(image->header.stamp.sec) +
         static_cast<double>(image->header.stamp.nanosec) * 1e-9;
+
+    auto rgbdAlignment{getOrCreateRgbdAlignment()};
+    auto depthXyz{getDepthXyz(image)};
+    if (!rgbdAlignment || !depthXyz) {
+      RCLCPP_WARN(get_logger(),
+                  "[createDetectionResult] RgbdAlignment or depth XYZ is not "
+                  "available");
+      return detectionResult;
+    }
+    // Wrap the depthXyz data pointer (no copy)
+    cv::Mat depthXyzMat(depthXyz->height, depthXyz->width, CV_32FC3,
+                        const_cast<uint8_t*>(depthXyz->data.data()),
+                        depthXyz->step);
+
     for (const auto& laser : detections) {
       common_interfaces::msg::Vector2 pointMsg;
       pointMsg.x = static_cast<double>(laser.point.x);
@@ -568,19 +582,26 @@ class DetectionNode : public rclcpp::Node {
   detection_interfaces::msg::DetectionResult createDetectionResult(
       const std::vector<CircleDetector::Circle>& detections,
       const sensor_msgs::msg::Image::ConstSharedPtr image) {
-    auto rgbdAlignment{getOrCreateRgbdAlignment()};
-    auto depthXyz{getDepthXyz(image)};
-    // Wrap the depthXyz data pointer (no copy)
-    cv::Mat depthXyzMat(depthXyz->height, depthXyz->width, CV_32FC3,
-                        const_cast<uint8_t*>(depthXyz->data.data()),
-                        depthXyz->step);
-
     detection_interfaces::msg::DetectionResult detectionResult;
     detectionResult.detection_type =
         detection_interfaces::msg::DetectionType::CIRCLE;
     detectionResult.timestamp =
         static_cast<double>(image->header.stamp.sec) +
         static_cast<double>(image->header.stamp.nanosec) * 1e-9;
+
+    auto rgbdAlignment{getOrCreateRgbdAlignment()};
+    auto depthXyz{getDepthXyz(image)};
+    if (!rgbdAlignment || !depthXyz) {
+      RCLCPP_WARN(get_logger(),
+                  "[createDetectionResult] RgbdAlignment or depth XYZ is not "
+                  "available");
+      return detectionResult;
+    }
+    // Wrap the depthXyz data pointer (no copy)
+    cv::Mat depthXyzMat(depthXyz->height, depthXyz->width, CV_32FC3,
+                        const_cast<uint8_t*>(depthXyz->data.data()),
+                        depthXyz->step);
+
     for (const auto& circle : detections) {
       common_interfaces::msg::Vector2 pointMsg;
       pointMsg.x = static_cast<double>(circle.point.x);
@@ -859,10 +880,22 @@ class DetectionNode : public rclcpp::Node {
       std::lock_guard<std::mutex> lock(lastColorImageMutex_);
       image = lastColorImage_;
     }
-
     if (!image) {
       return;
     }
+
+    auto rgbdAlignment{getOrCreateRgbdAlignment()};
+    auto depthXyz{getDepthXyz(image)};
+    if (!rgbdAlignment || !depthXyz) {
+      RCLCPP_WARN(
+          get_logger(),
+          "[onGetPositions] RgbdAlignment or depth XYZ is not available");
+      return;
+    }
+    // Wrap the depthXyz data pointer (no copy)
+    cv::Mat depthXyzMat(depthXyz->height, depthXyz->width, CV_32FC3,
+                        const_cast<uint8_t*>(depthXyz->data.data()),
+                        depthXyz->step);
 
     for (const auto& p : request->normalized_pixel_coords) {
       // Clamp normalized coordinates to [0, 1]
@@ -874,12 +907,6 @@ class DetectionNode : public rclcpp::Node {
       int y{static_cast<int>(std::round(ny * image->height))};
 
       // Get 3D position
-      auto rgbdAlignment{getOrCreateRgbdAlignment()};
-      auto depthXyz{getDepthXyz(image)};
-      // Wrap the depthXyz data pointer (no copy)
-      cv::Mat depthXyzMat(depthXyz->height, depthXyz->width, CV_32FC3,
-                          const_cast<uint8_t*>(depthXyz->data.data()),
-                          depthXyz->step);
       auto positionOpt{
           rgbdAlignment->getPosition(cv::Point(x, y), depthXyzMat)};
 

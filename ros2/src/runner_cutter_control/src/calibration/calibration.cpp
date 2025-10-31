@@ -300,11 +300,11 @@ Calibration::findPointCorrespondence(const LaserCoord& laserCoord,
 
     // In case multiple lasers were detected, use the instance with the highest
     // confidence
-    const auto& bestInstance =
+    const auto& bestInstance{
         *std::max_element(result->instances.begin(), result->instances.end(),
                           [](const auto& a, const auto& b) {
                             return a.confidence < b.confidence;
-                          });
+                          })};
     PixelCoord cameraPixelCoord{
         static_cast<int>(std::round(bestInstance.point.x)),
         static_cast<int>(std::round(bestInstance.point.y))};
