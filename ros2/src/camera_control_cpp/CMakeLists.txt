@@ -173,4 +173,9 @@ install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}/
 )
 
+# Install calibration params files
+install(DIRECTORY calibration_params
+  DESTINATION share/${PROJECT_NAME}/
+)
+
 ament_package()

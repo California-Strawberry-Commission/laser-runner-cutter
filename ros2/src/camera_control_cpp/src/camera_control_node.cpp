@@ -70,7 +70,7 @@ struct CalibrationParams {
 CalibrationParams readCalibrationParams(
     const std::string& calib_id = "1c0faf4b115d1c0faf4d17ce") {
   std::string packageShareDirectory{
-      ament_index_cpp::get_package_share_directory("camera_control")};
+      ament_index_cpp::get_package_share_directory("camera_control_cpp")};
   std::filesystem::path calibParamsDir{
       std::filesystem::path(packageShareDirectory) / "calibration_params" /
       calib_id};
