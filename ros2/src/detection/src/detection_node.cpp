@@ -12,7 +12,7 @@
 #include <opencv2/opencv.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 
-#include "camera_control_cpp/utils/rgbd_alignment.hpp"
+#include "camera_control/utils/rgbd_alignment.hpp"
 #include "common_interfaces/msg/vector2.hpp"
 #include "common_interfaces/msg/vector3.hpp"
 #include "detection/detector/circle_detector.hpp"

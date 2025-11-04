@@ -9,8 +9,8 @@
 #include <optional>
 #include <rclcpp_components/register_node_macro.hpp>
 
-#include "camera_control_cpp/camera/calibration.hpp"
-#include "camera_control_cpp/camera/lucid_camera.hpp"
+#include "camera_control/camera/calibration.hpp"
+#include "camera_control/camera/lucid_camera.hpp"
 #include "camera_control_interfaces/msg/device_state.hpp"
 #include "camera_control_interfaces/msg/state.hpp"
 #include "camera_control_interfaces/srv/acquire_single_frame.hpp"
@@ -70,7 +70,7 @@ struct CalibrationParams {
 CalibrationParams readCalibrationParams(
     const std::string& calib_id = "1c0faf4b115d1c0faf4d17ce") {
   std::string packageShareDirectory{
-      ament_index_cpp::get_package_share_directory("camera_control_cpp")};
+      ament_index_cpp::get_package_share_directory("camera_control")};
   std::filesystem::path calibParamsDir{
       std::filesystem::path(packageShareDirectory) / "calibration_params" /
       calib_id};
