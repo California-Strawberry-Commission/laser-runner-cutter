@@ -517,7 +517,7 @@ class DetectionNode : public rclcpp::Node {
         objectInstance.confidence = runner.conf;
         objectInstance.point = pointMsg;
         objectInstance.position = positionMsg;
-        objectInstance.track_id = runner.trackId;
+        objectInstance.track_id = runner.trackId > 0 ? runner.trackId : 0;
         detectionResult.instances.push_back(objectInstance);
       } else {
         detectionResult.invalid_points.push_back(pointMsg);

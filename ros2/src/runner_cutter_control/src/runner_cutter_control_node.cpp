@@ -450,80 +450,120 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
   void onDetection(
       const detection_interfaces::msg::DetectionResult::SharedPtr msg) {
-    if (msg->detection_type ==
-            detection_interfaces::msg::DetectionType::RUNNER ||
-        msg->detection_type ==
+    if (msg->detection_type !=
+            detection_interfaces::msg::DetectionType::RUNNER &&
+        msg->detection_type !=
             detection_interfaces::msg::DetectionType::CIRCLE) {
-      // For new tracks, add to tracker and set as pending. For tracks that are
-      // detected again, update the track pixel and position; for FAILED tracks,
-      // set them as PENDING since they may have moved since the last detection.
-      std::unordered_set<uint32_t> prevPendingTracks;
-      for (const auto& track :
-           tracker_->getTracksWithState(Track::State::PENDING)) {
-        prevPendingTracks.insert(track->getId());
+      return;
+    }
+
+    // For new tracks, add to tracker and set as pending. For tracks that are
+    // detected again, update the track pixel and position; for FAILED tracks,
+    // set them as PENDING since they may have moved since the last detection.
+    std::unordered_set<uint32_t> prevPendingTracks;
+    for (const auto& track :
+         tracker_->getTracksWithState(Track::State::PENDING)) {
+      prevPendingTracks.insert(track->getId());
+    }
+
+    std::unordered_set<uint32_t> prevDetectedTrackIds{lastDetectedTrackIds_};
+    lastDetectedTrackIds_.clear();
+
+    if (msg->detection_type ==
+        detection_interfaces::msg::DetectionType::CIRCLE) {
+      // Circle tracking is for testing purposes. Just take the detection with
+      // the highest confidence to track.
+      if (!msg->instances.empty()) {
+        auto obj{*std::max_element(msg->instances.begin(), msg->instances.end(),
+                                   [](const auto& a, const auto& b) {
+                                     return a.confidence < b.confidence;
+                                   })};
       }
+    }
 
-      std::unordered_set<uint32_t> prevDetectedTrackIds{lastDetectedTrackIds_};
-      lastDetectedTrackIds_.clear();
-
+    if (msg->detection_type ==
+        detection_interfaces::msg::DetectionType::RUNNER) {
       for (const auto& instance : msg->instances) {
-        PixelCoord pixel{static_cast<int>(std::round(instance.point.x)),
-                         static_cast<int>(std::round(instance.point.y))};
-        Position position{static_cast<float>(instance.position.x),
-                          static_cast<float>(instance.position.y),
-                          static_cast<float>(instance.position.z)};
+        processDetectionInstance(instance, msg->timestamp * 1000.0);
+      }
+    } else {
+      // Circle tracking is for testing purposes. Just take the detection with
+      // the highest confidence to track.
+      if (!msg->instances.empty()) {
+        auto obj{*std::max_element(msg->instances.begin(), msg->instances.end(),
+                                   [](const auto& a, const auto& b) {
+                                     return a.confidence < b.confidence;
+                                   })};
+        auto copy{obj};
+        copy.track_id = 1;
+        processDetectionInstance(copy, msg->timestamp * 1000.0);
+      }
+    }
 
-        std::shared_ptr<Track> track;
-        try {
-          track =
-              tracker_->addTrack(instance.track_id, pixel, position,
-                                 msg->timestamp * 1000.0, instance.confidence);
-        } catch (const std::exception& e) {
+    // Mark as FAILED any tracks that were previously detected, are PENDING,
+    // but are no longer detected.
+    for (auto trackId : prevDetectedTrackIds) {
+      if (lastDetectedTrackIds_.find(trackId) == lastDetectedTrackIds_.end()) {
+        // We found a track that was previously detected but not anymore
+        auto trackOpt{tracker_->getTrack(trackId)};
+        if (!trackOpt) {
           continue;
         }
+        auto track{std::move(*trackOpt)};
 
-        lastDetectedTrackIds_.insert(instance.track_id);
-
-        // Put detected tracks that are marked as failed back into the pending
-        // queue, since we want to reattempt to burn them (up to targetAttempts
-        // times) as they could now potentially be in bounds.
-        int numAttempts{getParamTargetAttempts()};
-        if (track->getState() == Track::State::FAILED &&
-            (numAttempts < 0 || track->getStateCount(Track::State::FAILED) <
-                                    static_cast<std::size_t>(numAttempts))) {
-          tracker_->processTrack(track->getId(), Track::State::PENDING);
+        track->setPixel({-1, -1});
+        track->setPosition({-1.0f, -1.0f, -1.0f});
+        if (track->getState() == Track::State::PENDING) {
+          tracker_->processTrack(trackId, Track::State::FAILED);
         }
       }
+    }
 
-      // Mark as FAILED any tracks that were previously detected, are PENDING,
-      // but are no longer detected.
-      for (auto trackId : prevDetectedTrackIds) {
-        if (lastDetectedTrackIds_.find(trackId) ==
-            lastDetectedTrackIds_.end()) {
-          // We found a track that was previously detected but not anymore
-          auto trackOpt{tracker_->getTrack(trackId)};
-          if (!trackOpt) {
-            continue;
-          }
-          auto track{std::move(*trackOpt)};
+    // Notify when the pending tracks have changed
+    std::unordered_set<uint32_t> pendingTracks;
+    for (const auto& track :
+         tracker_->getTracksWithState(Track::State::PENDING)) {
+      pendingTracks.insert(track->getId());
+    }
+    if (prevPendingTracks != pendingTracks) {
+      pendingTracksChangedEvent_.set();
+    }
+  }
 
-          track->setPixel({-1, -1});
-          track->setPosition({-1.0f, -1.0f, -1.0f});
-          if (track->getState() == Track::State::PENDING) {
-            tracker_->processTrack(trackId, Track::State::FAILED);
-          }
-        }
-      }
+  void processDetectionInstance(
+      const detection_interfaces::msg::ObjectInstance& instance,
+      double timestampMs) {
+    // A track ID of 0 is invalid (indicates that there is no track ID
+    // associated with the instance)
+    if (instance.track_id <= 0) {
+      return;
+    }
 
-      // Notify when the pending tracks have changed
-      std::unordered_set<uint32_t> pendingTracks;
-      for (const auto& track :
-           tracker_->getTracksWithState(Track::State::PENDING)) {
-        pendingTracks.insert(track->getId());
-      }
-      if (prevPendingTracks != pendingTracks) {
-        pendingTracksChangedEvent_.set();
-      }
+    // Attempt to add the track to the Tracker.
+    PixelCoord pixel{static_cast<int>(std::round(instance.point.x)),
+                     static_cast<int>(std::round(instance.point.y))};
+    Position position{static_cast<float>(instance.position.x),
+                      static_cast<float>(instance.position.y),
+                      static_cast<float>(instance.position.z)};
+
+    std::shared_ptr<Track> track;
+    try {
+      track = tracker_->addTrack(instance.track_id, pixel, position,
+                                 timestampMs, instance.confidence);
+    } catch (const std::exception& e) {
+      return;
+    }
+
+    lastDetectedTrackIds_.insert(instance.track_id);
+
+    // Put detected tracks that are marked as failed back into the pending
+    // queue, since we want to reattempt to burn them (up to targetAttempts
+    // times) as they could now potentially be in bounds.
+    int numAttempts{getParamTargetAttempts()};
+    if (track->getState() == Track::State::FAILED &&
+        (numAttempts < 0 || track->getStateCount(Track::State::FAILED) <
+                                static_cast<std::size_t>(numAttempts))) {
+      tracker_->processTrack(track->getId(), Track::State::PENDING);
     }
   }
 
