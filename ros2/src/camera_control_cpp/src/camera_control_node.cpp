@@ -125,7 +125,8 @@ CalibrationParams readCalibrationParams(
 }
 
 sensor_msgs::msg::CameraInfo createCameraInfo(const cv::Mat& distCoeffs,
-                                              const cv::Mat& intrinsicMatrix) {
+                                              const cv::Mat& intrinsicMatrix,
+                                              const cv::Rect& roi) {
   if (intrinsicMatrix.rows != 3 || intrinsicMatrix.cols != 3) {
     throw std::runtime_error("Intrinsic matrix must be 3x3");
   }
@@ -149,6 +150,11 @@ sensor_msgs::msg::CameraInfo createCameraInfo(const cv::Mat& distCoeffs,
   cameraInfo.k[6] = intrinsicMatrix.at<double>(2, 0);
   cameraInfo.k[7] = intrinsicMatrix.at<double>(2, 1);
   cameraInfo.k[8] = intrinsicMatrix.at<double>(2, 2);
+
+  cameraInfo.roi.width = std::max(0, roi.width);
+  cameraInfo.roi.height = std::max(0, roi.height);
+  cameraInfo.roi.x_offset = std::max(0, roi.x);
+  cameraInfo.roi.y_offset = std::max(0, roi.y);
 
   return cameraInfo;
 }
@@ -293,19 +299,24 @@ class CameraControlNode : public rclcpp::Node {
     ///////////////
     // Camera Setup
     ///////////////
+    // TODO: be able to set ROI size and offset via params
+    std::pair<int, int> colorRoiSize{2048, 1536};
+    LucidCamera::StateChangeCallback stateChangeCallback =
+        [this](LucidCamera::State) { publishState(); };
+    camera_ = std::make_unique<LucidCamera>(
+        /*colorCameraSerialNumber=*/std::nullopt,
+        /*depthCameraSerialNumber=*/std::nullopt, colorRoiSize,
+        stateChangeCallback);
     calibrationParams_ = readCalibrationParams(getParamCalibrationId());
     colorCameraInfo_ =
         createCameraInfo(calibrationParams_.tritonDistCoeffs,
-                         calibrationParams_.tritonIntrinsicMatrix);
-    depthCameraInfo_ =
-        createCameraInfo(calibrationParams_.heliosDistCoeffs,
-                         calibrationParams_.heliosIntrinsicMatrix);
-
-    LucidCamera::StateChangeCallback stateChangeCallback =
-        [this](LucidCamera::State) { publishState(); };
-    camera_ = std::make_unique<LucidCamera>(std::nullopt, std::nullopt,
-                                            std::pair<int, int>{2048, 1536},
-                                            stateChangeCallback);
+                         calibrationParams_.tritonIntrinsicMatrix,
+                         cv::Rect{(2048 - colorRoiSize.first) / 2,
+                                  (2048 - colorRoiSize.second) / 2,
+                                  colorRoiSize.first, colorRoiSize.second});
+    depthCameraInfo_ = createCameraInfo(
+        calibrationParams_.heliosDistCoeffs,
+        calibrationParams_.heliosIntrinsicMatrix, cv::Rect{0, 0, 640, 480});
 
     // Publish extrinsics via tf2's StaticTransformBroadcaster once at startup
     auto worldToColorTransform{
