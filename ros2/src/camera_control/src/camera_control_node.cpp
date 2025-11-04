@@ -9,8 +9,8 @@
 #include <optional>
 #include <rclcpp_components/register_node_macro.hpp>
 
-#include "camera_control_cpp/camera/calibration.hpp"
-#include "camera_control_cpp/camera/lucid_camera.hpp"
+#include "camera_control/camera/calibration.hpp"
+#include "camera_control/camera/lucid_camera.hpp"
 #include "camera_control_interfaces/msg/device_state.hpp"
 #include "camera_control_interfaces/msg/state.hpp"
 #include "camera_control_interfaces/srv/acquire_single_frame.hpp"

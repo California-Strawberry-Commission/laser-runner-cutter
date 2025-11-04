@@ -1,4 +1,4 @@
-#include "camera_control_cpp/utils/rgbd_alignment.hpp"
+#include "camera_control/utils/rgbd_alignment.hpp"
 
 #include <spdlog/spdlog.h>
 

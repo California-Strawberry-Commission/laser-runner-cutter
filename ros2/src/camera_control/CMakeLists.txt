@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(camera_control_cpp)
+project(camera_control)
 
 # Default to C++17
 if(NOT CMAKE_CXX_STANDARD)
@@ -137,7 +137,7 @@ target_link_libraries(lucid_calibrate PRIVATE camera CLI11::CLI11 spdlog::spdlog
 
 # Install lib + headers that should be available to other packages
 install(TARGETS utils
-  EXPORT export_camera_control_cpp_targets
+  EXPORT export_camera_control_targets
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
@@ -145,14 +145,14 @@ install(TARGETS utils
 )
 install(DIRECTORY include/ DESTINATION include)
 
-# Export the targets with a namespace so downstream sees camera_control_cpp::utils
-install(EXPORT export_camera_control_cpp_targets
-  NAMESPACE camera_control_cpp::
+# Export the targets with a namespace so downstream sees camera_control::utils
+install(EXPORT export_camera_control_targets
+  NAMESPACE camera_control::
   DESTINATION share/${PROJECT_NAME}/cmake
 )
 
 # ament export metadata
-ament_export_targets(export_camera_control_cpp_targets HAS_LIBRARY_TARGET)
+ament_export_targets(export_camera_control_targets HAS_LIBRARY_TARGET)
 ament_export_include_directories(include)
 
 # Install composable node
@@ -170,6 +170,11 @@ install(TARGETS
 
 # Install launch files
 install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}/
+)
+
+# Install calibration params files
+install(DIRECTORY calibration_params
   DESTINATION share/${PROJECT_NAME}/
 )
 

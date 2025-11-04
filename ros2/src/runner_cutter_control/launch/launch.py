@@ -150,7 +150,7 @@ def generate_launch_description():
         emulate_tty=True,
         composable_node_descriptions=[
             ComposableNode(
-                package="camera_control_cpp",
+                package="camera_control",
                 plugin="CameraControlNode",
                 name="camera0",
                 parameters=[parameters_file],

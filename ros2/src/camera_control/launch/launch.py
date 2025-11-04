@@ -15,7 +15,7 @@ def generate_launch_description():
                 emulate_tty=True,
                 composable_node_descriptions=[
                     ComposableNode(
-                        package="camera_control_cpp",
+                        package="camera_control",
                         plugin="CameraControlNode",
                         name="camera_control_node",
                         extra_arguments=[{"use_intra_process_comms": True}],

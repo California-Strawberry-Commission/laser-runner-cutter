@@ -1,4 +1,4 @@
-#include "camera_control_cpp/camera/lucid_camera.hpp"
+#include "camera_control/camera/lucid_camera.hpp"
 
 #include <chrono>
 

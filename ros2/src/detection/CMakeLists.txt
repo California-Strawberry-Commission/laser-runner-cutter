@@ -27,7 +27,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(detection_interfaces REQUIRED)
-find_package(camera_control_cpp REQUIRED) 
+find_package(camera_control REQUIRED) 
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
 # Use locally built OpenCV with CUDA support
@@ -102,7 +102,7 @@ endif()
 add_library(detection_node_composable SHARED
   src/detection_node.cpp
 )
-target_link_libraries(detection_node_composable PRIVATE detector camera_control_cpp::utils fmt::fmt ${OpenCV_LIBS})
+target_link_libraries(detection_node_composable PRIVATE detector camera_control::utils fmt::fmt ${OpenCV_LIBS})
 ament_target_dependencies(detection_node_composable PUBLIC
   rclcpp
   rclcpp_components
