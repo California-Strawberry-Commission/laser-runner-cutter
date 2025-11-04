@@ -7,6 +7,46 @@
 #include "sensor_msgs/image_encodings.hpp"
 #include "spdlog/spdlog.h"
 
+namespace {
+
+std::optional<Arena::DeviceInfo> findFirstDeviceWithModelPrefix(
+    std::vector<Arena::DeviceInfo>& deviceInfos,
+    const std::vector<std::string>& modelPrefixes) {
+  auto it{std::find_if(deviceInfos.begin(), deviceInfos.end(),
+                       [&modelPrefixes](Arena::DeviceInfo& deviceInfo) {
+                         return std::any_of(
+                             modelPrefixes.begin(), modelPrefixes.end(),
+                             [&deviceInfo](const std::string& prefix) {
+                               return std::strncmp(
+                                          deviceInfo.ModelName().c_str(),
+                                          prefix.c_str(), prefix.length()) == 0;
+                             });
+                       })};
+  if (it != deviceInfos.end()) {
+    return *it;
+  }
+  return std::nullopt;
+}
+
+std::optional<Arena::DeviceInfo> findDeviceWithSerial(
+    std::vector<Arena::DeviceInfo>& deviceInfos,
+    const std::string& serialNumber) {
+  auto it{std::find_if(
+      deviceInfos.begin(), deviceInfos.end(),
+      [&serialNumber](Arena::DeviceInfo& deviceInfo) {
+        return deviceInfo.SerialNumber().length() == serialNumber.length() &&
+               std::strncmp(deviceInfo.SerialNumber().c_str(),
+                            serialNumber.c_str(), serialNumber.length()) == 0;
+      })};
+
+  if (it != deviceInfos.end()) {
+    return *it;
+  }
+  return std::nullopt;
+}
+
+}  // namespace
+
 LucidCamera::LucidCamera(std::optional<std::string> colorCameraSerialNumber,
                          std::optional<std::string> depthCameraSerialNumber,
                          std::pair<int, int> colorFrameSize,
@@ -163,42 +203,6 @@ void LucidCamera::connectionThreadFn(CaptureMode captureMode, double exposureUs,
   // Clean up existing connection
   stopStream();
   spdlog::info("Terminating connection thread");
-}
-
-std::optional<Arena::DeviceInfo> LucidCamera::findFirstDeviceWithModelPrefix(
-    std::vector<Arena::DeviceInfo>& deviceInfos,
-    const std::vector<std::string>& modelPrefixes) {
-  auto it{std::find_if(deviceInfos.begin(), deviceInfos.end(),
-                       [&modelPrefixes](Arena::DeviceInfo& deviceInfo) {
-                         return std::any_of(
-                             modelPrefixes.begin(), modelPrefixes.end(),
-                             [&deviceInfo](const std::string& prefix) {
-                               return std::strncmp(
-                                          deviceInfo.ModelName().c_str(),
-                                          prefix.c_str(), prefix.length()) == 0;
-                             });
-                       })};
-  if (it != deviceInfos.end()) {
-    return *it;
-  }
-  return std::nullopt;
-}
-
-std::optional<Arena::DeviceInfo> LucidCamera::findDeviceWithSerial(
-    std::vector<Arena::DeviceInfo>& deviceInfos,
-    const std::string& serialNumber) {
-  auto it{std::find_if(
-      deviceInfos.begin(), deviceInfos.end(),
-      [&serialNumber](Arena::DeviceInfo& deviceInfo) {
-        return deviceInfo.SerialNumber().length() == serialNumber.length() &&
-               std::strncmp(deviceInfo.SerialNumber().c_str(),
-                            serialNumber.c_str(), serialNumber.length()) == 0;
-      })};
-
-  if (it != deviceInfos.end()) {
-    return *it;
-  }
-  return std::nullopt;
 }
 
 void LucidCamera::startStream(const Arena::DeviceInfo& colorDeviceInfo,

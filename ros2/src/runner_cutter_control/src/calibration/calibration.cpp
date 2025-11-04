@@ -5,13 +5,15 @@
 #include <filesystem>
 #include <fstream>
 
-#include "camera_control_interfaces/msg/detection_type.hpp"
+#include "detection_interfaces/msg/detection_type.hpp"
 #include "runner_cutter_control/clients/laser_detection_context.hpp"
 
 Calibration::Calibration(std::shared_ptr<LaserControlClient> laser,
-                         std::shared_ptr<CameraControlClient> camera)
+                         std::shared_ptr<CameraControlClient> camera,
+                         std::shared_ptr<DetectionClient> detection)
     : laser_{std::move(laser)},
       camera_{std::move(camera)},
+      detection_{std::move(detection)},
       pointCorrespondences_{} {}
 
 FrameSize Calibration::getCameraFrameSize() const { return cameraFrameSize_; }
@@ -44,14 +46,13 @@ bool Calibration::calibrate(
   reset();
 
   // Get color frame size
-  auto frameOpt{camera_->getFrame()};
-  if (!frameOpt) {
+  auto state{camera_->getState()};
+  cameraFrameSize_ = {static_cast<int>(state->color_width),
+                      static_cast<int>(state->color_height)};
+  if (cameraFrameSize_.width <= 0 || cameraFrameSize_.height <= 0) {
+    spdlog::warn("Invalid camera frame size.");
     return false;
   }
-  auto frame{std::move(*frameOpt)};
-
-  cameraFrameSize_ = {static_cast<int>(frame.colorFrame->width),
-                      static_cast<int>(frame.colorFrame->height)};
 
   // Get calibration points
   float xMin{xBounds.first};
@@ -145,11 +146,9 @@ std::size_t Calibration::addCalibrationPoints(
       }
 
       laser_->setPoint(laserCoord);
-      // Give sufficient time for galvo to settle.
-      // TODO: This shouldn't be necessary in theory since getDetection waits
-      // for several frames before running detection, so we'll need to figure
-      // out why this helps.
-      std::this_thread::sleep_for(std::chrono::duration<float>(0.1f));
+      // Give sufficient time for the galvo to settle and for a new camera frame
+      // to become available
+      std::this_thread::sleep_for(std::chrono::duration<float>(0.15f));
 
       auto resultOpt{findPointCorrespondence(laserCoord)};
 
@@ -290,8 +289,8 @@ Calibration::findPointCorrespondence(const LaserCoord& laserCoord,
   for (int attempt = 0; attempt < numAttempts; ++attempt) {
     spdlog::info("Attempt {} to detect laser and find point correspondence.",
                  attempt);
-    auto result{camera_->getDetection(
-        camera_control_interfaces::msg::DetectionType::LASER, true)};
+    auto result{detection_->getDetection(
+        detection_interfaces::msg::DetectionType::LASER)};
     if (result->instances.empty()) {
       std::this_thread::sleep_for(
           std::chrono::duration<float>(attemptIntervalSecs));

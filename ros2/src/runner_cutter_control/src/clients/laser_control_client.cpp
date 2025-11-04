@@ -71,7 +71,7 @@ bool LaserControlClient::setColor(const LaserColor& color) {
       {rclcpp::Parameter("color", colorVec)})};
   if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
       std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
+    RCLCPP_ERROR(node_.get_logger(), "Set parameter timed out.");
     return false;
   }
 

@@ -59,8 +59,11 @@ export default function Controls({
   useEffect(() => {
     async function fetchParams() {
       if (cameraNode.connected) {
-        setExposureUs(cameraNode.state.exposureUs);
-        setGainDb(cameraNode.state.gainDb);
+        const exposureUs = await cameraNode.getExposureUs();
+        setExposureUs(exposureUs);
+
+        const gainDb = await cameraNode.getGainDb();
+        setGainDb(gainDb);
       }
 
       if (controlNode.connected) {
@@ -129,13 +132,12 @@ export default function Controls({
     }
 
     fetchParams();
-    // We intentionally did not add controlNode to deps
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
+  },
+  // We intentionally did not add cameraNode nor controlNode to deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [
     cameraNode.connected,
     controlNode.connected,
-    cameraNode.state.exposureUs,
-    cameraNode.state.gainDb,
     setExposureUs,
     setGainDb,
     setCalibrationGridSize,
@@ -155,8 +157,8 @@ export default function Controls({
   const enableSaveButton = controlNode.connected && dirty;
 
   const handleSave = () => {
-    cameraNode.setExposure(exposureUs);
-    cameraNode.setGain(gainDb);
+    cameraNode.setExposureUs(exposureUs);
+    cameraNode.setGainDb(gainDb);
     controlNode.setCalibrationGridSize(
       calibrationGridSize.numX,
       calibrationGridSize.numY

@@ -517,7 +517,7 @@ class DetectionNode : public rclcpp::Node {
         objectInstance.confidence = runner.conf;
         objectInstance.point = pointMsg;
         objectInstance.position = positionMsg;
-        objectInstance.track_id = runner.trackId;
+        objectInstance.track_id = runner.trackId > 0 ? runner.trackId : 0;
         detectionResult.instances.push_back(objectInstance);
       } else {
         detectionResult.invalid_points.push_back(pointMsg);
@@ -1002,6 +1002,9 @@ class DetectionNode : public rclcpp::Node {
     }
     auto [colorCameraIntrinsicMatrix,
           colorCameraDistortionCoeffs]{getCameraMatrices(colorCameraInfo)};
+    std::pair<int, int> colorFrameOffset{
+        static_cast<int>(colorCameraInfo->roi.x_offset),
+        static_cast<int>(colorCameraInfo->roi.y_offset)};
 
     // Depth camera intrinsics
     sensor_msgs::msg::CameraInfo::ConstSharedPtr depthCameraInfo;
@@ -1042,7 +1045,7 @@ class DetectionNode : public rclcpp::Node {
     rgbdAlignment_ = std::make_shared<RgbdAlignment>(
         colorCameraIntrinsicMatrix, colorCameraDistortionCoeffs,
         depthCameraIntrinsicMatrix, depthCameraDistortionCoeffs,
-        xyzToColorExtrinsicMatrix, xyzToDepthExtrinsicMatrix);
+        xyzToColorExtrinsicMatrix, xyzToDepthExtrinsicMatrix, colorFrameOffset);
     return rgbdAlignment_;
   }
 

@@ -28,10 +28,11 @@ class LucidCamera {
   };
 
   using StateChangeCallback = std::function<void(State)>;
-  LucidCamera(std::optional<std::string> colorCameraSerialNumber = std::nullopt,
-              std::optional<std::string> depthCameraSerialNumber = std::nullopt,
-              std::pair<int, int> colorFrameSize = {2048, 1536},
-              StateChangeCallback stateChangeCallback = nullptr);
+  explicit LucidCamera(
+      std::optional<std::string> colorCameraSerialNumber = std::nullopt,
+      std::optional<std::string> depthCameraSerialNumber = std::nullopt,
+      std::pair<int, int> colorFrameSize = {2048, 1536},
+      StateChangeCallback stateChangeCallback = nullptr);
   ~LucidCamera();
 
   State getState() const;
@@ -159,12 +160,6 @@ class LucidCamera {
 
   void connectionThreadFn(CaptureMode captureMode, double exposureUs,
                           double gainDb);
-  std::optional<Arena::DeviceInfo> findFirstDeviceWithModelPrefix(
-      std::vector<Arena::DeviceInfo>& deviceInfos,
-      const std::vector<std::string>& modelPrefixes);
-  std::optional<Arena::DeviceInfo> findDeviceWithSerial(
-      std::vector<Arena::DeviceInfo>& deviceInfos,
-      const std::string& serialNumber);
   void startStream(const Arena::DeviceInfo& colorDeviceInfo,
                    const Arena::DeviceInfo& depthDeviceInfo,
                    CaptureMode captureMode = CaptureMode::CONTINUOUS,

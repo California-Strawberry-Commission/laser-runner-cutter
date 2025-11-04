@@ -1,4 +1,4 @@
-# Unique instance ID
+# Unique instance ID. 0 indicates no ID.
 uint32 track_id
 # 3D position relative to camera
 common_interfaces/Vector3 position
