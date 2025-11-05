@@ -116,7 +116,8 @@ YoloV8::YoloV8(const std::string& trtEngineFile) {
   output0Dims_ = nvEngine_->getTensorShape(OUTPUT0_TENSOR_NAME);
   // Mask prototype (segmentation features)
   // For YoloV8, it is (num batches, num mask prototype channels, mask feature
-  // spatial size), which is (1, 32, 192, 256)
+  // spatial size), which is (1, 32, model input image height / 4, model input
+  // image width / 4)
   output1Dims_ = nvEngine_->getTensorShape(OUTPUT1_TENSOR_NAME);
 
   // Allocate memory on device
@@ -319,7 +320,8 @@ std::vector<YoloV8::Object> YoloV8::predict(const cv::cuda::GpuMat& imageRgb,
     }
 
     if (maxConf > confThreshold) {
-      // bbox
+      // Extract bbox
+      // Note: yolov8 outputs the bbox center
       float x{colPtr[0 * stride]};  // x center of bbox
       float y{colPtr[1 * stride]};  // y center of bbox
       float w{colPtr[2 * stride]};
@@ -328,14 +330,14 @@ std::vector<YoloV8::Object> YoloV8::predict(const cv::cuda::GpuMat& imageRgb,
       // Scale bbox to original image size
       float xRatio{static_cast<float>(imageWidth) / inputWidth};
       float yRatio{static_cast<float>(imageHeight) / inputHeight};
-      float x0{std::clamp((x - 0.5f * w) * xRatio, 0.f,
-                          static_cast<float>(imageWidth))};
-      float y0{std::clamp((y - 0.5f * h) * yRatio, 0.f,
-                          static_cast<float>(imageHeight))};
-      float x1{std::clamp((x + 0.5f * w) * xRatio, 0.f,
-                          static_cast<float>(imageWidth))};
-      float y1{std::clamp((y + 0.5f * h) * yRatio, 0.f,
-                          static_cast<float>(imageHeight))};
+      int x0{std::clamp(static_cast<int>(std::round((x - 0.5f * w) * xRatio)),
+                        0, imageWidth)};
+      int y0{std::clamp(static_cast<int>(std::round((y - 0.5f * h) * yRatio)),
+                        0, imageHeight)};
+      int x1{std::clamp(static_cast<int>(std::round((x + 0.5f * w) * xRatio)),
+                        0, imageWidth)};
+      int y1{std::clamp(static_cast<int>(std::round((y + 0.5f * h) * yRatio)),
+                        0, imageHeight)};
 
       cv::Rect bbox;
       bbox.x = x0;
@@ -388,6 +390,8 @@ std::vector<YoloV8::Object> YoloV8::predict(const cv::cuda::GpuMat& imageRgb,
   // then only needs 32 coefficients to generate its mask using those shared
   // prototypes.
   if (!detectedObjectsMaskCoeffs.empty()) {
+    float xRatio{static_cast<float>(segWidth) / imageWidth};
+    float yRatio{static_cast<float>(segHeight) / imageHeight};
     for (int objIdx = 0; objIdx < detectedObjectsMaskCoeffs.rows; ++objIdx) {
       // Note: we only calculate logits and create the mask for the area inside
       // the bbox for performance reasons
@@ -395,17 +399,16 @@ std::vector<YoloV8::Object> YoloV8::predict(const cv::cuda::GpuMat& imageRgb,
       // Scale down bbox (which is at original image scale) to mask prototype
       // scale (segWidth, segHeight)
       const cv::Rect& bbox{detectedObjects[objIdx].rect};
-      int px0{std::max(0, int(std::floor(bbox.x * static_cast<float>(segWidth) /
-                                         imageWidth)))};
-      int py0{
-          std::max(0, int(std::floor(bbox.y * static_cast<float>(segHeight) /
-                                     imageHeight)))};
-      int px1{std::min(
-          segWidth, int(std::ceil((bbox.x + bbox.width) *
-                                  static_cast<float>(segWidth) / imageWidth)))};
-      int py1{std::min(segHeight, int(std::ceil((bbox.y + bbox.height) *
-                                                static_cast<float>(segHeight) /
-                                                imageHeight)))};
+      int px0{std::clamp(static_cast<int>(std::round(bbox.x * xRatio)), 0,
+                         segWidth)};
+      int py0{std::clamp(static_cast<int>(std::round(bbox.y * yRatio)), 0,
+                         segHeight)};
+      int px1{std::clamp(
+          static_cast<int>(std::round((bbox.x + bbox.width) * xRatio)), 0,
+          segWidth)};
+      int py1{std::clamp(
+          static_cast<int>(std::round((bbox.y + bbox.height) * yRatio)), 0,
+          segHeight)};
       int pw{std::max(1, px1 - px0)};
       int ph{std::max(1, py1 - py0)};
 
