@@ -4,61 +4,131 @@
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <filesystem>
-#include <opencv2/ximgproc.hpp>
 #include <optional>
 
 namespace {
 
+float bilinearSample(const cv::Mat& dist, float x, float y) {
+  if (dist.rows == 0 || dist.cols == 0) {
+    return 0.0f;
+  }
+
+  x = std::clamp(x, 0.0f, dist.cols - 1.0f);
+  y = std::clamp(y, 0.0f, dist.rows - 1.0f);
+
+  int x0{static_cast<int>(std::floor(x))};
+  int y0{static_cast<int>(std::floor(y))};
+  int x1{std::min(x0 + 1, dist.cols - 1)};
+  int y1{std::min(y0 + 1, dist.rows - 1)};
+
+  float ax{x - x0};
+  float ay{y - y0};
+
+  float v00{dist.at<float>(y0, x0)};
+  float v01{dist.at<float>(y0, x1)};
+  float v10{dist.at<float>(y1, x0)};
+  float v11{dist.at<float>(y1, x1)};
+
+  float v0{v00 + ax * (v01 - v00)};
+  float v1{v10 + ax * (v11 - v10)};
+  return v0 + ay * (v1 - v0);
+}
+
+/**
+ * Extract the medial ridge by doing NMS along the gradient of the distance map.
+ * Keep pixels that are local maxima along the gradient and above a small
+ * distance threshold.
+ */
+void extractMedialRidge(const cv::Mat& dist, std::vector<cv::Point>& ridge,
+                        float distThreshold = 0.5f) {
+  // Gradients of distance transform
+  cv::Mat gx, gy;
+  cv::Sobel(dist, gx, CV_32F, 1, 0, 3);
+  cv::Sobel(dist, gy, CV_32F, 0, 1, 3);
+
+  ridge.clear();
+
+  for (int y = 1; y < dist.rows - 1; ++y) {
+    const float* drow{dist.ptr<float>(y)};
+    const float* gxrow{gx.ptr<float>(y)};
+    const float* gyrow{gy.ptr<float>(y)};
+    for (int x = 1; x < dist.cols - 1; ++x) {
+      float d{drow[x]};
+      if (d < distThreshold) {
+        continue;
+      }
+
+      float gxn{gxrow[x]};
+      float gyn{gyrow[x]};
+      float gnorm{std::sqrt(gxn * gxn + gyn * gyn)};
+      if (gnorm < 1e-6f) {
+        continue;
+      }
+
+      // Unit gradient direction
+      gxn /= gnorm;
+      gyn /= gnorm;
+
+      // Sample distance slightly forward/backward along gradient line
+      float dPlus{bilinearSample(dist, x + 0.5f * gxn, y + 0.5f * gyn)};
+      float dMinus{bilinearSample(dist, x - 0.5f * gxn, y - 0.5f * gyn)};
+
+      // Keep if it is a local maximum along gradient direction
+      if (d >= dPlus && d >= dMinus) {
+        ridge.emplace_back(x, y);
+      }
+    }
+  }
+}
+
 std::optional<cv::Point> findRepresentativePoint(
     const cv::Rect& maskRect, const cv::Mat& mask,
-    const std::optional<cv::Rect>& bounds = std::nullopt) {
+    const std::optional<cv::Rect>& bounds = std::nullopt,
+    float distThreshold = 0.5f) {
   if (mask.empty()) {
     return std::nullopt;
   }
 
-  cv::Mat skeleton{cv::Mat::zeros(mask.size(), CV_8U)};
-  cv::ximgproc::thinning(mask, skeleton, cv::ximgproc::THINNING_ZHANGSUEN);
-
-  // Find non-zero pixels (mask-local coordinates) in the skeleton
-  std::vector<cv::Point> skeletonPoints;
-  cv::findNonZero(skeleton, skeletonPoints);
-  if (skeletonPoints.empty()) {
+  // If bounds are provided, intersect with the mask rect to get the ROI
+  cv::Rect roi{bounds ? (*bounds & maskRect) : maskRect};
+  cv::Rect localRoi{roi.x - maskRect.x, roi.y - maskRect.y, roi.width,
+                    roi.height};
+  if (localRoi.empty()) {
     return std::nullopt;
   }
 
-  // Translate mask-local pixel coordinates into full-image coordinates
-  for (auto& p : skeletonPoints) {
-    p.x += maskRect.x;
-    p.y += maskRect.y;
-  }
+  // Use the Euclidean distance transform to replace every foreground pixel's
+  // value with its distance to the nearest background pixel
+  cv::Mat dist;
+  cv::distanceTransform(mask, dist, cv::DIST_L2, 3);
 
-  if (skeletonPoints.size() == 1) {
-    return skeletonPoints.front();
-  }
-
-  // Filter skeleton points within ROI
-  cv::Rect roi{maskRect};
-  // If bounds are provided, intersect with the mask rect to get the ROI
-  if (bounds) {
-    roi = *bounds & maskRect;
-    if (roi.empty()) {
-      return std::nullopt;
-    }
+  // Extract medial ridge (in mask-local coordinates)
+  std::vector<cv::Point> ridgePoints;
+  extractMedialRidge(dist, ridgePoints, distThreshold);
+  if (ridgePoints.empty()) {
+    // If no medial ridge, fall back to distance transform's max point
+    double maxVal{0.0};
+    cv::Point maxLoc;
+    cv::minMaxLoc(dist, nullptr, &maxVal, nullptr, &maxLoc);
+    return cv::Point{maxLoc.x + maskRect.x, maxLoc.y + maskRect.y};
   }
 
   // Compute centroid of the mask
   cv::Moments m{cv::moments(mask, /*binaryImage=*/true)};
   if (m.m00 == 0.0) {
-    // If there's no area, return first skeleton point
-    return skeletonPoints.front();
+    // If there's no area, fall back to distance transform's max point
+    double maxVal{0.0};
+    cv::Point maxLoc;
+    cv::minMaxLoc(dist, nullptr, &maxVal, nullptr, &maxLoc);
+    return cv::Point{maxLoc.x + maskRect.x, maxLoc.y + maskRect.y};
   }
   cv::Point2d centroid{m.m10 / m.m00 + maskRect.x, m.m01 / m.m00 + maskRect.y};
 
-  // Pick skeleton point in the ROI that is closest to the centroid of the mask
+  // Pick ridge point in the ROI that is closest to the centroid of the mask
   double bestD2{std::numeric_limits<double>::infinity()};
   std::optional<cv::Point> best;
-  for (const auto& p : skeletonPoints) {
-    if (!roi.contains(p)) {
+  for (const auto& p : ridgePoints) {
+    if (!localRoi.contains(p)) {
       continue;
     }
 
@@ -67,7 +137,8 @@ std::optional<cv::Point> findRepresentativePoint(
     double d2{dx * dx + dy * dy};
     if (d2 < bestD2) {
       bestD2 = d2;
-      best = p;
+      // Map mask-local coordinate back to image coordinate
+      best = cv::Point(p.x + maskRect.x, p.y + maskRect.y);
     }
   }
 
@@ -268,7 +339,7 @@ std::vector<RunnerDetector::Runner> RunnerDetector::track(
   // Determine representative point for each mask
   for (const auto& obj : predictionResult) {
     cv::Point point{-1, -1};
-    // TODO: Improve performance of findRepresentativePoint
+
     auto repPointOpt{findRepresentativePoint(obj.rect, obj.boxMask, bounds)};
     if (repPointOpt) {
       point = std::move(*repPointOpt);
