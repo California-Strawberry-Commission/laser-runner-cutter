@@ -197,9 +197,14 @@ def download_images(labelbox_export_file, output_dir):
             image_url = data_row.get("row_data")
             if image_url is None:
                 continue
+
+            image_path = os.path.join(output_dir, image_filename)
+            if os.path.exists(image_path):
+                print(f"Skipping (already exists): {image_filename}")
+                continue
+
             resp = requests.get(image_url, timeout=10)
             resp.raise_for_status()
-            image_path = os.path.join(output_dir, image_filename)
             with open(image_path, "wb") as img_file:
                 img_file.write(resp.content)
             print(f"Downloaded: {image_url}")
