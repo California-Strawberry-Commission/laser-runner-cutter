@@ -1,9 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   DialogClose,
   DialogContent,
@@ -12,22 +9,38 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useState } from "react";
 
 export default function PasswordModal({
   networkName,
   onSubmit,
+  error = false,
 }: {
   networkName: string;
   onSubmit?: (networkName: string, password: string) => void;
+  error?: boolean;
 }) {
-  const [password, setPassword] = useState<string>("");
+  const [password, setPassword] = useState("");
+
+  function handleSubmit() {
+    if (onSubmit) {
+      onSubmit(networkName, password);
+    }
+    setPassword("");
+  }
 
   return (
     <DialogContent className="sm:max-w-[425px]">
       <DialogHeader>
-        <DialogTitle>Enter Wi-Fi password</DialogTitle>
+        <DialogTitle>
+          {error ? "Error connecting to Wi-Fi network" : "Enter Wi-Fi password"}
+        </DialogTitle>
         <DialogDescription>
-          {`Provide the password for the Wi-Fi network "${networkName}":`}
+          {error
+            ? `There was an error when attempting to connect to the Wi-Fi network "${networkName}". Please try again:`
+            : `Provide the password for the Wi-Fi network "${networkName}":`}
         </DialogDescription>
       </DialogHeader>
       <div className="grid gap-4 py-4">
@@ -40,20 +53,13 @@ export default function PasswordModal({
             type="password"
             className="col-span-3"
             value={password}
-            onChange={(str) => {
-              setPassword(str);
-            }}
+            onChange={setPassword}
           />
         </div>
       </div>
       <DialogFooter>
         <DialogClose asChild>
-          <Button
-            type="submit"
-            onClick={() => {
-              onSubmit && onSubmit(networkName, password);
-            }}
-          >
+          <Button type="button" onClick={handleSubmit}>
             Connect
           </Button>
         </DialogClose>

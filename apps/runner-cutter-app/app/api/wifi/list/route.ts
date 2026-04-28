@@ -10,7 +10,7 @@ type NetworkEntry = {
   signal: number;
   security: string;
   connected: boolean;
-}
+};
 
 /**
  * GET /api/wifi/list
@@ -42,7 +42,7 @@ export async function GET(_request: Request) {
     console.error("Wi-Fi list failed:", err);
     return Response.json(
       { error: err instanceof Error ? err.message : "Scan failed" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

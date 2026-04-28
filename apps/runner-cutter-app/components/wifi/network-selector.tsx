@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
-import { Check } from "lucide-react";
+import { Dialog } from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -10,9 +9,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Dialog } from "@/components/ui/dialog";
 import PasswordModal from "@/components/wifi/password-modal";
-import ErrorModal from "@/components/wifi/error-modal";
+import { Check } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
 export type WifiNetwork = {
   ssid: string;
@@ -21,9 +20,13 @@ export type WifiNetwork = {
   connected: boolean;
 };
 
-export default function NetworkSelector() {
+export default function NetworkSelector({
+  fetchIntervalMs = 10000,
+}: {
+  fetchIntervalMs?: number;
+}) {
   const [networks, setNetworks] = useState<WifiNetwork[]>([]);
-  const [selectedSsid, setSelectedSsid] = useState<string>("");
+  const [selectedSsid, setSelectedSsid] = useState<string | null>(null);
   const [passwordModalOpen, setPasswordModalOpen] = useState<boolean>(false);
   const [errorModalOpen, setErrorModalOpen] = useState<boolean>(false);
 
@@ -32,84 +35,90 @@ export default function NetworkSelector() {
     if (response.ok) {
       const data: WifiNetwork[] = await response.json();
       data.sort((a, b) => {
-        // Sort by connected status (true first)
+        // Sort by connected status (true first), followed by signal strength
+        // in descending order
         if (a.connected !== b.connected) {
           return a.connected ? -1 : 1;
         }
-
-        // If connected status is the same, sort by signal strength in descending order
         return b.signal - a.signal;
       });
       setNetworks(data);
     } else {
       console.error("Error fetching Wi-Fi networks");
     }
-  }, [setNetworks]);
+  }, []);
 
   useEffect(() => {
     fetchNetworks();
-    const fetchNetworksInterval = setInterval(fetchNetworks, 10000);
+    const fetchNetworksInterval = setInterval(fetchNetworks, fetchIntervalMs);
     return () => clearInterval(fetchNetworksInterval);
-  }, [fetchNetworks]);
+  }, [fetchNetworks, fetchIntervalMs]);
 
-  const onPasswordSubmit = async (ssid: string, password: string) => {
-    // TODO: show "connecting" modal
-    const response = await fetch("/api/wifi/connect", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ ssid, password }),
-    });
+  const onPasswordSubmit = useCallback(
+    async (ssid: string, password: string) => {
+      // TODO: show "connecting" modal
+      const response = await fetch("/api/wifi/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ssid, password }),
+      });
 
-    if (response.ok) {
-      console.log(`Successfully connected to network with SSID "${ssid}"`);
-      fetchNetworks();
-    } else {
-      console.error("Error connecting to Wi-Fi network");
-      setErrorModalOpen(true);
-    }
-  };
+      if (response.ok) {
+        fetchNetworks();
+      } else {
+        console.error("Error connecting to Wi-Fi network");
+        setErrorModalOpen(true);
+      }
+    },
+    [fetchNetworks],
+  );
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-6"></TableHead>
-          <TableHead>Name</TableHead>
-          <TableHead className="w-24">Signal</TableHead>
-          <TableHead className="w-36">Security</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {networks.map((network) => (
-          <TableRow
-            key={network.ssid}
-            onClick={() => {
-              if (!network.connected) {
-                setSelectedSsid(network.ssid);
-                setPasswordModalOpen(true);
-              }
-            }}
-          >
-            <TableCell className="pr-0">
-              {network.connected && <Check className="h-4 w-4" />}
-            </TableCell>
-            <TableCell>{network.ssid}</TableCell>
-            <TableCell>{network.signal}</TableCell>
-            <TableCell>{network.security}</TableCell>
+    <>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-6"></TableHead>
+            <TableHead>Name</TableHead>
+            <TableHead className="w-24">Signal</TableHead>
+            <TableHead className="w-36">Security</TableHead>
           </TableRow>
-        ))}
-        <Dialog open={passwordModalOpen} onOpenChange={setPasswordModalOpen}>
-          <PasswordModal
-            networkName={selectedSsid}
-            onSubmit={onPasswordSubmit}
-          />
-        </Dialog>
-        <Dialog open={errorModalOpen} onOpenChange={setErrorModalOpen}>
-          <ErrorModal networkName={selectedSsid} onSubmit={onPasswordSubmit} />
-        </Dialog>
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {networks.map((network) => (
+            <TableRow
+              key={network.ssid}
+              className={!network.connected ? "cursor-pointer" : undefined}
+              onClick={() => {
+                if (!network.connected) {
+                  setSelectedSsid(network.ssid);
+                  setPasswordModalOpen(true);
+                }
+              }}
+            >
+              <TableCell className="pr-0">
+                {network.connected && <Check className="h-4 w-4" />}
+              </TableCell>
+              <TableCell>{network.ssid}</TableCell>
+              <TableCell>{network.signal}</TableCell>
+              <TableCell>{network.security}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      <Dialog open={passwordModalOpen} onOpenChange={setPasswordModalOpen}>
+        <PasswordModal
+          networkName={selectedSsid ?? ""}
+          onSubmit={onPasswordSubmit}
+        />
+      </Dialog>
+      <Dialog open={errorModalOpen} onOpenChange={setErrorModalOpen}>
+        <PasswordModal
+          networkName={selectedSsid ?? ""}
+          onSubmit={onPasswordSubmit}
+          error
+        />
+      </Dialog>
+    </>
   );
 }

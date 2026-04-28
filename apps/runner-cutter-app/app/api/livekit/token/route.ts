@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   if (!room || !identity) {
     return NextResponse.json(
       { error: "Room and identity required" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   if (!apiKey || !apiSecret) {
     return NextResponse.json(
       { error: "LiveKit credentials not configured" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
@@ -48,6 +48,6 @@ export async function GET(req: NextRequest) {
   const token = await accessToken.toJwt();
   return NextResponse.json(
     { token },
-    { headers: { "Cache-Control": "no-store" } }
+    { headers: { "Cache-Control": "no-store" } },
   );
 }
