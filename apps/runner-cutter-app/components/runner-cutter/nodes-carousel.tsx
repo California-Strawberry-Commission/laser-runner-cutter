@@ -24,10 +24,10 @@ function NodeCard({ nodeInfo }: { nodeInfo: NodeInfo }) {
             nodeInfo.connected ? "bg-green-500" : "bg-red-500"
           )}
         >
-          <p className="font-semibold text-xs overflow-hidden text-ellipsis">
+          <p className="font-semibold text-xs truncate">
             {nodeInfo.name}
           </p>
-          <p className="text-xs overflow-hidden text-ellipsis">
+          <p className="text-xs truncate">
             {nodeInfo.connected ? "Connected" : "Disconnected"}
           </p>
         </div>
@@ -39,7 +39,7 @@ function NodeCard({ nodeInfo }: { nodeInfo: NodeInfo }) {
             {nodeInfo.connected ? "Connected" : "Disconnected"}
           </DialogDescription>
         </DialogHeader>
-        <pre className="overflow-hidden text-ellipsis text-xs">
+        <pre className="truncate text-xs">
           {JSON.stringify(nodeInfo.state ?? {}, undefined, 2)}
         </pre>
       </DialogContent>

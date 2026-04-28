@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     console.error("Wi-Fi connect failed:", err);
     return Response.json(
       { error: err instanceof Error ? err.message : "Connection failed" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 }

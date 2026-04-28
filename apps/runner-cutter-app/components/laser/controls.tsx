@@ -37,9 +37,10 @@ export default function Controls({ laserNodeName }: { laserNodeName: string }) {
     }
 
     fetchParams();
-    // We intentionally did not add laserNode to deps
+    // We intentionally omit laserNode object to avoid re-running on every
+    // render. `.connected` is the signal we care about.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setColor, laserNode.connected]);
+  }, [laserNode.connected]);
 
   const laserDeviceState = convertLaserNodeDeviceState(laserNode);
   const disableButtons = laserDeviceState !== DeviceState.CONNECTED;
@@ -81,9 +82,9 @@ export default function Controls({ laserNodeName }: { laserNodeName: string }) {
               <ColorPicker
                 className="w-[200px]"
                 color={color}
-                onColorChange={(color) => {
-                  setColor(color);
-                  laserNode.setColor(color.r, color.g, color.b);
+                onColorChange={(newColor) => {
+                  setColor(newColor);
+                  laserNode.setColor(newColor.r, newColor.g, newColor.b);
                 }}
               />
               {playbackButton}
@@ -98,7 +99,7 @@ export default function Controls({ laserNodeName }: { laserNodeName: string }) {
                 step={0.1}
                 value={destinationX}
                 onChange={(str) => {
-                  const value = Number(str);
+                  const value = parseFloat(str);
                   if (!isNaN(value)) {
                     setDestinationX(value);
                   }
@@ -113,7 +114,7 @@ export default function Controls({ laserNodeName }: { laserNodeName: string }) {
                 step={0.1}
                 value={destinationY}
                 onChange={(str) => {
-                  const value = Number(str);
+                  const value = parseFloat(str);
                   if (!isNaN(value)) {
                     setDestinationY(value);
                   }
@@ -128,7 +129,7 @@ export default function Controls({ laserNodeName }: { laserNodeName: string }) {
                 step={100}
                 value={durationMs}
                 onChange={(str) => {
-                  const value = Number(str);
+                  const value = parseFloat(str);
                   if (!isNaN(value)) {
                     setDurationMs(value);
                   }

@@ -13,6 +13,14 @@ import useRgbColor from "@/lib/useRgbColor";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+function SettingRow({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-2 w-full">
+      {children}
+    </div>
+  );
+}
+
 export default function Controls({
   cameraNodeName,
   controlNodeName,
@@ -55,103 +63,93 @@ export default function Controls({
   const [autoDisarmSecs, setAutoDisarmSecs] = useState<number>(0.0);
   const [saveDir, setSaveDir] = useState<string>("");
 
-  // Sync inputs to node params
-  useEffect(() => {
-    async function fetchParams() {
-      if (cameraNode.connected) {
-        const exposureUs = await cameraNode.getExposureUs();
-        setExposureUs(exposureUs);
+  // Sync inputs to node params on connect
+  useEffect(
+    () => {
+      async function fetchParams() {
+        if (cameraNode.connected) {
+          const exposureUs = await cameraNode.getExposureUs();
+          setExposureUs(exposureUs);
 
-        const gainDb = await cameraNode.getGainDb();
-        setGainDb(gainDb);
+          const gainDb = await cameraNode.getGainDb();
+          setGainDb(gainDb);
+        }
+
+        if (controlNode.connected) {
+          const calibrationGridSizeRes =
+            await controlNode.getCalibrationGridSize();
+          if (calibrationGridSizeRes.length >= 2) {
+            setCalibrationGridSize({
+              numX: calibrationGridSizeRes[0],
+              numY: calibrationGridSizeRes[1],
+            });
+          }
+
+          const calibrationXBoundsRes =
+            await controlNode.getCalibrationXBounds();
+          if (calibrationXBoundsRes.length >= 2) {
+            setCalibrationXBounds({
+              min: calibrationXBoundsRes[0],
+              max: calibrationXBoundsRes[1],
+            });
+          }
+
+          const calibrationYBoundsRes =
+            await controlNode.getCalibrationYBounds();
+          if (calibrationYBoundsRes.length >= 2) {
+            setCalibrationYBounds({
+              min: calibrationYBoundsRes[0],
+              max: calibrationYBoundsRes[1],
+            });
+          }
+
+          const trackingLaserColorRes =
+            await controlNode.getTrackingLaserColor();
+          if (trackingLaserColorRes.length >= 3) {
+            setTrackingLaserColor({
+              r: trackingLaserColorRes[0],
+              g: trackingLaserColorRes[1],
+              b: trackingLaserColorRes[2],
+            });
+          }
+
+          const burnLaserColorRes = await controlNode.getBurnLaserColor();
+          if (burnLaserColorRes.length >= 3) {
+            setBurnLaserColor({
+              r: burnLaserColorRes[0],
+              g: burnLaserColorRes[1],
+              b: burnLaserColorRes[2],
+            });
+          }
+
+          const burnTimeSecsRes = await controlNode.getBurnTimeSecs();
+          setBurnTimeSecs(burnTimeSecsRes);
+
+          const enableAimingRes = await controlNode.getEnableAiming();
+          setEnableAiming(enableAimingRes);
+
+          const targetAttemptsRes = await controlNode.getTargetAttempts();
+          if (Number.isInteger(targetAttemptsRes)) {
+            setTargetAttempts(targetAttemptsRes);
+          }
+
+          const autoDisarmSecsRes = await controlNode.getAutoDisarmSecs();
+          setAutoDisarmSecs(autoDisarmSecsRes);
+
+          const saveDirRes = await controlNode.getSaveDir();
+          setSaveDir(saveDirRes);
+
+          setParamsFetched(true);
+        }
       }
 
-      if (controlNode.connected) {
-        const calibrationGridSizeRes =
-          await controlNode.getCalibrationGridSize();
-        if (calibrationGridSizeRes.length >= 2) {
-          setCalibrationGridSize({
-            numX: calibrationGridSizeRes[0],
-            numY: calibrationGridSizeRes[1],
-          });
-        }
-
-        const calibrationXBoundsRes = await controlNode.getCalibrationXBounds();
-        if (calibrationXBoundsRes.length >= 2) {
-          setCalibrationXBounds({
-            min: calibrationXBoundsRes[0],
-            max: calibrationXBoundsRes[1],
-          });
-        }
-
-        const calibrationYBoundsRes = await controlNode.getCalibrationYBounds();
-        if (calibrationYBoundsRes.length >= 2) {
-          setCalibrationYBounds({
-            min: calibrationYBoundsRes[0],
-            max: calibrationYBoundsRes[1],
-          });
-        }
-
-        const trackingLaserColorRes = await controlNode.getTrackingLaserColor();
-        if (trackingLaserColorRes.length >= 3) {
-          setTrackingLaserColor({
-            r: trackingLaserColorRes[0],
-            g: trackingLaserColorRes[1],
-            b: trackingLaserColorRes[2],
-          });
-        }
-
-        const burnLaserColorRes = await controlNode.getBurnLaserColor();
-        if (burnLaserColorRes.length >= 3) {
-          setBurnLaserColor({
-            r: burnLaserColorRes[0],
-            g: burnLaserColorRes[1],
-            b: burnLaserColorRes[2],
-          });
-        }
-
-        const burnTimeSecsRes = await controlNode.getBurnTimeSecs();
-        setBurnTimeSecs(burnTimeSecsRes);
-
-        const enableAimingRes = await controlNode.getEnableAiming();
-        setEnableAiming(enableAimingRes);
-
-        const targetAttemptsRes = await controlNode.getTargetAttempts();
-        if (Number.isInteger(targetAttemptsRes)) {
-          setTargetAttempts(targetAttemptsRes);
-        }
-
-        const autoDisarmSecsRes = await controlNode.getAutoDisarmSecs();
-        setAutoDisarmSecs(autoDisarmSecsRes);
-
-        const saveDirRes = await controlNode.getSaveDir();
-        setSaveDir(saveDirRes);
-
-        setParamsFetched(true);
-      }
-    }
-
-    fetchParams();
-  },
-  // We intentionally did not add cameraNode nor controlNode to deps
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  [
-    cameraNode.connected,
-    controlNode.connected,
-    setExposureUs,
-    setGainDb,
-    setCalibrationGridSize,
-    setCalibrationXBounds,
-    setCalibrationYBounds,
-    setTrackingLaserColor,
-    setBurnLaserColor,
-    setBurnTimeSecs,
-    setEnableAiming,
-    setTargetAttempts,
-    setAutoDisarmSecs,
-    setSaveDir,
-    setParamsFetched,
-  ]);
+      fetchParams();
+    },
+    // We intentionally omit cameraNode and controlNode objects to avoid
+    // re-running on every render. `.connected` is the signal we care about.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cameraNode.connected, controlNode.connected],
+  );
 
   const enableFields = controlNode.connected && paramsFetched;
   const enableSaveButton = controlNode.connected && dirty;
@@ -161,37 +159,38 @@ export default function Controls({
     cameraNode.setGainDb(gainDb);
     controlNode.setCalibrationGridSize(
       calibrationGridSize.numX,
-      calibrationGridSize.numY
+      calibrationGridSize.numY,
     );
     controlNode.setCalibrationXBounds(
       calibrationXBounds.min,
-      calibrationXBounds.max
+      calibrationXBounds.max,
     );
     controlNode.setCalibrationYBounds(
       calibrationYBounds.min,
-      calibrationYBounds.max
+      calibrationYBounds.max,
     );
     controlNode.setTrackingLaserColor(
       trackingLaserColor.r,
       trackingLaserColor.g,
-      trackingLaserColor.b
+      trackingLaserColor.b,
     );
     controlNode.setBurnLaserColor(
       burnLaserColor.r,
       burnLaserColor.g,
-      burnLaserColor.b
+      burnLaserColor.b,
     );
     controlNode.setBurnTimeSecs(burnTimeSecs);
     controlNode.setEnableAiming(enableAiming);
     controlNode.setTargetAttempts(targetAttempts);
     controlNode.setAutoDisarmSecs(autoDisarmSecs);
     controlNode.setSaveDir(saveDir);
+    setDirty(false);
     toast.info("Settings saved successfully.");
   };
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-2 w-full">
+      <SettingRow>
         <div className="flex flex-col gap-1">
           <Label>Exposure (µs)</Label>
           <Label className="text-xs font-light">{`${
@@ -211,15 +210,15 @@ export default function Controls({
           disabled={!enableFields}
           value={exposureUs}
           onChange={(str) => {
-            const value = Number(str);
+            const value = parseFloat(str);
             if (!isNaN(value)) {
               setExposureUs(value);
               setDirty(true);
             }
           }}
         />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-2 w-full">
+      </SettingRow>
+      <SettingRow>
         <div className="flex flex-col gap-1">
           <Label>Gain (dB)</Label>
           <Label className="text-xs font-light">{`${
@@ -239,15 +238,15 @@ export default function Controls({
           disabled={!enableFields}
           value={gainDb}
           onChange={(str) => {
-            const value = Number(str);
+            const value = parseFloat(str);
             if (!isNaN(value)) {
               setGainDb(value);
               setDirty(true);
             }
           }}
         />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-2 w-full">
+      </SettingRow>
+      <SettingRow>
         <div className="flex flex-col gap-1">
           <Label>Calibration grid size</Label>
           <Label className="text-xs font-light">
@@ -264,7 +263,7 @@ export default function Controls({
             disabled={!enableFields}
             value={calibrationGridSize.numX}
             onChange={(str) => {
-              const value = Number(str);
+              const value = parseFloat(str);
               if (!isNaN(value)) {
                 setCalibrationGridSize({
                   numX: Math.floor(value),
@@ -283,7 +282,7 @@ export default function Controls({
             disabled={!enableFields}
             value={calibrationGridSize.numY}
             onChange={(str) => {
-              const value = Number(str);
+              const value = parseFloat(str);
               if (!isNaN(value)) {
                 setCalibrationGridSize({
                   numX: calibrationGridSize.numX,
@@ -294,8 +293,8 @@ export default function Controls({
             }}
           />
         </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-2 w-full">
+      </SettingRow>
+      <SettingRow>
         <div className="flex flex-col gap-1">
           <Label>Calibration bounds</Label>
           <Label className="text-xs font-light">
@@ -312,7 +311,7 @@ export default function Controls({
             disabled={!enableFields}
             value={calibrationXBounds.min}
             onChange={(str) => {
-              const value = Number(str);
+              const value = parseFloat(str);
               if (!isNaN(value)) {
                 setCalibrationXBounds({
                   min: value,
@@ -331,7 +330,7 @@ export default function Controls({
             disabled={!enableFields}
             value={calibrationXBounds.max}
             onChange={(str) => {
-              const value = Number(str);
+              const value = parseFloat(str);
               if (!isNaN(value)) {
                 setCalibrationXBounds({
                   min: calibrationXBounds.min,
@@ -350,7 +349,7 @@ export default function Controls({
             disabled={!enableFields}
             value={calibrationYBounds.min}
             onChange={(str) => {
-              const value = Number(str);
+              const value = parseFloat(str);
               if (!isNaN(value)) {
                 setCalibrationYBounds({
                   min: value,
@@ -369,7 +368,7 @@ export default function Controls({
             disabled={!enableFields}
             value={calibrationYBounds.max}
             onChange={(str) => {
-              const value = Number(str);
+              const value = parseFloat(str);
               if (!isNaN(value)) {
                 setCalibrationYBounds({
                   min: calibrationYBounds.min,
@@ -380,8 +379,8 @@ export default function Controls({
             }}
           />
         </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-2 w-full">
+      </SettingRow>
+      <SettingRow>
         <Label>Tracking laser color</Label>
         <ColorPicker
           disabled={!enableFields}
@@ -391,8 +390,8 @@ export default function Controls({
             setDirty(true);
           }}
         />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-2 w-full">
+      </SettingRow>
+      <SettingRow>
         <Label>Burn laser color</Label>
         <ColorPicker
           disabled={!enableFields}
@@ -402,8 +401,8 @@ export default function Controls({
             setDirty(true);
           }}
         />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-2 w-full">
+      </SettingRow>
+      <SettingRow>
         <Label>Burn time (s)</Label>
         <Input
           type="number"
@@ -414,15 +413,15 @@ export default function Controls({
           disabled={!enableFields}
           value={burnTimeSecs}
           onChange={(str) => {
-            const value = Number(str);
+            const value = parseFloat(str);
             if (!isNaN(value)) {
               setBurnTimeSecs(value);
               setDirty(true);
             }
           }}
         />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-2 w-full">
+      </SettingRow>
+      <SettingRow>
         <Label>Enable aiming</Label>
         <Switch
           id="enableAiming"
@@ -433,8 +432,8 @@ export default function Controls({
             setDirty(true);
           }}
         />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-2 w-full">
+      </SettingRow>
+      <SettingRow>
         <Label>Target attempts</Label>
         <Input
           type="number"
@@ -445,15 +444,15 @@ export default function Controls({
           disabled={!enableFields}
           value={targetAttempts}
           onChange={(str) => {
-            const value = Number(str);
+            const value = parseFloat(str);
             if (!isNaN(value)) {
               setTargetAttempts(Math.floor(value));
               setDirty(true);
             }
           }}
         />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-2 w-full">
+      </SettingRow>
+      <SettingRow>
         <Label>Auto disarm time (s)</Label>
         <Input
           type="number"
@@ -464,15 +463,15 @@ export default function Controls({
           disabled={!enableFields}
           value={autoDisarmSecs}
           onChange={(str) => {
-            const value = Number(str);
+            const value = parseFloat(str);
             if (!isNaN(value)) {
               setAutoDisarmSecs(value);
               setDirty(true);
             }
           }}
         />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-2 w-full">
+      </SettingRow>
+      <SettingRow>
         <Label>Save directory</Label>
         <Input
           type="text"
@@ -486,7 +485,7 @@ export default function Controls({
             setDirty(true);
           }}
         />
-      </div>
+      </SettingRow>
       <Button
         className="w-32"
         disabled={!enableSaveButton}

@@ -18,7 +18,7 @@ export async function POST(_request: Request) {
     console.error("Wi-Fi disconnect failed:", err);
     return Response.json(
       { error: err instanceof Error ? err.message : "Disconnection failed" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
