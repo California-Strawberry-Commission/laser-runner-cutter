@@ -57,7 +57,7 @@ export default function RunnerCutterCard({
       cardColor = "bg-green-500";
       startStopButton = (
         <Button
-          disabled={disabled}
+          disabled={disabled || selectedMode === null}
           onClick={() => {
             if (selectedMode !== null && onStartClick) {
               onStartClick(selectedMode);

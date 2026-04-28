@@ -6,8 +6,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { DeviceState as LaserDeviceState } from "@/lib/useLaserNode";
-import { DeviceState as CameraDeviceState } from "@/lib/useCameraNode";
+import useCameraNode, {
+  DeviceState as CameraDeviceState,
+} from "@/lib/useCameraNode";
+import useLaserNode, {
+  DeviceState as LaserDeviceState,
+} from "@/lib/useLaserNode";
 import { cn, enumToLabel } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 
@@ -19,7 +23,9 @@ export enum DeviceState {
   UNAVAILABLE,
 }
 
-export function convertLaserNodeDeviceState(laserNode: any): DeviceState {
+export function convertLaserNodeDeviceState(
+  laserNode: ReturnType<typeof useLaserNode>,
+): DeviceState {
   let deviceState = DeviceState.UNAVAILABLE;
   if (laserNode.connected) {
     switch (laserNode.state.deviceState) {
@@ -43,7 +49,9 @@ export function convertLaserNodeDeviceState(laserNode: any): DeviceState {
   return deviceState;
 }
 
-export function convertCameraNodeDeviceState(cameraNode: any): DeviceState {
+export function convertCameraNodeDeviceState(
+  cameraNode: ReturnType<typeof useCameraNode>,
+): DeviceState {
   let deviceState = DeviceState.UNAVAILABLE;
   if (cameraNode.connected) {
     switch (cameraNode.state.deviceState) {

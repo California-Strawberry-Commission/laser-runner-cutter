@@ -268,7 +268,7 @@ export default function Controls({
           />
           <RunnerCutterCard
             runnerCutterState={runnerCutterState}
-            onStartClick={(mode: RunnerCutterMode) => {
+            onStartClick={(mode) => {
               switch (mode) {
                 case RunnerCutterMode.TRACKING_ONLY:
                   detectionNode.startDetection(DetectionType.RUNNER);
@@ -278,8 +278,6 @@ export default function Controls({
                   break;
                 case RunnerCutterMode.MANUAL:
                   setManualMode(true);
-                  break;
-                default:
                   break;
               }
             }}
@@ -294,8 +292,6 @@ export default function Controls({
                 case RunnerCutterState.ARMED_MANUAL:
                   setManualMode(false);
                   break;
-                default:
-                  break;
               }
             }}
           />
@@ -303,7 +299,7 @@ export default function Controls({
       </Card>
       {deviceTemperatureAlert}
       <FramePreviewLiveKit
-        className="w-full h-[360px]"
+        className="w-full h-90"
         topicName={`${detectionNodeName}/debug/image`}
         enableStream={
           cameraNode.state.deviceState === CameraDeviceState.STREAMING
