@@ -1,26 +1,33 @@
 export const dynamic = "force-dynamic";
-const wifi = require("node-wifi");
 
-// Initialize wifi module
+import * as wifi from "node-wifi";
+
 // Absolutely necessary even to set interface to null
-wifi.init({
-  iface: null, // network interface, choose a random wifi interface if set to null
-});
+wifi.init({ iface: null });
 
-export async function GET(request: Request) {
+type NetworkEntry = {
+  ssid: string;
+  signal: number;
+  security: string;
+  connected: boolean;
+}
+
+/**
+ * GET /api/wifi/list
+ *
+ * Scans for nearby Wi-Fi networks and returns a deduplicated list,
+ * keeping the highest-quality entry per SSID.
+ */
+export async function GET(_request: Request) {
   try {
     const currentConnections = await wifi.getCurrentConnections();
-    const connectedSsids = new Set(
-      currentConnections.map((conn: any) => conn.ssid)
-    );
+    const connectedSsids = new Set(currentConnections.map((conn) => conn.ssid));
     const networks = await wifi.scan();
-    const result: any = {};
-    networks.forEach((network: any) => {
+
+    const result: Record<string, NetworkEntry> = {};
+    networks.forEach((network) => {
       const { ssid, quality, security } = network;
-      if (
-        ssid.trim().length > 0 &&
-        (!(ssid in result) || quality > result[ssid].quality)
-      ) {
+      if (ssid.trim() && (!(ssid in result) || quality > result[ssid].signal)) {
         result[ssid] = {
           ssid,
           signal: quality,
@@ -29,10 +36,13 @@ export async function GET(request: Request) {
         };
       }
     });
+
     return Response.json(Object.values(result));
-  } catch (error) {
-    return new Response(null, {
-      status: 500,
-    });
+  } catch (err) {
+    console.error("Wi-Fi list failed:", err);
+    return Response.json(
+      { error: err instanceof Error ? err.message : "Scan failed" },
+      { status: 500 }
+    );
   }
 }

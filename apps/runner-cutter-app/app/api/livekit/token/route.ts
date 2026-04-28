@@ -1,20 +1,35 @@
 export const dynamic = "force-dynamic";
+
 import { AccessToken } from "livekit-server-sdk";
 import { NextRequest, NextResponse } from "next/server";
 
+/**
+ * GET /api/livekit/token
+ *
+ * Issues a short-lived LiveKit JWT for a subscriber-only participant.
+ *
+ * @param req - Incoming Next.js request.
+ * @query room - Name of the LiveKit room to join. Required.
+ * @query identity - Participant identity string. Required.
+ */
 export async function GET(req: NextRequest) {
   const room = req.nextUrl.searchParams.get("room");
   const identity = req.nextUrl.searchParams.get("identity");
-
   if (!room || !identity) {
     return NextResponse.json(
-      { error: "room & identity required" },
+      { error: "Room and identity required" },
       { status: 400 }
     );
   }
 
-  const apiKey = process.env.LIVEKIT_API_KEY ?? "devkey";
+  const apiKey = process.env.LIVEKIT_API_KEY;
   const apiSecret = process.env.LIVEKIT_API_SECRET;
+  if (!apiKey || !apiSecret) {
+    return NextResponse.json(
+      { error: "LiveKit credentials not configured" },
+      { status: 500 }
+    );
+  }
 
   const accessToken = new AccessToken(apiKey, apiSecret, {
     identity,

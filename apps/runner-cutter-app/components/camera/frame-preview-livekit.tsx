@@ -154,7 +154,7 @@ export default function FramePreviewLiveKit({
 
       try {
         const res = await fetch(
-          `/api/token?room=${encodeURIComponent(
+          `/api/livekit/token?room=${encodeURIComponent(
             topicName
           )}&identity=${encodeURIComponent(identity)}`,
           { cache: "no-store" }
