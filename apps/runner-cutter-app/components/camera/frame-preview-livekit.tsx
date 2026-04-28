@@ -1,10 +1,10 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { RemoteTrack, Room, RoomEvent, Track as LkTrack } from "livekit-client";
-import { useCallback, useEffect, useRef, useState } from "react";
 import { Track, TrackState } from "@/lib/useControlNode";
+import { cn } from "@/lib/utils";
+import { Track as LkTrack, RemoteTrack, Room, RoomEvent } from "livekit-client";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 function getVideoSizeAndOffset(videoElement: HTMLVideoElement) {
   const rect = videoElement.getBoundingClientRect();
@@ -82,7 +82,7 @@ export default function FramePreviewLiveKit({
     "idle" | "connecting" | "connected" | "error"
   >("idle");
   const [streamErrorMessage, setStreamErrorMessage] = useState<string | null>(
-    null
+    null,
   );
   const [rotate180, setRotate180] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -93,13 +93,13 @@ export default function FramePreviewLiveKit({
     top: 0,
     left: 0,
   });
+  const identityRef = useRef<string>(getOrMakeIdentity());
 
   const serverUrl =
     typeof window !== "undefined" && enableStream
-      ? process.env.NEXT_PUBLIC_LIVEKIT_URL ??
-        `ws://${window.location.hostname}:7880`
+      ? (process.env.NEXT_PUBLIC_LIVEKIT_URL ??
+        `ws://${window.location.hostname}:7880`)
       : "";
-  const identity = getOrMakeIdentity();
 
   useEffect(() => {
     if (!topicName || !serverUrl) {
@@ -150,21 +150,19 @@ export default function FramePreviewLiveKit({
 
     (async () => {
       setStreamStatus("connecting");
-      console.log("Fetching JWT...");
 
       try {
         const res = await fetch(
           `/api/livekit/token?room=${encodeURIComponent(
-            topicName
-          )}&identity=${encodeURIComponent(identity)}`,
-          { cache: "no-store" }
+            topicName,
+          )}&identity=${encodeURIComponent(identityRef.current)}`,
+          { cache: "no-store" },
         );
         if (!res.ok) {
           throw new Error(`Token endpoint error: ${res.status}`);
         }
         const { token } = await res.json();
 
-        console.log("JWT obtained. Connecting to LiveKit room...");
         room
           .on(RoomEvent.TrackSubscribed, onTrackSubscribed)
           .on(RoomEvent.TrackUnsubscribed, onTrackUnsubscribed);
@@ -175,11 +173,10 @@ export default function FramePreviewLiveKit({
 
         // In case the publisher was already in the room
         tryAttachVideoTrack();
-        console.log("Connected to LiveKit room");
         setStreamStatus("connected");
-      } catch (e: any) {
+      } catch (e) {
         if (!cancelled) {
-          setStreamErrorMessage(e?.message ?? String(e));
+          setStreamErrorMessage(e instanceof Error ? e.message : String(e));
           setStreamStatus("error");
         }
       }
@@ -192,10 +189,10 @@ export default function FramePreviewLiveKit({
       } catch {}
       if (videoRef.current) {
         // Clear any attached stream
-        (videoRef.current as any).srcObject = null;
+        videoRef.current.srcObject = null;
       }
     };
-  }, [topicName, serverUrl, identity]);
+  }, [topicName, serverUrl]);
 
   // Handle image click and calculate normalized coordinates
   const handleVideoClick = useCallback(
@@ -232,7 +229,7 @@ export default function FramePreviewLiveKit({
         onImageClick(normalizedX, normalizedY);
       }
     },
-    [streamStatus, rotate180, onImageClick]
+    [streamStatus, rotate180, onImageClick],
   );
 
   // Update canvas position and size to exactly match the rendered image
@@ -266,8 +263,8 @@ export default function FramePreviewLiveKit({
     // Draw rect first, as it requires clearing part of the canvas
     if (
       overlayNormalizedRect &&
-      overlayNormalizedRect.width > 0.0 &&
-      overlayNormalizedRect.height > 0.0
+      overlayNormalizedRect.width > 0 &&
+      overlayNormalizedRect.height > 0
     ) {
       // Draw a semi-opaque red overlay on the entire canvas
       ctx.fillStyle = "rgba(255, 0, 0, 0.1)";
@@ -284,7 +281,7 @@ export default function FramePreviewLiveKit({
         rectX * canvasElement.width,
         rectY * canvasElement.height,
         overlayNormalizedRect.width * canvasElement.width,
-        overlayNormalizedRect.height * canvasElement.height
+        overlayNormalizedRect.height * canvasElement.height,
       );
     }
 
@@ -292,12 +289,12 @@ export default function FramePreviewLiveKit({
     if (overlayText) {
       ctx.font = "16px sans-serif";
       ctx.fillStyle = "white";
-      ctx.fillText(`${overlayText}`, 10, 25);
+      ctx.fillText(overlayText, 10, 25);
     }
     if (overlaySubtext) {
       ctx.font = "12px sans-serif";
       ctx.fillStyle = "white";
-      ctx.fillText(`${overlaySubtext}`, 10, 45);
+      ctx.fillText(overlaySubtext, 10, 45);
     }
 
     // Draw tracks
@@ -319,7 +316,6 @@ export default function FramePreviewLiveKit({
     }
   }, [
     rotate180,
-    setCanvasStyle,
     overlayText,
     overlaySubtext,
     overlayNormalizedRect,
@@ -354,20 +350,14 @@ export default function FramePreviewLiveKit({
         ref={videoRef}
         className={cn(
           "w-full h-full object-contain bg-black",
-          rotate180 ? "rotate-180" : null
+          rotate180 && "rotate-180",
         )}
         autoPlay
         playsInline
         muted // required for autoplay in some browsers
-        onWaiting={() => {
-          setIsLoading(true);
-        }}
-        onCanPlay={() => {
-          setIsLoading(false);
-        }}
-        onPlaying={() => {
-          setIsLoading(false);
-        }}
+        onWaiting={() => setIsLoading(true)}
+        onCanPlay={() => setIsLoading(false)}
+        onPlaying={() => setIsLoading(false)}
         onClick={handleVideoClick}
       />
       {renderOverlay && (
@@ -391,9 +381,7 @@ export default function FramePreviewLiveKit({
         <Button
           className="absolute bottom-4 right-4"
           variant="secondary"
-          onClick={() => {
-            setRotate180(!rotate180);
-          }}
+          onClick={() => setRotate180(!rotate180)}
         >
           Rotate
         </Button>

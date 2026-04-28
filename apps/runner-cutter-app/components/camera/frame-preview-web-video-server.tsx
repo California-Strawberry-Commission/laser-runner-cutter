@@ -1,10 +1,10 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { Track, TrackState } from "@/lib/useControlNode";
 import useWebVideoServerStreamUrl from "@/lib/useWebVideoServerStreamUrl";
 import { cn } from "@/lib/utils";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
 
 function getImageSizeAndOffset(imgElement: HTMLImageElement) {
   const rect = imgElement.getBoundingClientRect();
@@ -79,7 +79,7 @@ export default function FramePreviewWebVideoServer({
   const streamUrl = useWebVideoServerStreamUrl(
     topicName,
     quality,
-    enableStream
+    enableStream,
   );
 
   const renderOverlay = streamUrl && enableOverlay;
@@ -119,7 +119,7 @@ export default function FramePreviewWebVideoServer({
         onImageClick(normalizedX, normalizedY);
       }
     },
-    [streamUrl, rotate180, onImageClick]
+    [streamUrl, rotate180, onImageClick],
   );
 
   // Update canvas position and size to exactly match the rendered image
@@ -171,7 +171,7 @@ export default function FramePreviewWebVideoServer({
         rectX * canvasElement.width,
         rectY * canvasElement.height,
         overlayNormalizedRect.width * canvasElement.width,
-        overlayNormalizedRect.height * canvasElement.height
+        overlayNormalizedRect.height * canvasElement.height,
       );
     }
 
@@ -179,12 +179,12 @@ export default function FramePreviewWebVideoServer({
     if (overlayText) {
       ctx.font = "16px sans-serif";
       ctx.fillStyle = "white";
-      ctx.fillText(`${overlayText}`, 10, 25);
+      ctx.fillText(`overlayText`, 10, 25);
     }
     if (overlaySubtext) {
       ctx.font = "12px sans-serif";
       ctx.fillStyle = "white";
-      ctx.fillText(`${overlaySubtext}`, 10, 45);
+      ctx.fillText(`overlaySubtext`, 10, 45);
     }
 
     // Draw tracks
@@ -206,7 +206,6 @@ export default function FramePreviewWebVideoServer({
     }
   }, [
     rotate180,
-    setCanvasStyle,
     overlayText,
     overlaySubtext,
     overlayNormalizedRect,
@@ -242,7 +241,7 @@ export default function FramePreviewWebVideoServer({
         alt="Camera Stream"
         className={cn(
           "w-full h-full object-contain bg-black",
-          rotate180 ? "rotate-180" : null
+          rotate180 ? "rotate-180" : null,
         )}
         onClick={handleImageClick}
       />
@@ -267,9 +266,7 @@ export default function FramePreviewWebVideoServer({
         <Button
           className="absolute bottom-4 right-4"
           variant="secondary"
-          onClick={() => {
-            setRotate180(!rotate180);
-          }}
+          onClick={() => setRotate180(!rotate180)}
         >
           Rotate
         </Button>
