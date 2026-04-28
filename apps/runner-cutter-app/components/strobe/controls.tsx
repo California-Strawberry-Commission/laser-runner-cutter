@@ -26,30 +26,28 @@ export default function Controls({
   const disableButtons = cameraDeviceState !== DeviceState.CONNECTED;
 
   // Sync text inputs to node state
-  useEffect(() => {
-    async function fetchParams() {
-      if (cameraNode.connected) {
-        const exposureUs = await cameraNode.getExposureUs();
-        setExposureUs(exposureUs);
+  useEffect(
+    () => {
+      async function fetchParams() {
+        if (cameraNode.connected) {
+          const exposureUs = await cameraNode.getExposureUs();
+          setExposureUs(exposureUs);
 
-        const gainDb = await cameraNode.getGainDb();
-        setGainDb(gainDb);
+          const gainDb = await cameraNode.getGainDb();
+          setGainDb(gainDb);
 
-        const saveDir = await cameraNode.getSaveDir();
-        setSaveDir(saveDir);
+          const saveDir = await cameraNode.getSaveDir();
+          setSaveDir(saveDir);
+        }
       }
-    }
 
-    fetchParams();
-  },
-  // We intentionally did not add cameraNode to deps
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  [
-    cameraNode.connected,
-    setExposureUs,
-    setGainDb,
-    setSaveDir,
-  ]);
+      fetchParams();
+    },
+    // We intentionally omit cameraNode object to avoid re-running on every
+    // render. `.connected` is the signal we care about.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cameraNode.connected],
+  );
 
   return (
     <div className="flex flex-col gap-4 items-center">
@@ -66,7 +64,7 @@ export default function Controls({
         <Card>
           <CardContent className="p-4 flex flex-col items-center gap-4">
             <div className="flex flex-row items-center gap-4 mb-4">
-              <div className="flex flex-row items-center gap-[1px]">
+              <div className="flex flex-row items-center gap-px">
                 <InputWithLabel
                   className="flex-none w-24 rounded-r-none"
                   type="number"
@@ -77,7 +75,7 @@ export default function Controls({
                   step={10}
                   value={exposureUs}
                   onChange={(str) => {
-                    const value = Number(str);
+                    const value = parseFloat(str);
                     if (!isNaN(value)) {
                       setExposureUs(value);
                     }
@@ -97,12 +95,13 @@ export default function Controls({
                   disabled={disableButtons}
                   onClick={() => {
                     cameraNode.setExposureUs(-1);
+                    setExposureUs(-1);
                   }}
                 >
                   Auto
                 </Button>
               </div>
-              <div className="flex flex-row items-center gap-[1px]">
+              <div className="flex flex-row items-center gap-px">
                 <InputWithLabel
                   className="flex-none w-20 rounded-r-none"
                   type="number"
@@ -113,7 +112,7 @@ export default function Controls({
                   step={1}
                   value={gainDb}
                   onChange={(str) => {
-                    const value = Number(str);
+                    const value = parseFloat(str);
                     if (!isNaN(value)) {
                       setGainDb(value);
                     }
@@ -133,6 +132,7 @@ export default function Controls({
                   disabled={disableButtons}
                   onClick={() => {
                     cameraNode.setGainDb(-1);
+                    setGainDb(-1);
                   }}
                 >
                   Auto
@@ -148,9 +148,7 @@ export default function Controls({
                   name="saveDir"
                   label="Save Directory"
                   value={saveDir}
-                  onChange={(str) => {
-                    setSaveDir(str);
-                  }}
+                  onChange={setSaveDir}
                 />
                 <Button
                   className="rounded-l-none"
@@ -203,7 +201,7 @@ export default function Controls({
       </div>
       <img
         ref={imgRef}
-        className="object-contain bg-black w-full h-[480px]"
+        className="object-contain bg-black w-full h-120"
         alt="Camera Frame Preview"
       />
     </div>

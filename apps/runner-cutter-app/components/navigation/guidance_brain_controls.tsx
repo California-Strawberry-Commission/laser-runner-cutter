@@ -1,11 +1,7 @@
 "use client";
 
-import { Input } from "@/components/ui/input";
-import useROS from "@/lib/ros/useROS";
-import useLaserNode from "@/lib/useFurrowPerceiverNode";
-import { useEffect, useState } from "react";
-import { InputWithLabel } from "@/components/ui/input-with-label";
 import { Button } from "@/components/ui/button";
+import { InputWithLabel } from "@/components/ui/input-with-label";
 import useGuidanceBrainNode from "@/lib/useGuidanceBrainNode";
 
 export default function GuidanceBrainControls({
