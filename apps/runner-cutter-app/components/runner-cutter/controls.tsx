@@ -9,7 +9,7 @@ import DeviceCard, {
   convertCameraNodeDeviceState,
   convertLaserNodeDeviceState,
 } from "@/components/runner-cutter/device-card";
-import NodesCarousel from "@/components/runner-cutter/nodes-carousel";
+import NodeStatusBar from "@/components/runner-cutter/node-status-bar";
 import RunnerCutterCard, {
   RunnerCutterMode,
   RunnerCutterState,
@@ -28,7 +28,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import useROS from "@/lib/ros/useROS";
-import useCameraNode, { DeviceState as CameraDeviceState } from "@/lib/useCameraNode";
+import useCameraNode, {
+  DeviceState as CameraDeviceState,
+} from "@/lib/useCameraNode";
 import useControlNode, { TrackState } from "@/lib/useControlNode";
 import useDetectionNode, { DetectionType } from "@/lib/useDetectionNode";
 import useLaserNode from "@/lib/useLaserNode";
@@ -55,7 +57,7 @@ export default function Controls({
   const { connected: rosConnected } = useROS();
 
   const lifecycleManagerNode = useLifecycleManagerNode(
-    lifecycleManagerNodeName
+    lifecycleManagerNodeName,
   );
   const cameraNode = useCameraNode(cameraNodeName);
   const detectionNode = useDetectionNode(detectionNodeName);
@@ -76,7 +78,7 @@ export default function Controls({
         controlNode.addCalibrationPoint(normalizedX, normalizedY);
       }
     },
-    [controlNode, manualMode]
+    [controlNode, manualMode],
   );
 
   const nodeInfos = useMemo(() => {
@@ -92,20 +94,25 @@ export default function Controls({
       laserNode,
       controlNode,
     ];
-  }, [rosConnected, lifecycleManagerNode, cameraNode, detectionNode, laserNode, controlNode]);
+  }, [
+    rosConnected,
+    lifecycleManagerNode,
+    cameraNode,
+    detectionNode,
+    laserNode,
+    controlNode,
+  ]);
 
   const restartServiceDialog = (
     <Dialog>
       <DialogTrigger asChild>
-        <div className="pointer-events-none w-full h-full flex flex-col justify-center">
-          <Button
-            className="pointer-events-auto w-full"
-            disabled={!lifecycleManagerNode.connected}
-            variant="destructive"
-          >
-            Restart Service
-          </Button>
-        </div>
+        <Button
+          className="pointer-events-auto"
+          disabled={!lifecycleManagerNode.connected}
+          variant="destructive"
+        >
+          Restart Nodes
+        </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -121,7 +128,7 @@ export default function Controls({
             <Button
               variant="destructive"
               onClick={() => {
-                lifecycleManagerNode.restart_service();
+                lifecycleManagerNode.restartService();
               }}
             >
               Restart Nodes
@@ -131,7 +138,7 @@ export default function Controls({
             <Button
               variant="destructive"
               onClick={() => {
-                lifecycleManagerNode.reboot_system();
+                lifecycleManagerNode.rebootSystem();
               }}
             >
               Reboot System
@@ -235,14 +242,17 @@ export default function Controls({
 
   return (
     <div className="flex flex-col gap-4 items-center">
-      <NodesCarousel className="w-full" nodeInfos={nodeInfos}>
-        {restartServiceDialog}
-      </NodesCarousel>
-      <Card>
+      <Card className="w-full">
         <CardHeader className="p-4">
-          <CardTitle className="text-lg">Control Panel</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">Control Panel</CardTitle>
+            <div className="flex items-center gap-4">
+              <NodeStatusBar nodeInfos={nodeInfos} />
+              {restartServiceDialog}
+            </div>
+          </div>
         </CardHeader>
-        <CardContent className="p-4 pt-0 flex flex-row items-center gap-4">
+        <CardContent className="p-4 pt-0 flex flex-row flex-wrap items-center justify-center gap-4">
           <DeviceCard
             deviceName="Camera"
             deviceState={cameraDeviceState}

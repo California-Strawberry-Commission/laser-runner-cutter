@@ -11,23 +11,23 @@ function successOutputMapper(res: any): boolean {
 export default function useLifecycleManagerNode(nodeName: string) {
   const node = useROSNode(nodeName);
 
-  const restart_service = node.useService(
+  const restartService = node.useService(
     "~/restart_service",
     "std_srvs/Trigger",
     triggerInputMapper,
-    successOutputMapper
+    successOutputMapper,
   );
 
-  const reboot_system = node.useService(
+  const rebootSystem = node.useService(
     "~/reboot_system",
     "std_srvs/Trigger",
     triggerInputMapper,
-    successOutputMapper
+    successOutputMapper,
   );
 
   return {
     ...node,
-    restart_service,
-    reboot_system,
+    restartService,
+    rebootSystem,
   };
 }
