@@ -30,11 +30,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={cn("select-none", inter.className)}>
         <div className="flex h-screen overflow-hidden">
-          <div className="flex-shrink-0 w-52 bg-gray-200 overflow-y-auto p-8">
+          <div className="flex-shrink-0 w-52 bg-gray-200 overflow-y-auto p-6">
             <SideNav />
           </div>
           <KeyboardProvider>
-            <div className="flex-1 overflow-y-auto p-8">{children}</div>
+            <div className="flex-1 overflow-y-auto p-6">{children}</div>
           </KeyboardProvider>
           <Toaster richColors expand />
         </div>
