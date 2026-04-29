@@ -1,5 +1,5 @@
-import FurrowPercieverControls from "@/components/navigation/furrow_perceiver_controls";
-import GuidanceBrainControls from "@/components/navigation/guidance_brain_controls";
+import FurrowPercieverControls from "@/components/navigation/furrow-perceiver-controls";
+import GuidanceBrainControls from "@/components/navigation/guidance-brain-controls";
 import {
   FURROW_PERCEIVER_BACKWARD_NODE_NAME,
   FURROW_PERCEIVER_FORWARD_NODE_NAME,
