@@ -1,5 +1,5 @@
-import ROSLIB from "roslib";
 import TaskRunner from "@/lib/ros/TaskRunner";
+import { Ros, Service, Topic } from "roslib";
 
 class EventSubscriptionHandle {
   private onUnsubscribe: () => void;
@@ -15,7 +15,7 @@ class EventSubscriptionHandle {
 
 export default class ROS {
   private url: string | null;
-  private ros: ROSLIB.Ros;
+  private ros: Ros;
   private reconnectIntervalMs: number;
   private reconnectRunner: TaskRunner | null = null;
   private nodes: string[] = [];
@@ -23,22 +23,19 @@ export default class ROS {
   private nodeMonitorRunner: TaskRunner | null = null;
   private nodeListeners: ((nodeName: string, connected: boolean) => void)[] =
     [];
-  private serviceCache: Map<
-    string,
-    ROSLIB.Service<ROSLIB.ServiceRequest, ROSLIB.ServiceResponse>
-  > = new Map();
-  private topicCache: Map<string, ROSLIB.Topic<ROSLIB.Message>> = new Map();
+  private serviceCache: Map<string, Service> = new Map();
+  private topicCache: Map<string, Topic> = new Map();
 
   constructor(
     url: string | null,
     reconnectIntervalMs: number = 5000,
-    nodeMonitorIntervalMs: number = 5000
+    nodeMonitorIntervalMs: number = 5000,
   ) {
     this.url = url;
     this.reconnectIntervalMs = reconnectIntervalMs;
     this.nodeMonitorIntervalMs = nodeMonitorIntervalMs;
 
-    this.ros = new ROSLIB.Ros(url ? { url } : {});
+    this.ros = new Ros(url ? { url } : {});
     this.ros.on("connection", () => {
       console.log("[ROS] Connected");
       this.onRosConnected();
@@ -72,7 +69,7 @@ export default class ROS {
   }
 
   onNodeConnected(
-    callback: (nodeName: string, connected: boolean) => void
+    callback: (nodeName: string, connected: boolean) => void,
   ): EventSubscriptionHandle {
     this.nodeListeners.push(callback);
     return new EventSubscriptionHandle(() => {
@@ -94,21 +91,20 @@ export default class ROS {
   async callService(
     name: string,
     serviceType: string,
-    values: any,
-    timeoutMs: number = 0
-  ): Promise<any> {
+    values: Record<string, unknown>,
+    timeoutMs: number = 0,
+  ): Promise<unknown> {
     let client = this.serviceCache.get(name);
     if (!client) {
-      client = new ROSLIB.Service({ ros: this.ros, name, serviceType });
+      client = new Service({ ros: this.ros, name, serviceType });
       this.serviceCache.set(name, client);
     }
 
-    const request = new ROSLIB.ServiceRequest(values);
-    return new Promise<any>((resolve, reject) => {
-      let timeoutId: any;
+    return new Promise<unknown>((resolve, reject) => {
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
       client.callService(
-        request,
+        values,
         (response) => {
           clearTimeout(timeoutId);
           resolve(response);
@@ -116,7 +112,7 @@ export default class ROS {
         (error) => {
           clearTimeout(timeoutId);
           reject(error);
-        }
+        },
       );
 
       if (timeoutMs > 0) {
@@ -130,25 +126,21 @@ export default class ROS {
   subscribe(
     name: string,
     messageType: string,
-    callback: (message: ROSLIB.Message) => void
-  ): ROSLIB.Topic<ROSLIB.Message> {
+    callback: (message: unknown) => void,
+  ): Topic {
     let topic = this.topicCache.get(name);
     if (!topic) {
-      topic = new ROSLIB.Topic({ ros: this.ros, name, messageType });
+      topic = new Topic({ ros: this.ros, name, messageType });
       this.topicCache.set(name, topic);
     }
     topic.subscribe(callback);
     return topic;
   }
 
-  publish(
-    name: string,
-    messageType: string,
-    message: ROSLIB.Message
-  ): ROSLIB.Topic<ROSLIB.Message> {
+  publish(name: string, messageType: string, message: unknown): Topic {
     let topic = this.topicCache.get(name);
     if (!topic) {
-      topic = new ROSLIB.Topic({ ros: this.ros, name, messageType });
+      topic = new Topic({ ros: this.ros, name, messageType });
       this.topicCache.set(name, topic);
     }
     topic.publish(message);
@@ -156,12 +148,12 @@ export default class ROS {
   }
 
   private async getNodesInternal(): Promise<string[]> {
-    const result = await this.callService(
+    const result = (await this.callService(
       "/rosapi/nodes",
       "rosapi/Nodes",
       {},
-      this.nodeMonitorIntervalMs
-    );
+      this.nodeMonitorIntervalMs,
+    )) as { nodes: string[] };
     return result.nodes;
   }
 
@@ -174,7 +166,7 @@ export default class ROS {
     if (this.nodeMonitorRunner === null) {
       this.nodeMonitorRunner = new TaskRunner(
         this.nodeMonitorTask.bind(this),
-        this.nodeMonitorIntervalMs
+        this.nodeMonitorIntervalMs,
       );
       this.nodeMonitorRunner.start();
     }
@@ -185,7 +177,7 @@ export default class ROS {
     if (this.reconnectRunner === null) {
       this.reconnectRunner = new TaskRunner(
         this.reconnectTask.bind(this),
-        this.reconnectIntervalMs
+        this.reconnectIntervalMs,
       );
       this.reconnectRunner.start();
     }
