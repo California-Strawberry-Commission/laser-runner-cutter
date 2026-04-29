@@ -1,11 +1,11 @@
 services:
   redis:
-    image: redis:7
+    image: redis:8
     container_name: lk-redis
     network_mode: host
 
   server:
-    image: livekit/livekit-server:latest
+    image: livekit/livekit-server:v1.11
     container_name: lk-server
     network_mode: host
     depends_on:
@@ -17,7 +17,7 @@ services:
       - ../../../.env # uses LIVEKIT_KEYS
 
   ingress:
-    image: livekit/ingress:latest
+    image: livekit/ingress:v1.5
     container_name: lk-ingress
     network_mode: host
     depends_on:
