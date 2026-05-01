@@ -1,0 +1,19 @@
+# Dev override
+# Docker Compose merges this with docker-compose.yaml automatically.
+#
+# Usage:
+#   docker compose up -d               # start containers
+#   docker exec -it ros2-ros2-1 bash   # drop into shell for the running ros2 container
+#   /entrypoint.sh                     # build and run nodes
+#   exit                               # exists shell session
+#   docker compose down                # stop containers
+#
+# Incremental rebuilds (C++ nodes only. Python nodes are live via symlink-install):
+#   colcon build --packages-select <pkg> --no-clean
+#
+# For production, run the following to avoid this override:
+#   docker compose -f docker-compose.yaml up -d
+
+services:
+  ros2:
+    entrypoint: ["sleep", "infinity"]  # override entrypoint to just keep container running forever

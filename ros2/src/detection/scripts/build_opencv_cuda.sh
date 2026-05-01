@@ -14,14 +14,14 @@ ARCH=$(uname -m); \
   [ ! -e /usr/include/${ARCH}-linux-gnu/cudnn_version.h ] && \
   sudo ln -s /usr/include/${ARCH}-linux-gnu/cudnn_version_v9.h /usr/include/${ARCH}-linux-gnu/cudnn_version.h || true;
 
+sudo apt install -y wget unzip cmake ninja-build
+
 mkdir /tmp/opencv
 cd /tmp/opencv
 test -e ${OPENCV_VERSION}.zip || wget https://github.com/opencv/opencv/archive/refs/tags/${OPENCV_VERSION}.zip
 test -e opencv-${OPENCV_VERSION} || unzip ${OPENCV_VERSION}.zip
 test -e opencv_extra_${OPENCV_VERSION}.zip || wget -O opencv_extra_${OPENCV_VERSION}.zip https://github.com/opencv/opencv_contrib/archive/refs/tags/${OPENCV_VERSION}.zip
 test -e opencv_contrib-${OPENCV_VERSION} || unzip opencv_extra_${OPENCV_VERSION}.zip
-
-sudo apt install -y cmake ninja-build
 
 cd opencv-${OPENCV_VERSION}
 mkdir build

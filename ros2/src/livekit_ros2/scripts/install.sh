@@ -16,13 +16,9 @@ sudo apt install -y \
   gstreamer1.0-libav \
   gstreamer1.0-tools \
   gstreamer1.0-x \
-  gstreamer1.0-alsa \
   gstreamer1.0-gl \
-  gstreamer1.0-gtk3 \
-  gstreamer1.0-qt5 \
-  gstreamer1.0-pulseaudio \
-  libcairo2-dev \
   gstreamer1.0-nice \
+  libcairo2-dev \
   libsrtp2-1 \
   libgirepository1.0-dev
 
