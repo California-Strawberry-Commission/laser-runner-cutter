@@ -1,11 +1,7 @@
 [submodule "ros2/src/realsense-ros"]
 	path = ros2/src/realsense-ros
-	url = https://github.com/IntelRealSense/realsense-ros.git
+	url = https://github.com/realsenseai/realsense-ros.git
 	branch = ros2-master
-[submodule "ros2/src/web_video_server"]
-	path = ros2/src/web_video_server
-	url = https://github.com/RobotWebTools/web_video_server.git
-	branch = ros2
 [submodule "ros2/third_party/helios_dac"]
 	path = ros2/third_party/helios_dac
 	url = https://github.com/Grix/helios_dac.git

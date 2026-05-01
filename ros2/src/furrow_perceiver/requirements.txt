@@ -1,2 +1,4 @@
-opencv-python-headless
+-e ../aioros2 --config-settings editable_mode=strict
+numpy<2.0
+scipy
 pyrealsense2
