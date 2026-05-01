@@ -22,6 +22,7 @@ ros_launch() {
     pids+=("$!")
 }
 ros_launch "lifecycle_manager launch.py"
+ros_launch "livekit_ros2 launch.py"
 ros_launch "runner_cutter_control rosbridge_websocket_launch.xml"
 ros_launch "runner_cutter_control launch.py launch_nav_nodes:=False"
 

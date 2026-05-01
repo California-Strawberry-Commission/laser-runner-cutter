@@ -2,6 +2,7 @@
 # -----------------------------------------------------------------------------
 # Builds OpenCV with CUDA support and installs it in /usr/local
 # -----------------------------------------------------------------------------
+set -e
 
 OPENCV_VERSION=4.12.0
 
@@ -14,7 +15,7 @@ ARCH=$(uname -m); \
   [ ! -e /usr/include/${ARCH}-linux-gnu/cudnn_version.h ] && \
   sudo ln -s /usr/include/${ARCH}-linux-gnu/cudnn_version_v9.h /usr/include/${ARCH}-linux-gnu/cudnn_version.h || true;
 
-sudo apt install -y wget unzip cmake ninja-build
+sudo apt install -y wget unzip cmake ninja-build python3-dev
 
 mkdir /tmp/opencv
 cd /tmp/opencv
@@ -44,14 +45,13 @@ cmake -G Ninja \
       -D WITH_OPENGL=OFF \
       -D WITH_OPENCL=OFF \
       -D BUILD_opencv_apps=OFF \
-      -D BUILD_opencv_python3=OFF \
+      -D BUILD_opencv_python3=ON \
       -D BUILD_opencv_python2=OFF \
+      -D BUILD_opencv_sfm=OFF \
       -D BUILD_TESTS=OFF \
       -D BUILD_PERF_TESTS=OFF \
       -D BUILD_EXAMPLES=OFF \
       -D BUILD_DOCS=OFF \
-      -D BUILD_opencv_apps=OFF \
-      -D BUILD_opencv_sfm=OFF \
       -D OPENCV_GENERATE_PKGCONFIG=ON \
       -D OPENCV_PC_FILE_NAME=opencv.pc \
       -D OPENCV_ENABLE_NONFREE=ON \

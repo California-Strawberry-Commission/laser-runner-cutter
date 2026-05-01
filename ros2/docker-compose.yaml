@@ -1,3 +1,13 @@
+# Usage:
+#   docker compose up -d               # start containers
+#   docker exec -it ros2-ros2-1 bash   # drop into shell for the running ros2 container
+#   /entrypoint.sh                     # build and run nodes
+#   exit                               # exits shell session
+#   docker compose down                # stop containers
+#
+# Incremental rebuilds (C++ nodes only. Python nodes are live via symlink-install):
+#   colcon build --packages-select <pkg> --no-clean
+
 services:
   ros2:
     image: laser-runner-cutter-ros2:latest
@@ -9,8 +19,12 @@ services:
     runtime: nvidia
     network_mode: host
     ipc: host
-    privileged: true  # gives access to all /dev/*. In the futureCould specify devices in the future
+    privileged: true  # gives access to all /dev/*. In the future could specify devices.
     stop_grace_period: 10s # gives ROS nodes time to shut down cleanly
+    depends_on:
+      - redis
+      - livekit-server
+      - livekit-ingress
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
@@ -23,11 +37,12 @@ services:
       # Bind mount src and third_party
       - ./src:/workspaces/ros2/src
       - ./third_party:/workspaces/ros2/third_party
-      # Keep build artifacts in volume mount to avoid polluting host
+      # Keep build artifacts in volume mount to keep them across restarts while avoid polluting host
       - ros2-build:/workspaces/ros2/build
       - ros2-install:/workspaces/ros2/install
     env_file:
       - ../.env
+    entrypoint: ["sleep", "infinity"]  # just keep container running forever
     restart: unless-stopped
 
   redis:
