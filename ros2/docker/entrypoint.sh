@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -eo pipefail
 
 # Compile TensorRT engines if not already built.
 # Engines are device-specific and can't be baked into the image.
@@ -14,11 +14,19 @@ colcon build --symlink-install
 
 # Launch ROS nodes
 source /workspaces/ros2/install/setup.sh
+echo "[entrypoint] Launching nodes..."
+# Monitor mode (set -m) gives each backgrounded command its own process group, while 
+# sharing the session and controlling terminal.
+# Each ros2 launch process needs to be in its own process group in the background so that
+# we can intercept SIGINT/SIGTERM signals in this script and forward the signals to each
+# launch process, in order to control the shutdown sequence.
+# In addition, we need each ros2 launch process to behave interactively so that the
+# shutdown event loops run and thus log messages appear during shutdown.
+set -m
+# PIDs of all the launch processes
 pids=()
 ros_launch() {
-    # setsid puts each launch process in its own process group, so we can
-    # signal the whole tree (launch process + all spawned ROS nodes) at once.
-    setsid ros2 launch $1 &
+    ros2 launch $1 &
     pids+=("$!")
 }
 ros_launch "lifecycle_manager launch.py"
@@ -26,15 +34,22 @@ ros_launch "livekit_ros2 launch.py"
 ros_launch "runner_cutter_control rosbridge_websocket_launch.xml"
 ros_launch "runner_cutter_control launch.py launch_nav_nodes:=False"
 
-shutdown() {
-    echo "[entrypoint] Stopping..."
+echo "[entrypoint] All launch processes started. PIDs: ${pids[*]}"
 
-    # SIGINT to each process group. Tells ros2 launch and all its nodes to shut down gracefully.
+shutdown() {
+    local sig=$1
+    echo "[entrypoint] Caught signal $sig, forwarding to launch processes..."
+    # Block further SIGINT/SIGTERM signals to prevent shutdown from being called
+    # recursively
+    trap '' "$sig"
+
+    # Send signal to the launch processes. The launch processes will then disable node
+    # respawns and handle shutting down its nodes in order.
     for pid in "${pids[@]}"; do
-        kill -INT -"$pid" 2>/dev/null || true
+        kill -"$sig" "$pid" 2>/dev/null || true
     done
 
-    # Wait up to 10 seconds for graceful shutdown
+    # Wait up to 10 seconds for graceful shutdown, polling each second
     local deadline=$((SECONDS + 10))
     while [ $SECONDS -lt $deadline ]; do
         local any_running=false
@@ -45,15 +60,20 @@ shutdown() {
         sleep 1
     done
 
-    # Force kill any process groups that didn't exit in time
+    # Force kill any process groups that are still running
     for pid in "${pids[@]}"; do
         kill -0 "$pid" 2>/dev/null && kill -9 -"$pid" 2>/dev/null || true
     done
 
     wait 2>/dev/null || true
-    echo "[entrypoint] Stopped."
+    echo "[entrypoint] Shutdown complete."
 }
 
-trap shutdown INT TERM
+# Trigger shutdown on SIGINT or SIGTERM
+trap 'shutdown INT' SIGINT
+trap 'shutdown TERM' SIGTERM
 
+# Block the script indefinitely until background jobs are stopped
 wait || true
+
+echo "[entrypoint] All processes stopped."
