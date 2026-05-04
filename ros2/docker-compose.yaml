@@ -1,5 +1,5 @@
 # Usage:
-#   docker compose up -d               # start containers
+#   docker compose up --build --detach # start containers
 #   docker exec -it ros2-ros2-1 bash   # drop into shell for the running ros2 container
 #   /entrypoint.sh                     # build and run nodes
 #   exit                               # exits shell session
