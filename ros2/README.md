@@ -70,19 +70,28 @@ colcon build --packages-select <pkg>
 docker compose down
 ```
 
-### Production deployment
+## Production Deployment
 
-On a production device, we can set up the machine to start the ROS2 nodes on startup:
+Docker is enabled as a systemd service automatically when installed via [`scripts/install_docker.sh`](scripts/install_docker.sh). All services in [`docker-compose.yaml`](docker-compose.yaml) have `restart: unless-stopped`, so they come back up on reboot without any additional configuration.
 
-1.  TBD
+For production, use the compose override to run `docker/entrypoint.sh` on container start:
 
-In addition, we can set up the machine to enable restarting the ROS2 nodes and rebooting the machine without a password, which allows the LifecycleManager node to trigger the relevant commands. This is useful for allowing other programs (such as a web-based app) to restart the nodes or reboot the machine in case of an irrecoverable issue.
+```sh
+cd ~/laser-runner-cutter/ros2
 
-1.  Run `sudo visudo`, then add the following lines:
+# First-time start
+docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up --build --detach
+```
 
-        <username> ALL=(ALL) NOPASSWD: /sbin/reboot
+After that first start, `restart: unless-stopped` handles every subsequent reboot automatically.
 
-## LUCID camera calibration
+### Passwordless reboot
+
+To allow the LifecycleManager node to reboot the machine without a password (e.g. to recover from an irrecoverable error), run `sudo visudo` and add:
+
+    <username> ALL=(ALL) NOPASSWD: /sbin/reboot
+
+## LUCID Camera Calibration
 
 We currently use the following LUCID cameras:
 
