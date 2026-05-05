@@ -15,18 +15,7 @@ import RunnerCutterCard, {
   RunnerCutterState,
 } from "@/components/runner-cutter/runner-cutter-card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import useROS from "@/lib/ros/useROS";
 import useCameraNode, {
   DeviceState as CameraDeviceState,
@@ -102,55 +91,6 @@ export default function Controls({
     laserNode,
     controlNode,
   ]);
-
-  const restartServiceDialog = (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button
-          className="pointer-events-auto"
-          disabled={!lifecycleManagerNode.connected}
-          variant="destructive"
-        >
-          Restart Nodes
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Are you absolutely sure?</DialogTitle>
-          <DialogDescription>
-            This will restart the ROS 2 nodes, and may take a few minutes for it
-            to come back up. You can also choose to reboot the host machine,
-            which will take longer.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                lifecycleManagerNode.restartService();
-              }}
-            >
-              Restart Nodes
-            </Button>
-          </DialogClose>
-          <DialogClose asChild>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                lifecycleManagerNode.rebootSystem();
-              }}
-            >
-              Reboot System
-            </Button>
-          </DialogClose>
-          <DialogClose asChild>
-            <Button>Cancel</Button>
-          </DialogClose>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 
   const deviceTemperatureAlert =
     cameraNode.state.colorDeviceTemperature >=
@@ -246,10 +186,12 @@ export default function Controls({
         <CardHeader className="p-4">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">Control Panel</CardTitle>
-            <div className="flex items-center gap-4">
-              <NodeStatusBar nodeInfos={nodeInfos} />
-              {restartServiceDialog}
-            </div>
+            <NodeStatusBar
+              nodeInfos={nodeInfos}
+              onRestartNodes={() => lifecycleManagerNode.restartService()}
+              onRebootSystem={() => lifecycleManagerNode.rebootSystem()}
+              restartDisabled={!lifecycleManagerNode.connected}
+            />
           </div>
         </CardHeader>
         <CardContent className="p-4 pt-0 flex flex-row flex-wrap items-center justify-center gap-4">

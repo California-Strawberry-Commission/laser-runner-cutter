@@ -3,8 +3,10 @@
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -13,6 +15,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Separator } from "@/components/ui/separator";
 import type { NodeInfo } from "@/lib/NodeInfo";
 import { cn } from "@/lib/utils";
 import { ChevronDown } from "lucide-react";
@@ -21,11 +24,18 @@ import { useState } from "react";
 export default function NodeStatusBar({
   nodeInfos,
   className,
+  onRestartNodes,
+  onRebootSystem,
+  restartDisabled,
 }: {
   nodeInfos: NodeInfo[];
   className?: string;
+  onRestartNodes?: () => void;
+  onRebootSystem?: () => void;
+  restartDisabled?: boolean;
 }) {
   const [selectedNode, setSelectedNode] = useState<NodeInfo | null>(null);
+  const [restartDialogOpen, setRestartDialogOpen] = useState(false);
 
   const connectedCount = nodeInfos.filter((n) => n.connected).length;
   const allConnected = connectedCount === nodeInfos.length;
@@ -75,6 +85,20 @@ export default function NodeStatusBar({
                 </span>
               </button>
             ))}
+            {(onRestartNodes || onRebootSystem) && (
+              <>
+                <Separator className="mb-1" />
+                <Button
+                  className="w-full"
+                  variant="destructive"
+                  size="sm"
+                  disabled={restartDisabled}
+                  onClick={() => setRestartDialogOpen(true)}
+                >
+                  Restart Nodes
+                </Button>
+              </>
+            )}
           </div>
         </PopoverContent>
       </Popover>
@@ -92,6 +116,40 @@ export default function NodeStatusBar({
           <pre className="overflow-auto text-xs max-h-96">
             {JSON.stringify(selectedNode?.state ?? {}, undefined, 2)}
           </pre>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={restartDialogOpen}
+        onOpenChange={(open) => setRestartDialogOpen(open)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Are you absolutely sure?</DialogTitle>
+            <DialogDescription>
+              This will restart the ROS 2 nodes, and may take a few minutes for
+              it to come back up. You can also choose to reboot the host
+              machine, which will take longer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            {onRestartNodes && (
+              <DialogClose asChild>
+                <Button variant="destructive" onClick={onRestartNodes}>
+                  Restart Nodes
+                </Button>
+              </DialogClose>
+            )}
+            {onRebootSystem && (
+              <DialogClose asChild>
+                <Button variant="destructive" onClick={onRebootSystem}>
+                  Reboot System
+                </Button>
+              </DialogClose>
+            )}
+            <DialogClose asChild>
+              <Button>Cancel</Button>
+            </DialogClose>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

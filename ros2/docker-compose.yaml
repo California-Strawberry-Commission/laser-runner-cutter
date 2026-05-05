@@ -1,7 +1,7 @@
 # Usage:
 #   docker compose up --build --detach    # start containers
 #   docker exec -it ros2-ros2-1 bash      # drop into shell for the running ros2 container
-#   docker/entrypoint.sh                  # (inside container) build and run nodes
+#   docker/build_and_run.sh               # (inside container) build and run nodes
 #   colcon build --packages-select <pkg>  # (inside container) incremental rebuild of package(s)
 #   exit                                  # (inside container) exits shell session
 #   docker compose down                   # stop containers
@@ -38,7 +38,7 @@ services:
       - ros2-install:/workspaces/ros2/install
     env_file:
       - ./.env
-    entrypoint: ["sleep", "infinity"]  # just keep container running forever
+    entrypoint: ["/workspaces/ros2/docker/dev_entrypoint.sh"]
     restart: unless-stopped
 
   redis:

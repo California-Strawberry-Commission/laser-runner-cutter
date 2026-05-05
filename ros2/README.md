@@ -61,7 +61,7 @@ docker compose up --build --detach
 docker exec -it ros2-ros2-1 bash
 
 # Build and run all ROS nodes (inside container)
-docker/entrypoint.sh
+docker/build_and_run.sh
 
 # Build a single package (inside container)
 colcon build --packages-select <pkg>
@@ -74,7 +74,7 @@ docker compose down
 
 Docker is enabled as a systemd service automatically when installed via [`scripts/install_docker.sh`](scripts/install_docker.sh). All services in [`docker-compose.yaml`](docker-compose.yaml) have `restart: unless-stopped`, so they come back up on reboot without any additional configuration.
 
-For production, use the compose override to run `docker/entrypoint.sh` on container start:
+For production, use the compose override to run `docker/build_and_run.sh` on container start:
 
 ```sh
 cd ~/laser-runner-cutter/ros2
