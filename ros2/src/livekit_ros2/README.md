@@ -4,12 +4,7 @@ This node subscribes to a ROS2 Image topic, hardware encodes via GStreamer, and 
 
 ## Setup
 
-1.  Run the install script:
-
-        $ livekit_ros2/scripts/install.sh
-
 1.  Create LiveKit API secret
-
     1.  Create .env from template
 
             $ cd laser-runner-cutter
@@ -24,7 +19,7 @@ This node subscribes to a ROS2 Image topic, hardware encodes via GStreamer, and 
 ## Run
 
 ```
-$ livekit_ros2/scripts/run.sh
+$ ros2 launch livekit_ros2 launch.py
 ```
 
 ## Known Issues

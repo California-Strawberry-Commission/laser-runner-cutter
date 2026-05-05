@@ -7,8 +7,10 @@
       "label": "[ros2] build workspace",
       "detail": "Build ROS 2 workspace",
       "type": "shell",
-      "command": "${workspaceFolder}/scripts/build.sh",
-      "options": { "cwd": "${workspaceFolder}" },
+      "command": "source /opt/ros/${ROS_DISTRO}/setup.sh && colcon build",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "group": {
         "kind": "build",
         "isDefault": true
@@ -19,12 +21,10 @@
       "label": "[ros2] build package",
       "detail": "Build single ROS 2 package",
       "type": "shell",
-      "command": "bash",
-      "args": [
-        "-c",
-        "source ${workspaceFolder}/scripts/setup.sh && colcon build --symlink-install --packages-select ${input:package} --cmake-args '-DCMAKE_EXPORT_COMPILE_COMMANDS=On'"
-      ],
-      "options": { "cwd": "${workspaceFolder}" },
+      "command": "source /opt/ros/${ROS_DISTRO}/setup.sh && colcon build --packages-select ${input:package}",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "group": {
         "kind": "build",
         "isDefault": true
@@ -32,57 +32,13 @@
       "problemMatcher": "$gcc"
     },
     {
-      "label": "[ros2] debug workspace",
-      "detail": "Build ROS 2 workspace with debug symbols",
-      "type": "shell",
-      "command": "bash",
-      "args": [
-        "-c",
-        "source ${workspaceFolder}/scripts/setup.sh && colcon build --symlink-install --cmake-args '-DCMAKE_BUILD_TYPE=Debug'"
-      ],
-      "group": "build",
-      "problemMatcher": "$gcc"
-    },
-    {
-      "label": "[ros2] debug package",
-      "detail": "Build single ROS 2 package with debug symbols",
-      "type": "shell",
-      "command": "bash",
-      "args": [
-        "-c",
-        "source ${workspaceFolder}/scripts/setup.sh && colcon build --symlink-install --packages-select ${input:package} --cmake-args '-DCMAKE_BUILD_TYPE=Debug'"
-      ],
-      "group": "build",
-      "problemMatcher": "$gcc"
-    },
-    {
-      "label": "[ros2] full run",
+      "label": "[ros2] launch all",
       "detail": "Run all of the nodes in the workspace",
       "type": "shell",
-      "command": "${workspaceFolder}/scripts/run_ros.sh",
-      "options": { "cwd": "${workspaceFolder}" },
-      "problemMatcher": [],
-      "presentation": {
-        "echo": true,
-        "reveal": "always",
-        "focus": false,
-        "panel": "dedicated"
+      "command": "${workspaceFolder}/docker/entrypoint.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
       },
-      "group": {
-        "kind": "test",
-        "isDefault": false
-      }
-    },
-    {
-      "label": "[ros2] launch",
-      "detail": "Run a single launch file",
-      "type": "shell",
-      "command": "bash",
-      "args": [
-        "-c",
-        "source ${workspaceFolder}/scripts/setup.sh && ros2 launch ${input:package} ${input:launch_file}"
-      ],
-      "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": [],
       "presentation": {
         "echo": true,

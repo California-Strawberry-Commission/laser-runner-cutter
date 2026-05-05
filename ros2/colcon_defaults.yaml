@@ -1,0 +1,6 @@
+build:
+  cmake-args:
+    - -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+    - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+  symlink-install: true
+  continue-on-error: false

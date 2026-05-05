@@ -1,0 +1,21 @@
+{
+    "name": "ROS 2 Dev",
+    "dockerComposeFile": "../docker-compose.yaml",
+    "service": "ros2",
+    "workspaceFolder": "/workspaces/ros2",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-vscode.cpptools",
+                "ms-vscode.cpptools-extension-pack",
+                "ms-vscode.cmake-tools",
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "ms-python.black-formatter",
+                "ms-python.isort",
+                "Ranch-Hand-Robotics.rde-pack",
+                "actboy168.tasks"
+            ]
+        }
+    }
+}

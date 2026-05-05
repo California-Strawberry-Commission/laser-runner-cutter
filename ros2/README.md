@@ -1,37 +1,27 @@
 # Laser Runner Cutter ROS2 Nodes
 
-This project uses **Ubuntu 22.04 (Jammy Jellyfish)** and **ROS Humble**.
+This project uses **Ubuntu 22.04 (Jammy Jellyfish)** and **ROS Humble**, and is intended to be deployed on NVIDIA Jetson.
 
 ## Environment Setup
 
-Installation assumes a fresh version of **Ubuntu 22.04 desktop/server** on a dedicated deployment or development PC.
-
-1.  Clone this repository into your home directory
+1. Clone this repository into your home directory
 
         $ cd ~
         $ git clone https://github.com/California-Strawberry-Commission/laser-runner-cutter
 
-1.  Run the install script in `laser-runner-cutter/ros2/scripts`. This will take a while.
+1. Run [`scripts/bootstrap.sh`](scripts/bootstrap.sh)
 
-        $ cd laser-runner-cutter/ros2/scripts
-        $ ./install.sh
-
-1.  Source the environment. If you cloned somewhere other than home, use that directory instead of `~`. Optionally, also add this line to the end of your `.bashrc` to automagically activate the environment on every login (useful for deployed/dev systems)
-
-        $ source ~/laser-runner-cutter/ros2/scripts/setup.sh
-
-1.  Create LiveKit API secret
-
-    1.  Create .env from template
+1. Create LiveKit API secret
+    1. Create .env from template
 
             $ cd laser-runner-cutter
             $ cp .env.example .env
 
-    2.  Generate an API secret
+    2. Generate an API secret
 
             $ openssl rand -base64 32
 
-    3.  Edit `.env` and replace the API secret with the one generated in the previous step
+    3. Edit `.env` and replace the API secret with the one generated in the previous step
 
 ### Using Helios DAC on Linux
 
@@ -39,13 +29,20 @@ Linux systems require udev rules to allow access to USB devices without root pri
 
 ### Using LUCID cameras (Triton and Helios2)
 
-LUCID cameras require the Arena SDK and Arena Python Package, which can be found at https://thinklucid.com/downloads-hub/. This is already set up as part of the auto-install process above, in `/opt/ArenaSDK`.
-
-In addition, in order to connect to the cameras, you will need to configure the network interfaces and camera IPs. To do this, run `laser-runner-cutter/ros2/scripts/configure_network.sh`.
+In order to connect to the cameras, you will need to configure the network interfaces and camera IPs. To do this, run [`scripts/configure_network.sh`](scripts/configure_network.sh).
 
 ## Development Environment
 
-We use Visual Studio Code, and recommend the following extensions:
+We use Visual Studio Code with a **Dev Container** for a consistent, pre-configured environment. The Dev Container is defined in [.devcontainer/devcontainer.json](.devcontainer/devcontainer.json) and is backed by [`docker-compose.yaml`](docker-compose.yaml).
+
+### Getting started
+
+1. Follow the [Environment Setup](#environment-setup) steps above.
+2. Install the VS Code [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension.
+3. Open the `ros2/` folder in VS Code.
+4. When prompted, click **Reopen in Container** (or run `Dev Containers: Reopen in Container` from the command palette).
+
+VS Code will build the container and install all extensions automatically. The following extensions are provisioned by the Dev Container:
 
 - [Robotics Developer Environment](https://marketplace.visualstudio.com/items?itemName=Ranch-Hand-Robotics.rde-pack)
 - [C/C++](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools)
@@ -56,39 +53,21 @@ We use Visual Studio Code, and recommend the following extensions:
 - [Black Formatter](https://marketplace.visualstudio.com/items?itemName=ms-python.black-formatter)
 - [isort](https://marketplace.visualstudio.com/items?itemName=ms-python.isort)
 - [Tasks](https://marketplace.visualstudio.com/items?itemName=actboy168.tasks)
-- [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode)
-- [Tailwind CSS IntelliSense](https://marketplace.visualstudio.com/items?itemName=bradlc.vscode-tailwindcss)
 
-## Build and Run
+### VS Code Tasks
 
-### Local development
-
-1.  To build all ROS 2 packages, as well as compile the TensorRT models, run `scripts/build.sh`. The TensorRT models may take some time to compile, but it will only need to be done once.
-
-1.  To run all ROS 2 nodes, run `scripts/run_ros.sh`.
-
-While making code changes locally, it may be convenient to build and run a single node. Note that if you've initially built by running `scripts/build.sh`, you will not need to rebuild Python nodes as they are symlinked. However, changes to C++ nodes will need to be rebuilt. Here is an example of building and running the laser_control node:
-
-    $ colcon build --packages-select laser_control --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-    $ ros2 launch laser_control launch.py
+Common workflows are defined in [.vscode/tasks.json](.vscode/tasks.json) and can be run via `Tasks: Run Task` in the command palette, or the Tasks status bar button.
 
 ### Production deployment
 
 On a production device, we can set up the machine to start the ROS2 nodes on startup:
 
-1.  Modify `scripts/create_systemd_service.sh` with the correct username.
-
-1.  Run `scripts/create_systemd_service.sh`.
-
-1.  To view the logs, run:
-
-        $ journalctl -f --unit laser-runner-cutter-ros.service
+1.  TBD
 
 In addition, we can set up the machine to enable restarting the ROS2 nodes and rebooting the machine without a password, which allows the LifecycleManager node to trigger the relevant commands. This is useful for allowing other programs (such as a web-based app) to restart the nodes or reboot the machine in case of an irrecoverable issue.
 
 1.  Run `sudo visudo`, then add the following lines:
 
-        <username> ALL=(ALL) NOPASSWD: /bin/systemctl restart laser-runner-cutter-ros.service
         <username> ALL=(ALL) NOPASSWD: /sbin/reboot
 
 ## LUCID camera calibration
@@ -104,7 +83,6 @@ We need to calculate the intrinsic matrix and distortion coefficients for each c
 
 1.  Print the [calibration grid](https://arenasdk.s3-us-west-2.amazonaws.com/LUCID_target_whiteCircles.pdf)
 2.  Imagine a 3x3 grid in the cameras' FOV. Do the following for each grid cell:
-
     1.  Place the calibration grid in the grid cell
     2.  Create a new directory where this set of images should be saved
     3.  Capture a frame (change param values as needed):
@@ -130,6 +108,7 @@ We calculate the intrinsic matrix and distortion coefficients using the method b
 ### Step 3: Calculate extrinsics
 
 1.  Create 3 directories: one containing all of the Triton images, one containing all of the Helios intensity images, and one containing all of the Helios xyz data files. Make sure that the corresponding files in each directory share the same base name. For example, `triton_images/0.png`, `helios_intensity_images/0.png`, and `xyz_data/0.yml` should come from a single capture.
+
 2.  Run the following to save the xyz-to-Triton extrinsics:
 
         ros2 run camera_control_cpp lucid_calibrate -- calculate_extrinsics_xyz_to_triton --triton_intrinsics_file <path to Triton intrinsics yml file> --triton_images_dir <dir containing all Triton images> --helios_images_dir <dir containing all Helios intensity images> --helios_xyz_dir <dir containing all xyz data files> --output_dir <where to write the extrinsics data file>
