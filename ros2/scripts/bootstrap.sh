@@ -20,3 +20,6 @@ bash ./install_docker.sh
 
 # Create udev rule for Helios DAC
 bash ../src/laser_control/scripts/create_heliosdac_udev.sh
+
+# Create .env file with generated LiveKit API secret
+bash ./create_env_file.sh

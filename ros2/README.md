@@ -4,24 +4,13 @@ This project uses **Ubuntu 22.04 (Jammy Jellyfish)** and **ROS Humble**, and is 
 
 ## Environment Setup
 
-1. Clone this repository into your home directory
+```sh
+# Clone this repository into the home directory
+git clone https://github.com/California-Strawberry-Commission/laser-runner-cutter ~/laser-runner-cutter
 
-        $ cd ~
-        $ git clone https://github.com/California-Strawberry-Commission/laser-runner-cutter
-
-1. Run [`scripts/bootstrap.sh`](scripts/bootstrap.sh)
-
-1. Create LiveKit API secret
-    1. Create .env from template
-
-            $ cd laser-runner-cutter
-            $ cp .env.example .env
-
-    2. Generate an API secret
-
-            $ openssl rand -base64 32
-
-    3. Edit `.env` and replace the API secret with the one generated in the previous step
+# Run the bootstrap script
+~/laser-runner-cutter/ros2/scripts/bootstrap.sh
+```
 
 ### Using Helios DAC on Linux
 
@@ -58,19 +47,51 @@ VS Code will build the container and install all extensions automatically. The f
 
 Common workflows are defined in [.vscode/tasks.json](.vscode/tasks.json) and can be run via `Tasks: Run Task` in the command palette, or the Tasks status bar button.
 
-### Production deployment
+### Commands
 
-On a production device, we can set up the machine to start the ROS2 nodes on startup:
+To build and run the system outside of VS Code:
 
-1.  TBD
+```sh
+cd ~/laser-runner-cutter/ros2
 
-In addition, we can set up the machine to enable restarting the ROS2 nodes and rebooting the machine without a password, which allows the LifecycleManager node to trigger the relevant commands. This is useful for allowing other programs (such as a web-based app) to restart the nodes or reboot the machine in case of an irrecoverable issue.
+# Start containers
+docker compose up --build --detach
 
-1.  Run `sudo visudo`, then add the following lines:
+# Open a shell in the ros2 container
+docker exec -it ros2-ros2-1 bash
 
-        <username> ALL=(ALL) NOPASSWD: /sbin/reboot
+# Build and run all ROS nodes (inside container)
+docker/entrypoint.sh
 
-## LUCID camera calibration
+# Build a single package (inside container)
+colcon build --packages-select <pkg>
+
+# Stop containers
+docker compose down
+```
+
+## Production Deployment
+
+Docker is enabled as a systemd service automatically when installed via [`scripts/install_docker.sh`](scripts/install_docker.sh). All services in [`docker-compose.yaml`](docker-compose.yaml) have `restart: unless-stopped`, so they come back up on reboot without any additional configuration.
+
+For production, use the compose override to run `docker/entrypoint.sh` on container start:
+
+```sh
+cd ~/laser-runner-cutter/ros2
+
+# First-time start
+docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up --build --detach
+```
+
+After that first start, `restart: unless-stopped` handles every subsequent reboot automatically.
+
+### Passwordless reboot
+
+To allow the LifecycleManager node to reboot the machine without a password (e.g. to recover from an irrecoverable error), run `sudo visudo` and add:
+
+    <username> ALL=(ALL) NOPASSWD: /sbin/reboot
+
+## LUCID Camera Calibration
 
 We currently use the following LUCID cameras:
 

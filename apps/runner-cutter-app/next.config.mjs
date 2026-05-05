@@ -1,12 +1,12 @@
 import dotenv from "dotenv";
 import path from "node:path";
 
-// First, load repo-level .env
+// First, load ros2 .env
 dotenv.config({
-  path: path.resolve(process.cwd(), "../../.env"),
+  path: path.resolve(process.cwd(), "../../ros2/.env"),
 });
 
-// Then, load app-level .env.local, overriding root if same keys exist
+// Then, load app-level .env.local, overriding if same keys exist
 dotenv.config({
   path: path.resolve(process.cwd(), ".env.local"),
   override: true,
