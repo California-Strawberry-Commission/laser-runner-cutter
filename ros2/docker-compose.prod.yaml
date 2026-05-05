@@ -1,4 +1,4 @@
 # Prod override to automatically run the entrypoint script
 services:
   ros2:
-    entrypoint: ["/workspaces/ros2/docker/entrypoint.sh"]
+    entrypoint: ["/workspaces/ros2/docker/build_and_run.sh"]

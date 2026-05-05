@@ -35,7 +35,7 @@
       "label": "[ros2] launch all",
       "detail": "Run all of the nodes in the workspace",
       "type": "shell",
-      "command": "${workspaceFolder}/docker/entrypoint.sh",
+      "command": "${workspaceFolder}/docker/build_and_run.sh",
       "options": {
         "cwd": "${workspaceFolder}"
       },

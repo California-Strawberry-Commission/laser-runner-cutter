@@ -3,19 +3,19 @@ set -eo pipefail
 
 # Compile TensorRT engines if not already built.
 # Engines are device-specific and can't be baked into the image.
-echo "[entrypoint] Building TensorRT engines if needed..."
+echo "[build_and_run] Building TensorRT engines if needed..."
 bash /workspaces/ros2/src/detection/scripts/build_tensorrt_engines.sh
 
 # Build ROS workspace
 source /opt/ros/${ROS_DISTRO}/setup.sh
-echo "[entrypoint] Building ROS workspace..."
+echo "[build_and_run] Building ROS workspace..."
 cd /workspaces/ros2
 # Note: colcon_defaults.yaml in the ROS workspace root sets build flags
 colcon build
 
 # Launch ROS nodes
 source /workspaces/ros2/install/setup.sh
-echo "[entrypoint] Launching nodes..."
+echo "[build_and_run] Launching nodes..."
 # Monitor mode (set -m) gives each backgrounded command its own process group, while 
 # sharing the session and controlling terminal.
 # Each ros2 launch process needs to be in its own process group in the background so that
@@ -35,11 +35,11 @@ ros_launch "livekit_ros2 launch.py"
 ros_launch "runner_cutter_control rosbridge_websocket_launch.xml"
 ros_launch "runner_cutter_control launch.py"
 
-echo "[entrypoint] All launch processes started. PIDs: ${pids[*]}"
+echo "[build_and_run] All launch processes started. PIDs: ${pids[*]}"
 
 shutdown() {
     local sig=$1
-    echo "[entrypoint] Caught signal $sig, forwarding to launch processes..."
+    echo "[build_and_run] Caught signal $sig, forwarding to launch processes..."
     # Block further SIGINT/SIGTERM signals to prevent shutdown from being called
     # recursively
     trap '' INT TERM
@@ -67,7 +67,7 @@ shutdown() {
     done
 
     wait 2>/dev/null || true
-    echo "[entrypoint] Shutdown complete."
+    echo "[build_and_run] Shutdown complete."
 }
 
 # Trigger shutdown on SIGINT or SIGTERM
@@ -77,4 +77,4 @@ trap 'shutdown TERM' TERM
 # Block the script indefinitely until background jobs are stopped
 wait || true
 
-echo "[entrypoint] All processes stopped."
+echo "[build_and_run] All processes stopped."
