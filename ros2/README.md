@@ -4,24 +4,13 @@ This project uses **Ubuntu 22.04 (Jammy Jellyfish)** and **ROS Humble**, and is 
 
 ## Environment Setup
 
-1. Clone this repository into your home directory
+```sh
+# Clone this repository into the home directory
+git clone https://github.com/California-Strawberry-Commission/laser-runner-cutter ~/laser-runner-cutter
 
-        $ cd ~
-        $ git clone https://github.com/California-Strawberry-Commission/laser-runner-cutter
-
-1. Run [`scripts/bootstrap.sh`](scripts/bootstrap.sh)
-
-1. Create LiveKit API secret
-    1. Create .env from template
-
-            $ cd laser-runner-cutter
-            $ cp .env.example .env
-
-    2. Generate an API secret
-
-            $ openssl rand -base64 32
-
-    3. Edit `.env` and replace the API secret with the one generated in the previous step
+# Run the bootstrap script
+~/laser-runner-cutter/ros2/scripts/bootstrap.sh
+```
 
 ### Using Helios DAC on Linux
 
@@ -57,6 +46,29 @@ VS Code will build the container and install all extensions automatically. The f
 ### VS Code Tasks
 
 Common workflows are defined in [.vscode/tasks.json](.vscode/tasks.json) and can be run via `Tasks: Run Task` in the command palette, or the Tasks status bar button.
+
+### Commands
+
+To build and run the system outside of VS Code:
+
+```sh
+cd ~/laser-runner-cutter/ros2
+
+# Start containers
+docker compose up --build --detach
+
+# Open a shell in the ros2 container
+docker exec -it ros2-ros2-1 bash
+
+# Build and run all ROS nodes (inside container)
+docker/entrypoint.sh
+
+# Build a single package (inside container)
+colcon build --packages-select <pkg>
+
+# Stop containers
+docker compose down
+```
 
 ### Production deployment
 

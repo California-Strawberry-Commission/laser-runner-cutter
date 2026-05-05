@@ -1,12 +1,10 @@
 # Usage:
-#   docker compose up --build --detach # start containers
-#   docker exec -it ros2-ros2-1 bash   # drop into shell for the running ros2 container
-#   /entrypoint.sh                     # build and run nodes
-#   exit                               # exits shell session
-#   docker compose down                # stop containers
-#
-# Incremental rebuilds (C++ nodes only. Python nodes are live via symlink-install):
-#   colcon build --packages-select <pkg> --no-clean
+#   docker compose up --build --detach    # start containers
+#   docker exec -it ros2-ros2-1 bash      # drop into shell for the running ros2 container
+#   docker/entrypoint.sh                  # (inside container) build and run nodes
+#   colcon build --packages-select <pkg>  # (inside container) incremental rebuild of package(s)
+#   exit                                  # (inside container) exits shell session
+#   docker compose down                   # stop containers
 
 services:
   ros2:
@@ -39,7 +37,7 @@ services:
       - ros2-build:/workspaces/ros2/build
       - ros2-install:/workspaces/ros2/install
     env_file:
-      - ../.env
+      - ./.env
     entrypoint: ["sleep", "infinity"]  # just keep container running forever
     restart: unless-stopped
 
@@ -57,7 +55,7 @@ services:
     volumes:
       - ./src/livekit_ros2/config:/config:ro
     env_file:
-      - ../.env # uses LIVEKIT_KEYS
+      - ./.env # uses LIVEKIT_KEYS
     restart: unless-stopped
 
   livekit-ingress:
@@ -70,7 +68,7 @@ services:
     volumes:
       - ./src/livekit_ros2/config:/config:ro
     env_file:
-      - ../.env # uses LIVEKIT_API_KEY, LIVEKIT_API_SECRET
+      - ./.env # uses LIVEKIT_API_KEY, LIVEKIT_API_SECRET
     restart: unless-stopped
 
 volumes:
