@@ -114,5 +114,3 @@ RUN pip install --no-cache-dir \
 # has been copied.
 COPY src/aioros2 src/aioros2
 RUN pip install --no-cache-dir -e src/aioros2
-
-COPY docker/entrypoint.sh /entrypoint.sh

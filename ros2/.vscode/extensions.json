@@ -1,6 +1,5 @@
 {
   "recommendations": [
-    "Ranch-Hand-Robotics.rde-pack",
     "ms-vscode.cpptools",
     "ms-vscode.cpptools-extension-pack",
     "ms-vscode.cmake-tools",
@@ -8,6 +7,8 @@
     "ms-python.vscode-pylance",
     "ms-python.black-formatter",
     "ms-python.isort",
+    "ms-vscode-remote.vscode-remote-extensionpack",
+    "Ranch-Hand-Robotics.rde-pack",
     "actboy168.tasks",
     "esbenp.prettier-vscode",
     "bradlc.vscode-tailwindcss"

@@ -10,7 +10,8 @@ bash /workspaces/ros2/src/detection/scripts/build_tensorrt_engines.sh
 source /opt/ros/${ROS_DISTRO}/setup.sh
 echo "[entrypoint] Building ROS workspace..."
 cd /workspaces/ros2
-colcon build --symlink-install
+# Note: colcon_defaults.yaml in the ROS workspace root sets build flags
+colcon build
 
 # Launch ROS nodes
 source /workspaces/ros2/install/setup.sh
@@ -41,7 +42,7 @@ shutdown() {
     echo "[entrypoint] Caught signal $sig, forwarding to launch processes..."
     # Block further SIGINT/SIGTERM signals to prevent shutdown from being called
     # recursively
-    trap '' "$sig"
+    trap '' INT TERM
 
     # Send signal to the launch processes. The launch processes will then disable node
     # respawns and handle shutting down its nodes in order.
@@ -70,8 +71,8 @@ shutdown() {
 }
 
 # Trigger shutdown on SIGINT or SIGTERM
-trap 'shutdown INT' SIGINT
-trap 'shutdown TERM' SIGTERM
+trap 'shutdown INT' INT
+trap 'shutdown TERM' TERM
 
 # Block the script indefinitely until background jobs are stopped
 wait || true
