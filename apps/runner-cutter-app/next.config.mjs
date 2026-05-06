@@ -14,6 +14,7 @@ dotenv.config({
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  allowedDevOrigins: process.env.TAILSCALE_IP ? [process.env.TAILSCALE_IP] : [],
   async headers() {
     return [
       {

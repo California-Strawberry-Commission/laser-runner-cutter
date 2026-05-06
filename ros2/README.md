@@ -2,6 +2,8 @@
 
 This project uses **Ubuntu 22.04 (Jammy Jellyfish)** and **ROS Humble**, and is intended to be deployed on NVIDIA Jetson.
 
+The entire system runs via [`docker-compose.yaml`](docker-compose.yaml), which brings up four services: the ROS2 node container, a [LiveKit](https://livekit.io) media server (for streaming video to the web app), a LiveKit ingress service, and Redis (required by LiveKit).
+
 ## Environment Setup
 
 ```sh
@@ -12,9 +14,26 @@ git clone https://github.com/California-Strawberry-Commission/laser-runner-cutte
 ~/laser-runner-cutter/ros2/scripts/bootstrap.sh
 ```
 
+### Tailscale
+
+[Tailscale](https://tailscale.com) is a mesh VPN that gives each device a stable private IP, making it easy to reach the Jetson from another machine without port forwarding. It is installed by the bootstrap script above. After installation, authenticate and join your Tailscale network:
+
+```sh
+sudo tailscale up
+# Follow the URL printed to log in and approve the device
+```
+
+Once connected, update `.env` with the Tailscale IP (the bootstrap script ran `create_env_file.sh` before Tailscale was connected, so this needs to be re-run):
+
+```sh
+~/laser-runner-cutter/ros2/scripts/create_env_file.sh
+```
+
+If the Tailscale IP ever changes (e.g. after re-joining the network), re-run `create_env_file.sh` and restart the Docker containers.
+
 ### Using Helios DAC on Linux
 
-Linux systems require udev rules to allow access to USB devices without root privileges. This is already set up as part of the auto-install process above. Make sure that the user account communicating with the DAC is in the _plugdev_ group.
+Linux systems require udev rules to allow access to USB devices without root privileges. This is already set up as part of the auto-install process above. Make sure that the user account communicating with the DAC is in the `plugdev` group.
 
 ### Using LUCID cameras (Triton and Helios2)
 
@@ -24,14 +43,14 @@ In order to connect to the cameras, you will need to configure the network inter
 
 We use Visual Studio Code with a **Dev Container** for a consistent, pre-configured environment. The Dev Container is defined in [.devcontainer/devcontainer.json](.devcontainer/devcontainer.json) and is backed by [`docker-compose.yaml`](docker-compose.yaml).
 
-### Getting started
+### Developing from the Jetson
 
 1. Follow the [Environment Setup](#environment-setup) steps above.
 2. Install the VS Code [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension.
 3. Open the `ros2/` folder in VS Code.
 4. When prompted, click **Reopen in Container** (or run `Dev Containers: Reopen in Container` from the command palette).
 
-VS Code will build the container and install all extensions automatically. The following extensions are provisioned by the Dev Container:
+VS Code will build the container and install all extensions automatically (note: you may need to go into the Extensions tab and click "Install in Dev Container" for the extensions). The following extensions are provisioned by the Dev Container:
 
 - [Robotics Developer Environment](https://marketplace.visualstudio.com/items?itemName=Ranch-Hand-Robotics.rde-pack)
 - [C/C++](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools)
@@ -43,6 +62,18 @@ VS Code will build the container and install all extensions automatically. The f
 - [isort](https://marketplace.visualstudio.com/items?itemName=ms-python.isort)
 - [Tasks](https://marketplace.visualstudio.com/items?itemName=actboy168.tasks)
 
+### Developing from another machine
+
+You can develop remotely by connecting VS Code on your local machine to the Jetson over SSH.
+
+1. Follow the [Environment Setup](#environment-setup) steps on the Jetson.
+2. Install the VS Code [Remote Development](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.vscode-remote-extensionpack) extension pack on your local machine.
+3. Open the Command Palette and run **Remote-SSH: Connect to Host**, then enter `<username>@<jetson-ip>`. This will open a new VS Code window connected to the Jetson.
+4. In that SSH-connected VS Code window, open the remote `~/laser-runner-cutter/ros2/` folder.
+5. When prompted, click **Reopen in Container** (or run `Dev Containers: Reopen in Container` from the command palette).
+
+VS Code will build and attach to the Dev Container on the Jetson. You may need to go into the Extensions tab and click "Install in Dev Container" for your extensions. All subsequent editing, building, and debugging happens on the Jetson while the UI runs locally.
+
 ### VS Code Tasks
 
 Common workflows are defined in [.vscode/tasks.json](.vscode/tasks.json) and can be run via `Tasks: Run Task` in the command palette, or the Tasks status bar button.
@@ -52,6 +83,7 @@ Common workflows are defined in [.vscode/tasks.json](.vscode/tasks.json) and can
 To build and run the system outside of VS Code:
 
 ```sh
+# On the Jetson
 cd ~/laser-runner-cutter/ros2
 
 # Start containers
@@ -74,16 +106,15 @@ docker compose down
 
 Docker is enabled as a systemd service automatically when installed via [`scripts/install_docker.sh`](scripts/install_docker.sh). All services in [`docker-compose.yaml`](docker-compose.yaml) have `restart: unless-stopped`, so they come back up on reboot without any additional configuration.
 
-For production, use the compose override to run `docker/build_and_run.sh` on container start:
+For production, start the containers using the compose override (which runs `docker/build_and_run.sh` on container start):
 
 ```sh
+# On the Jetson
 cd ~/laser-runner-cutter/ros2
-
-# First-time start
 docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up --build --detach
 ```
 
-After that first start, `restart: unless-stopped` handles every subsequent reboot automatically.
+After that first start, on subsequent reboots, all containers will automatically be started (with `docker/build_and_run.sh` called in the ros2 container) due to `restart: unless-stopped`.
 
 ### Passwordless reboot
 

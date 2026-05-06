@@ -37,7 +37,7 @@ services:
       - ros2-build:/workspaces/ros2/build
       - ros2-install:/workspaces/ros2/install
     env_file:
-      - ./.env
+      - ./.env # uses LIVEKIT_API_KEY, LIVEKIT_API_SECRET
     entrypoint: ["/workspaces/ros2/docker/dev_entrypoint.sh"]
     restart: unless-stopped
 
@@ -51,7 +51,7 @@ services:
     network_mode: host
     depends_on:
       - redis
-    command: ["--config", "/config/livekit_server.yaml"]
+    command: ["--config", "/config/livekit_server.yaml", "--node-ip", "${TAILSCALE_IP:-}"]
     volumes:
       - ./src/livekit_ros2/config:/config:ro
     env_file:
