@@ -23,3 +23,6 @@ bash ../src/laser_control/scripts/create_heliosdac_udev.sh
 
 # Create .env file with generated LiveKit API secret
 bash ./create_env_file.sh
+
+# Install Tailscale
+curl -fsSL https://tailscale.com/install.sh | sh

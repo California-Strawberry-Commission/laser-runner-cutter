@@ -110,7 +110,7 @@ export default function FramePreviewLiveKit({
 
     const room = new Room({
       adaptiveStream: true,
-      dynacast: true,
+      webAudioMix: false,
     });
 
     const onTrackSubscribed = (track: RemoteTrack) => {
@@ -163,10 +163,17 @@ export default function FramePreviewLiveKit({
         }
         const { token } = await res.json();
 
+        // Bail out if cleanup was run while fetching the token
+        if (cancelled) {
+          return;
+        }
+
         room
           .on(RoomEvent.TrackSubscribed, onTrackSubscribed)
           .on(RoomEvent.TrackUnsubscribed, onTrackUnsubscribed);
         await room.connect(serverUrl, token);
+
+        // Bail out if cleanup was run while connecting to the room
         if (cancelled) {
           return;
         }

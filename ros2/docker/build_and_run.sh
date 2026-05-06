@@ -15,6 +15,10 @@ colcon build
 
 # Launch ROS nodes
 source /workspaces/ros2/install/setup.sh
+# We need to make sure DISPLAY is not set because otherwise, NVIDIA GStreamer plugins
+# (nvvidconv, nvv4l2h264enc) will use X11 EGL, which is not available in the Docker container,
+# which will cause nvvidconv to hang.
+unset DISPLAY
 echo "[build_and_run] Launching nodes..."
 # Monitor mode (set -m) gives each backgrounded command its own process group, while 
 # sharing the session and controlling terminal.
