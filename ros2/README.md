@@ -70,9 +70,9 @@ You can develop remotely by connecting VS Code on your local machine to the Jets
 2. Install the VS Code [Remote Development](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.vscode-remote-extensionpack) extension pack on your local machine.
 3. Open the Command Palette and run **Remote-SSH: Connect to Host**, then enter `<username>@<jetson-ip>`. This will open a new VS Code window connected to the Jetson.
 4. In that SSH-connected VS Code window, open the remote `~/laser-runner-cutter/ros2/` folder.
-5. When prompted, click **Reopen in Container** (or run `Dev Containers: Reopen in Container` from the command palette).
+5. When prompted, click **Reopen in Container** (or run `Dev Containers: Reopen in Container` from the command palette). This will build and run the containers defined in `docker-compose.yaml` on the Jetson, and then attach to the Dev Container on the Jetson.
 
-VS Code will build and attach to the Dev Container on the Jetson. You may need to go into the Extensions tab and click "Install in Dev Container" for your extensions. All subsequent editing, building, and debugging happens on the Jetson while the UI runs locally.
+You may need to go into the Extensions tab and click "Install in Dev Container" for your extensions. All subsequent editing, building, and debugging happens on the Jetson while the UI runs locally.
 
 ### VS Code Tasks
 
@@ -114,7 +114,9 @@ cd ~/laser-runner-cutter/ros2
 docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up --build --detach
 ```
 
-After that first start, on subsequent reboots, all containers will automatically be started (with `docker/build_and_run.sh` called in the ros2 container) due to `restart: unless-stopped`.
+Note that if containers are already running at the time you run the above command, only those whose configuration has changed between the two invocations will be restarted.
+
+When containers are running, when the Jetson is rebooted, all containers will automatically be started (with `docker/build_and_run.sh` called in the ros2 container) due to `restart: unless-stopped`.
 
 ### Passwordless reboot
 

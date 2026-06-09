@@ -457,6 +457,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
       return;
     }
 
+    std::lock_guard<std::mutex> lock(lastDetectedTrackIdsMutex_);
+
     // For new tracks, add to tracker and set as pending. For tracks that are
     // detected again, update the track pixel and position; for FAILED tracks,
     // set them as PENDING since they may have moved since the last detection.
@@ -684,7 +686,10 @@ class RunnerCutterControlNode : public rclcpp::Node {
     laser_->stop();
     detection_->stopAllDetections();
     tracker_->clear();
-    lastDetectedTrackIds_.clear();
+    {
+      std::lock_guard<std::mutex> lock(lastDetectedTrackIdsMutex_);
+      lastDetectedTrackIds_.clear();
+    }
   }
 
   template <typename Function, typename... Args>
@@ -1248,6 +1253,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
   std::string taskName_;
   std::shared_ptr<Tracker> tracker_;
   std::unordered_set<uint32_t> lastDetectedTrackIds_;
+  std::mutex lastDetectedTrackIdsMutex_;
   // Notifies waiting threads that new pending tracks were detected
   Event pendingTracksChangedEvent_;
 };
