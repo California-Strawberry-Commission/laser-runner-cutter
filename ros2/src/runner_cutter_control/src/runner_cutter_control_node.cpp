@@ -1,11 +1,12 @@
 #include <fmt/core.h>
 
 #include <algorithm>
-#include <condition_variable>
-#include <mutex>
 
 #include "camera_control_interfaces/msg/device_state.hpp"
 #include "camera_control_interfaces/msg/state.hpp"
+#include "common/event.hpp"
+#include "common/ros_utils.hpp"
+#include "common/utils.hpp"
 #include "detection_interfaces/msg/detection_result.hpp"
 #include "detection_interfaces/msg/detection_type.hpp"
 #include "laser_control_interfaces/msg/device_state.hpp"
@@ -32,68 +33,6 @@
 #include "runner_cutter_control_interfaces/srv/get_state.hpp"
 #include "runner_cutter_control_interfaces/srv/manual_target_laser.hpp"
 #include "std_srvs/srv/trigger.hpp"
-
-namespace {
-
-/**
- * Concurrency primitive that provides a shared flag that can be set and waited
- * on.
- */
-class Event {
- public:
-  Event() : flag_(false) {}
-
-  void set() {
-    std::lock_guard<std::mutex> lock(mtx_);
-    flag_ = true;
-    cv_.notify_all();
-  }
-
-  void clear() {
-    std::lock_guard<std::mutex> lock(mtx_);
-    flag_ = false;
-  }
-
-  void wait() {
-    std::unique_lock<std::mutex> lock(mtx_);
-    cv_.wait(lock, [this] { return flag_; });
-  }
-
-  bool wait_for(float timeoutSecs) {
-    std::unique_lock<std::mutex> lock(mtx_);
-    return cv_.wait_for(lock, std::chrono::duration<float>(timeoutSecs),
-                        [this] { return flag_; });
-  }
-
- private:
-  std::mutex mtx_;
-  std::condition_variable cv_;
-  bool flag_;
-};
-
-std::pair<int, int> millisecondsToRosTime(double milliseconds) {
-  // ROS timestamps consist of two integers, one for seconds and one for
-  // nanoseconds
-  int seconds = static_cast<int>(milliseconds / 1000);
-  int nanoseconds =
-      static_cast<int>((static_cast<int>(milliseconds) % 1000) * 1e6);
-  return {seconds, nanoseconds};
-}
-
-std::string expandUser(const std::string& path) {
-  if (path.empty() || path[0] != '~') {
-    return path;
-  }
-
-  const char* home = std::getenv("HOME");
-  if (!home) {
-    throw std::runtime_error("HOME environment variable not set");
-  }
-
-  return std::string(home) + path.substr(1);
-}
-
-}  // namespace
 
 class RunnerCutterControlNode : public rclcpp::Node {
  public:
@@ -372,47 +311,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
   void publishNotification(
       const std::string& msg,
       rclcpp::Logger::Level level = rclcpp::Logger::Level::Info) {
-    uint8_t logMsgLevel = 0;
-    switch (level) {
-      case rclcpp::Logger::Level::Debug:
-        RCLCPP_DEBUG(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::DEBUG;
-        break;
-      case rclcpp::Logger::Level::Info:
-        RCLCPP_INFO(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::INFO;
-        break;
-      case rclcpp::Logger::Level::Warn:
-        RCLCPP_WARN(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::WARN;
-        break;
-      case rclcpp::Logger::Level::Error:
-        RCLCPP_ERROR(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::ERROR;
-        break;
-      case rclcpp::Logger::Level::Fatal:
-        RCLCPP_FATAL(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::FATAL;
-        break;
-      default:
-        RCLCPP_ERROR(get_logger(), "Unknown log level: %s", msg.c_str());
-        return;
-    }
-
-    // Get current time in milliseconds
-    double timestampMillis{
-        static_cast<double>(
-            std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::system_clock::now().time_since_epoch())
-                .count()) /
-        1000.0};
-    auto [sec, nanosec]{millisecondsToRosTime(timestampMillis)};
-    auto logMsg{rcl_interfaces::msg::Log()};
-    logMsg.stamp.sec = sec;
-    logMsg.stamp.nanosec = nanosec;
-    logMsg.level = logMsgLevel;
-    logMsg.msg = msg;
-    notificationsPublisher_->publish(std::move(logMsg));
+    common::publishNotification(get_logger(), notificationsPublisher_, msg,
+                                level);
   }
 
   void publishTracks() { tracksPublisher_->publish(std::move(getTracksMsg())); }
@@ -457,6 +357,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
       return;
     }
 
+    std::lock_guard<std::mutex> lock(lastDetectedTrackIdsMutex_);
+
     // For new tracks, add to tracker and set as pending. For tracks that are
     // detected again, update the track pixel and position; for FAILED tracks,
     // set them as PENDING since they may have moved since the last detection.
@@ -468,18 +370,6 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
     std::unordered_set<uint32_t> prevDetectedTrackIds{lastDetectedTrackIds_};
     lastDetectedTrackIds_.clear();
-
-    if (msg->detection_type ==
-        detection_interfaces::msg::DetectionType::CIRCLE) {
-      // Circle tracking is for testing purposes. Just take the detection with
-      // the highest confidence to track.
-      if (!msg->instances.empty()) {
-        auto obj{*std::max_element(msg->instances.begin(), msg->instances.end(),
-                                   [](const auto& a, const auto& b) {
-                                     return a.confidence < b.confidence;
-                                   })};
-      }
-    }
 
     if (msg->detection_type ==
         detection_interfaces::msg::DetectionType::RUNNER) {
@@ -582,7 +472,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
   void onSaveCalibration(
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-    std::string filePath{expandUser(getParamSaveDir()) + "/calibration.dat"};
+    std::string filePath{common::expandUser(getParamSaveDir()) +
+                         "/calibration.dat"};
     bool res{calibration_->save(filePath)};
     if (res) {
       publishNotification(fmt::format("Calibration saved: {}", filePath));
@@ -596,7 +487,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
   void onLoadCalibration(
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-    std::string filePath{expandUser(getParamSaveDir()) + "/calibration.dat"};
+    std::string filePath{common::expandUser(getParamSaveDir()) +
+                         "/calibration.dat"};
     bool res{calibration_->load(filePath)};
     if (res) {
       publishNotification(fmt::format("Calibration loaded: {}", filePath));
@@ -684,7 +576,10 @@ class RunnerCutterControlNode : public rclcpp::Node {
     laser_->stop();
     detection_->stopAllDetections();
     tracker_->clear();
-    lastDetectedTrackIds_.clear();
+    {
+      std::lock_guard<std::mutex> lock(lastDetectedTrackIdsMutex_);
+      lastDetectedTrackIds_.clear();
+    }
   }
 
   template <typename Function, typename... Args>
@@ -1248,8 +1143,9 @@ class RunnerCutterControlNode : public rclcpp::Node {
   std::string taskName_;
   std::shared_ptr<Tracker> tracker_;
   std::unordered_set<uint32_t> lastDetectedTrackIds_;
+  std::mutex lastDetectedTrackIdsMutex_;
   // Notifies waiting threads that new pending tracks were detected
-  Event pendingTracksChangedEvent_;
+  common::Event pendingTracksChangedEvent_;
 };
 
 int main(int argc, char* argv[]) {

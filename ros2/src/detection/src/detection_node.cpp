@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <condition_variable>
 #include <deque>
 #include <filesystem>
 #include <opencv2/core/cuda.hpp>
@@ -13,6 +12,9 @@
 #include <rclcpp_components/register_node_macro.hpp>
 
 #include "camera_control/utils/rgbd_alignment.hpp"
+#include "common/event.hpp"
+#include "common/ros_utils.hpp"
+#include "common/utils.hpp"
 #include "common_interfaces/msg/vector2.hpp"
 #include "common_interfaces/msg/vector3.hpp"
 #include "detection/detector/circle_detector.hpp"
@@ -37,55 +39,6 @@
 #include "tf2_ros/transform_listener.h"
 
 namespace {
-
-/**
- * Concurrency primitive that provides a shared flag that can be set and waited
- * on.
- */
-class Event {
- public:
-  Event() : flag_(false) {}
-
-  void set() {
-    std::lock_guard<std::mutex> lock(mtx_);
-    flag_ = true;
-    cv_.notify_all();
-  }
-
-  void clear() {
-    std::lock_guard<std::mutex> lock(mtx_);
-    flag_ = false;
-  }
-
-  void wait() {
-    std::unique_lock<std::mutex> lock(mtx_);
-    cv_.wait(lock, [this] { return flag_; });
-  }
-
-  bool wait_for(float timeoutSecs) {
-    std::unique_lock<std::mutex> lock(mtx_);
-    return cv_.wait_for(lock, std::chrono::duration<float>(timeoutSecs),
-                        [this] { return flag_; });
-  }
-
- private:
-  std::mutex mtx_;
-  std::condition_variable cv_;
-  bool flag_;
-};
-
-std::string expandUser(const std::string& path) {
-  if (path.empty() || path[0] != '~') {
-    return path;
-  }
-
-  const char* home{std::getenv("HOME")};
-  if (!home) {
-    throw std::runtime_error("HOME environment variable not set");
-  }
-
-  return std::string(home) + path.substr(1);
-}
 
 std::pair<cv::Mat, cv::Mat> getCameraMatrices(
     const sensor_msgs::msg::CameraInfo::ConstSharedPtr& cameraInfo) {
@@ -379,6 +332,7 @@ class DetectionNode : public rclcpp::Node {
       /////////////////////
       // Create debug image
       /////////////////////
+
       // Downscale using INTER_NEAREST for best perf
       double aspectRatio{static_cast<double>(imgMsg->height) / imgMsg->width};
       int debugImageWidth{getParamDebugImageWidth()};
@@ -399,11 +353,20 @@ class DetectionNode : public rclcpp::Node {
       ////////////
       // Detection
       ////////////
-      if (enabledDetections_.find(
+
+      // Copy enabledDetections_ to avoid holding the lock for longer than
+      // needed
+      std::unordered_map<int, cv::Rect2d> enabledDetections;
+      {
+        std::lock_guard<std::mutex> lock(enabledDetectionsMutex_);
+        enabledDetections = enabledDetections_;
+      }
+
+      if (enabledDetections.find(
               detection_interfaces::msg::DetectionType::RUNNER) !=
-          enabledDetections_.end()) {
+          enabledDetections.end()) {
         cv::Rect2d normalizedBounds{
-            enabledDetections_
+            enabledDetections
                 [detection_interfaces::msg::DetectionType::RUNNER]};
         cv::Rect bounds{
             static_cast<int>(std::ceil(normalizedBounds.x * imgMsg->width)),
@@ -423,9 +386,9 @@ class DetectionNode : public rclcpp::Node {
                                        cv::Size(imgMsg->width, imgMsg->height));
       }
 
-      if (enabledDetections_.find(
+      if (enabledDetections.find(
               detection_interfaces::msg::DetectionType::LASER) !=
-          enabledDetections_.end()) {
+          enabledDetections.end()) {
         // Copy RGB back to host
         rgbImage.create(imgMsg->height, imgMsg->width, CV_8UC3);
         gpuRgb.download(rgbImage);
@@ -442,9 +405,9 @@ class DetectionNode : public rclcpp::Node {
                                       cv::Size(imgMsg->width, imgMsg->height));
       }
 
-      if (enabledDetections_.find(
+      if (enabledDetections.find(
               detection_interfaces::msg::DetectionType::CIRCLE) !=
-          enabledDetections_.end()) {
+          enabledDetections.end()) {
         // Copy RGB back to host
         rgbImage.create(imgMsg->height, imgMsg->width, CV_8UC3);
         gpuRgb.download(rgbImage);
@@ -713,24 +676,28 @@ class DetectionNode : public rclcpp::Node {
           request,
       std::shared_ptr<detection_interfaces::srv::StartDetection::Response>
           response) {
-    if (enabledDetections_.find(request->detection_type) !=
-        enabledDetections_.end()) {
-      // Detection already enabled for the requested DetectionType. Do nothing.
-      response->success = false;
-      return;
-    }
+    {
+      std::lock_guard<std::mutex> lock(enabledDetectionsMutex_);
+      if (enabledDetections_.find(request->detection_type) !=
+          enabledDetections_.end()) {
+        // Detection already enabled for the requested DetectionType. Do
+        // nothing.
+        response->success = false;
+        return;
+      }
 
-    // If normalized bounds are all zero, set to full bounds (0, 0, 1, 1)
-    if (request->normalized_bounds.w == 0.0 &&
-        request->normalized_bounds.x == 0.0 &&
-        request->normalized_bounds.y == 0.0 &&
-        request->normalized_bounds.z == 0.0) {
-      enabledDetections_[request->detection_type] =
-          cv::Rect2d{0.0, 0.0, 1.0, 1.0};
-    } else {
-      enabledDetections_[request->detection_type] = cv::Rect2d{
-          request->normalized_bounds.w, request->normalized_bounds.x,
-          request->normalized_bounds.y, request->normalized_bounds.z};
+      // If normalized bounds are all zero, set to full bounds (0, 0, 1, 1)
+      if (request->normalized_bounds.w == 0.0 &&
+          request->normalized_bounds.x == 0.0 &&
+          request->normalized_bounds.y == 0.0 &&
+          request->normalized_bounds.z == 0.0) {
+        enabledDetections_[request->detection_type] =
+            cv::Rect2d{0.0, 0.0, 1.0, 1.0};
+      } else {
+        enabledDetections_[request->detection_type] = cv::Rect2d{
+            request->normalized_bounds.w, request->normalized_bounds.x,
+            request->normalized_bounds.y, request->normalized_bounds.z};
+      }
     }
 
     publishState();
@@ -742,14 +709,17 @@ class DetectionNode : public rclcpp::Node {
           request,
       std::shared_ptr<detection_interfaces::srv::StopDetection::Response>
           response) {
-    if (enabledDetections_.find(request->detection_type) ==
-        enabledDetections_.end()) {
-      // Detection not enabled for the requested DetectionType. Do nothing.
-      response->success = false;
-      return;
+    {
+      std::lock_guard<std::mutex> lock(enabledDetectionsMutex_);
+      if (enabledDetections_.find(request->detection_type) ==
+          enabledDetections_.end()) {
+        // Detection not enabled for the requested DetectionType. Do nothing.
+        response->success = false;
+        return;
+      }
+      enabledDetections_.erase(request->detection_type);
     }
 
-    enabledDetections_.erase(request->detection_type);
     publishState();
     response->success = true;
   }
@@ -757,13 +727,16 @@ class DetectionNode : public rclcpp::Node {
   void onStopAllDetections(
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-    if (enabledDetections_.empty()) {
-      // No detections are enabled. Do nothing.
-      response->success = false;
-      return;
+    {
+      std::lock_guard<std::mutex> lock(enabledDetectionsMutex_);
+      if (enabledDetections_.empty()) {
+        // No detections are enabled. Do nothing.
+        response->success = false;
+        return;
+      }
+      enabledDetections_.clear();
     }
 
-    enabledDetections_.clear();
     publishState();
     response->success = true;
   }
@@ -832,7 +805,7 @@ class DetectionNode : public rclcpp::Node {
     if (!videoWriter_.isOpened()) {
       // Create the save directory if it doesn't exist
       std::string saveDir{getParamSaveDir()};
-      saveDir = expandUser(saveDir);
+      saveDir = common::expandUser(saveDir);
       std::filesystem::create_directories(saveDir);
 
       // Generate the video file name and path
@@ -932,8 +905,11 @@ class DetectionNode : public rclcpp::Node {
   detection_interfaces::msg::State::UniquePtr getStateMsg() {
     auto msg{std::make_unique<detection_interfaces::msg::State>()};
     std::vector<uint8_t> enabledDetectionTypes;
-    for (const auto& [key, value] : enabledDetections_) {
-      enabledDetectionTypes.push_back(key);
+    {
+      std::lock_guard<std::mutex> lock(enabledDetectionsMutex_);
+      for (const auto& [key, value] : enabledDetections_) {
+        enabledDetectionTypes.push_back(key);
+      }
     }
     msg->enabled_detection_types = enabledDetectionTypes;
     msg->recording_video = videoRecordingTimer_ != nullptr;
@@ -945,38 +921,8 @@ class DetectionNode : public rclcpp::Node {
   void publishNotification(
       const std::string& msg,
       rclcpp::Logger::Level level = rclcpp::Logger::Level::Info) {
-    uint8_t logMsgLevel{0};
-    switch (level) {
-      case rclcpp::Logger::Level::Debug:
-        RCLCPP_DEBUG(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::DEBUG;
-        break;
-      case rclcpp::Logger::Level::Info:
-        RCLCPP_INFO(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::INFO;
-        break;
-      case rclcpp::Logger::Level::Warn:
-        RCLCPP_WARN(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::WARN;
-        break;
-      case rclcpp::Logger::Level::Error:
-        RCLCPP_ERROR(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::ERROR;
-        break;
-      case rclcpp::Logger::Level::Fatal:
-        RCLCPP_FATAL(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::FATAL;
-        break;
-      default:
-        RCLCPP_ERROR(get_logger(), "Unknown log level: %s", msg.c_str());
-        return;
-    }
-
-    auto logMsg{rcl_interfaces::msg::Log()};
-    logMsg.stamp = rclcpp::Clock().now();
-    logMsg.level = logMsgLevel;
-    logMsg.msg = msg;
-    notificationsPublisher_->publish(std::move(logMsg));
+    common::publishNotification(get_logger(), notificationsPublisher_, msg,
+                                level);
   }
 
 #pragma endregion
@@ -1099,12 +1045,13 @@ class DetectionNode : public rclcpp::Node {
   sensor_msgs::msg::CameraInfo::ConstSharedPtr depthCameraInfo_;
   std::mutex depthCameraInfoMutex_;
   // Notifies the detection thread that a new image is available
-  Event colorImageEvent_;
+  common::Event colorImageEvent_;
   sensor_msgs::msg::Image::ConstSharedPtr lastColorImage_;
   std::mutex lastColorImageMutex_;
   std::shared_ptr<RgbdAlignment> rgbdAlignment_;
   // DetectionType -> normalized [0, 1] rect bounds {min x, min y, width,
   // height}
+  std::mutex enabledDetectionsMutex_;
   std::unordered_map<int, cv::Rect2d> enabledDetections_;
   std::mutex depthXyzQueueMutex_;
   std::deque<sensor_msgs::msg::Image::ConstSharedPtr> depthXyzQueue_;

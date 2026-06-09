@@ -17,6 +17,8 @@
 #include "camera_control_interfaces/srv/get_state.hpp"
 #include "camera_control_interfaces/srv/start_device.hpp"
 #include "camera_control_interfaces/srv/start_interval_capture.hpp"
+#include "common/ros_utils.hpp"
+#include "common/utils.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "rcl_interfaces/msg/log.hpp"
 #include "rclcpp/qos.hpp"
@@ -28,19 +30,6 @@
 #include "tf2_ros/static_transform_broadcaster.h"
 
 namespace {
-
-std::string expandUser(const std::string& path) {
-  if (path.empty() || path[0] != '~') {
-    return path;
-  }
-
-  const char* home{std::getenv("HOME")};
-  if (!home) {
-    throw std::runtime_error("HOME environment variable not set");
-  }
-
-  return std::string(home) + path.substr(1);
-}
 
 std::string formatRosTimestamp(const builtin_interfaces::msg::Time& stamp) {
   rclcpp::Time rosTime(stamp);
@@ -568,7 +557,7 @@ class CameraControlNode : public rclcpp::Node {
 
     // Create the save directory if it doesn't exist
     std::string saveDir{getParamSaveDir()};
-    saveDir = expandUser(saveDir);
+    saveDir = common::expandUser(saveDir);
     std::filesystem::create_directories(saveDir);
 
     // Generate the image file name and path
@@ -633,38 +622,8 @@ class CameraControlNode : public rclcpp::Node {
   void publishNotification(
       const std::string& msg,
       rclcpp::Logger::Level level = rclcpp::Logger::Level::Info) {
-    uint8_t logMsgLevel{0};
-    switch (level) {
-      case rclcpp::Logger::Level::Debug:
-        RCLCPP_DEBUG(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::DEBUG;
-        break;
-      case rclcpp::Logger::Level::Info:
-        RCLCPP_INFO(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::INFO;
-        break;
-      case rclcpp::Logger::Level::Warn:
-        RCLCPP_WARN(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::WARN;
-        break;
-      case rclcpp::Logger::Level::Error:
-        RCLCPP_ERROR(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::ERROR;
-        break;
-      case rclcpp::Logger::Level::Fatal:
-        RCLCPP_FATAL(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::FATAL;
-        break;
-      default:
-        RCLCPP_ERROR(get_logger(), "Unknown log level: %s", msg.c_str());
-        return;
-    }
-
-    auto logMsg{rcl_interfaces::msg::Log()};
-    logMsg.stamp = rclcpp::Clock().now();
-    logMsg.level = logMsgLevel;
-    logMsg.msg = msg;
-    notificationsPublisher_->publish(std::move(logMsg));
+    common::publishNotification(get_logger(), notificationsPublisher_, msg,
+                                level);
   }
 
 #pragma endregion

@@ -3,7 +3,6 @@
 #   docker exec -it ros2-ros2-1 bash      # drop into shell for the running ros2 container
 #   docker/build_and_run.sh               # (inside container) build and run nodes
 #   colcon build --packages-select <pkg>  # (inside container) incremental rebuild of package(s)
-#   exit                                  # (inside container) exits shell session
 #   docker compose down                   # stop containers
 
 services:

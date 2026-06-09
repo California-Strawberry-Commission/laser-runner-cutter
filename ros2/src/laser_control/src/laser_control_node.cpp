@@ -291,8 +291,8 @@ class LaserControlNode : public rclcpp::Node {
       getStateService_;
 
   std::shared_ptr<DAC> dac_;
-  bool connecting_{false};
-  bool disconnecting_{false};
+  std::atomic<bool> connecting_{false};
+  std::atomic<bool> disconnecting_{false};
 };
 
 int main(int argc, char* argv[]) {
