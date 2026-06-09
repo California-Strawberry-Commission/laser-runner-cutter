@@ -17,6 +17,7 @@
 #include "camera_control_interfaces/srv/get_state.hpp"
 #include "camera_control_interfaces/srv/start_device.hpp"
 #include "camera_control_interfaces/srv/start_interval_capture.hpp"
+#include "common/utils.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "rcl_interfaces/msg/log.hpp"
 #include "rclcpp/qos.hpp"
@@ -28,19 +29,6 @@
 #include "tf2_ros/static_transform_broadcaster.h"
 
 namespace {
-
-std::string expandUser(const std::string& path) {
-  if (path.empty() || path[0] != '~') {
-    return path;
-  }
-
-  const char* home{std::getenv("HOME")};
-  if (!home) {
-    throw std::runtime_error("HOME environment variable not set");
-  }
-
-  return std::string(home) + path.substr(1);
-}
 
 std::string formatRosTimestamp(const builtin_interfaces::msg::Time& stamp) {
   rclcpp::Time rosTime(stamp);

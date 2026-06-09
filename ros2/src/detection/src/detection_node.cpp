@@ -13,6 +13,7 @@
 
 #include "camera_control/utils/rgbd_alignment.hpp"
 #include "common/event.hpp"
+#include "common/utils.hpp"
 #include "common_interfaces/msg/vector2.hpp"
 #include "common_interfaces/msg/vector3.hpp"
 #include "detection/detector/circle_detector.hpp"
@@ -37,19 +38,6 @@
 #include "tf2_ros/transform_listener.h"
 
 namespace {
-
-std::string expandUser(const std::string& path) {
-  if (path.empty() || path[0] != '~') {
-    return path;
-  }
-
-  const char* home{std::getenv("HOME")};
-  if (!home) {
-    throw std::runtime_error("HOME environment variable not set");
-  }
-
-  return std::string(home) + path.substr(1);
-}
 
 std::pair<cv::Mat, cv::Mat> getCameraMatrices(
     const sensor_msgs::msg::CameraInfo::ConstSharedPtr& cameraInfo) {

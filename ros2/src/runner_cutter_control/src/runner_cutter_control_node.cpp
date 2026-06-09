@@ -5,6 +5,7 @@
 #include "camera_control_interfaces/msg/device_state.hpp"
 #include "camera_control_interfaces/msg/state.hpp"
 #include "common/event.hpp"
+#include "common/utils.hpp"
 #include "detection_interfaces/msg/detection_result.hpp"
 #include "detection_interfaces/msg/detection_type.hpp"
 #include "laser_control_interfaces/msg/device_state.hpp"
@@ -31,32 +32,6 @@
 #include "runner_cutter_control_interfaces/srv/get_state.hpp"
 #include "runner_cutter_control_interfaces/srv/manual_target_laser.hpp"
 #include "std_srvs/srv/trigger.hpp"
-
-namespace {
-
-std::pair<int, int> millisecondsToRosTime(double milliseconds) {
-  // ROS timestamps consist of two integers, one for seconds and one for
-  // nanoseconds
-  int seconds = static_cast<int>(milliseconds / 1000);
-  int nanoseconds =
-      static_cast<int>((static_cast<int>(milliseconds) % 1000) * 1e6);
-  return {seconds, nanoseconds};
-}
-
-std::string expandUser(const std::string& path) {
-  if (path.empty() || path[0] != '~') {
-    return path;
-  }
-
-  const char* home = std::getenv("HOME");
-  if (!home) {
-    throw std::runtime_error("HOME environment variable not set");
-  }
-
-  return std::string(home) + path.substr(1);
-}
-
-}  // namespace
 
 class RunnerCutterControlNode : public rclcpp::Node {
  public:

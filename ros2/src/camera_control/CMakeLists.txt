@@ -20,6 +20,7 @@ find_package(std_srvs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(common REQUIRED)
 find_package(camera_control_interfaces REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
@@ -115,6 +116,7 @@ ament_target_dependencies(camera_control_node_composable PUBLIC
   geometry_msgs
   tf2
   tf2_ros
+  common
   camera_control_interfaces
   cv_bridge
   OpenCV
