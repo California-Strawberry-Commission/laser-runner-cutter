@@ -379,6 +379,7 @@ class DetectionNode : public rclcpp::Node {
       /////////////////////
       // Create debug image
       /////////////////////
+
       // Downscale using INTER_NEAREST for best perf
       double aspectRatio{static_cast<double>(imgMsg->height) / imgMsg->width};
       int debugImageWidth{getParamDebugImageWidth()};
@@ -399,11 +400,20 @@ class DetectionNode : public rclcpp::Node {
       ////////////
       // Detection
       ////////////
-      if (enabledDetections_.find(
+
+      // Copy enabledDetections_ to avoid holding the lock for longer than
+      // needed
+      std::unordered_map<int, cv::Rect2d> enabledDetections;
+      {
+        std::lock_guard<std::mutex> lock(enabledDetectionsMutex_);
+        enabledDetections = enabledDetections_;
+      }
+
+      if (enabledDetections.find(
               detection_interfaces::msg::DetectionType::RUNNER) !=
-          enabledDetections_.end()) {
+          enabledDetections.end()) {
         cv::Rect2d normalizedBounds{
-            enabledDetections_
+            enabledDetections
                 [detection_interfaces::msg::DetectionType::RUNNER]};
         cv::Rect bounds{
             static_cast<int>(std::ceil(normalizedBounds.x * imgMsg->width)),
@@ -423,9 +433,9 @@ class DetectionNode : public rclcpp::Node {
                                        cv::Size(imgMsg->width, imgMsg->height));
       }
 
-      if (enabledDetections_.find(
+      if (enabledDetections.find(
               detection_interfaces::msg::DetectionType::LASER) !=
-          enabledDetections_.end()) {
+          enabledDetections.end()) {
         // Copy RGB back to host
         rgbImage.create(imgMsg->height, imgMsg->width, CV_8UC3);
         gpuRgb.download(rgbImage);
@@ -442,9 +452,9 @@ class DetectionNode : public rclcpp::Node {
                                       cv::Size(imgMsg->width, imgMsg->height));
       }
 
-      if (enabledDetections_.find(
+      if (enabledDetections.find(
               detection_interfaces::msg::DetectionType::CIRCLE) !=
-          enabledDetections_.end()) {
+          enabledDetections.end()) {
         // Copy RGB back to host
         rgbImage.create(imgMsg->height, imgMsg->width, CV_8UC3);
         gpuRgb.download(rgbImage);
@@ -713,24 +723,28 @@ class DetectionNode : public rclcpp::Node {
           request,
       std::shared_ptr<detection_interfaces::srv::StartDetection::Response>
           response) {
-    if (enabledDetections_.find(request->detection_type) !=
-        enabledDetections_.end()) {
-      // Detection already enabled for the requested DetectionType. Do nothing.
-      response->success = false;
-      return;
-    }
+    {
+      std::lock_guard<std::mutex> lock(enabledDetectionsMutex_);
+      if (enabledDetections_.find(request->detection_type) !=
+          enabledDetections_.end()) {
+        // Detection already enabled for the requested DetectionType. Do
+        // nothing.
+        response->success = false;
+        return;
+      }
 
-    // If normalized bounds are all zero, set to full bounds (0, 0, 1, 1)
-    if (request->normalized_bounds.w == 0.0 &&
-        request->normalized_bounds.x == 0.0 &&
-        request->normalized_bounds.y == 0.0 &&
-        request->normalized_bounds.z == 0.0) {
-      enabledDetections_[request->detection_type] =
-          cv::Rect2d{0.0, 0.0, 1.0, 1.0};
-    } else {
-      enabledDetections_[request->detection_type] = cv::Rect2d{
-          request->normalized_bounds.w, request->normalized_bounds.x,
-          request->normalized_bounds.y, request->normalized_bounds.z};
+      // If normalized bounds are all zero, set to full bounds (0, 0, 1, 1)
+      if (request->normalized_bounds.w == 0.0 &&
+          request->normalized_bounds.x == 0.0 &&
+          request->normalized_bounds.y == 0.0 &&
+          request->normalized_bounds.z == 0.0) {
+        enabledDetections_[request->detection_type] =
+            cv::Rect2d{0.0, 0.0, 1.0, 1.0};
+      } else {
+        enabledDetections_[request->detection_type] = cv::Rect2d{
+            request->normalized_bounds.w, request->normalized_bounds.x,
+            request->normalized_bounds.y, request->normalized_bounds.z};
+      }
     }
 
     publishState();
@@ -742,14 +756,17 @@ class DetectionNode : public rclcpp::Node {
           request,
       std::shared_ptr<detection_interfaces::srv::StopDetection::Response>
           response) {
-    if (enabledDetections_.find(request->detection_type) ==
-        enabledDetections_.end()) {
-      // Detection not enabled for the requested DetectionType. Do nothing.
-      response->success = false;
-      return;
+    {
+      std::lock_guard<std::mutex> lock(enabledDetectionsMutex_);
+      if (enabledDetections_.find(request->detection_type) ==
+          enabledDetections_.end()) {
+        // Detection not enabled for the requested DetectionType. Do nothing.
+        response->success = false;
+        return;
+      }
+      enabledDetections_.erase(request->detection_type);
     }
 
-    enabledDetections_.erase(request->detection_type);
     publishState();
     response->success = true;
   }
@@ -757,13 +774,16 @@ class DetectionNode : public rclcpp::Node {
   void onStopAllDetections(
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-    if (enabledDetections_.empty()) {
-      // No detections are enabled. Do nothing.
-      response->success = false;
-      return;
+    {
+      std::lock_guard<std::mutex> lock(enabledDetectionsMutex_);
+      if (enabledDetections_.empty()) {
+        // No detections are enabled. Do nothing.
+        response->success = false;
+        return;
+      }
+      enabledDetections_.clear();
     }
 
-    enabledDetections_.clear();
     publishState();
     response->success = true;
   }
@@ -932,8 +952,11 @@ class DetectionNode : public rclcpp::Node {
   detection_interfaces::msg::State::UniquePtr getStateMsg() {
     auto msg{std::make_unique<detection_interfaces::msg::State>()};
     std::vector<uint8_t> enabledDetectionTypes;
-    for (const auto& [key, value] : enabledDetections_) {
-      enabledDetectionTypes.push_back(key);
+    {
+      std::lock_guard<std::mutex> lock(enabledDetectionsMutex_);
+      for (const auto& [key, value] : enabledDetections_) {
+        enabledDetectionTypes.push_back(key);
+      }
     }
     msg->enabled_detection_types = enabledDetectionTypes;
     msg->recording_video = videoRecordingTimer_ != nullptr;
@@ -1105,6 +1128,7 @@ class DetectionNode : public rclcpp::Node {
   std::shared_ptr<RgbdAlignment> rgbdAlignment_;
   // DetectionType -> normalized [0, 1] rect bounds {min x, min y, width,
   // height}
+  std::mutex enabledDetectionsMutex_;
   std::unordered_map<int, cv::Rect2d> enabledDetections_;
   std::mutex depthXyzQueueMutex_;
   std::deque<sensor_msgs::msg::Image::ConstSharedPtr> depthXyzQueue_;
