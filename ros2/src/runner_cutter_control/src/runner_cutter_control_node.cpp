@@ -372,18 +372,6 @@ class RunnerCutterControlNode : public rclcpp::Node {
     lastDetectedTrackIds_.clear();
 
     if (msg->detection_type ==
-        detection_interfaces::msg::DetectionType::CIRCLE) {
-      // Circle tracking is for testing purposes. Just take the detection with
-      // the highest confidence to track.
-      if (!msg->instances.empty()) {
-        auto obj{*std::max_element(msg->instances.begin(), msg->instances.end(),
-                                   [](const auto& a, const auto& b) {
-                                     return a.confidence < b.confidence;
-                                   })};
-      }
-    }
-
-    if (msg->detection_type ==
         detection_interfaces::msg::DetectionType::RUNNER) {
       for (const auto& instance : msg->instances) {
         processDetectionInstance(instance, msg->timestamp * 1000.0);
