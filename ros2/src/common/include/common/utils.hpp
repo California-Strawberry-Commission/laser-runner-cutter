@@ -6,15 +6,9 @@
 #include <string>
 #include <utility>
 
-// Convert a millisecond timestamp to a (seconds, nanoseconds) pair suitable
-// for builtin_interfaces::msg::Time.
-inline std::pair<int32_t, uint32_t> millisecondsToRosTime(double milliseconds) {
-  int32_t seconds = static_cast<int32_t>(milliseconds / 1000.0);
-  uint32_t nanoseconds =
-      static_cast<uint32_t>((milliseconds - seconds * 1000.0) * 1e6);
-  return {seconds, nanoseconds};
-}
+namespace common {
 
+// Performs tilde expansion for a file path.
 inline std::string expandUser(const std::string& path) {
   if (path.empty() || path[0] != '~') {
     return path;
@@ -27,3 +21,5 @@ inline std::string expandUser(const std::string& path) {
 
   return std::string(home) + path.substr(1);
 }
+
+}  // namespace common

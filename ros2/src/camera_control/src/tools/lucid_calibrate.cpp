@@ -3,6 +3,7 @@
 
 #include "camera_control/camera/calibration.hpp"
 #include "camera_control/camera/lucid_camera.hpp"
+#include "common/utils.hpp"
 #include "spdlog/spdlog.h"
 
 void captureFrame(double exposureUs, double gainDb,
@@ -18,8 +19,7 @@ void captureFrame(double exposureUs, double gainDb,
     return;
   }
 
-  std::filesystem::path outputDirExpandedPath{
-      calibration::expandUser(outputDir)};
+  std::filesystem::path outputDirExpandedPath{common::expandUser(outputDir)};
   std::filesystem::create_directories(outputDirExpandedPath);
 
   LucidCamera::Frame frame{std::move(*frameOpt)};
@@ -61,8 +61,7 @@ void captureFrame(double exposureUs, double gainDb,
 
 void calculateIntrinsics(const std::string& imagesDir,
                          const std::string& outputDir) {
-  std::filesystem::path imagesDirExpandedPath{
-      calibration::expandUser(imagesDir)};
+  std::filesystem::path imagesDirExpandedPath{common::expandUser(imagesDir)};
   if (!std::filesystem::exists(imagesDirExpandedPath) ||
       !std::filesystem::is_directory(imagesDirExpandedPath)) {
     spdlog::error("Provided path is not a valid directory: {}",
@@ -109,8 +108,7 @@ void calculateIntrinsics(const std::string& imagesDir,
   spdlog::info("Calibrated intrins: \n{}", oss1.str());
   spdlog::info("Distortion coeffs: \n{}", oss2.str());
 
-  std::filesystem::path outputDirExpandedPath{
-      calibration::expandUser(outputDir)};
+  std::filesystem::path outputDirExpandedPath{common::expandUser(outputDir)};
   std::filesystem::create_directories(outputDirExpandedPath);
 
   std::filesystem::path intrinsicsPath{
@@ -133,8 +131,7 @@ void undistortImage(const std::string& intrinsicsFile,
   auto [intrinsicMatrix, distCoeffs]{std::move(*intrinsicsOpt)};
 
   // Read image file
-  std::filesystem::path imageFileExpandedPath{
-      calibration::expandUser(imageFile)};
+  std::filesystem::path imageFileExpandedPath{common::expandUser(imageFile)};
   cv::Mat img{cv::imread(imageFileExpandedPath)};
 
   cv::Rect roi;
@@ -144,8 +141,7 @@ void undistortImage(const std::string& intrinsicsFile,
   cv::undistort(img, undistorted, intrinsicMatrix, distCoeffs, newCameraMatrix);
   undistorted = undistorted(roi);
 
-  std::filesystem::path outputFileExpandedPath{
-      calibration::expandUser(outputFile)};
+  std::filesystem::path outputFileExpandedPath{common::expandUser(outputFile)};
   cv::imwrite(outputFileExpandedPath, undistorted);
 }
 
@@ -163,7 +159,7 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
 
   // Find camera image paths
   std::filesystem::path cameraImagesExpandedPath{
-      calibration::expandUser(cameraImagesDir)};
+      common::expandUser(cameraImagesDir)};
   if (!std::filesystem::exists(cameraImagesExpandedPath) ||
       !std::filesystem::is_directory(cameraImagesExpandedPath)) {
     spdlog::error("Provided path is not a valid directory: {}",
@@ -185,15 +181,14 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
 
   // Ensure Helios intensity image and XYZ data directories are valid
   std::filesystem::path heliosImagesExpandedPath{
-      calibration::expandUser(heliosImagesDir)};
+      common::expandUser(heliosImagesDir)};
   if (!std::filesystem::exists(heliosImagesExpandedPath) ||
       !std::filesystem::is_directory(heliosImagesExpandedPath)) {
     spdlog::error("Provided path is not a valid directory: {}",
                   heliosImagesExpandedPath.string());
     return;
   }
-  std::filesystem::path heliosXyzExpandedPath{
-      calibration::expandUser(heliosXyzDir)};
+  std::filesystem::path heliosXyzExpandedPath{common::expandUser(heliosXyzDir)};
   if (!std::filesystem::exists(heliosXyzExpandedPath) ||
       !std::filesystem::is_directory(heliosXyzExpandedPath)) {
     spdlog::error("Provided path is not a valid directory: {}",
@@ -331,8 +326,7 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
   // Construct extrinsic matrix and write to file
   cv::Mat extrinsicMatrix{calibration::constructExtrinsicMatrix(rvec, tvec)};
 
-  std::filesystem::path outputDirExpandedPath{
-      calibration::expandUser(outputDir)};
+  std::filesystem::path outputDirExpandedPath{common::expandUser(outputDir)};
   std::filesystem::create_directories(outputDirExpandedPath);
 
   std::filesystem::path extrinsicsPath{
@@ -367,11 +361,11 @@ void visualizeExtrinsics(const std::string& cameraImageFile,
 
   // Read image files
   std::filesystem::path cameraImageFileExpandedPath{
-      calibration::expandUser(cameraImageFile)};
+      common::expandUser(cameraImageFile)};
   cv::Mat cameraImg{calibration::scaleGrayscaleImage(
       cv::imread(cameraImageFileExpandedPath, cv::IMREAD_GRAYSCALE))};
   std::filesystem::path heliosIntensityimageFileExpandedPath{
-      calibration::expandUser(heliosIntensityImageFile)};
+      common::expandUser(heliosIntensityImageFile)};
   cv::Mat heliosIntensityImg{calibration::scaleGrayscaleImage(
       cv::imread(heliosIntensityimageFileExpandedPath, cv::IMREAD_GRAYSCALE))};
 
@@ -419,8 +413,7 @@ void visualizeExtrinsics(const std::string& cameraImageFile,
     }
   }
 
-  std::filesystem::path outputFileExpandedPath{
-      calibration::expandUser(outputFile)};
+  std::filesystem::path outputFileExpandedPath{common::expandUser(outputFile)};
   cv::imwrite(outputFileExpandedPath, projectionImg);
 }
 

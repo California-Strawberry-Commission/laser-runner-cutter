@@ -83,14 +83,6 @@ cv::Mat scaleGrayscaleImage(const cv::Mat& monoImage);
 cv::Ptr<cv::Feature2D> createBlobDetector();
 
 /**
- * Performs tilde expansion for a file path.
- *
- * @param path Path to expand.
- * @return Fully qualified file path.
- */
-std::string expandUser(const std::string& path);
-
-/**
  * Reads an XYZ data file.
  *
  * @param xyzFile Path to the xyz data file.

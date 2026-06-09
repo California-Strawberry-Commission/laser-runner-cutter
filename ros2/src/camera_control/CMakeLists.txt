@@ -89,6 +89,7 @@ target_link_libraries(camera PRIVATE spdlog::spdlog ${ARENA_LIBS} ${OpenCV_LIBS}
 ament_target_dependencies(camera PUBLIC
   rclcpp
   sensor_msgs
+  common
 )
 
 # utils

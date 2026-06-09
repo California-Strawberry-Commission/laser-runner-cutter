@@ -13,6 +13,7 @@
 
 #include "camera_control/utils/rgbd_alignment.hpp"
 #include "common/event.hpp"
+#include "common/ros_utils.hpp"
 #include "common/utils.hpp"
 #include "common_interfaces/msg/vector2.hpp"
 #include "common_interfaces/msg/vector3.hpp"
@@ -804,7 +805,7 @@ class DetectionNode : public rclcpp::Node {
     if (!videoWriter_.isOpened()) {
       // Create the save directory if it doesn't exist
       std::string saveDir{getParamSaveDir()};
-      saveDir = expandUser(saveDir);
+      saveDir = common::expandUser(saveDir);
       std::filesystem::create_directories(saveDir);
 
       // Generate the video file name and path
@@ -920,38 +921,8 @@ class DetectionNode : public rclcpp::Node {
   void publishNotification(
       const std::string& msg,
       rclcpp::Logger::Level level = rclcpp::Logger::Level::Info) {
-    uint8_t logMsgLevel{0};
-    switch (level) {
-      case rclcpp::Logger::Level::Debug:
-        RCLCPP_DEBUG(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::DEBUG;
-        break;
-      case rclcpp::Logger::Level::Info:
-        RCLCPP_INFO(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::INFO;
-        break;
-      case rclcpp::Logger::Level::Warn:
-        RCLCPP_WARN(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::WARN;
-        break;
-      case rclcpp::Logger::Level::Error:
-        RCLCPP_ERROR(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::ERROR;
-        break;
-      case rclcpp::Logger::Level::Fatal:
-        RCLCPP_FATAL(get_logger(), msg.c_str());
-        logMsgLevel = rcl_interfaces::msg::Log::FATAL;
-        break;
-      default:
-        RCLCPP_ERROR(get_logger(), "Unknown log level: %s", msg.c_str());
-        return;
-    }
-
-    auto logMsg{rcl_interfaces::msg::Log()};
-    logMsg.stamp = rclcpp::Clock().now();
-    logMsg.level = logMsgLevel;
-    logMsg.msg = msg;
-    notificationsPublisher_->publish(std::move(logMsg));
+    common::publishNotification(get_logger(), notificationsPublisher_, msg,
+                                level);
   }
 
 #pragma endregion
@@ -1074,7 +1045,7 @@ class DetectionNode : public rclcpp::Node {
   sensor_msgs::msg::CameraInfo::ConstSharedPtr depthCameraInfo_;
   std::mutex depthCameraInfoMutex_;
   // Notifies the detection thread that a new image is available
-  Event colorImageEvent_;
+  common::Event colorImageEvent_;
   sensor_msgs::msg::Image::ConstSharedPtr lastColorImage_;
   std::mutex lastColorImageMutex_;
   std::shared_ptr<RgbdAlignment> rgbdAlignment_;

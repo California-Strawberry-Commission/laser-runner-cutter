@@ -4,6 +4,8 @@
 #include <condition_variable>
 #include <mutex>
 
+namespace common {
+
 /**
  * Concurrency primitive that provides a shared flag that can be set and waited
  * on.
@@ -39,3 +41,5 @@ class Event {
   std::condition_variable cv_;
   bool flag_;
 };
+
+}  // namespace common

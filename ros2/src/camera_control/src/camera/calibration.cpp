@@ -2,6 +2,7 @@
 
 #include <filesystem>
 
+#include "common/utils.hpp"
 #include "spdlog/spdlog.h"
 
 namespace {
@@ -211,21 +212,8 @@ cv::Ptr<cv::Feature2D> calibration::createBlobDetector() {
   return cv::SimpleBlobDetector::create(params);
 }
 
-std::string calibration::expandUser(const std::string& path) {
-  if (path.empty() || path[0] != '~') {
-    return path;
-  }
-
-  const char* home{std::getenv("HOME")};
-  if (!home) {
-    throw std::runtime_error("HOME environment variable not set");
-  }
-
-  return std::string(home) + path.substr(1);
-}
-
 std::optional<cv::Mat> calibration::readXyzFile(const std::string& xyzFile) {
-  std::filesystem::path filePath{calibration::expandUser(xyzFile)};
+  std::filesystem::path filePath{common::expandUser(xyzFile)};
   if (!std::filesystem::exists(filePath)) {
     spdlog::error("File does not exist: {}", filePath.string());
     return std::nullopt;
@@ -245,7 +233,7 @@ std::optional<cv::Mat> calibration::readXyzFile(const std::string& xyzFile) {
 
 std::optional<calibration::IntrinsicsResult> calibration::readIntrinsicsFile(
     const std::string& intrinsicsFile) {
-  std::filesystem::path filePath{calibration::expandUser(intrinsicsFile)};
+  std::filesystem::path filePath{common::expandUser(intrinsicsFile)};
   if (!std::filesystem::exists(filePath)) {
     spdlog::error("Intrinsics file does not exist: {}", filePath.string());
     return std::nullopt;
@@ -271,7 +259,7 @@ std::optional<calibration::IntrinsicsResult> calibration::readIntrinsicsFile(
 
 std::optional<cv::Mat> calibration::readExtrinsicsFile(
     const std::string& extrinsicsFile) {
-  std::filesystem::path filePath{calibration::expandUser(extrinsicsFile)};
+  std::filesystem::path filePath{common::expandUser(extrinsicsFile)};
   if (!std::filesystem::exists(filePath)) {
     spdlog::error("Extrinsics file does not exist: {}", filePath.string());
     return std::nullopt;
