@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <condition_variable>
 #include <deque>
 #include <filesystem>
 #include <opencv2/core/cuda.hpp>
@@ -13,6 +12,7 @@
 #include <rclcpp_components/register_node_macro.hpp>
 
 #include "camera_control/utils/rgbd_alignment.hpp"
+#include "common/event.hpp"
 #include "common_interfaces/msg/vector2.hpp"
 #include "common_interfaces/msg/vector3.hpp"
 #include "detection/detector/circle_detector.hpp"
@@ -37,42 +37,6 @@
 #include "tf2_ros/transform_listener.h"
 
 namespace {
-
-/**
- * Concurrency primitive that provides a shared flag that can be set and waited
- * on.
- */
-class Event {
- public:
-  Event() : flag_(false) {}
-
-  void set() {
-    std::lock_guard<std::mutex> lock(mtx_);
-    flag_ = true;
-    cv_.notify_all();
-  }
-
-  void clear() {
-    std::lock_guard<std::mutex> lock(mtx_);
-    flag_ = false;
-  }
-
-  void wait() {
-    std::unique_lock<std::mutex> lock(mtx_);
-    cv_.wait(lock, [this] { return flag_; });
-  }
-
-  bool wait_for(float timeoutSecs) {
-    std::unique_lock<std::mutex> lock(mtx_);
-    return cv_.wait_for(lock, std::chrono::duration<float>(timeoutSecs),
-                        [this] { return flag_; });
-  }
-
- private:
-  std::mutex mtx_;
-  std::condition_variable cv_;
-  bool flag_;
-};
 
 std::string expandUser(const std::string& path) {
   if (path.empty() || path[0] != '~') {

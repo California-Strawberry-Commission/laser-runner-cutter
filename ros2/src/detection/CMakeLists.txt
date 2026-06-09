@@ -26,6 +26,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(common REQUIRED)
 find_package(detection_interfaces REQUIRED)
 find_package(camera_control REQUIRED) 
 find_package(spdlog REQUIRED)
@@ -112,6 +113,7 @@ ament_target_dependencies(detection_node_composable PUBLIC
   geometry_msgs
   tf2
   tf2_ros
+  common
   detection_interfaces
   cv_bridge
 )

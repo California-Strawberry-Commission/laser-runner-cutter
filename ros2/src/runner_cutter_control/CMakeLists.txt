@@ -16,6 +16,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
+find_package(common REQUIRED)
 find_package(runner_cutter_control_interfaces REQUIRED)
 find_package(laser_control_interfaces REQUIRED)
 find_package(camera_control_interfaces REQUIRED)
@@ -104,6 +105,7 @@ ament_target_dependencies(runner_cutter_control_node PUBLIC
   rclcpp
   std_msgs
   std_srvs
+  common
   runner_cutter_control_interfaces
   laser_control_interfaces
   camera_control_interfaces
