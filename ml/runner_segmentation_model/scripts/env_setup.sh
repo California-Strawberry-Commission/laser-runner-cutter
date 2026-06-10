@@ -13,26 +13,26 @@ source $venv_dir/bin/activate
 pip install --upgrade pip
 
 # Install CUDA
-pip install gdown
 cd ~
 arch=$(uname -i)
 if [[ $arch == x86_64* ]]; then
-    # Install CUDA Toolkit 12.4, which allows for model training and inference on GPUs.
-    # The following is from https://developer.nvidia.com/cuda-12-4-0-download-archive?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=22.04&target_type=deb_local
-    wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-ubuntu2204.pin
-    sudo mv cuda-ubuntu2204.pin /etc/apt/preferences.d/cuda-repository-pin-600
-    wget https://developer.download.nvidia.com/compute/cuda/12.4.0/local_installers/cuda-repo-ubuntu2204-12-4-local_12.4.0-550.54.14-1_amd64.deb
-    sudo dpkg -i cuda-repo-ubuntu2204-12-4-local_12.4.0-550.54.14-1_amd64.deb
-    sudo cp /var/cuda-repo-ubuntu2204-12-4-local/cuda-*-keyring.gpg /usr/share/keyrings/
+    # Install CUDA Toolkit 13.3, which allows for model training and inference on GPUs.
+    # The following is from https://developer.nvidia.com/cuda-downloads?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=24.04&target_type=deb_local
+    wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-ubuntu2404.pin
+    sudo mv cuda-ubuntu2404.pin /etc/apt/preferences.d/cuda-repository-pin-600
+    wget https://developer.download.nvidia.com/compute/cuda/13.3.0/local_installers/cuda-repo-ubuntu2404-13-3-local_13.3.0-610.43.02-1_amd64.deb
+    sudo dpkg -i cuda-repo-ubuntu2404-13-3-local_13.3.0-610.43.02-1_amd64.deb
+    sudo cp /var/cuda-repo-ubuntu2404-13-3-local/cuda-*-keyring.gpg /usr/share/keyrings/
     sudo apt-get update
-    sudo apt-get -y install cuda-toolkit-12-4
+    sudo apt-get -y install cuda-toolkit-13-3
 
     # Install specific version of PyTorch and torchvision to match the CUDA version.
     # The following is from https://pytorch.org/get-started/locally/
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+    pip install torch torchvision --index-url https://download.pytorch.org/whl/cu132
 
-    # Install specific version of TensorRT
-    pip install tensorrt==10.4.0
+    # Install specific version of TensorRT.
+    # See https://docs.nvidia.com/deeplearning/tensorrt/latest/getting-started/support-matrix.html
+    pip install tensorrt==11.0.0
 elif [[ $arch == aarch64* ]]; then
     # Install CUDA Toolkit 12.4, which allows for model training and inference on GPUs.
     # The following is from https://developer.nvidia.com/cuda-12-4-0-download-archive?target_os=Linux&target_arch=aarch64-jetson&Compilation=Native&Distribution=Ubuntu&target_version=22.04&target_type=deb_local
@@ -72,6 +72,7 @@ elif [[ $arch == aarch64* ]]; then
 
     # Install specific version of TensorRT
     # The following is based on https://forums.developer.nvidia.com/t/is-it-possible-to-already-use-tensorrt-10-on-jestson-agx-orin/295744/10
+    pip install gdown
     gdown "https://drive.google.com/uc?id=1fFeK3pKCtCOWPmKZj4EV35VfjFREzCex" --output nv-tensorrt-local-tegra-repo-ubuntu2204-10.4.0-cuda-12.6_1.0-1_arm64.deb
     sudo dpkg -i nv-tensorrt-local-tegra-repo-ubuntu2204-10.4.0-cuda-12.6_1.0-1_arm64.deb
     sudo cp /var/nv-tensorrt-local-tegra-repo-ubuntu2204-10.4.0-cuda-12.6/nv-tensorrt-local-tegra-BEE93E3C-keyring.gpg /usr/share/keyrings/

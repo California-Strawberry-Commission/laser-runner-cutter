@@ -1,7 +1,7 @@
 numpy
 Pillow
-ultralytics==8.3.2
-tensorrt==10.4.0
+ultralytics==8.4.62
+tensorrt==11.0.0
 dvc
 dvc[s3]
 python-dotenv
