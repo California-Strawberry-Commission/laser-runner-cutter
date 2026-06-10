@@ -6,7 +6,7 @@ rtc:
   use_external_ip: false
   ips:
     excludes:
-      - 172.16.0.0/12
+      - 172.16.0.0/12 # Docker bridge ranges (172.17-172.31)
       - 127.0.0.0/8
 redis:
   address: 127.0.0.1:6379
