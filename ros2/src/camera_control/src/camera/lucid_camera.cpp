@@ -324,15 +324,6 @@ void LucidCamera::startStream(const Arena::DeviceInfo& colorDeviceInfo,
                                          "Output");
   Arena::SetNodeValue<GenICam::gcstring>(colorDevice_->GetNodeMap(),
                                          "LineSource", "ExposureActive");
-  Arena::SetNodeValue<GenICam::gcstring>(colorDevice_->GetNodeMap(),
-                                         "LineSelector",
-                                         "Line1");  // opto-isolated output
-  Arena::SetNodeValue<GenICam::gcstring>(colorDevice_->GetNodeMap(), "LineMode",
-                                         "Output");
-  Arena::SetNodeValue<GenICam::gcstring>(colorDevice_->GetNodeMap(),
-                                         "LineSource", "ExposureActive");
-  // TODO: Enable trigger mode on depth camera. See
-  // https://support.thinklucid.com/app-note-using-gpio-on-lucid-cameras/#config
 
   captureMode_ = captureMode;
   Arena::SetNodeValue<GenICam::gcstring>(
@@ -342,7 +333,16 @@ void LucidCamera::startStream(const Arena::DeviceInfo& colorDeviceInfo,
       depthDevice_->GetNodeMap(), "AcquisitionMode",
       captureMode == CaptureMode::SINGLE_FRAME ? "SingleFrame" : "Continuous");
 
-  ////////////////////////
+  // Select GPIO line to take trigger signal from master (triton) to slave (helios)
+  // Line 0 chosen because its range covers 24V trigger signal
+  Arena::SetNodeValue<GenICam::gcstring>(
+      depthDevice_->GetNodeMap(), "TriggerSelector", "FrameStart");
+  Arena::SetNodeValue<GenICam::gcstring>(
+      depthDevice_->GetNodeMap(), "TriggerSource", "Line0"); // opto-isolated input
+  Arena::SetNodeValue<GenICam::gcstring>(
+      depthDevice_->GetNodeMap(), "TriggerMode", "On");
+  
+    ////////////////////////
   // Set exposure and gain
   ////////////////////////
   if (exposureUs) {
