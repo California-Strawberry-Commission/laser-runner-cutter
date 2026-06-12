@@ -301,7 +301,7 @@ void RunnerDetector::drawDetections(
   }
 }
 
-RunnerDetector::RunnerDetector() {
+RunnerDetector::RunnerDetector(const std::string& modelName) {
   // Locate the package share directory
   std::string packageShareDir{
       ament_index_cpp::get_package_share_directory("detection")};
@@ -309,12 +309,14 @@ RunnerDetector::RunnerDetector() {
   // Build path to models directory and engine file
   std::filesystem::path modelsDir{std::filesystem::path(packageShareDir) /
                                   "models"};
-  std::filesystem::path enginePath{modelsDir / "RunnerSegYoloV8l.engine"};
+  std::filesystem::path enginePath{modelsDir / modelName};
 
   if (!std::filesystem::exists(enginePath)) {
     throw std::runtime_error("Model engine file not found at " +
                              enginePath.string());
   }
+
+  spdlog::info("[RunnerDetector] Using model: {}", enginePath.string());
 
   // Create YoloV8 model
   model_ = std::make_unique<YoloV8>(enginePath.string());

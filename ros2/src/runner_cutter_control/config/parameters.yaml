@@ -16,6 +16,9 @@ camera0:
     camera_index: 0
     exposure_us: 20000.0
     gain_db: 1.0
+detection0:
+  ros__parameters:
+    runner_model: "RunnerSegYoloV8l.engine"
 laser0:
   ros__parameters:
     dac_type: "helios"

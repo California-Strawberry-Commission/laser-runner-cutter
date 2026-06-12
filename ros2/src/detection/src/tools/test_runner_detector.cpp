@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  RunnerDetector runnerDetector;
+  RunnerDetector runnerDetector{"RunnerSegYoloV8l.engine"};
 
   int numIterations{20};
   for (int i = 0; i < numIterations; ++i) {

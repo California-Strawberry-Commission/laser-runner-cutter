@@ -5,6 +5,7 @@
 #include <opencv2/core/cuda.hpp>
 #include <opencv2/opencv.hpp>
 #include <optional>
+#include <string>
 
 #include "detection/detector/yolov8.hpp"
 
@@ -29,7 +30,7 @@ class RunnerDetector {
                              cv::Scalar color = {255, 0, 0},
                              unsigned int scale = 1);
 
-  explicit RunnerDetector();
+  explicit RunnerDetector(const std::string& modelName);
   RunnerDetector(const RunnerDetector&) = delete;
   RunnerDetector& operator=(const RunnerDetector&) = delete;
   RunnerDetector(RunnerDetector&&) noexcept = default;
