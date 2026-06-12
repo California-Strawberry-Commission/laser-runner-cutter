@@ -169,7 +169,15 @@ class Yolo:
                 result.show()  # display to screen
 
     def export_onnx(self):
-        self.model.export(format="onnx", device=0, imgsz=self.imgsz, dynamic=False, batch=1, half=True, simplify=True)
+        self.model.export(
+            format="onnx",
+            device=0,
+            imgsz=self.imgsz,
+            dynamic=False,
+            batch=1,
+            half=False, # Keep as FP32 for ONNX as we will convert to FP16 when transforming to TensorRT
+            simplify=True,
+        )
 
 
 def tuple_type(arg_string):
