@@ -306,15 +306,13 @@ void LucidCamera::startStream(const Arena::DeviceInfo& colorDeviceInfo,
                                          "AcquisitionStartMode", "Normal");
   Arena::SetNodeValue<GenICam::gcstring>(depthDevice_->GetNodeMap(),
                                          "AcquisitionStartMode", "Normal");
-  // TODO: Once cameras are hardware synced via trigger signals, set appropriate
-  // packet delay and frame transmission delay. See
   // https://support.thinklucid.com/app-note-bandwidth-sharing-in-multi-camera-systems/
   // With packet size of 9000 bytes on a 1 Gbps link, the packet delay is:
   // (9000 bytes * 8 ns/byte) * 1.1 buffer = 79200 ns
-  Arena::SetNodeValue<int64_t>(colorDevice_->GetNodeMap(), "GevSCFTD", 0);
+  Arena::SetNodeValue<int64_t>(colorDevice_->GetNodeMap(), "GevSCFTD", 79200);
   Arena::SetNodeValue<int64_t>(depthDevice_->GetNodeMap(), "GevSCFTD", 0);
-  Arena::SetNodeValue<int64_t>(colorDevice_->GetNodeMap(), "GevSCPD", 80);
-  Arena::SetNodeValue<int64_t>(depthDevice_->GetNodeMap(), "GevSCPD", 80);
+  Arena::SetNodeValue<int64_t>(colorDevice_->GetNodeMap(), "GevSCPD", 79200);
+  Arena::SetNodeValue<int64_t>(depthDevice_->GetNodeMap(), "GevSCPD", 79200);
   // Select GPIO line to output strobe signal on color camera
   // See https://support.thinklucid.com/app-note-using-gpio-on-lucid-cameras/
   Arena::SetNodeValue<GenICam::gcstring>(
@@ -368,6 +366,7 @@ void LucidCamera::startStream(const Arena::DeviceInfo& colorDeviceInfo,
       depthCameraSerialNumber_.value(), depthFrameSize_.first,
       depthFrameSize_.second);
   callStateChangeCallback();
+
 }
 
 void LucidCamera::setNetworkSettings(Arena::IDevice* device) {
