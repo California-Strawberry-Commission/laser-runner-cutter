@@ -106,6 +106,7 @@ class DetectionNode : public rclcpp::Node {
     declare_parameter<int>("debug_image_width", 640);
     declare_parameter<float>("debug_video_fps", 30.0f);
     declare_parameter<std::string>("save_dir", "~/runner_cutter/camera");
+    declare_parameter<std::string>("runner_model", "RunnerSegYoloV8l.engine");
 
     /////////////
     // Publishers
@@ -212,7 +213,7 @@ class DetectionNode : public rclcpp::Node {
             rmw_qos_profile_services_default, serviceCallbackGroup_);
 
     laserDetector_ = std::make_unique<LaserDetector>();
-    runnerDetector_ = std::make_unique<RunnerDetector>();
+    runnerDetector_ = std::make_unique<RunnerDetector>(getParamRunnerModel());
     circleDetector_ = std::make_unique<CircleDetector>();
 
     detectionThread_ = std::thread(&DetectionNode::detectionThreadFn, this);
@@ -243,6 +244,10 @@ class DetectionNode : public rclcpp::Node {
 
   std::string getParamSaveDir() {
     return get_parameter("save_dir").as_string();
+  }
+
+  std::string getParamRunnerModel() {
+    return get_parameter("runner_model").as_string();
   }
 
 #pragma endregion
