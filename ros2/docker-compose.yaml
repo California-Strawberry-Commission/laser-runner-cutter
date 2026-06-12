@@ -1,3 +1,5 @@
+# For Jetson Orin only
+# 
 # Usage:
 #   docker compose up --build --detach    # start containers
 #   docker exec -it ros2-ros2-1 bash      # drop into shell for the running ros2 container
@@ -10,7 +12,7 @@ services:
     image: laser-runner-cutter-ros2:latest
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/Dockerfile.orin
       args:
         L4T_VERSION: r36.4.0
     runtime: nvidia
