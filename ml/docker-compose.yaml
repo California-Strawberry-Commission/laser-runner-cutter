@@ -1,0 +1,25 @@
+# Running ML training on Jetson Orin
+# 
+# Usage:
+#   docker compose up --build --detach    # start container
+#   docker exec -it ml-ml-1 bash          # drop into shell for the running container
+#   docker compose down                   # stop container
+
+services:
+  ml:
+    image: laser-runner-cutter-ml:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        L4T_VERSION: r36.4.0
+    # Exposes all Jetson GPU resources
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    network_mode: host
+    volumes:
+      # Bind mount ml dir
+      - ./:/workspaces/ml
+    command: sleep infinity
