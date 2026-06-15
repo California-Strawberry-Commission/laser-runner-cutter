@@ -8,6 +8,10 @@
 
 namespace {
 
+/**
+ * Samples a float matrix at a sub-pixel position using bilinear interpolation,
+ * clamping out-of-bounds coordinates to the edge.
+ */
 float bilinearSample(const cv::Mat& dist, float x, float y) {
   if (dist.rows == 0 || dist.cols == 0) {
     return 0.0f;
@@ -81,6 +85,10 @@ void extractMedialRidge(const cv::Mat& dist, std::vector<cv::Point>& ridge,
   }
 }
 
+/**
+ * Calculates the medial-ridge point closest to the mask centroid, in image
+ * coordinates.
+ */
 std::optional<cv::Point> findRepresentativePoint(
     const cv::Rect& maskRect, const cv::Mat& mask,
     const std::optional<cv::Rect>& bounds = std::nullopt,
@@ -91,6 +99,7 @@ std::optional<cv::Point> findRepresentativePoint(
 
   // If bounds are provided, intersect with the mask rect to get the ROI
   cv::Rect roi{bounds ? (*bounds & maskRect) : maskRect};
+  // Convert ROI to mask-local coordinates
   cv::Rect localRoi{roi.x - maskRect.x, roi.y - maskRect.y, roi.width,
                     roi.height};
   if (localRoi.empty()) {
@@ -113,7 +122,7 @@ std::optional<cv::Point> findRepresentativePoint(
     return cv::Point{maxLoc.x + maskRect.x, maxLoc.y + maskRect.y};
   }
 
-  // Compute centroid of the mask
+  // Compute centroid of the mask (in mask-local coordinates)
   cv::Moments m{cv::moments(mask, /*binaryImage=*/true)};
   if (m.m00 == 0.0) {
     // If there's no area, fall back to distance transform's max point
@@ -122,7 +131,7 @@ std::optional<cv::Point> findRepresentativePoint(
     cv::minMaxLoc(dist, nullptr, &maxVal, nullptr, &maxLoc);
     return cv::Point{maxLoc.x + maskRect.x, maxLoc.y + maskRect.y};
   }
-  cv::Point2d centroid{m.m10 / m.m00 + maskRect.x, m.m01 / m.m00 + maskRect.y};
+  cv::Point2d centroid{m.m10 / m.m00, m.m01 / m.m00};
 
   // Pick ridge point in the ROI that is closest to the centroid of the mask
   double bestD2{std::numeric_limits<double>::infinity()};
