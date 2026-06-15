@@ -1,0 +1,59 @@
+ARG CUDA_VERSION=13.3.0
+ARG UBUNTU_VERSION=24.04
+FROM nvidia/cuda:${CUDA_VERSION}-cudnn-devel-ubuntu${UBUNTU_VERSION}
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV SHELL=/bin/bash
+SHELL ["/bin/bash", "-c"]
+
+WORKDIR /workspaces/ml
+
+# Foundational packages + build deps
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    python3-venv \
+    wget \
+    curl \
+    unzip \
+    zip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a virtualenv to avoid PEP 668
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+# Update pip
+RUN pip install --upgrade pip
+
+# Install PyTorch + torchvision with CUDA 13.2 compatible wheels
+# cu132 wheels are ABI-compatible with CUDA 13.x
+RUN pip install --no-cache-dir \
+    torch torchvision \
+    --index-url https://download.pytorch.org/whl/cu132
+
+# Install TensorRT
+RUN pip install --no-cache-dir \
+    tensorrt
+
+# Install Python deps
+RUN pip install --no-cache-dir \
+    opencv-python-headless \
+    numpy \
+    natsort \
+    ultralytics==8.4.62 \
+    tqdm \
+    albumentations \
+    torchmetrics
+
+# Additional packages required by the above Python deps
+RUN apt-get update && apt-get install -y \
+    libxcb1 \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install ml_utils. Must be copied before runner_segmentation_model requirements.txt
+# so that the -e ../ml_utils reference in that file resolves correctly.
+COPY ml_utils ml_utils
+RUN pip install --no-cache-dir -e ml_utils

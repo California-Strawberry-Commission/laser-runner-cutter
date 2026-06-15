@@ -1,10 +1,11 @@
-import os
 import argparse
+import os
+from time import perf_counter
+
+from mmdet.apis import DetInferencer
 from mmengine.config import Config
 from mmengine.registry import RUNNERS
 from mmengine.runner import Runner
-from mmdet.apis import DetInferencer
-from time import perf_counter
 
 PROJECT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 DEFAULT_DATA_DIR = os.path.join(

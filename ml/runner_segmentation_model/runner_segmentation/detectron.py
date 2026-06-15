@@ -1,29 +1,26 @@
-import os
 import argparse
-from glob import glob
 import math
+import os
+from glob import glob
+
+import cv2
 import detectron2
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import pycocotools
 from detectron2 import model_zoo
 from detectron2.config import get_cfg
-from detectron2.data import (
-    DatasetCatalog,
-    DatasetMapper,
-    MetadataCatalog,
-    build_detection_train_loader,
-    build_detection_test_loader,
-)
+from detectron2.data import (DatasetCatalog, DatasetMapper, MetadataCatalog,
+                             build_detection_test_loader,
+                             build_detection_train_loader)
 from detectron2.data import transforms as T
 from detectron2.engine import DefaultPredictor, DefaultTrainer
 from detectron2.evaluation import COCOEvaluator, inference_on_dataset
-from detectron2.utils.logger import setup_logger
-from detectron2.utils.visualizer import Visualizer, ColorMode
 from detectron2.projects import point_rend
-import cv2
-import numpy as np
-import pycocotools
+from detectron2.utils.logger import setup_logger
+from detectron2.utils.visualizer import ColorMode, Visualizer
 from tqdm import tqdm
-import matplotlib
-import matplotlib.pyplot as plt
 
 PROJECT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 DEFAULT_PREPARED_DATA_DIR = os.path.join(
