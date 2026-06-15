@@ -171,6 +171,26 @@ We calculate the intrinsic matrix and distortion coefficients using the method b
 
         ros2 run camera_control_cpp lucid_calibrate -- calculate_extrinsics_xyz_to_helios --helios_intrinsics_file <path to Helios intrinsics yml file> --helios_images_dir <dir containing all Helios intensity images> --helios_xyz_dir <dir containing all xyz data files> --output_dir <where to write the extrinsics data file>
 
+## Updating the Runner Detection Model
+
+1. Navigate to the model directory:
+
+   ```sh
+   cd laser-runner-cutter/ml/runner_segmentation_model
+   ```
+
+2. Follow the instructions in `runner_segmentation_model/README.md` to pull models using DVC.
+
+3. Export the model to ONNX format:
+
+   ```sh
+   python -m runner_segmentation.yolo export_onnx --weights_file <path/to/pt/model/file>
+   ```
+
+4. Copy the generated `.onnx` file (which should be the same directory as the `.pt` file) to [src/detection/models/](src/detection/models/).
+
+5. Update the `runner_model` parameter in [src/runner_cutter_control/config/parameters.yaml](src/runner_cutter_control/config/parameters.yaml) to reflect the new model name. The value should be the `.onnx` filename with `.onnx` replaced by `.engine`.
+
 ## Troubleshooting
 
 ### No space left on device
