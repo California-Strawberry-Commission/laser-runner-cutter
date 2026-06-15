@@ -1,12 +1,13 @@
-import os
 import argparse
-from ultralytics import settings, YOLO
-from time import perf_counter
 import json
+import os
+from glob import glob
+from time import perf_counter
+
 import cv2
 import numpy as np
-from glob import glob
 from natsort import natsorted
+from ultralytics import YOLO, settings
 
 PROJECT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 DEFAULT_INPUT_IMAGE_SIZE = (1024, 768)

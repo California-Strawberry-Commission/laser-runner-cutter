@@ -1,17 +1,17 @@
+opencv-python
 numpy
-Pillow
+natsort
 ultralytics==8.4.62
-tensorrt==11.0.0
+tensorrt
+tqdm
+onnx
+python-dotenv
 dvc
 dvc[s3]
-python-dotenv
 labelbox
 labelbox[data]
 ndjson
-natsort
-opencv-python
 albumentations
 torchmetrics
-tqdm
 git+https://github.com/facebookresearch/detectron2.git
 -e ../ml_utils --config-settings editable_mode=strict

@@ -1,19 +1,20 @@
-import os
 import argparse
-from glob import glob
-import cv2
-import numpy as np
-import torch
-import torchvision
-import torchmetrics
-from torchvision.transforms import v2 as transforms
-import torchvision.transforms.functional as F
-from time import perf_counter
-from tqdm import tqdm
-import albumentations as A
+import os
 from functools import partial
+from glob import glob
+from time import perf_counter
+
+import albumentations as A
+import cv2
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torchmetrics
+import torchvision
+import torchvision.transforms.functional as F
+from torchvision.transforms import v2 as transforms
+from tqdm import tqdm
 
 PROJECT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 DEFAULT_PREPARED_DATA_DIR = os.path.join(
