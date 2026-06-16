@@ -13,11 +13,12 @@ script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 app_dir=$script_dir/..
 app_manifest_file=$app_dir/manifest.json
 user_manifest_file=~/manifest.json
+exec_cmd="$script_dir/amiga_run_app.sh"
 
 # If user manifest file does not exist, then just copy the app manifest file.
 # Otherwise, insert the services in the app manifest file into the user manifest file.
 if [ ! -f "$user_manifest_file" ]; then
-  cp $app_manifest_file $user_manifest_file
+  sed "s|__EXEC_CMD__|$exec_cmd|g" "$app_manifest_file" > "$user_manifest_file"
 else
   node <<EOF
 const fs = require('fs');
@@ -26,7 +27,7 @@ const appManifestFile = '$app_manifest_file';
 const userManifestFile = '$user_manifest_file';
 
 try {
-  const appManifestJson = JSON.parse(fs.readFileSync(appManifestFile, 'utf8'));
+  const appManifestJson = JSON.parse(fs.readFileSync(appManifestFile, 'utf8').replace(/__EXEC_CMD__/g, '$exec_cmd'));
   const userManifestJson = JSON.parse(fs.readFileSync(userManifestFile, 'utf8'));
 
   // Merge "services" objects
