@@ -38,6 +38,8 @@ Web app for laser runner cutter control and automation, built with Next.js.
 
 ### On Amiga Brain
 
+1.  Modify [manifest.json](manifest.json) and [scripts/amiga_run_app.sh](scripts/amiga_run_app.sh) to replace the username with yours.
+
 1.  To register the app in the Amiga Brain's app launcher, run:
 
         $ scripts/amiga_register.sh
