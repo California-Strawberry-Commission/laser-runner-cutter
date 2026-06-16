@@ -1,16 +1,15 @@
 #!/bin/bash
 
 # Install nvm
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | bash
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
-# Install Node.js - lock to v20.11.1 for now since we're running into an issue with the current LTS (v20.16.0).
-# We can use LTS when https://github.com/nodejs/node/pull/53089 is patched in to v20.
-nvm install 20.11.1
-nvm use 20.11.1
-nvm alias default 20.11.1
+# Install Node.js latest LTS
+nvm install 24.16.0
+nvm use 24.16.0
+nvm alias default 24.16.0
 
 # Install npm packages
 script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
