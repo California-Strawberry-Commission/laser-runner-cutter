@@ -25,9 +25,10 @@ laser0:
   ros__parameters:
     dac_type: "helios"
     dac_index: 0
-    # Since we only render one point at a time, we want fps equal to pps and set as high as possible
-    # in order to minimize buffer size and thus latency.
-    fps: 1000
-    pps: 1000
-    transition_duration_ms: 0.5
+    # Since we only render one point at a time, we want fps equal to pps and set as high as
+    # possible in order to minimize buffer size and thus latency. Also, set transition_duration_ms
+    # (delay between points when rendering more than one) to 0
+    fps: 30000
+    pps: 30000
+    transition_duration_ms: 0.0
     color: [0.15, 0.0, 0.0, 0.0]
