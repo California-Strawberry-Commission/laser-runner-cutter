@@ -3,6 +3,7 @@ control0:
     laser_control_node_name: "laser0"
     camera_control_node_name: "camera0"
     detection_node_name: "detection0"
+    calibration_grid_size: [11, 11]
     calibration_x_bounds: [0.25, 0.8]
     calibration_y_bounds: [0.45, 1.0]
     tracking_laser_color: [0.15, 0.0, 0.0, 0.0]
@@ -14,6 +15,7 @@ control0:
 camera0:
   ros__parameters:
     camera_index: 0
+    calibration_id: "1c0faf4b115d1c0faf4d17ce"
     exposure_us: 20000.0
     gain_db: 1.0
 detection0:
