@@ -50,7 +50,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
                                           {0.15f, 0.0f, 0.0f, 0.0f});
     declare_parameter<std::vector<float>>("burn_laser_color",
                                           {0.0f, 0.0f, 1.0f, 0.0f});
-    declare_parameter<float>("burn_time_secs", 5.0);
+    declare_parameter<float>("burn_time_secs", 1.0);
     declare_parameter<bool>("enable_aiming", true);
     // Max number of times to attempt to target a detected runner to burn. An
     // attempt may fail if the runner burn point is outside the laser bounds, if
