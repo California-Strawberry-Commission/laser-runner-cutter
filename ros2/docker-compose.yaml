@@ -20,6 +20,11 @@ services:
     ipc: host
     privileged: true  # gives access to all /dev/*. In the future could specify devices.
     stop_grace_period: 10s # gives ROS nodes time to shut down cleanly
+    logging:
+      driver: "local"
+      options:
+        max-size: "100m"
+        max-file: "5"
     depends_on:
       - livekit-server
       - livekit-ingress
@@ -37,6 +42,8 @@ services:
       # Keep build artifacts in volume mount to keep them across restarts while avoid polluting host
       - ros2-build:/workspaces/ros2/build
       - ros2-install:/workspaces/ros2/install
+      # Volume mount the home dir
+      - ros2-home:/root
     env_file:
       - ./.env # uses LIVEKIT_API_KEY, LIVEKIT_API_SECRET
     entrypoint: ["/workspaces/ros2/docker/dev_entrypoint.sh"]
@@ -45,6 +52,11 @@ services:
   redis:
     image: redis:8
     network_mode: host
+    logging:
+      driver: "local"
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
 
   livekit-server:
@@ -57,6 +69,11 @@ services:
       - ./src/livekit_ros2/config:/config:ro
     env_file:
       - ./.env # uses LIVEKIT_KEYS
+    logging:
+      driver: "local"
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
 
   livekit-ingress:
@@ -70,8 +87,14 @@ services:
       - ./src/livekit_ros2/config:/config:ro
     env_file:
       - ./.env # uses LIVEKIT_API_KEY, LIVEKIT_API_SECRET
+    logging:
+      driver: "local"
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
 
 volumes:
   ros2-build:
   ros2-install:
+  ros2-home:
