@@ -1,6 +1,12 @@
 #!/bin/bash
 set -eo pipefail
 
+# Tee stdout/stderr to logfile, while making sure that SIGINT/SIGTERM are ignored
+mkdir -p /workspaces/ros2/log
+LOGFILE="/workspaces/ros2/log/runner-cutter_$(date +%Y-%m-%d_%H-%M-%S).log"
+exec > >(trap '' INT TERM; exec tee "$LOGFILE") 2>&1
+echo "[build_and_run] Logging to $LOGFILE"
+
 # Compile TensorRT engines if not already built.
 # Engines are device-specific and can't be baked into the image.
 echo "[build_and_run] Building TensorRT engines if needed..."
@@ -70,7 +76,7 @@ shutdown() {
         kill -0 "$pid" 2>/dev/null && kill -9 -"$pid" 2>/dev/null || true
     done
 
-    wait 2>/dev/null || true
+    wait "${pids[@]}" 2>/dev/null || true
     echo "[build_and_run] Shutdown complete."
 }
 
@@ -79,6 +85,6 @@ trap 'shutdown INT' INT
 trap 'shutdown TERM' TERM
 
 # Block the script indefinitely until background jobs are stopped
-wait || true
+wait "${pids[@]}" || true
 
 echo "[build_and_run] All processes stopped."
