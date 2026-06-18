@@ -4,6 +4,8 @@ Project for preparing training data and training a ML model for detecting instan
 
 ## Environment setup
 
+As an alternative to the steps below, you can use Docker Compose to get a pre-configured environment (see [Using Docker Compose](#using-docker-compose)).
+
 1.  Run the setup script
 
         $ ./scripts/env_setup.sh
@@ -33,6 +35,45 @@ We use DVC to manage training datasets and trained models. DVC abstracts cloud s
 
         $ ./scripts/dvc_setup.sh -a <AWS access key used by DVC> -s <AWS secret key used by DVC>
 
+## Using Docker Compose
+
+Docker Compose provides a pre-built environment with GPU support as an alternative to running `env_setup.sh` locally. Docker Compose files are in the `ml/docker/` directory.
+
+### Prerequisites
+
+Install Docker with the NVIDIA Container Toolkit installed. If not already installed, run the helper script:
+
+      $ ml/docker/install_docker.sh
+
+### Starting the container
+
+From the `ml/docker/` directory, run the appropriate command for your platform:
+
+**amd64 (x86_64, requires NVIDIA GPU + drivers):**
+
+    $ cd ml/docker
+    $ docker compose -f docker-compose.amd64.yaml up --build --detach
+
+**Jetson Orin:**
+
+    $ cd ml/docker
+    $ docker compose -f docker-compose.orin.yaml up --build --detach
+
+### Dropping into a shell
+
+    $ docker exec -it ml-ml-1 bash
+
+The `ml/` directory is bind-mounted into the container at `/workspaces/ml`, so source changes on the host are immediately reflected inside the container.
+
+### DVC setup inside the container
+
+Once inside the container, follow the [DVC setup](#dvc-setup) steps as normal. The AWS credentials and DVC cache will persist on the host via the bind mount.
+
+### Stopping the container
+
+    $ docker compose -f docker-compose.amd64.yaml down   # amd64
+    $ docker compose -f docker-compose.orin.yaml down    # Jetson Orin
+
 ## Creating and labeling a new dataset
 
 Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience methods to upload images and extract annotations from Labelbox. Follow these steps in order to create a new dataset of runner images and to annotate the images using Labelbox.
@@ -53,14 +94,12 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
         $ python -m runner_segmentation.labelbox_api import_images -n <Labelbox Dataset Name> -i <path/to/dataset/images/from/previous/step>
 
 1.  Annotate the images in Labelbox
-
     1.  On Labelbox, Go to Annotate -> New Project -> Image, and follow the steps there to create a new annotation project
     1.  It may be beneficial to use the latest runner detection model to provide predictions
 
             $ python -m runner_segmentation.labelbox_api upload_predictions -i <path/to/dataset/images/from/previous/step> -m <path/to/model/weights/best.pt -n <Labelbox Dataset Name>
 
 1.  Obtain labels from Labelbox
-
     1. Go to Annotate -> `<Your Annotation Project Name>`
     1. Click the "Data Rows" tab
     1. Click the "All (X data rows)" dropdown, then click "Export data"
@@ -81,7 +120,6 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
         $ source venv/bin/activate
 
 1.  Split the raw image and label data into training and validation datasets. Be sure to remove the existing train/val/test images and labels beforehand if it already exists.
-
     1.  Remove existing split:
 
             $ rm -rf data/prepared/<dataset name>
@@ -99,7 +137,6 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
             $ python -m runner_segmentation.split_data masks --input_dir data/raw/<dataset name>/masks --output_dir data/prepared/<dataset name>/masks
 
 1.  Train and evaluate a YOLOv8 model locally:
-
     1.  Modify `dataset.yml` with the desired dataset path
 
     1.  Run the training script
