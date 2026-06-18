@@ -102,6 +102,10 @@ colcon build --packages-select <pkg>
 docker compose down
 ```
 
+### Logs
+
+If the ROS nodes are started using `docker/build_and_run.sh`, the logs will be written to `log/runner-cutter_*.log`.
+
 ## Production Deployment
 
 Docker is enabled as a systemd service automatically when installed via [`scripts/install_docker.sh`](scripts/install_docker.sh). All services in [`docker-compose.yaml`](docker-compose.yaml) have `restart: unless-stopped`, so they come back up on reboot without any additional configuration.
