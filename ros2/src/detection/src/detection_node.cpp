@@ -705,6 +705,16 @@ class DetectionNode : public rclcpp::Node {
       }
     }
 
+    RCLCPP_INFO(
+        get_logger(),
+        "Detection started: detectionType=%d, "
+        "normalizedBounds=[x=%f, y=%f, width=%f, height=%f]",
+        static_cast<int>(request->detection_type),
+        enabledDetections_[request->detection_type].x,
+        enabledDetections_[request->detection_type].y,
+        enabledDetections_[request->detection_type].width,
+        enabledDetections_[request->detection_type].height);
+
     publishState();
     response->success = true;
   }
@@ -725,6 +735,8 @@ class DetectionNode : public rclcpp::Node {
       enabledDetections_.erase(request->detection_type);
     }
 
+    RCLCPP_INFO(get_logger(), "Detection stopped: detectionType=%d",
+                static_cast<int>(request->detection_type));
     publishState();
     response->success = true;
   }
@@ -742,6 +754,7 @@ class DetectionNode : public rclcpp::Node {
       enabledDetections_.clear();
     }
 
+    RCLCPP_INFO(get_logger(), "All detections stopped.");
     publishState();
     response->success = true;
   }

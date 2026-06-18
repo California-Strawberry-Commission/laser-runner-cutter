@@ -764,6 +764,12 @@ class RunnerCutterControlNode : public rclcpp::Node {
     // topic.
     NormalizedPixelRect normalizedLaserBounds{
         calibration_->getNormalizedLaserBounds()};
+    RCLCPP_INFO(get_logger(),
+                "Runner cutter ARMED: detectionType=%d, "
+                "normalizedLaserBounds=[u=%f, v=%f, width=%f, height=%f]",
+                static_cast<int>(detectionType), normalizedLaserBounds.u,
+                normalizedLaserBounds.v, normalizedLaserBounds.width,
+                normalizedLaserBounds.height);
     detection_->startDetection(detectionType, normalizedLaserBounds);
 
     while (!taskStopSignal_) {
@@ -791,11 +797,12 @@ class RunnerCutterControlNode : public rclcpp::Node {
         continue;
       }
 
-      auto target{std::move(*targetOpt)};
+      // Temporarily disable runner detection during aim/burn if needed
       if (!enableDetectionDuringBurn) {
-        // Temporarily disable runner detection during aim/burn
         detection_->stopDetection(detectionType);
       }
+
+      auto target{std::move(*targetOpt)};
 
       // Aim
       LaserCoord laserCoord;
@@ -816,8 +823,9 @@ class RunnerCutterControlNode : public rclcpp::Node {
       // Burn
       burnTarget(target->getId(), laserCoord);
 
+      // Re-enable runner detection after burn if needed
       if (!enableDetectionDuringBurn) {
-        detection_->startDetection(detectionType);
+        detection_->startDetection(detectionType, normalizedLaserBounds);
       }
     }
   }
