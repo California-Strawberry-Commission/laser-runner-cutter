@@ -223,7 +223,10 @@ export default function Controls({
             onStartClick={(mode) => {
               switch (mode) {
                 case RunnerCutterMode.TRACKING_ONLY:
-                  detectionNode.startDetection(DetectionType.RUNNER);
+                  detectionNode.startDetection(
+                    DetectionType.RUNNER,
+                    controlNode.state.normalizedLaserBounds,
+                  );
                   break;
                 case RunnerCutterMode.AUTO:
                   controlNode.startRunnerCutter();

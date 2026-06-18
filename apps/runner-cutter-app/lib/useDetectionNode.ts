@@ -41,17 +41,33 @@ export default function useDetectionNode(nodeName: string) {
       enabledDetectionTypes: [],
       recordingVideo: false,
     },
-    convertStateMessage
+    convertStateMessage,
   );
 
   const startDetection = node.useService(
     "~/start_detection",
     "detection_interfaces/StartDetection",
     useCallback(
-      (detectionType: DetectionType) => ({ detection_type: detectionType }),
-      []
+      (
+        detectionType: DetectionType,
+        normalizedBounds: {
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+        } = { x: 0, y: 0, width: 1, height: 1 },
+      ) => ({
+        detection_type: detectionType,
+        normalized_bounds: {
+          w: normalizedBounds.x,
+          x: normalizedBounds.y,
+          y: normalizedBounds.width,
+          z: normalizedBounds.height,
+        },
+      }),
+      [],
     ),
-    successOutputMapper
+    successOutputMapper,
   );
 
   const stopDetection = node.useService(
@@ -59,23 +75,23 @@ export default function useDetectionNode(nodeName: string) {
     "detection_interfaces/StopDetection",
     useCallback(
       (detectionType: DetectionType) => ({ detection_type: detectionType }),
-      []
+      [],
     ),
-    successOutputMapper
+    successOutputMapper,
   );
 
   const startRecordingVideo = node.useService(
     "~/start_recording_video",
     "std_srvs/Trigger",
     triggerInputMapper,
-    successOutputMapper
+    successOutputMapper,
   );
 
   const stopRecordingVideo = node.useService(
     "~/stop_recording_video",
     "std_srvs/Trigger",
     triggerInputMapper,
-    successOutputMapper
+    successOutputMapper,
   );
 
   const getSaveDir = node.useGetParam<string>("save_dir");
