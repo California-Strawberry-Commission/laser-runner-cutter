@@ -219,6 +219,7 @@ class LiveKitWhipNode(Node):
         webrtcbin.set_property(
             "bundle-policy", "max-bundle"
         )  # aggressively bundle, which typically results in fewer ICE checks and faster startup
+        webrtcbin.set_property("stun-server", "")
         self._pipeline.add(webrtcbin)
 
         # Link elements (except webrtcbin)
