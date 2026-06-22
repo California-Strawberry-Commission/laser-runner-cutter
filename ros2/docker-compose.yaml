@@ -42,8 +42,8 @@ services:
       # Keep build artifacts in volume mount to keep them across restarts while avoid polluting host
       - ros2-build:/workspaces/ros2/build
       - ros2-install:/workspaces/ros2/install
-      # Volume mount the home dir
-      - ros2-home:/root
+      # Volume mount the home data dir
+      - home-runner-cutter:/root/runner_cutter
     env_file:
       - ./.env # uses LIVEKIT_API_KEY, LIVEKIT_API_SECRET
     entrypoint: ["/workspaces/ros2/docker/dev_entrypoint.sh"]
@@ -97,4 +97,4 @@ services:
 volumes:
   ros2-build:
   ros2-install:
-  ros2-home:
+  home-runner-cutter:
