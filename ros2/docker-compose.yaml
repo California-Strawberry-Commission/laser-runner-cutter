@@ -66,7 +66,7 @@ services:
     network_mode: host
     depends_on:
       - redis
-    command: ["--config", "/config/livekit_server.yaml", "--node-ip", "${TAILSCALE_IP:-}"]
+    command: ["--config", "/config/livekit_server.yaml"]
     volumes:
       - ./src/livekit_ros2/config:/config:ro
     env_file:

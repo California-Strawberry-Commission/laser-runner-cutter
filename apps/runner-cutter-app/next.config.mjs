@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import os from "node:os";
 import path from "node:path";
 
 // First, load ros2 .env
@@ -12,9 +13,22 @@ dotenv.config({
   override: true,
 });
 
+function getLocalOrigins() {
+  const origins = ["localhost"];
+  const interfaces = os.networkInterfaces();
+  for (const iface of Object.values(interfaces)) {
+    for (const addr of iface ?? []) {
+      if (!addr.internal && addr.family === "IPv4") {
+        origins.push(addr.address);
+      }
+    }
+  }
+  return origins;
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  allowedDevOrigins: process.env.TAILSCALE_IP ? [process.env.TAILSCALE_IP] : [],
+  allowedDevOrigins: getLocalOrigins(),
   async headers() {
     return [
       {
