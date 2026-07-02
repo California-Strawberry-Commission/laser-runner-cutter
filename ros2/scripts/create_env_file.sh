@@ -18,16 +18,3 @@ EOF
 else
     echo "[create_env_file] .env already exists, skipping generation of LiveKit API secret"
 fi
-
-# Detect Tailscale IP that LiveKit Server will advertise to WebRTC clients
-# as an ICE host candidate, which is required for the media stream to reach
-# clients connecting via Tailscale.
-TAILSCALE_IP=$(ip -4 addr show tailscale0 2>/dev/null | sed 's|.*inet \([0-9.]*\)/.*|\1|;t;d' | head -1)
-if grep -q '^TAILSCALE_IP=' "$env_file" 2>/dev/null; then
-    # If TAILSCALE_IP already exists, replace in-place
-    sed -i "s|^TAILSCALE_IP=.*|TAILSCALE_IP=$TAILSCALE_IP|" "$env_file"
-else
-    # If TAILSCALE_IP does note exist yet in the .env file, append it
-    printf '\n# Tailscale IP advertised to WebRTC clients as ICE candidate\nTAILSCALE_IP=%s\n' "$TAILSCALE_IP" >> "$env_file"
-fi
-echo "[create_env_file] Set TAILSCALE_IP=${TAILSCALE_IP:-<not found, will auto-detect>}"
