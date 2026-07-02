@@ -8,3 +8,8 @@ rtc_config:
   udp_port: 7885
   tcp_port: 7886 # optional TCP ICE fallback
   use_external_ip: false
+  stun_servers: []
+  enable_loopback_candidate: true
+  ips:
+    includes:
+      - 127.0.0.1/32 # include loopback only, since ingress only ever talks to livekit server and the livekit WHIP publisher ROS node
