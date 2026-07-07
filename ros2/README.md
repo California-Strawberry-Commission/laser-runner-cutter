@@ -23,14 +23,6 @@ sudo tailscale up
 # Follow the URL printed to log in and approve the device
 ```
 
-Once connected, update `.env` with the Tailscale IP (the bootstrap script ran `create_env_file.sh` before Tailscale was connected, so this needs to be re-run):
-
-```sh
-~/laser-runner-cutter/ros2/scripts/create_env_file.sh
-```
-
-If the Tailscale IP ever changes (e.g. after re-joining the network), re-run `create_env_file.sh` and restart the Docker containers.
-
 ### Using Helios DAC on Linux
 
 Linux systems require udev rules to allow access to USB devices without root privileges. This is already set up as part of the auto-install process above. Make sure that the user account communicating with the DAC is in the `plugdev` group.

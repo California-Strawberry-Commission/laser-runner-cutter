@@ -24,13 +24,18 @@ Web app for laser runner cutter control and automation, built with Next.js.
 
 1.  [Optional] Set environment variables
 
-    By default, the Rosbridge websocket server URL will be set to `ws://<window.location.hostname>:9090`, and the video server URL will be set to `http://<window.location.hostname>:8080`. If you want to override those to custom URLs, you can do the following:
+    By default, the Rosbridge websocket server URL will be set to `ws://<window.location.hostname>:9090`, and the LiveKit server URL will be set to `ws://<window.location.hostname>:7880`. If will be running Rosbridge and/or LiveKit server on a remote machine, you will need to override those to custom URLs by doing the following:
 
         $ cd laser-runner-cutter/apps/runner-cutter-app
-        $ echo "NEXT_PUBLIC_ROSBRIDGE_URL=ws://localhost:9090" >> .env.local
-        $ echo "NEXT_PUBLIC_VIDEO_SERVER_URL=http://localhost:8080" >> .env.local
+        $ echo "NEXT_PUBLIC_ROSBRIDGE_URL=ws://10.95.76.2:9090" >> .env.local
+        $ echo "NEXT_PUBLIC_LIVEKIT_URL=ws://10.95.76.2:7880" >> .env.local
 
-    Change `ws://localhost:9090` to wherever Rosbridge will be running, and `http://localhost:8080` to wherever Web Video Server will be running.
+    Change `ws://10.95.76.2:9090` to wherever Rosbridge will be running, and `ws://10.95.76.2:7880` to wherever the LiveKit server will be running.
+
+    In addition, if you are running LiveKit server on a remote machine, you will need to make sure that you have LIVEKIT_API_KEY and LIVEKIT_API_SECRET defined. These need to match exactly with the ones used by the LiveKit Ingress server and the LiveKitWhipNode (on whichever machine is running LiveKit, check laser-runner-cutter/ros2/.env).
+
+        $ echo "LIVEKIT_API_KEY=devkey" >> .env.local
+        $ echo 'LIVEKIT_API_SECRET="<your API secret>"' >> .env.local
 
 1.  Run the setup script:
 

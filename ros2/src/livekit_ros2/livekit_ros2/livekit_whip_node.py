@@ -1,6 +1,7 @@
 import asyncio
 import os
 import threading
+import time
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -20,6 +21,16 @@ gi.require_version("GLib", "2.0")
 gi.require_version("GstSdp", "1.0")
 gi.require_version("GstWebRTC", "1.0")
 from gi.repository import GLib, Gst, GstSdp, GstWebRTC
+
+# If ICE gathering has not completed within this many seconds of negotiation
+# starting, we assume it is stuck, and rebuild the pipeline.
+ICE_GATHERING_TIMEOUT_SEC = 15
+
+# Retry with exponential backoff for the WHIP POST, in case the ingress server may not be
+# reachable yet during a boot-time network race.
+WHIP_POST_MAX_ATTEMPTS = 5
+WHIP_POST_RETRY_BASE_DELAY_SEC = 2
+WHIP_POST_RETRY_MAX_DELAY_SEC = 30
 
 
 async def get_or_create_whip_endpoint(
@@ -96,6 +107,7 @@ class LiveKitWhipNode(Node):
         self._pipeline = None
         self._appsrc = None
         self._whip_resource_url: Optional[str] = None
+        self._ice_gathering_complete = False
 
         # Get WHIP URL
         livekit_api_key = os.environ["LIVEKIT_API_KEY"]
@@ -247,6 +259,8 @@ class LiveKitWhipNode(Node):
             "notify::ice-gathering-state",
             self._on_ice_gathering_state,
         )
+        webrtcbin.connect("notify::connection-state", self._on_connection_state)
+        webrtcbin.connect("notify::ice-connection-state", self._on_ice_state)
 
         self.get_logger().info("Pipeline created")
 
@@ -271,10 +285,28 @@ class LiveKitWhipNode(Node):
         """
 
         self.get_logger().info("Negotiation needed. Creating offer")
+        self._ice_gathering_complete = False
         promise = Gst.Promise.new_with_change_func(
             self._on_offer_created, webrtcbin, None
         )
         webrtcbin.emit("create-offer", None, promise)
+        GLib.timeout_add_seconds(
+            ICE_GATHERING_TIMEOUT_SEC, self._on_ice_gathering_timeout, webrtcbin
+        )
+
+    def _on_ice_gathering_timeout(self, webrtcbin):
+        """
+        Called after ICE_GATHERING_TIMEOUT_SEC to check whether ICE gathering has completed. If not,
+        rebuilds the pipeline.
+        """
+
+        if not self._ice_gathering_complete:
+            self.get_logger().error(
+                f"ICE gathering did not complete within {ICE_GATHERING_TIMEOUT_SEC}s. "
+                "Rebuilding pipeline"
+            )
+            self._restart_pipeline()
+        return GLib.SOURCE_REMOVE
 
     def _on_offer_created(self, promise, webrtcbin, _):
         """
@@ -296,6 +328,7 @@ class LiveKitWhipNode(Node):
         state = webrtcbin.get_property("ice-gathering-state")
         if int(state) == int(GstWebRTC.WebRTCICEGatheringState.COMPLETE):
             self.get_logger().info(f"ICE gathering complete")
+            self._ice_gathering_complete = True
             self._send_offer_via_whip(webrtcbin)
 
     def _send_offer_via_whip(self, webrtcbin):
@@ -314,22 +347,42 @@ class LiveKitWhipNode(Node):
             return
         offer_sdp_text = local.sdp.as_text()
 
-        self.get_logger().info(f"POSTing offer to WHIP endpoint: {self._whip_url}")
-        try:
-            resp = requests.post(
-                self._whip_url,
-                data=offer_sdp_text,
-                headers={"Content-Type": "application/sdp"},
-                timeout=10,
+        resp = None
+        for attempt in range(1, WHIP_POST_MAX_ATTEMPTS + 1):
+            self.get_logger().info(
+                f"POSTing offer to WHIP endpoint (attempt {attempt}/{WHIP_POST_MAX_ATTEMPTS}): "
+                f"{self._whip_url}"
             )
-        except Exception as e:
-            self.get_logger().error(f"WHIP POST failed: {e}")
-            return
+            try:
+                resp = requests.post(
+                    self._whip_url,
+                    data=offer_sdp_text,
+                    headers={"Content-Type": "application/sdp"},
+                    timeout=10,
+                )
+                if resp.status_code in (200, 201):
+                    break
+                self.get_logger().error(
+                    f"WHIP POST HTTP {resp.status_code}: {resp.text[:200]}"
+                )
+            except Exception as e:
+                self.get_logger().error(f"WHIP POST failed: {e}")
+                resp = None
 
-        if resp.status_code not in (200, 201):
+            if attempt < WHIP_POST_MAX_ATTEMPTS:
+                # Exponential backoff
+                delay = min(
+                    WHIP_POST_RETRY_BASE_DELAY_SEC * (2 ** (attempt - 1)),
+                    WHIP_POST_RETRY_MAX_DELAY_SEC,
+                )
+                self.get_logger().info(f"Retrying WHIP POST in {delay}s...")
+                time.sleep(delay)
+
+        if resp is None or resp.status_code not in (200, 201):
             self.get_logger().error(
-                f"WHIP POST HTTP {resp.status_code}: {resp.text[:200]}"
+                f"WHIP POST failed after {WHIP_POST_MAX_ATTEMPTS} attempts. Rebuilding pipeline"
             )
+            self._restart_pipeline()
             return
 
         self._whip_resource_url = resp.headers.get("Location", None)
@@ -371,6 +424,43 @@ class LiveKitWhipNode(Node):
             6: "CLOSED",
         }.get(state, f"UNKNOWN({state})")
         self.get_logger().info(f"ICE connection state: {state_name}")
+        if int(state) == int(GstWebRTC.WebRTCICEConnectionState.FAILED):
+            self.get_logger().error("ICE connection failed. Rebuilding pipeline")
+            self._restart_pipeline()
+
+    def _teardown_whip_resource(self):
+        """
+        Deletes the current WHIP resource on the ingress server, if one exists.
+        """
+
+        if not self._whip_resource_url:
+            return
+        try:
+            parsed_url = urlparse(self._whip_url)
+            full_whip_resource_url = (
+                parsed_url.scheme + "://" + parsed_url.netloc + self._whip_resource_url
+            )
+            requests.delete(full_whip_resource_url, timeout=3)
+        except Exception as e:
+            self.get_logger().warn(f"WHIP DELETE failed: {e}")
+        finally:
+            self._whip_resource_url = None
+
+    def _restart_pipeline(self):
+        """
+        Tears down the current pipeline and WHIP resource so the next incoming
+        frame rebuilds the pipeline and renegotiates from scratch.
+        """
+
+        self._teardown_whip_resource()
+        if self._pipeline:
+            try:
+                self._pipeline.set_state(Gst.State.NULL)
+            except Exception:
+                pass
+        self._pipeline = None
+        self._appsrc = None
+        self._ice_gathering_complete = False
 
     # endregion
 
@@ -381,7 +471,7 @@ class LiveKitWhipNode(Node):
         if t == Gst.MessageType.ERROR:
             err, dbg = message.parse_error()
             self.get_logger().error(f"GStreamer ERROR: {err} debug:{dbg}")
-            self._pipeline.set_state(Gst.State.NULL)
+            self._restart_pipeline()
         elif t == Gst.MessageType.WARNING:
             w, dbg = message.parse_warning()
             self.get_logger().warn(f"GStreamer WARN: {w} debug:{dbg}")
@@ -436,20 +526,7 @@ class LiveKitWhipNode(Node):
             self.get_logger().warn(f"push-buffer -> {flow}")
 
     def destroy_node(self):
-        # Tear down WHIP resource
-        try:
-            if self._whip_resource_url:
-                headers = {}
-                parsed_url = urlparse(self._whip_url)
-                full_whip_resource_url = (
-                    parsed_url.scheme
-                    + "://"
-                    + parsed_url.netloc
-                    + self._whip_resource_url
-                )
-                requests.delete(full_whip_resource_url, headers=headers, timeout=3)
-        except Exception as e:
-            self.get_logger().warn(f"WHIP DELETE failed: {e}")
+        self._teardown_whip_resource()
 
         # GStreamer shutdown
         try:

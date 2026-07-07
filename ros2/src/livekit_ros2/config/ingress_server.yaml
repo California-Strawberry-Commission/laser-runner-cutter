@@ -8,3 +8,9 @@ rtc_config:
   udp_port: 7885
   tcp_port: 7886 # optional TCP ICE fallback
   use_external_ip: false
+  stun_servers: []
+  ips:
+    # Ingress's WHIP connection is always same-host
+    includes:
+      - 10.0.0.0/8
+      - 192.168.0.0/16

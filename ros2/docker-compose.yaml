@@ -90,9 +90,12 @@ services:
     depends_on:
       - livekit-server
       - redis
+      - dns-blackhole
     command: ["--config", "/config/ingress_server.yaml"]
     volumes:
       - ./src/livekit_ros2/config:/config:ro
+      # Ingress needs to use the dnsmasq DNS blackhole
+      - ./src/livekit_ros2/config/ingress_resolv.conf:/etc/resolv.conf:ro
     env_file:
       - ./.env # uses LIVEKIT_API_KEY, LIVEKIT_API_SECRET
     logging:
@@ -106,6 +109,22 @@ services:
       timeout: 2s
       retries: 10
       start_period: 5s
+    restart: unless-stopped
+
+  # Ingress's WHIP-side ICE agent gathers server-reflexive candidates against these hardcoded
+  # public STUN servers regardless of ingress_server.yaml's stun_servers: [] setting.
+  # The issue is that if there is no working upstream DNS path (such as when WiFi is disabled)
+  # we eventually hit Ingress's hardcoded timeout.
+  # Since Ingress's WHIP connections are always same-host in our case, STUN/srflx candidates
+  # are not needed. Thus, the solution is a dnsmasq instance so that the STUN hostnames'
+  # resolution fails instantly and deterministically in every network state.
+  # Config is supplied via a mounted dnsmasq.conf rather than `command:` args due to how the
+  # container's entrypoint works.
+  dns-blackhole:
+    image: dockurr/dnsmasq
+    network_mode: host
+    volumes:
+      - ./src/livekit_ros2/config/dnsmasq.conf:/etc/dnsmasq.conf:ro
     restart: unless-stopped
 
 volumes:
