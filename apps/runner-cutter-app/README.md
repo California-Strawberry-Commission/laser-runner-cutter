@@ -53,17 +53,9 @@ Web app for laser runner cutter control and automation, built with Next.js.
 
 ### On any device running Ubuntu, such as an NVIDIA Jetson
 
-1.  Copy systemd service file
+1.  To create and enable a systemd service (so that the app automatically starts on boot), run:
 
-        $ cp scripts/laser-runner-cutter-app.service /etc/systemd/system/
-
-1.  Edit the newly created `/etc/systemd/system/laser-runner-cutter-app.service` to contain the correct username
-
-1.  Enable the service to run on startup
-
-        $ sudo systemctl daemon-reload
-        $ sudo systemctl enable laser-runner-cutter-app.service
-        $ sudo systemctl start laser-runner-cutter-app.service
+        $ scripts/amiga_register.sh
 
 1.  To view the logs, run:
 
