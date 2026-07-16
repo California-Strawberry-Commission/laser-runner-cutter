@@ -38,6 +38,7 @@ find_package(CUDA REQUIRED)
 find_package(TensorRT REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(cv_bridge REQUIRED)
+find_package(vpi REQUIRED)
 
 ###########
 ## Build ##
@@ -99,6 +100,20 @@ if(ENABLE_BENCHMARKS)
   target_compile_definitions(detector PRIVATE ENABLE_BENCHMARKS)
 endif()
 
+# optflow
+add_library(optflow SHARED
+  src/optflow/dense_optical_flow.cpp
+)
+target_include_directories(optflow PUBLIC
+  ${OpenCV_INCLUDE_DIRS}
+)
+target_link_libraries(optflow
+  PRIVATE
+    spdlog::spdlog
+    ${OpenCV_LIBS}
+    vpi
+)
+
 # Composable node
 add_library(detection_node_composable SHARED
   src/detection_node.cpp
@@ -151,6 +166,11 @@ add_executable(test_runner_detector
 )
 target_link_libraries(test_runner_detector PRIVATE CLI11::CLI11 detector ${OpenCV_LIBS})
 
+add_executable(test_optflow_dense
+  src/tools/test_optflow_dense.cpp
+)
+target_link_libraries(test_optflow_dense PRIVATE CLI11::CLI11 optflow ${OpenCV_LIBS})
+
 #############
 ## Install ##
 #############
@@ -168,6 +188,7 @@ install(TARGETS
 install(TARGETS
   test_yolov8
   test_runner_detector
+  test_optflow_dense
   DESTINATION lib/${PROJECT_NAME}
 )
 
