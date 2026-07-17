@@ -4,8 +4,10 @@
 #include <vpi/Status.h>
 #include <vpi/algo/ConvertImageFormat.h>
 
+#include <algorithm>
 #include <sstream>
 #include <stdexcept>
+#include <vector>
 #include <vpi/OpenCVInterop.hpp>
 
 namespace {
@@ -19,6 +21,18 @@ void checkVpiStatus(VPIStatus status, int line) {
        << ": " << buffer;
     throw std::runtime_error(ss.str());
   }
+}
+
+// Computes the median of v in place.
+float median(std::vector<float>& v) {
+  size_t mid = v.size() / 2;
+  std::nth_element(v.begin(), v.begin() + mid, v.end());
+  float result = v[mid];
+  if (v.size() % 2 == 0) {
+    std::nth_element(v.begin(), v.begin() + mid - 1, v.begin() + mid);
+    result = (result + v[mid - 1]) / 2.0f;
+  }
+  return result;
 }
 
 }  // namespace
@@ -109,8 +123,8 @@ void DenseOpticalFlow::allocateBuffers(int32_t width, int32_t height) {
   bufferedSize_ = cv::Size(width, height);
 }
 
-cv::Point2f DenseOpticalFlow::computeMeanFlow(const cv::Mat& prevFrame,
-                                              const cv::Mat& currFrame) {
+cv::Point2f DenseOpticalFlow::computeFlow(const cv::Mat& prevFrame,
+                                          const cv::Mat& currFrame) {
   if (prevFrame.empty() || currFrame.empty()) {
     throw std::invalid_argument("Input frames must not be empty");
   }
@@ -158,7 +172,7 @@ cv::Point2f DenseOpticalFlow::computeMeanFlow(const cv::Mat& prevFrame,
   CHECK_STATUS(vpiImageLockData(imgMotionVecPL_, VPI_LOCK_READ,
                                 VPI_IMAGE_BUFFER_HOST_PITCH_LINEAR, &mvData));
 
-  cv::Point2f meanFlow;
+  cv::Point2f medianFlow;
   try {
     cv::Mat mvImage;
     CHECK_STATUS(vpiImageDataExportOpenCVMat(mvData, &mvImage));
@@ -168,9 +182,11 @@ cv::Point2f DenseOpticalFlow::computeMeanFlow(const cv::Mat& prevFrame,
     cv::Mat flow;
     mvImage.convertTo(flow, CV_32FC2, 1.0 / (1 << 5));
 
-    cv::Scalar mean{cv::mean(flow)};
-    meanFlow =
-        cv::Point2f(static_cast<float>(mean[0]), static_cast<float>(mean[1]));
+    cv::Mat channels[2];
+    cv::split(flow, channels);
+    std::vector<float> xs(channels[0].begin<float>(), channels[0].end<float>());
+    std::vector<float> ys(channels[1].begin<float>(), channels[1].end<float>());
+    medianFlow = cv::Point2f(median(xs), median(ys));
   } catch (...) {
     vpiImageUnlock(imgMotionVecPL_);
     throw;
@@ -178,5 +194,5 @@ cv::Point2f DenseOpticalFlow::computeMeanFlow(const cv::Mat& prevFrame,
 
   CHECK_STATUS(vpiImageUnlock(imgMotionVecPL_));
 
-  return meanFlow;
+  return medianFlow;
 }

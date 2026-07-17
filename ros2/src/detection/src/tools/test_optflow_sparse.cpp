@@ -1,15 +1,24 @@
 #include <CLI/CLI.hpp>
 #include <opencv2/opencv.hpp>
 
-#include "detection/optflow/dense_optical_flow.hpp"
+#include "detection/optflow/sparse_optical_flow.hpp"
 
 int main(int argc, char* argv[]) {
-  CLI::App app{"Test DenseOpticalFlow"};
+  CLI::App app{"Test SparseOpticalFlow"};
 
   std::string image1File;
   std::string image2File;
+  int includeX{0}, includeY{0}, includeW{0}, includeH{0};
   app.add_option("-1,--image1", image1File, "First frame (prev)")->required();
   app.add_option("-2,--image2", image2File, "Second frame (curr)")->required();
+  app.add_option("--include-x", includeX,
+                 "X of region to restrict tracking to (default: none)");
+  app.add_option("--include-y", includeY,
+                 "Y of region to restrict tracking to (default: none)");
+  app.add_option("--include-w", includeW,
+                 "Width of region to restrict tracking to (default: none)");
+  app.add_option("--include-h", includeH,
+                 "Height of region to restrict tracking to (default: none)");
 
   CLI11_PARSE(app, argc, argv);
 
@@ -27,7 +36,8 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  DenseOpticalFlow opticalFlow{4, VPI_OPTICAL_FLOW_QUALITY_MEDIUM};
+  SparseOpticalFlow opticalFlow{
+      100, 3, cv::Rect{includeX, includeY, includeW, includeH}};
 
   // Warmup
   std::cout << "Warming up..." << std::endl;
