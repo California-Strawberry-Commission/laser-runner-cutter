@@ -16,9 +16,8 @@ class DenseOpticalFlow {
   DenseOpticalFlow& operator=(const DenseOpticalFlow&) = delete;
 
   // Computes dense optical flow between two same-sized frames and returns the
-  // mean displacement vector (dx, dy) in pixels.
-  cv::Point2f computeMeanFlow(const cv::Mat& prevFrame,
-                              const cv::Mat& currFrame);
+  // median displacement vector (dx, dy) in pixels.
+  cv::Point2f computeFlow(const cv::Mat& prevFrame, const cv::Mat& currFrame);
 
  private:
   void allocateBuffers(int32_t width, int32_t height);
