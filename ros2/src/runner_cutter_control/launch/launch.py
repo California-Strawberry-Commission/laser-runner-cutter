@@ -57,7 +57,11 @@ def generate_launch_description():
                     (
                         "debug/image",
                         "/detection0/debug/image",
-                    ),  # pub
+                    ),  # pub, color debug image
+                    (
+                        "debug/depth_image",
+                        "/detection0/debug/depth_image",
+                    ),  # pub, depth debug image
                 ],
             ),
         ],
