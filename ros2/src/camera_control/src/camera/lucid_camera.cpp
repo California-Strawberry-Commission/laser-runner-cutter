@@ -729,10 +729,11 @@ std::optional<LucidCamera::GetDepthFrameResult> LucidCamera::getDepthFrame() {
     intensityPtr[pxIdx] = rawI;
 
     // In unsigned pixel formats (such as ABCY16), values below the confidence
-    // threshold will have their x, y, z, and intensity values set to 0xFFFF
-    // (denoting invalid). For these invalid pixels, set (x, y, z) to (-1, -1,
-    // -1).
-    if (rawI == 0xFFFFu) {
+    // threshold will have their x, y, z, and/or intensity values set to
+    // 0xFFFF (denoting invalid). For these invalid pixels, set (x, y, z) to
+    // (-1, -1, -1).
+    if (rawX == 0xFFFFu || rawY == 0xFFFFu || rawZ == 0xFFFFu ||
+        rawI == 0xFFFFu) {
       // Invalid
       xyzPtr[pxIdx * 3 + 0] = -1.0f;
       xyzPtr[pxIdx * 3 + 1] = -1.0f;

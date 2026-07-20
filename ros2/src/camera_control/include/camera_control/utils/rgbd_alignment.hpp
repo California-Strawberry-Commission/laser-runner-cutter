@@ -5,6 +5,9 @@
 
 class RgbdAlignment {
  public:
+  static constexpr float DEPTH_MIN_MM{400};
+  static constexpr float DEPTH_MAX_MM{2000};
+
   RgbdAlignment(const cv::Mat& colorCameraIntrinsicMatrix,
                 const cv::Mat& colorCameraDistortionCoeffs,
                 const cv::Mat& depthCameraIntrinsicMatrix,
@@ -39,9 +42,6 @@ class RgbdAlignment {
                                        const cv::Mat& depthXyz) const;
 
  private:
-  static constexpr float DEPTH_MIN_MM{400};
-  static constexpr float DEPTH_MAX_MM{2000};
-
   cv::Mat colorCameraIntrinsicMatrix_;
   cv::Mat colorCameraDistortionCoeffs_;
   cv::Mat depthCameraIntrinsicMatrix_;
