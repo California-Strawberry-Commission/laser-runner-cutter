@@ -72,60 +72,33 @@ async def get_or_create_whip_endpoint(
         return endpoint
 
 
-class LiveKitWhipNode(Node):
+class TopicStream:
     """
-    Subscribes to a sensor_msgs/Image topic, GPU-encodes and publishes to LiveKit
-    Ingress via WHIP.
+    Owns the GStreamer pipeline and WHIP session for a single ROS2 Image topic.
+    One instance per topic. All instances share the node's single GLib mainloop thread.
     """
 
-    def __init__(self):
-        super().__init__("livekit_whip_node")
-
-        # Parameters
-        self.declare_parameter("livekit_url", "ws://localhost:7880")
-        self.declare_parameter("fps", 30)
-        # TODO: Support multiple topics on demand, and one pipeline per topic
-        self.declare_parameter("topic", "image_raw")
-
-        livekit_url = (
-            self.get_parameter("livekit_url").get_parameter_value().string_value
-        )
-        self._fps = self.get_parameter("fps").get_parameter_value().integer_value
-        topic = self.get_parameter("topic").get_parameter_value().string_value
-
-        # Jetson flag
-        self._is_jetson = os.path.exists("/etc/nv_tegra_release")
-
-        # Start GStreamer thread
-        Gst.init(None)
-        self._glib_mainloop = GLib.MainLoop()
-        self._glib_thread = threading.Thread(
-            target=self._glib_mainloop.run, daemon=True
-        )
-        self._glib_thread.start()
+    def __init__(
+        self,
+        parent_logger,
+        topic: str,
+        whip_url: str,
+        fps: int,
+        is_jetson: bool,
+    ):
+        self._logger = parent_logger.get_child(topic.lstrip("/"))
+        self._topic = topic
+        self._whip_url = whip_url
+        self._fps = fps
+        self._is_jetson = is_jetson
 
         self._pipeline = None
         self._appsrc = None
+        self._bus = None
         self._whip_resource_url: Optional[str] = None
         self._ice_gathering_complete = False
-
-        # Get WHIP URL
-        livekit_api_key = os.environ["LIVEKIT_API_KEY"]
-        livekit_api_secret = os.environ["LIVEKIT_API_SECRET"]
-        if not livekit_url or not livekit_api_key or not livekit_api_secret:
-            raise RuntimeError(
-                "Parameters 'livekit_url', 'livekit_api_key', and 'livekit_api_secret' are required"
-            )
-        self._whip_url = asyncio.run(
-            get_or_create_whip_endpoint(
-                livekit_url, livekit_api_key, livekit_api_secret, topic
-            )
-        )
-        self.get_logger().info(f"WHIP URL: {self._whip_url}")
-
-        # Subscriptions
-        self.create_subscription(Image, topic, self._on_image, qos_profile_sensor_data)
-        self.get_logger().info(f"Subscribed to: {topic}")
+        self._ice_gathering_timeout_source_id: Optional[int] = None
+        self._start_time_ns: Optional[int] = None
 
     # region GStreamer pipeline
 
@@ -139,9 +112,9 @@ class LiveKitWhipNode(Node):
         return elem
 
     def _build_pipeline(self, width: int, height: int, format: str):
-        self.get_logger().info("Building pipeline...")
+        self._logger.info("Building pipeline...")
 
-        self._pipeline = Gst.Pipeline.new("pipeline")
+        self._pipeline = Gst.Pipeline.new(f"pipeline_{self._topic}")
         elements_to_link = []
 
         # appsrc
@@ -248,9 +221,9 @@ class LiveKitWhipNode(Node):
             raise RuntimeError("Failed to link RTP payloader to webrtcbin")
 
         # Bus
-        bus = self._pipeline.get_bus()
-        bus.add_signal_watch()
-        bus.connect("message", self._on_bus_message)
+        self._bus = self._pipeline.get_bus()
+        self._bus.add_signal_watch()
+        self._bus.connect("message", self._on_bus_message)
 
         # webrtc signals
         webrtcbin.connect("on-negotiation-needed", self._on_negotiation_needed)
@@ -262,11 +235,11 @@ class LiveKitWhipNode(Node):
         webrtcbin.connect("notify::connection-state", self._on_connection_state)
         webrtcbin.connect("notify::ice-connection-state", self._on_ice_state)
 
-        self.get_logger().info("Pipeline created")
+        self._logger.info("Pipeline created")
 
         # Start pipeline
         self._pipeline.set_state(Gst.State.PLAYING)
-        self.get_logger().info("Pipeline PLAYING")
+        self._logger.info("Pipeline PLAYING")
 
     # endregion
 
@@ -284,13 +257,13 @@ class LiveKitWhipNode(Node):
         Creates and emits an SDP offer from the webrtcbin element.
         """
 
-        self.get_logger().info("Negotiation needed. Creating offer")
+        self._logger.info("Negotiation needed. Creating offer")
         self._ice_gathering_complete = False
         promise = Gst.Promise.new_with_change_func(
             self._on_offer_created, webrtcbin, None
         )
         webrtcbin.emit("create-offer", None, promise)
-        GLib.timeout_add_seconds(
+        self._ice_gathering_timeout_source_id = GLib.timeout_add_seconds(
             ICE_GATHERING_TIMEOUT_SEC, self._on_ice_gathering_timeout, webrtcbin
         )
 
@@ -300,8 +273,9 @@ class LiveKitWhipNode(Node):
         rebuilds the pipeline.
         """
 
+        self._ice_gathering_timeout_source_id = None
         if not self._ice_gathering_complete:
-            self.get_logger().error(
+            self._logger.error(
                 f"ICE gathering did not complete within {ICE_GATHERING_TIMEOUT_SEC}s. "
                 "Rebuilding pipeline"
             )
@@ -319,7 +293,7 @@ class LiveKitWhipNode(Node):
         p = Gst.Promise.new()
         webrtcbin.emit("set-local-description", offer, p)
         p.interrupt()  # don't block. We wait for ICE gathering to complete
-        self.get_logger().info(
+        self._logger.info(
             "Offer created and local description set. Waiting for ICE gathering to complete..."
         )
 
@@ -327,7 +301,7 @@ class LiveKitWhipNode(Node):
         # TODO: use Trickle ICE for faster start
         state = webrtcbin.get_property("ice-gathering-state")
         if int(state) == int(GstWebRTC.WebRTCICEGatheringState.COMPLETE):
-            self.get_logger().info(f"ICE gathering complete")
+            self._logger.info(f"ICE gathering complete")
             self._ice_gathering_complete = True
             self._send_offer_via_whip(webrtcbin)
 
@@ -337,19 +311,19 @@ class LiveKitWhipNode(Node):
         Upon receiving a response from the ingress server, set the answer SDP locally.
         """
 
-        self.get_logger().info(f"Sending offer via WHIP...")
+        self._logger.info(f"Sending offer via WHIP...")
 
         # At this point ICE candidates have been gathered. Grab the local SDP which includes all of
         # the candidates.
         local = webrtcbin.get_property("local-description")
         if local is None:
-            self.get_logger().error("Missing local description; cannot POST to WHIP.")
+            self._logger.error("Missing local description; cannot POST to WHIP.")
             return
         offer_sdp_text = local.sdp.as_text()
 
         resp = None
         for attempt in range(1, WHIP_POST_MAX_ATTEMPTS + 1):
-            self.get_logger().info(
+            self._logger.info(
                 f"POSTing offer to WHIP endpoint (attempt {attempt}/{WHIP_POST_MAX_ATTEMPTS}): "
                 f"{self._whip_url}"
             )
@@ -362,11 +336,11 @@ class LiveKitWhipNode(Node):
                 )
                 if resp.status_code in (200, 201):
                     break
-                self.get_logger().error(
+                self._logger.error(
                     f"WHIP POST HTTP {resp.status_code}: {resp.text[:200]}"
                 )
             except Exception as e:
-                self.get_logger().error(f"WHIP POST failed: {e}")
+                self._logger.error(f"WHIP POST failed: {e}")
                 resp = None
 
             if attempt < WHIP_POST_MAX_ATTEMPTS:
@@ -375,11 +349,11 @@ class LiveKitWhipNode(Node):
                     WHIP_POST_RETRY_BASE_DELAY_SEC * (2 ** (attempt - 1)),
                     WHIP_POST_RETRY_MAX_DELAY_SEC,
                 )
-                self.get_logger().info(f"Retrying WHIP POST in {delay}s...")
+                self._logger.info(f"Retrying WHIP POST in {delay}s...")
                 time.sleep(delay)
 
         if resp is None or resp.status_code not in (200, 201):
-            self.get_logger().error(
+            self._logger.error(
                 f"WHIP POST failed after {WHIP_POST_MAX_ATTEMPTS} attempts. Rebuilding pipeline"
             )
             self._restart_pipeline()
@@ -387,12 +361,12 @@ class LiveKitWhipNode(Node):
 
         self._whip_resource_url = resp.headers.get("Location", None)
         if self._whip_resource_url:
-            self.get_logger().info(f"WHIP resource: {self._whip_resource_url}")
+            self._logger.info(f"WHIP resource: {self._whip_resource_url}")
 
         answer_text = resp.text
         ret, answer_sdp = GstSdp.SDPMessage.new_from_text(answer_text)
         if ret != GstSdp.SDPResult.OK:
-            self.get_logger().error("Failed to parse WHIP SDP answer.")
+            self._logger.error("Failed to parse WHIP SDP answer.")
             return
 
         answer = GstWebRTC.WebRTCSessionDescription.new(
@@ -401,16 +375,14 @@ class LiveKitWhipNode(Node):
         promise = Gst.Promise.new()
         webrtcbin.emit("set-remote-description", answer, promise)
         promise.interrupt()
-        self.get_logger().info("Remote description set. WebRTC is live.")
+        self._logger.info("Remote description set. WebRTC is live.")
 
     def _on_ice_candidate(self, webrtcbin, mlineindex, candidate):
-        self.get_logger().info(
-            f"Local ICE candidate: mline={mlineindex} cand={candidate}"
-        )
+        self._logger.info(f"Local ICE candidate: mline={mlineindex} cand={candidate}")
 
     def _on_connection_state(self, webrtcbin, pspec):
         state = webrtcbin.get_property("connection-state")
-        self.get_logger().info(f"WebRTC connection state: {state}")
+        self._logger.info(f"WebRTC connection state: {state}")
 
     def _on_ice_state(self, webrtcbin, pspec):
         state = webrtcbin.get_property("ice-connection-state")
@@ -423,9 +395,9 @@ class LiveKitWhipNode(Node):
             5: "DISCONNECTED",
             6: "CLOSED",
         }.get(state, f"UNKNOWN({state})")
-        self.get_logger().info(f"ICE connection state: {state_name}")
+        self._logger.info(f"ICE connection state: {state_name}")
         if int(state) == int(GstWebRTC.WebRTCICEConnectionState.FAILED):
-            self.get_logger().error("ICE connection failed. Rebuilding pipeline")
+            self._logger.error("ICE connection failed. Rebuilding pipeline")
             self._restart_pipeline()
 
     def _teardown_whip_resource(self):
@@ -442,7 +414,7 @@ class LiveKitWhipNode(Node):
             )
             requests.delete(full_whip_resource_url, timeout=3)
         except Exception as e:
-            self.get_logger().warn(f"WHIP DELETE failed: {e}")
+            self._logger.warn(f"WHIP DELETE failed: {e}")
         finally:
             self._whip_resource_url = None
 
@@ -470,23 +442,23 @@ class LiveKitWhipNode(Node):
         t = message.type
         if t == Gst.MessageType.ERROR:
             err, dbg = message.parse_error()
-            self.get_logger().error(f"GStreamer ERROR: {err} debug:{dbg}")
+            self._logger.error(f"GStreamer ERROR: {err} debug:{dbg}")
             self._restart_pipeline()
         elif t == Gst.MessageType.WARNING:
             w, dbg = message.parse_warning()
-            self.get_logger().warn(f"GStreamer WARN: {w} debug:{dbg}")
+            self._logger.warn(f"GStreamer WARN: {w} debug:{dbg}")
         elif t == Gst.MessageType.EOS:
-            self.get_logger().info("GStreamer EOS")
-            self._pipeline.set_state(Gst.State.NULL)
+            self._logger.info("GStreamer EOS")
+            self._restart_pipeline()
         elif t == Gst.MessageType.STATE_CHANGED and message.src == self._pipeline:
             old, new, pending = message.parse_state_changed()
-            self.get_logger().info(
+            self._logger.info(
                 f"Pipeline state changed: {old.value_nick} -> {new.value_nick}"
             )
 
     # endregion
 
-    def _on_image(self, msg: Image):
+    def on_image(self, msg: Image):
         if self._pipeline is None:
             enc = (msg.encoding or "").lower()
             format = "BGR"
@@ -499,9 +471,7 @@ class LiveKitWhipNode(Node):
             elif enc in ("nv12",):
                 format = "NV12"
             else:
-                self.get_logger().warn(
-                    f"Unknown encoding '{msg.encoding}', assuming BGR"
-                )
+                self._logger.warn(f"Unknown encoding '{msg.encoding}', assuming BGR")
                 format = "BGR"
             self._build_pipeline(msg.width, msg.height, format)
 
@@ -509,40 +479,142 @@ class LiveKitWhipNode(Node):
         buf = Gst.Buffer.new_allocate(None, len(data), None)
         buf.fill(0, data)
 
-        if not hasattr(self, "start_time_ns"):
-            self.start_time_ns = (
+        if self._start_time_ns is None:
+            self._start_time_ns = (
                 msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
             )
 
         timestamp_ns = (  # Assigns ROS timestamp to video frame
             msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
-        ) - self.start_time_ns
+        ) - self._start_time_ns
         buf.pts = timestamp_ns
         buf.dts = timestamp_ns
         buf.duration = Gst.CLOCK_TIME_NONE
 
         flow = self._appsrc.emit("push-buffer", buf)
         if flow != Gst.FlowReturn.OK:
-            self.get_logger().warn(f"push-buffer -> {flow}")
+            self._logger.warn(f"push-buffer -> {flow}")
 
-    def destroy_node(self):
+    def destroy(self):
         self._teardown_whip_resource()
 
-        # GStreamer shutdown
-        try:
-            if self._appsrc:
-                try:
-                    self._appsrc.emit("end-of-stream")
-                except Exception:
-                    pass
-            if self._pipeline:
-                self._pipeline.set_state(Gst.State.NULL)
-        finally:
+        if self._ice_gathering_timeout_source_id is not None:
             try:
-                if self._glib_mainloop.is_running():
-                    self._glib_mainloop.quit()
+                GLib.source_remove(self._ice_gathering_timeout_source_id)
             except Exception:
                 pass
+            self._ice_gathering_timeout_source_id = None
+
+        if self._bus:
+            try:
+                self._bus.remove_signal_watch()
+            except Exception:
+                pass
+            self._bus = None
+
+        if self._appsrc:
+            try:
+                self._appsrc.emit("end-of-stream")
+            except Exception:
+                pass
+            self._appsrc = None
+
+        if self._pipeline:
+            try:
+                self._pipeline.set_state(Gst.State.NULL)
+            except Exception:
+                pass
+            self._pipeline = None
+
+
+class LiveKitWhipNode(Node):
+    """
+    Subscribes to one or more sensor_msgs/Image topics, GPU-encodes and publishes each
+    to its own LiveKit Ingress via WHIP.
+    """
+
+    def __init__(self):
+        super().__init__("livekit_whip_node")
+
+        # Parameters
+        self.declare_parameter("livekit_url", "ws://localhost:7880")
+        self.declare_parameter("fps", 30)
+        self.declare_parameter("topics", ["image_raw"])
+
+        livekit_url = (
+            self.get_parameter("livekit_url").get_parameter_value().string_value
+        )
+        self._fps = self.get_parameter("fps").get_parameter_value().integer_value
+        topics = list(
+            self.get_parameter("topics").get_parameter_value().string_array_value
+        )
+        if not topics:
+            raise RuntimeError("Parameter 'topics' must contain at least one topic")
+        # Dedupe topics while preserving order
+        deduped_topics = list(dict.fromkeys(topics))
+        if len(deduped_topics) != len(topics):
+            self.get_logger().warn(
+                f"Parameter 'topics' contained duplicates. Deduplicated to: {deduped_topics}"
+            )
+        topics = deduped_topics
+
+        # Jetson flag
+        self._is_jetson = os.path.exists("/etc/nv_tegra_release")
+
+        # Start GStreamer thread
+        Gst.init(None)
+        self._glib_mainloop = GLib.MainLoop()
+        self._glib_thread = threading.Thread(
+            target=self._glib_mainloop.run, daemon=True
+        )
+        self._glib_thread.start()
+
+        # Get WHIP URLs (one ingress/room per topic), resolved concurrently
+        livekit_api_key = os.environ["LIVEKIT_API_KEY"]
+        livekit_api_secret = os.environ["LIVEKIT_API_SECRET"]
+        if not livekit_url or not livekit_api_key or not livekit_api_secret:
+            raise RuntimeError(
+                "Parameters 'livekit_url', 'livekit_api_key', and 'livekit_api_secret' are required"
+            )
+
+        async def _resolve_all():
+            return await asyncio.gather(
+                *(
+                    get_or_create_whip_endpoint(
+                        livekit_url, livekit_api_key, livekit_api_secret, topic
+                    )
+                    for topic in topics
+                )
+            )
+
+        whip_urls = asyncio.run(_resolve_all())
+
+        # Build one stream (pipeline + WHIP session) and subscription per topic
+        self._streams = []
+        for topic, whip_url in zip(topics, whip_urls):
+            stream = TopicStream(
+                parent_logger=self.get_logger(),
+                topic=topic,
+                whip_url=whip_url,
+                fps=self._fps,
+                is_jetson=self._is_jetson,
+            )
+            self._streams.append(stream)
+            self.get_logger().info(f"WHIP URL for topic '{topic}': {whip_url}")
+            self.create_subscription(
+                Image, topic, stream.on_image, qos_profile_sensor_data
+            )
+            self.get_logger().info(f"Subscribed to: {topic}")
+
+    def destroy_node(self):
+        for stream in self._streams:
+            stream.destroy()
+
+        try:
+            if self._glib_mainloop.is_running():
+                self._glib_mainloop.quit()
+        except Exception:
+            pass
 
         super().destroy_node()
 

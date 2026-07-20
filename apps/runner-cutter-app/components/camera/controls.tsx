@@ -274,6 +274,14 @@ export default function Controls({
         }
         showRotateButton
       />
+      <FramePreviewLiveKit
+        className="w-full h-[480px]"
+        topicName={`${detectionNodeName}/debug/depth_image`}
+        enableStream={
+          cameraNode.state.deviceState === CameraDeviceState.STREAMING
+        }
+        showRotateButton
+      />
     </div>
   );
 }

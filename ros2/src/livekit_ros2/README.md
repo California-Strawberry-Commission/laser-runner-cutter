@@ -26,4 +26,3 @@ $ ros2 launch livekit_ros2 launch.py
 
 - WebRTC will fail on Firefox when offline. This is a Firefox-specific issue where WebRTC ICE gathering fails in a completely pure LAN environment. Refer to https://bugzilla.mozilla.org/show_bug.cgi?id=1659672 for more details on the issue.
   - Workaround: use Chromium
-- Currently, LiveKitWhipNode can only subscribe and streams one Image topic. Adding support for streaming multiple topics is tracked at https://github.com/California-Strawberry-Commission/laser-runner-cutter/issues/109
