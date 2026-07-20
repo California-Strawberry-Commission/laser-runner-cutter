@@ -127,6 +127,8 @@ class DetectionNode : public rclcpp::Node {
         create_publisher<rcl_interfaces::msg::Log>("/notifications", 1);
     debugImagePublisher_ = create_publisher<sensor_msgs::msg::Image>(
         "debug/image", rclcpp::SensorDataQoS());
+    debugDepthImagePublisher_ = create_publisher<sensor_msgs::msg::Image>(
+        "debug/depth_image", rclcpp::SensorDataQoS());
 
     //////////////
     // Subscribers
@@ -217,17 +219,22 @@ class DetectionNode : public rclcpp::Node {
     circleDetector_ = std::make_unique<CircleDetector>();
 
     detectionThread_ = std::thread(&DetectionNode::detectionThreadFn, this);
+    depthDebugThread_ = std::thread(&DetectionNode::depthDebugThreadFn, this);
 
     // Publish initial state
     publishState();
   }
 
   ~DetectionNode() {
-    // Signal stop and join detection thread
-    detectionStopSignal_ = true;
+    // Signal stop and join threads
+    threadStopSignal_ = true;
     colorImageEvent_.set();
+    depthXyzEvent_.set();
     if (detectionThread_.joinable()) {
       detectionThread_.join();
+    }
+    if (depthDebugThread_.joinable()) {
+      depthDebugThread_.join();
     }
   }
 
@@ -267,19 +274,23 @@ class DetectionNode : public rclcpp::Node {
   }
 
   void onDepthXyz(const sensor_msgs::msg::Image::ConstSharedPtr msg) {
-    std::lock_guard<std::mutex> lock(depthXyzQueueMutex_);
+    {
+      std::lock_guard<std::mutex> lock(depthXyzQueueMutex_);
 
-    // Append and prune depth frames older than keepDuration_
-    depthXyzQueue_.push_back(msg);
-    const rclcpp::Time newest{depthXyzQueue_.back()->header.stamp};
-    while (!depthXyzQueue_.empty()) {
-      rclcpp::Time oldest{depthXyzQueue_.front()->header.stamp};
-      if ((newest - oldest) > keepDuration_) {
-        depthXyzQueue_.pop_front();
-      } else {
-        break;
+      // Append and prune depth frames older than keepDuration_
+      depthXyzQueue_.push_back(msg);
+      const rclcpp::Time newest{depthXyzQueue_.back()->header.stamp};
+      while (!depthXyzQueue_.empty()) {
+        rclcpp::Time oldest{depthXyzQueue_.front()->header.stamp};
+        if ((newest - oldest) > keepDuration_) {
+          depthXyzQueue_.pop_front();
+        } else {
+          break;
+        }
       }
     }
+
+    depthXyzEvent_.set();
   }
 
   void onDepthCameraInfo(
@@ -304,7 +315,7 @@ class DetectionNode : public rclcpp::Node {
     cv::Mat rgbImage;
     cv::Mat debugImage;
 
-    while (!detectionStopSignal_) {
+    while (!threadStopSignal_) {
       colorImageEvent_.wait();
       sensor_msgs::msg::Image::ConstSharedPtr imgMsg{nullptr};
       {
@@ -439,6 +450,69 @@ class DetectionNode : public rclcpp::Node {
       auto debugImageMsg{
           cv_bridge::CvImage(imgMsg->header, "rgb8", debugImage).toImageMsg()};
       debugImagePublisher_->publish(*debugImageMsg);
+    }
+  }
+
+  void depthDebugThreadFn() {
+    cv::Mat depthZChannel;
+    cv::Mat depthInvalidMask;
+    cv::Mat depthGray8;
+    cv::Mat depthColorMapped;
+    cv::Mat depthDebugImage;
+
+    while (!threadStopSignal_) {
+      depthXyzEvent_.wait();
+      sensor_msgs::msg::Image::ConstSharedPtr depthXyz{nullptr};
+      {
+        std::lock_guard<std::mutex> lock(depthXyzQueueMutex_);
+        if (!depthXyzQueue_.empty()) {
+          depthXyz = depthXyzQueue_.back();
+        }
+      }
+      depthXyzEvent_.clear();
+
+      if (!depthXyz) {
+        continue;
+      }
+
+      // Wrap the depthXyz data pointer (no copy)
+      cv::Mat depthXyzMat(depthXyz->height, depthXyz->width, CV_32FC3,
+                          const_cast<uint8_t*>(depthXyz->data.data()),
+                          depthXyz->step);
+
+      // Extract Z (depth) channel
+      cv::extractChannel(depthXyzMat, depthZChannel, 2);
+
+      // Scale [DEPTH_MIN_MM, DEPTH_MAX_MM] -> [0, 255], clipping
+      // out-of-range values
+      double alpha{255.0 /
+                   (RgbdAlignment::DEPTH_MAX_MM - RgbdAlignment::DEPTH_MIN_MM)};
+      double beta{-RgbdAlignment::DEPTH_MIN_MM * alpha};
+      depthZChannel.convertTo(depthGray8, CV_8U, alpha, beta);
+
+      // Colorize and convert to RGB
+      cv::applyColorMap(depthGray8, depthColorMapped, cv::COLORMAP_JET);
+      // Invalid pixels are (-1,-1,-1), so use Z < 0 to identify invalid pixels
+      // and mark them as a specific color
+      cv::compare(depthZChannel, 0.0, depthInvalidMask, cv::CMP_LT);
+      depthColorMapped.setTo(cv::Scalar(255, 0, 255), depthInvalidMask);
+      cv::cvtColor(depthColorMapped, depthColorMapped, cv::COLOR_BGR2RGB);
+
+      // Downscale to the debug width, using the depth image's own aspect
+      // ratio (depth and color sensors may differ in resolution/aspect)
+      int debugImageWidth{getParamDebugImageWidth()};
+      double depthAspectRatio{static_cast<double>(depthXyz->height) /
+                              depthXyz->width};
+      int depthDebugImageHeight{
+          static_cast<int>(std::round(debugImageWidth * depthAspectRatio))};
+      cv::resize(depthColorMapped, depthDebugImage,
+                 cv::Size(debugImageWidth, depthDebugImageHeight), 0.0, 0.0,
+                 cv::INTER_NEAREST);
+
+      auto depthDebugImageMsg{
+          cv_bridge::CvImage(depthXyz->header, "rgb8", depthDebugImage)
+              .toImageMsg()};
+      debugDepthImagePublisher_->publish(*depthDebugImageMsg);
     }
   }
 
@@ -705,15 +779,14 @@ class DetectionNode : public rclcpp::Node {
       }
     }
 
-    RCLCPP_INFO(
-        get_logger(),
-        "Detection started: detectionType=%d, "
-        "normalizedBounds=[x=%f, y=%f, width=%f, height=%f]",
-        static_cast<int>(request->detection_type),
-        enabledDetections_[request->detection_type].x,
-        enabledDetections_[request->detection_type].y,
-        enabledDetections_[request->detection_type].width,
-        enabledDetections_[request->detection_type].height);
+    RCLCPP_INFO(get_logger(),
+                "Detection started: detectionType=%d, "
+                "normalizedBounds=[x=%f, y=%f, width=%f, height=%f]",
+                static_cast<int>(request->detection_type),
+                enabledDetections_[request->detection_type].x,
+                enabledDetections_[request->detection_type].y,
+                enabledDetections_[request->detection_type].width,
+                enabledDetections_[request->detection_type].height);
 
     publishState();
     response->success = true;
@@ -1014,6 +1087,8 @@ class DetectionNode : public rclcpp::Node {
   }
 
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr debugImagePublisher_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr
+      debugDepthImagePublisher_;
   rclcpp::CallbackGroup::SharedPtr subscriberCallbackGroup_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr
       colorImageSubscriber_;
@@ -1057,7 +1132,8 @@ class DetectionNode : public rclcpp::Node {
   std::unique_ptr<RunnerDetector> runnerDetector_;
   std::unique_ptr<CircleDetector> circleDetector_;
   std::thread detectionThread_;
-  std::atomic<bool> detectionStopSignal_{false};
+  std::thread depthDebugThread_;
+  std::atomic<bool> threadStopSignal_{false};
   sensor_msgs::msg::CameraInfo::ConstSharedPtr colorCameraInfo_;
   std::mutex colorCameraInfoMutex_;
   sensor_msgs::msg::CameraInfo::ConstSharedPtr depthCameraInfo_;
@@ -1073,6 +1149,8 @@ class DetectionNode : public rclcpp::Node {
   std::unordered_map<int, cv::Rect2d> enabledDetections_;
   std::mutex depthXyzQueueMutex_;
   std::deque<sensor_msgs::msg::Image::ConstSharedPtr> depthXyzQueue_;
+  // Notifies the depth debug thread that a new depth frame is available
+  common::Event depthXyzEvent_;
   rclcpp::TimerBase::SharedPtr videoRecordingTimer_;
   cv::VideoWriter videoWriter_;
   std::mutex videoWriterMutex_;
