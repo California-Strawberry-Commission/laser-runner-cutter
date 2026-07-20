@@ -104,6 +104,7 @@ class DetectionNode : public rclcpp::Node {
     // Parameters
     /////////////
     declare_parameter<int>("debug_image_width", 640);
+    declare_parameter<int>("debug_depth_image_width", 320);
     declare_parameter<float>("debug_video_fps", 30.0f);
     declare_parameter<std::string>("save_dir", "~/runner_cutter/camera");
     declare_parameter<std::string>("runner_model", "RunnerSegYoloV8l.engine");
@@ -219,7 +220,9 @@ class DetectionNode : public rclcpp::Node {
     circleDetector_ = std::make_unique<CircleDetector>();
 
     detectionThread_ = std::thread(&DetectionNode::detectionThreadFn, this);
-    depthDebugThread_ = std::thread(&DetectionNode::depthDebugThreadFn, this);
+    // TODO: Reenable this after reducing CPU load
+    // depthDebugThread_ = std::thread(&DetectionNode::depthDebugThreadFn,
+    // this);
 
     // Publish initial state
     publishState();
@@ -243,6 +246,10 @@ class DetectionNode : public rclcpp::Node {
 
   int getParamDebugImageWidth() {
     return static_cast<int>(get_parameter("debug_image_width").as_int());
+  }
+
+  int getParamDebugDepthImageWidth() {
+    return static_cast<int>(get_parameter("debug_depth_image_width").as_int());
   }
 
   float getParamDebugVideoFps() {
@@ -500,7 +507,7 @@ class DetectionNode : public rclcpp::Node {
 
       // Downscale to the debug width, using the depth image's own aspect
       // ratio (depth and color sensors may differ in resolution/aspect)
-      int debugImageWidth{getParamDebugImageWidth()};
+      int debugImageWidth{getParamDebugDepthImageWidth()};
       double depthAspectRatio{static_cast<double>(depthXyz->height) /
                               depthXyz->width};
       int depthDebugImageHeight{
