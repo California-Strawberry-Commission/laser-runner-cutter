@@ -6,6 +6,7 @@
 #include <deque>
 #include <filesystem>
 #include <opencv2/core/cuda.hpp>
+#include <opencv2/cudaarithm.hpp>
 #include <opencv2/cudaimgproc.hpp>
 #include <opencv2/cudawarping.hpp>
 #include <opencv2/opencv.hpp>
@@ -220,9 +221,8 @@ class DetectionNode : public rclcpp::Node {
     circleDetector_ = std::make_unique<CircleDetector>();
 
     detectionThread_ = std::thread(&DetectionNode::detectionThreadFn, this);
-    // TODO: Reenable this after reducing CPU load
-    // depthDebugThread_ = std::thread(&DetectionNode::depthDebugThreadFn,
-    // this);
+    debugDepthImageThread_ =
+        std::thread(&DetectionNode::debugDepthImageThreadFn, this);
 
     // Publish initial state
     publishState();
@@ -236,8 +236,8 @@ class DetectionNode : public rclcpp::Node {
     if (detectionThread_.joinable()) {
       detectionThread_.join();
     }
-    if (depthDebugThread_.joinable()) {
-      depthDebugThread_.join();
+    if (debugDepthImageThread_.joinable()) {
+      debugDepthImageThread_.join();
     }
   }
 
@@ -460,15 +460,37 @@ class DetectionNode : public rclcpp::Node {
     }
   }
 
-  void depthDebugThreadFn() {
-    cv::Mat depthZChannel;
-    cv::Mat depthInvalidMask;
-    cv::Mat depthGray8;
-    cv::Mat depthColorMapped;
+  void debugDepthImageThreadFn() {
+    // Bake the JET colormap as a 1x256 LUT once, on thread startup.
+    // Note: cv::cuda's LookUpTable requires the LUT to have exactly 1 row and
+    // 256 columns.
+    cv::Mat grayRamp(1, 256, CV_8UC1);
+    for (int i = 0; i < 256; ++i) {
+      grayRamp.at<uint8_t>(0, i) = static_cast<uint8_t>(i);
+    }
+    cv::Mat jetLutMat;
+    cv::applyColorMap(grayRamp, jetLutMat, cv::COLORMAP_JET);
+    // Upload LUT to GPU
+    cv::cuda::GpuMat jetLutMatGpu;
+    jetLutMatGpu.upload(jetLutMat);
+    cv::Ptr<cv::cuda::LookUpTable> jetLut{
+        cv::cuda::createLookUpTable(jetLutMatGpu)};
+
+    cv::cuda::Stream cvStream;
+
+    // Allocate once up front to avoid overhead and fragmentation
+    cv::cuda::GpuMat gpuDepthXyz;
+    std::vector<cv::cuda::GpuMat> gpuXyzChannels;
+    cv::cuda::GpuMat gpuZDownscaled;
+    cv::cuda::GpuMat gpuGray8;
+    cv::cuda::GpuMat gpuGray8x3;
+    cv::cuda::GpuMat gpuColorMapped;
+    cv::cuda::GpuMat gpuInvalidMask;
     cv::Mat depthDebugImage;
 
     while (!threadStopSignal_) {
       depthXyzEvent_.wait();
+
       sensor_msgs::msg::Image::ConstSharedPtr depthXyz{nullptr};
       {
         std::lock_guard<std::mutex> lock(depthXyzQueueMutex_);
@@ -482,39 +504,51 @@ class DetectionNode : public rclcpp::Node {
         continue;
       }
 
-      // Wrap the depthXyz data pointer (no copy)
+      // Wrap the depthXyz data pointer (no copy) and upload to GPU
       cv::Mat depthXyzMat(depthXyz->height, depthXyz->width, CV_32FC3,
                           const_cast<uint8_t*>(depthXyz->data.data()),
                           depthXyz->step);
+      gpuDepthXyz.upload(depthXyzMat, cvStream);
 
-      // Extract Z (depth) channel
-      cv::extractChannel(depthXyzMat, depthZChannel, 2);
+      // Extract Z channel on GPU
+      cv::cuda::split(gpuDepthXyz, gpuXyzChannels, cvStream);
+      // Immediately downscale it to the debug image width, maintaining aspect
+      // ratio
+      int debugImageWidth{getParamDebugDepthImageWidth()};
+      double depthAspectRatio{static_cast<double>(depthXyz->height) /
+                              depthXyz->width};
+      int depthDebugImageHeight{
+          static_cast<int>(std::round(debugImageWidth * depthAspectRatio))};
+      cv::cuda::resize(gpuXyzChannels[2], gpuZDownscaled,
+                       cv::Size(debugImageWidth, depthDebugImageHeight), 0.0,
+                       0.0, cv::INTER_NEAREST, cvStream);
 
       // Scale [DEPTH_MIN_MM, DEPTH_MAX_MM] -> [0, 255], clipping
       // out-of-range values
       double alpha{255.0 /
                    (RgbdAlignment::DEPTH_MAX_MM - RgbdAlignment::DEPTH_MIN_MM)};
       double beta{-RgbdAlignment::DEPTH_MIN_MM * alpha};
-      depthZChannel.convertTo(depthGray8, CV_8U, alpha, beta);
+      gpuZDownscaled.convertTo(gpuGray8, CV_8U, alpha, beta, cvStream);
 
-      // Colorize and convert to RGB
-      cv::applyColorMap(depthGray8, depthColorMapped, cv::COLORMAP_JET);
-      // Invalid pixels are (-1,-1,-1), so use Z < 0 to identify invalid pixels
-      // and mark them as a specific color
-      cv::compare(depthZChannel, 0.0, depthInvalidMask, cv::CMP_LT);
-      depthColorMapped.setTo(cv::Scalar(255, 0, 255), depthInvalidMask);
-      cv::cvtColor(depthColorMapped, depthColorMapped, cv::COLOR_BGR2RGB);
+      // Colorize by expanding to 3-channel grayscale, then applying the baked
+      // JET LUT
+      cv::cuda::cvtColor(gpuGray8, gpuGray8x3, cv::COLOR_GRAY2BGR, 0, cvStream);
+      jetLut->transform(gpuGray8x3, gpuColorMapped, cvStream);
 
-      // Downscale to the debug width, using the depth image's own aspect
-      // ratio (depth and color sensors may differ in resolution/aspect)
-      int debugImageWidth{getParamDebugDepthImageWidth()};
-      double depthAspectRatio{static_cast<double>(depthXyz->height) /
-                              depthXyz->width};
-      int depthDebugImageHeight{
-          static_cast<int>(std::round(debugImageWidth * depthAspectRatio))};
-      cv::resize(depthColorMapped, depthDebugImage,
-                 cv::Size(debugImageWidth, depthDebugImageHeight), 0.0, 0.0,
-                 cv::INTER_NEAREST);
+      // Invalid pixels are (-1,-1,-1), so use Z < 0 to identify invalid
+      // pixels and mark them as a specific color
+      cv::cuda::compare(gpuZDownscaled, cv::Scalar(0.0), gpuInvalidMask,
+                        cv::CMP_LT, cvStream);
+      gpuColorMapped.setTo(cv::Scalar(255, 0, 255), gpuInvalidMask, cvStream);
+      cv::cuda::cvtColor(gpuColorMapped, gpuColorMapped, cv::COLOR_BGR2RGB, 0,
+                         cvStream);
+
+      // Copy back to host
+      depthDebugImage.create(depthDebugImageHeight, debugImageWidth, CV_8UC3);
+      gpuColorMapped.download(depthDebugImage, cvStream);
+
+      // Synchronize stream before using depthDebugImage
+      cvStream.waitForCompletion();
 
       auto depthDebugImageMsg{
           cv_bridge::CvImage(depthXyz->header, "rgb8", depthDebugImage)
@@ -1139,7 +1173,7 @@ class DetectionNode : public rclcpp::Node {
   std::unique_ptr<RunnerDetector> runnerDetector_;
   std::unique_ptr<CircleDetector> circleDetector_;
   std::thread detectionThread_;
-  std::thread depthDebugThread_;
+  std::thread debugDepthImageThread_;
   std::atomic<bool> threadStopSignal_{false};
   sensor_msgs::msg::CameraInfo::ConstSharedPtr colorCameraInfo_;
   std::mutex colorCameraInfoMutex_;
