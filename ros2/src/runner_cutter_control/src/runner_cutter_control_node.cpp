@@ -987,11 +987,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
     LaserCoord initialLaserCoord{
         calibration_->cameraPositionToLaserCoord(targetCameraPosition)};
     laser_->setColor(getParamTrackingLaserColor());
-    auto correctedLaserCoordOpt{
-        correctLaser(initialLaserCoord, targetCameraPixel)};
-    // There may have been point correspondences added, so update transform
-    calibration_->updateTransform();
-    return correctedLaserCoordOpt;
+    return correctLaser(initialLaserCoord, targetCameraPixel);
   }
 
   /**
@@ -1043,11 +1039,6 @@ class RunnerCutterControlNode : public rclcpp::Node {
         RCLCPP_INFO(get_logger(), "Correction successful");
         return currentLaserCoord;
       }
-
-      // Use this opportunity to add to calibration points since we have the
-      // laser coord and associated position in camera space
-      calibration_->addPointCorrespondence(currentLaserCoord, laserPixel,
-                                           laserPosition);
 
       // Calculate new laser coord
       LaserCoord laserCoordCorrection{
