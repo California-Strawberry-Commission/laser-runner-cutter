@@ -37,7 +37,7 @@ int main(int argc, char* argv[]) {
   }
 
   SparseOpticalFlow opticalFlow{
-      100, 3, cv::Rect{includeX, includeY, includeW, includeH}};
+      200, 3, 0.01f, 0.04f, cv::Rect{includeX, includeY, includeW, includeH}};
 
   // Warmup
   std::cout << "Warming up..." << std::endl;
