@@ -11,8 +11,10 @@
 
 class SparseOpticalFlow {
  public:
-  explicit SparseOpticalFlow(int32_t maxCorners = 100,
+  explicit SparseOpticalFlow(int32_t maxCorners = 200,
                              int32_t pyramidLevels = 3,
+                             float harrisStrengthThresh = 0.01f,
+                             float harrisSensitivity = 0.04f,
                              cv::Rect includeRegion = cv::Rect());
   ~SparseOpticalFlow();
   SparseOpticalFlow(const SparseOpticalFlow&) = delete;
@@ -29,6 +31,8 @@ class SparseOpticalFlow {
 
   int32_t maxCorners_;
   int32_t pyramidLevels_;
+  float harrisStrengthThresh_;
+  float harrisSensitivity_;
   cv::Rect includeRegion_;
 
   VPIStream stream_{nullptr};
@@ -39,6 +43,7 @@ class SparseOpticalFlow {
   VPIImage imgCurrPL_{nullptr};
   VPIImage imgPrevGray_{nullptr};
   VPIImage imgCurrGray_{nullptr};
+  VPIImage imgPrevGrayHarris_{nullptr};
 
   VPIPyramid pyrPrev_{nullptr};
   VPIPyramid pyrCurr_{nullptr};

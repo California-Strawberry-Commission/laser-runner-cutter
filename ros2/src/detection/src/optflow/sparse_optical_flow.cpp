@@ -36,10 +36,10 @@ namespace {
 
 // Filters out keypoints falling outside includeRegion (if the Rect is not
 // empty), sorts the remainder by descending score, and keeps only the top
-// maxCount.
-void filterSortAndTruncateKeypoints(VPIArray keypoints, VPIArray scores,
-                                    const cv::Rect& includeRegion,
-                                    int32_t maxCount) {
+// maxCount. Returns the number of corners found prior to filtering/truncation.
+int32_t filterSortAndTruncateKeypoints(VPIArray keypoints, VPIArray scores,
+                                       const cv::Rect& includeRegion,
+                                       int32_t maxCount) {
   VPIArrayData ptsData, scoresData;
   CHECK_STATUS(vpiArrayLockData(keypoints, VPI_LOCK_READ_WRITE,
                                 VPI_ARRAY_BUFFER_HOST_AOS, &ptsData));
@@ -83,6 +83,8 @@ void filterSortAndTruncateKeypoints(VPIArray keypoints, VPIArray scores,
 
   vpiArrayUnlock(scores);
   vpiArrayUnlock(keypoints);
+
+  return totalCount;
 }
 
 // Computes the median of v in place.
@@ -100,11 +102,15 @@ float median(std::vector<float>& v) {
 }  // namespace
 
 SparseOpticalFlow::SparseOpticalFlow(int32_t maxCorners, int32_t pyramidLevels,
+                                     float harrisStrengthThresh,
+                                     float harrisSensitivity,
                                      cv::Rect includeRegion)
     : maxCorners_{maxCorners},
       pyramidLevels_{pyramidLevels},
+      harrisStrengthThresh_{harrisStrengthThresh},
+      harrisSensitivity_{harrisSensitivity},
       includeRegion_{includeRegion} {
-  CHECK_STATUS(vpiStreamCreate(VPI_BACKEND_CPU | VPI_BACKEND_CUDA, &stream_));
+  CHECK_STATUS(vpiStreamCreate(VPI_BACKEND_PVA | VPI_BACKEND_CUDA, &stream_));
 }
 
 SparseOpticalFlow::~SparseOpticalFlow() {
@@ -122,6 +128,7 @@ void SparseOpticalFlow::destroyBuffers() {
   vpiPayloadDestroy(lkPayload_);
   vpiImageDestroy(imgPrevGray_);
   vpiImageDestroy(imgCurrGray_);
+  vpiImageDestroy(imgPrevGrayHarris_);
   vpiPyramidDestroy(pyrPrev_);
   vpiPyramidDestroy(pyrCurr_);
   vpiArrayDestroy(keypointsPrev_);
@@ -133,6 +140,7 @@ void SparseOpticalFlow::destroyBuffers() {
   lkPayload_ = nullptr;
   imgPrevGray_ = nullptr;
   imgCurrGray_ = nullptr;
+  imgPrevGrayHarris_ = nullptr;
   pyrPrev_ = nullptr;
   pyrCurr_ = nullptr;
   keypointsPrev_ = nullptr;
@@ -155,33 +163,48 @@ void SparseOpticalFlow::allocateBuffers(int32_t width, int32_t height) {
   }
   destroyBuffers();
 
+  // Grayscale images used to build the Gaussian pyramids. We use
+  // VPI_IMAGE_FORMAT_U8 since PyrLK (vpiCreateOpticalFlowPyrLK) only accepts U8
+  // or U16 pyramids.
   CHECK_STATUS(
       vpiImageCreate(width, height, VPI_IMAGE_FORMAT_U8, 0, &imgPrevGray_));
   CHECK_STATUS(
       vpiImageCreate(width, height, VPI_IMAGE_FORMAT_U8, 0, &imgCurrGray_));
 
+  // Grayscale image used for Harris corner detection.
+  // Harris with PVA (Programmable Vision Accelerator) backend only supports S16
+  // input.
+  CHECK_STATUS(vpiImageCreate(width, height, VPI_IMAGE_FORMAT_S16, 0,
+                              &imgPrevGrayHarris_));
+
+  // Gaussian pyramids
   CHECK_STATUS(vpiPyramidCreate(width, height, VPI_IMAGE_FORMAT_U8,
                                 pyramidLevels_, 0.5, 0, &pyrPrev_));
   CHECK_STATUS(vpiPyramidCreate(width, height, VPI_IMAGE_FORMAT_U8,
                                 pyramidLevels_, 0.5, 0, &pyrCurr_));
 
-  // keypointsPrev_ and scores_ are Harris corner detector's raw output buffers,
-  // and is sized to MAX_HARRIS_CORNERS since Harris can find far more
-  // candidates than maxCorners_ on images. We will end up keeping only the
-  // maxCorners_ strongest corner candidates, and thus keypointsCurr_ and
-  // status_ only need a size of maxCorners_.
+  // keypointsPrev_ and scores_ are Harris corner detector's raw output buffers
+  // and must be sized to MAX_HARRIS_CORNERS since the Harris corner detector
+  // can find far more candidates than maxCorners_.
+  // Then, filterSortAndTruncateKeypoints() will keep only the maxCorners_
+  // strongest.
   CHECK_STATUS(vpiArrayCreate(MAX_HARRIS_CORNERS, VPI_ARRAY_TYPE_KEYPOINT_F32,
                               0, &keypointsPrev_));
   CHECK_STATUS(
       vpiArrayCreate(MAX_HARRIS_CORNERS, VPI_ARRAY_TYPE_U32, 0, &scores_));
-  CHECK_STATUS(vpiArrayCreate(maxCorners_, VPI_ARRAY_TYPE_KEYPOINT_F32, 0,
-                              &keypointsCurr_));
-  CHECK_STATUS(vpiArrayCreate(maxCorners_, VPI_ARRAY_TYPE_U8, 0, &status_));
+  // keypointsCurr_ (tracked corner locations in currFrame) and status_
+  // (per-corner tracking status) are PyrLK's output buffers. Their capacities
+  // must match those of keypointsPrev_ and scores_.
+  CHECK_STATUS(vpiArrayCreate(MAX_HARRIS_CORNERS, VPI_ARRAY_TYPE_KEYPOINT_F32,
+                              0, &keypointsCurr_));
+  CHECK_STATUS(
+      vpiArrayCreate(MAX_HARRIS_CORNERS, VPI_ARRAY_TYPE_U8, 0, &status_));
 
-  // Harris needs to run on CPU
-  CHECK_STATUS(vpiCreateHarrisCornerDetector(VPI_BACKEND_CPU, width, height,
+  // Run both Harris and PyrLK on the PVA so that this pipeline runs fully in
+  // parallel with any CPU/GPU work happening concurrently.
+  CHECK_STATUS(vpiCreateHarrisCornerDetector(VPI_BACKEND_PVA, width, height,
                                              &harrisPayload_));
-  CHECK_STATUS(vpiCreateOpticalFlowPyrLK(VPI_BACKEND_CUDA, width, height,
+  CHECK_STATUS(vpiCreateOpticalFlowPyrLK(VPI_BACKEND_PVA, width, height,
                                          VPI_IMAGE_FORMAT_U8, pyramidLevels_,
                                          0.5, &lkPayload_));
 
@@ -211,20 +234,23 @@ cv::Point2f SparseOpticalFlow::computeFlow(const cv::Mat& prevFrame,
     CHECK_STATUS(vpiImageSetWrappedOpenCVMat(imgCurrPL_, currFrame));
   }
 
-  // Convert to grayscale on CUDA
+  // Convert to grayscale on CUDA. Harris with PVA backend only supports S16
+  // input, distinct from the U8 copy used to build the pyramids for PyrLK.
   CHECK_STATUS(vpiSubmitConvertImageFormat(stream_, VPI_BACKEND_CUDA,
                                            imgPrevPL_, imgPrevGray_, nullptr));
   CHECK_STATUS(vpiSubmitConvertImageFormat(stream_, VPI_BACKEND_CUDA,
                                            imgCurrPL_, imgCurrGray_, nullptr));
+  CHECK_STATUS(vpiSubmitConvertImageFormat(
+      stream_, VPI_BACKEND_CUDA, imgPrevPL_, imgPrevGrayHarris_, nullptr));
 
   // Detect feature points to track in prevFrame using Harris corner detection
   VPIHarrisCornerDetectorParams harrisParams;
   CHECK_STATUS(vpiInitHarrisCornerDetectorParams(&harrisParams));
-  harrisParams.strengthThresh = 0.01f;
-  harrisParams.sensitivity = 0.04f;
+  harrisParams.strengthThresh = harrisStrengthThresh_;
+  harrisParams.sensitivity = harrisSensitivity_;
   CHECK_STATUS(vpiSubmitHarrisCornerDetector(
-      stream_, VPI_BACKEND_CPU, harrisPayload_, imgPrevGray_, keypointsPrev_,
-      scores_, &harrisParams));
+      stream_, VPI_BACKEND_PVA, harrisPayload_, imgPrevGrayHarris_,
+      keypointsPrev_, scores_, &harrisParams));
 
   // Wait for Harris corner detection to finish
   CHECK_STATUS(vpiStreamSync(stream_));
@@ -234,16 +260,16 @@ cv::Point2f SparseOpticalFlow::computeFlow(const cv::Mat& prevFrame,
   filterSortAndTruncateKeypoints(keypointsPrev_, scores_, includeRegion_,
                                  maxCorners_);
 
-  // Build pyramids for both frames
+  // Build pyramids for both frames and track the feature points from
+  // prevFrame into currFrame, both on PVA. Note: PVA only supports
+  // VPI_BORDER_ZERO for the pyramid generator.
   CHECK_STATUS(vpiSubmitGaussianPyramidGenerator(
-      stream_, VPI_BACKEND_CUDA, imgPrevGray_, pyrPrev_, VPI_BORDER_CLAMP));
+      stream_, VPI_BACKEND_PVA, imgPrevGray_, pyrPrev_, VPI_BORDER_ZERO));
   CHECK_STATUS(vpiSubmitGaussianPyramidGenerator(
-      stream_, VPI_BACKEND_CUDA, imgCurrGray_, pyrCurr_, VPI_BORDER_CLAMP));
-
-  // Track the feature points from prevFrame into currFrame
+      stream_, VPI_BACKEND_PVA, imgCurrGray_, pyrCurr_, VPI_BORDER_ZERO));
   VPIOpticalFlowPyrLKParams lkParams;
-  CHECK_STATUS(vpiInitOpticalFlowPyrLKParams(VPI_BACKEND_CUDA, &lkParams));
-  CHECK_STATUS(vpiSubmitOpticalFlowPyrLK(stream_, VPI_BACKEND_CUDA, lkPayload_,
+  CHECK_STATUS(vpiInitOpticalFlowPyrLKParams(VPI_BACKEND_PVA, &lkParams));
+  CHECK_STATUS(vpiSubmitOpticalFlowPyrLK(stream_, VPI_BACKEND_PVA, lkPayload_,
                                          pyrPrev_, pyrCurr_, keypointsPrev_,
                                          keypointsCurr_, status_, &lkParams));
 
