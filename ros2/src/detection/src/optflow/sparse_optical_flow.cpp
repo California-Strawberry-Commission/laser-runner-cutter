@@ -101,15 +101,13 @@ float median(std::vector<float>& v) {
 
 }  // namespace
 
-SparseOpticalFlow::SparseOpticalFlow(int32_t maxCorners, int32_t pyramidLevels,
+SparseOpticalFlow::SparseOpticalFlow(int32_t pyramidLevels, int32_t maxCorners,
                                      float harrisStrengthThresh,
-                                     float harrisSensitivity,
-                                     cv::Rect includeRegion)
-    : maxCorners_{maxCorners},
-      pyramidLevels_{pyramidLevels},
+                                     float harrisSensitivity)
+    : pyramidLevels_{pyramidLevels},
+      maxCorners_{maxCorners},
       harrisStrengthThresh_{harrisStrengthThresh},
-      harrisSensitivity_{harrisSensitivity},
-      includeRegion_{includeRegion} {
+      harrisSensitivity_{harrisSensitivity} {
   CHECK_STATUS(vpiStreamCreate(VPI_BACKEND_PVA | VPI_BACKEND_CUDA, &stream_));
 }
 
@@ -212,7 +210,8 @@ void SparseOpticalFlow::allocateBuffers(int32_t width, int32_t height) {
 }
 
 cv::Point2f SparseOpticalFlow::computeFlow(const cv::Mat& prevFrame,
-                                           const cv::Mat& currFrame) {
+                                           const cv::Mat& currFrame,
+                                           cv::Rect includeRegion) {
   if (prevFrame.empty() || currFrame.empty()) {
     throw std::invalid_argument("Input frames must not be empty");
   }
@@ -223,6 +222,7 @@ cv::Point2f SparseOpticalFlow::computeFlow(const cv::Mat& prevFrame,
   }
 
   allocateBuffers(prevFrame.cols, prevFrame.rows);
+  ensureInputMode(InputMemory::HOST);
 
   // Wrap the input frames. If the wrappers already exist, just rebind them to
   // the new frame data instead of recreating the VPIImage wrapper objects.
@@ -234,6 +234,70 @@ cv::Point2f SparseOpticalFlow::computeFlow(const cv::Mat& prevFrame,
     CHECK_STATUS(vpiImageSetWrappedOpenCVMat(imgCurrPL_, currFrame));
   }
 
+  return trackAndComputeMedianFlow(includeRegion);
+}
+
+cv::Point2f SparseOpticalFlow::computeFlow(const cv::cuda::GpuMat& prevFrame,
+                                           const cv::cuda::GpuMat& currFrame,
+                                           cv::Rect includeRegion) {
+  if (prevFrame.empty() || currFrame.empty()) {
+    throw std::invalid_argument("Input frames must not be empty");
+  }
+  if (prevFrame.size() != currFrame.size() ||
+      prevFrame.type() != currFrame.type()) {
+    throw std::invalid_argument(
+        "prevFrame and currFrame must have matching size and type");
+  }
+
+  allocateBuffers(prevFrame.cols, prevFrame.rows);
+  ensureInputMode(InputMemory::CUDA);
+
+  // Wrap the input frames. If the wrappers already exist, just rebind them to
+  // the new frame data instead of recreating the VPIImage wrapper objects.
+  wrapCudaMat(imgPrevPL_, prevFrame);
+  wrapCudaMat(imgCurrPL_, currFrame);
+
+  return trackAndComputeMedianFlow(includeRegion);
+}
+
+void SparseOpticalFlow::ensureInputMode(InputMemory mode) {
+  if (inputMemory_ != mode) {
+    vpiImageDestroy(imgPrevPL_);
+    vpiImageDestroy(imgCurrPL_);
+    imgPrevPL_ = nullptr;
+    imgCurrPL_ = nullptr;
+    inputMemory_ = mode;
+  }
+}
+
+void SparseOpticalFlow::wrapCudaMat(VPIImage& img,
+                                    const cv::cuda::GpuMat& mat) {
+  VPIImageFormat fmt = nv::vpi::detail::ToImageFormatFromOpenCVType(mat.type());
+  if (fmt == VPI_IMAGE_FORMAT_INVALID) {
+    throw std::invalid_argument("SparseOpticalFlow: unsupported GpuMat type");
+  }
+
+  VPIImageData imgData{};
+  imgData.bufferType = VPI_IMAGE_BUFFER_CUDA_PITCH_LINEAR;
+  imgData.buffer.pitch.format = fmt;
+  imgData.buffer.pitch.numPlanes = 1;
+  imgData.buffer.pitch.planes[0].pixelType =
+      vpiImageFormatGetPlanePixelType(fmt, 0);
+  imgData.buffer.pitch.planes[0].width = mat.cols;
+  imgData.buffer.pitch.planes[0].height = mat.rows;
+  imgData.buffer.pitch.planes[0].pitchBytes = static_cast<int32_t>(mat.step);
+  imgData.buffer.pitch.planes[0].data = mat.data;
+
+  if (img == nullptr) {
+    CHECK_STATUS(
+        vpiImageCreateWrapper(&imgData, nullptr, VPI_BACKEND_CUDA, &img));
+  } else {
+    CHECK_STATUS(vpiImageSetWrapper(img, &imgData));
+  }
+}
+
+cv::Point2f SparseOpticalFlow::trackAndComputeMedianFlow(
+    const cv::Rect& includeRegion) {
   // Convert to grayscale on CUDA. Harris with PVA backend only supports S16
   // input, distinct from the U8 copy used to build the pyramids for PyrLK.
   CHECK_STATUS(vpiSubmitConvertImageFormat(stream_, VPI_BACKEND_CUDA,
@@ -255,9 +319,9 @@ cv::Point2f SparseOpticalFlow::computeFlow(const cv::Mat& prevFrame,
   // Wait for Harris corner detection to finish
   CHECK_STATUS(vpiStreamSync(stream_));
   // Harris can find far more than maxCorners_ candidates on images, so we
-  // keep only points inside includeRegion_ and, of those, only the maxCorners_
-  // strongest.
-  filterSortAndTruncateKeypoints(keypointsPrev_, scores_, includeRegion_,
+  // keep only points inside includeRegion and, of those, only the
+  // maxCorners_ strongest.
+  filterSortAndTruncateKeypoints(keypointsPrev_, scores_, includeRegion,
                                  maxCorners_);
 
   // Build pyramids for both frames and track the feature points from
