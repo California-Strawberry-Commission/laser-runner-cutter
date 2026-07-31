@@ -1,4 +1,5 @@
 #include <CLI/CLI.hpp>
+#include <opencv2/core/cuda.hpp>
 #include <opencv2/opencv.hpp>
 
 #include "detection/optflow/sparse_optical_flow.hpp"
@@ -36,13 +37,18 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  SparseOpticalFlow opticalFlow{
-      200, 3, 0.01f, 0.04f, cv::Rect{includeX, includeY, includeW, includeH}};
+  cv::cuda::GpuMat gpuPrevFrame;
+  cv::cuda::GpuMat gpuCurrFrame;
+  gpuPrevFrame.upload(prevFrame);
+  gpuCurrFrame.upload(currFrame);
+
+  SparseOpticalFlow opticalFlow{};
+  cv::Rect includeRegion{includeX, includeY, includeW, includeH};
 
   // Warmup
   std::cout << "Warming up..." << std::endl;
   for (int i = 0; i < 10; ++i) {
-    opticalFlow.computeFlow(prevFrame, currFrame);
+    opticalFlow.computeFlow(gpuPrevFrame, gpuCurrFrame, includeRegion);
   }
 
   // Benchmarking
@@ -52,7 +58,8 @@ int main(int argc, char* argv[]) {
   cv::Point2f medianFlow;
   for (int i = 0; i < numIterations; ++i) {
     auto start{std::chrono::high_resolution_clock::now()};
-    medianFlow = opticalFlow.computeFlow(prevFrame, currFrame);
+    medianFlow =
+        opticalFlow.computeFlow(gpuPrevFrame, gpuCurrFrame, includeRegion);
     auto end{std::chrono::high_resolution_clock::now()};
     std::chrono::duration<double, std::milli> duration = end - start;
     totalTimeMs += duration.count();
