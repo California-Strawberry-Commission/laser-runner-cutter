@@ -135,6 +135,7 @@ cv::Point2f DenseOpticalFlow::computeFlow(const cv::Mat& prevFrame,
   }
 
   allocateBuffers(prevFrame.cols, prevFrame.rows);
+  ensureInputMode(InputMemory::HOST);
 
   // Wrap the input frames. If the wrappers already exist, just rebind them to
   // the new frame data instead of recreating the VPIImage wrapper objects.
@@ -146,6 +147,67 @@ cv::Point2f DenseOpticalFlow::computeFlow(const cv::Mat& prevFrame,
     CHECK_STATUS(vpiImageSetWrappedOpenCVMat(imgCurrPL_, currFrame));
   }
 
+  return trackAndComputeMedianFlow();
+}
+
+cv::Point2f DenseOpticalFlow::computeFlow(const cv::cuda::GpuMat& prevFrame,
+                                          const cv::cuda::GpuMat& currFrame) {
+  if (prevFrame.empty() || currFrame.empty()) {
+    throw std::invalid_argument("Input frames must not be empty");
+  }
+  if (prevFrame.size() != currFrame.size() ||
+      prevFrame.type() != currFrame.type()) {
+    throw std::invalid_argument(
+        "prevFrame and currFrame must have matching size and type");
+  }
+
+  allocateBuffers(prevFrame.cols, prevFrame.rows);
+  ensureInputMode(InputMemory::CUDA);
+
+  // Wrap the input frames. If the wrappers already exist, just rebind them to
+  // the new frame data instead of recreating the VPIImage wrapper objects.
+  wrapCudaMat(imgPrevPL_, prevFrame);
+  wrapCudaMat(imgCurrPL_, currFrame);
+
+  return trackAndComputeMedianFlow();
+}
+
+void DenseOpticalFlow::ensureInputMode(InputMemory mode) {
+  if (inputMemory_ != mode) {
+    vpiImageDestroy(imgPrevPL_);
+    vpiImageDestroy(imgCurrPL_);
+    imgPrevPL_ = nullptr;
+    imgCurrPL_ = nullptr;
+    inputMemory_ = mode;
+  }
+}
+
+void DenseOpticalFlow::wrapCudaMat(VPIImage& img, const cv::cuda::GpuMat& mat) {
+  VPIImageFormat fmt = nv::vpi::detail::ToImageFormatFromOpenCVType(mat.type());
+  if (fmt == VPI_IMAGE_FORMAT_INVALID) {
+    throw std::invalid_argument("DenseOpticalFlow: unsupported GpuMat type");
+  }
+
+  VPIImageData imgData{};
+  imgData.bufferType = VPI_IMAGE_BUFFER_CUDA_PITCH_LINEAR;
+  imgData.buffer.pitch.format = fmt;
+  imgData.buffer.pitch.numPlanes = 1;
+  imgData.buffer.pitch.planes[0].pixelType =
+      vpiImageFormatGetPlanePixelType(fmt, 0);
+  imgData.buffer.pitch.planes[0].width = mat.cols;
+  imgData.buffer.pitch.planes[0].height = mat.rows;
+  imgData.buffer.pitch.planes[0].pitchBytes = static_cast<int32_t>(mat.step);
+  imgData.buffer.pitch.planes[0].data = mat.data;
+
+  if (img == nullptr) {
+    CHECK_STATUS(
+        vpiImageCreateWrapper(&imgData, nullptr, VPI_BACKEND_CUDA, &img));
+  } else {
+    CHECK_STATUS(vpiImageSetWrapper(img, &imgData));
+  }
+}
+
+cv::Point2f DenseOpticalFlow::trackAndComputeMedianFlow() {
   // BGR/PL -> Y8/PL on CUDA
   CHECK_STATUS(vpiSubmitConvertImageFormat(stream_, VPI_BACKEND_CUDA,
                                            imgPrevPL_, imgPrevTmp_, nullptr));
