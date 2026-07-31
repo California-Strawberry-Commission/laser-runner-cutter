@@ -5,6 +5,7 @@
 #include <atomic>
 #include <deque>
 #include <filesystem>
+#include <future>
 #include <opencv2/core/cuda.hpp>
 #include <opencv2/cudaarithm.hpp>
 #include <opencv2/cudaimgproc.hpp>
@@ -12,6 +13,7 @@
 #include <opencv2/opencv.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
 
+#include "BS_thread_pool.hpp"
 #include "camera_control/utils/rgbd_alignment.hpp"
 #include "common/event.hpp"
 #include "common/ros_utils.hpp"
@@ -21,6 +23,7 @@
 #include "detection/detector/circle_detector.hpp"
 #include "detection/detector/laser_detector.hpp"
 #include "detection/detector/runner_detector.hpp"
+#include "detection/optflow/sparse_optical_flow.hpp"
 #include "detection_interfaces/msg/detection_result.hpp"
 #include "detection_interfaces/msg/detection_type.hpp"
 #include "detection_interfaces/msg/object_instance.hpp"
@@ -109,6 +112,12 @@ class DetectionNode : public rclcpp::Node {
     declare_parameter<float>("debug_video_fps", 30.0f);
     declare_parameter<std::string>("save_dir", "~/runner_cutter/camera");
     declare_parameter<std::string>("runner_model", "RunnerSegYoloV8l.engine");
+    declare_parameter<bool>("enable_optflow", true);
+    // Normalized [0, 1] rect bounds {min x, min y, width, height} to
+    // restrict sparse optical flow feature tracking to. Empty (default
+    // value) means no restriction.
+    declare_parameter<std::vector<float>>("optflow_normalized_bounds",
+                                          std::vector<float>{});
 
     /////////////
     // Publishers
@@ -219,6 +228,7 @@ class DetectionNode : public rclcpp::Node {
     laserDetector_ = std::make_unique<LaserDetector>();
     runnerDetector_ = std::make_unique<RunnerDetector>(getParamRunnerModel());
     circleDetector_ = std::make_unique<CircleDetector>();
+    sparseOpticalFlow_ = std::make_unique<SparseOpticalFlow>();
 
     detectionThread_ = std::thread(&DetectionNode::detectionThreadFn, this);
     debugDepthImageThread_ =
@@ -262,6 +272,18 @@ class DetectionNode : public rclcpp::Node {
 
   std::string getParamRunnerModel() {
     return get_parameter("runner_model").as_string();
+  }
+
+  bool getParamEnableOptflow() {
+    return get_parameter("enable_optflow").as_bool();
+  }
+
+  cv::Rect2d getParamOptflowNormalizedBounds() {
+    auto bounds{get_parameter("optflow_normalized_bounds").as_double_array()};
+    if (bounds.size() != 4) {
+      return cv::Rect2d();
+    }
+    return cv::Rect2d(bounds[0], bounds[1], bounds[2], bounds[3]);
   }
 
 #pragma endregion
@@ -317,10 +339,13 @@ class DetectionNode : public rclcpp::Node {
 
     // Allocate once up front to avoid overhead and fragmentation
     cv::cuda::GpuMat gpuRaw;
-    cv::cuda::GpuMat gpuRgb;
     cv::cuda::GpuMat gpuDebugImage;
     cv::Mat rgbImage;
     cv::Mat debugImage;
+    cv::cuda::GpuMat gpuPrevImage;
+    cv::cuda::GpuMat gpuCurrImage;
+
+    BS::thread_pool optflowThreadPool{1};
 
     while (!threadStopSignal_) {
       colorImageEvent_.wait();
@@ -345,9 +370,13 @@ class DetectionNode : public rclcpp::Node {
       gpuRaw.create(imgMsg->height, imgMsg->width, CV_8UC1);
       gpuRaw.upload(raw, cvStream0_);
 
-      // Demosaic on GPU
-      gpuRgb.create(imgMsg->height, imgMsg->width, CV_8UC3);
-      cv::cuda::demosaicing(gpuRaw, gpuRgb, cv::COLOR_BayerRG2RGB, -1,
+      // Swap so that gpuPrevImage holds the last iteration's frame data, and
+      // gpuCurrImage is ready to be overwritten with the new frame data.
+      std::swap(gpuCurrImage, gpuPrevImage);
+
+      // Demosaic on GPU, directly into this iteration's frame buffer
+      gpuCurrImage.create(imgMsg->height, imgMsg->width, CV_8UC3);
+      cv::cuda::demosaicing(gpuRaw, gpuCurrImage, cv::COLOR_BayerRG2RGB, -1,
                             cvStream0_);
 
       cvStream0_.waitForCompletion();
@@ -362,7 +391,7 @@ class DetectionNode : public rclcpp::Node {
       int debugImageHeight{
           static_cast<int>(std::round(debugImageWidth * aspectRatio))};
       gpuDebugImage.create(debugImageHeight, debugImageWidth, CV_8UC3);
-      cv::cuda::resize(gpuRgb, gpuDebugImage,
+      cv::cuda::resize(gpuCurrImage, gpuDebugImage,
                        cv::Size(debugImageWidth, debugImageHeight), 0.0, 0.0,
                        cv::INTER_NEAREST, cvStream1_);
 
@@ -385,6 +414,25 @@ class DetectionNode : public rclcpp::Node {
         enabledDetections = enabledDetections_;
       }
 
+      // If any detections are enabled, kick off optical flow
+      std::future<cv::Point2f> flowFuture;
+      if (getParamEnableOptflow() && !enabledDetections.empty() &&
+          !gpuPrevImage.empty() && gpuPrevImage.size() == gpuCurrImage.size()) {
+        cv::Rect2d normalizedBounds{getParamOptflowNormalizedBounds()};
+        cv::Rect includeRegion{
+            static_cast<int>(std::ceil(normalizedBounds.x * imgMsg->width)),
+            static_cast<int>(std::ceil(normalizedBounds.y * imgMsg->height)),
+            static_cast<int>(
+                std::floor(normalizedBounds.width * imgMsg->width)),
+            static_cast<int>(
+                std::floor(normalizedBounds.height * imgMsg->height))};
+        flowFuture = optflowThreadPool.submit_task(
+            [this, &gpuPrevImage, &gpuCurrImage, includeRegion]() {
+              return sparseOpticalFlow_->computeFlow(gpuPrevImage, gpuCurrImage,
+                                                     includeRegion);
+            });
+      }
+
       if (enabledDetections.find(
               detection_interfaces::msg::DetectionType::RUNNER) !=
           enabledDetections.end()) {
@@ -398,10 +446,17 @@ class DetectionNode : public rclcpp::Node {
                 std::floor(normalizedBounds.width * imgMsg->width)),
             static_cast<int>(
                 std::floor(normalizedBounds.height * imgMsg->height))};
-        auto runners{runnerDetector_->track(gpuRgb, bounds)};
+        auto runners{runnerDetector_->track(gpuCurrImage, bounds)};
+
+        // Wait for optical flow results
+        cv::Point2f displacement{0.0f, 0.0f};
+        if (flowFuture.valid()) {
+          displacement = flowFuture.get();
+        }
 
         // Create and publish DetectionResult
-        auto detectionResult{createDetectionResult(runners, imgMsg)};
+        auto detectionResult{
+            createDetectionResult(runners, imgMsg, displacement)};
         detectionsPublisher_->publish(detectionResult);
 
         // Draw detections to debug image
@@ -414,13 +469,20 @@ class DetectionNode : public rclcpp::Node {
           enabledDetections.end()) {
         // Copy RGB back to host
         rgbImage.create(imgMsg->height, imgMsg->width, CV_8UC3);
-        gpuRgb.download(rgbImage);
+        gpuCurrImage.download(rgbImage);
 
         // Run detection
         auto lasers{laserDetector_->detect(rgbImage)};
 
+        // Wait for optical flow results
+        cv::Point2f displacement{0.0f, 0.0f};
+        if (flowFuture.valid()) {
+          displacement = flowFuture.get();
+        }
+
         // Create and publish DetectionResult
-        auto detectionResult{createDetectionResult(lasers, imgMsg)};
+        auto detectionResult{
+            createDetectionResult(lasers, imgMsg, displacement)};
         detectionsPublisher_->publish(detectionResult);
 
         // Draw detections to debug image
@@ -433,18 +495,32 @@ class DetectionNode : public rclcpp::Node {
           enabledDetections.end()) {
         // Copy RGB back to host
         rgbImage.create(imgMsg->height, imgMsg->width, CV_8UC3);
-        gpuRgb.download(rgbImage);
+        gpuCurrImage.download(rgbImage);
 
         // Run detection
         auto circles{circleDetector_->detect(rgbImage)};
 
+        // Wait for optical flow results
+        cv::Point2f displacement{0.0f, 0.0f};
+        if (flowFuture.valid()) {
+          displacement = flowFuture.get();
+        }
+
         // Create and publish DetectionResult
-        auto detectionResult{createDetectionResult(circles, imgMsg)};
+        auto detectionResult{
+            createDetectionResult(circles, imgMsg, displacement)};
         detectionsPublisher_->publish(detectionResult);
 
         // Draw detections to debug image
         CircleDetector::drawDetections(debugImage, circles,
                                        cv::Size(imgMsg->width, imgMsg->height));
+      }
+
+      // Just in case optical flow was dispatched above but the result was never
+      // consumed, we wait for it here to ensure the task completes so that we
+      // can safely read/write from the GPU image buffers in the next iteration.
+      if (flowFuture.valid()) {
+        flowFuture.wait();
       }
 
       //////////////////////
@@ -559,13 +635,16 @@ class DetectionNode : public rclcpp::Node {
 
   detection_interfaces::msg::DetectionResult createDetectionResult(
       const std::vector<RunnerDetector::Runner>& detections,
-      const sensor_msgs::msg::Image::ConstSharedPtr image) {
+      const sensor_msgs::msg::Image::ConstSharedPtr image,
+      const cv::Point2f& displacement = cv::Point2f{}) {
     detection_interfaces::msg::DetectionResult detectionResult;
     detectionResult.detection_type =
         detection_interfaces::msg::DetectionType::RUNNER;
     detectionResult.timestamp =
         static_cast<double>(image->header.stamp.sec) +
         static_cast<double>(image->header.stamp.nanosec) * 1e-9;
+    detectionResult.displacement.x = displacement.x;
+    detectionResult.displacement.y = displacement.y;
 
     auto rgbdAlignment{getOrCreateRgbdAlignment()};
     auto depthXyz{getDepthXyz(image)};
@@ -612,13 +691,16 @@ class DetectionNode : public rclcpp::Node {
 
   detection_interfaces::msg::DetectionResult createDetectionResult(
       const std::vector<LaserDetector::Laser>& detections,
-      const sensor_msgs::msg::Image::ConstSharedPtr image) {
+      const sensor_msgs::msg::Image::ConstSharedPtr image,
+      const cv::Point2f& displacement = cv::Point2f{}) {
     detection_interfaces::msg::DetectionResult detectionResult;
     detectionResult.detection_type =
         detection_interfaces::msg::DetectionType::LASER;
     detectionResult.timestamp =
         static_cast<double>(image->header.stamp.sec) +
         static_cast<double>(image->header.stamp.nanosec) * 1e-9;
+    detectionResult.displacement.x = displacement.x;
+    detectionResult.displacement.y = displacement.y;
 
     auto rgbdAlignment{getOrCreateRgbdAlignment()};
     auto depthXyz{getDepthXyz(image)};
@@ -664,13 +746,16 @@ class DetectionNode : public rclcpp::Node {
 
   detection_interfaces::msg::DetectionResult createDetectionResult(
       const std::vector<CircleDetector::Circle>& detections,
-      const sensor_msgs::msg::Image::ConstSharedPtr image) {
+      const sensor_msgs::msg::Image::ConstSharedPtr image,
+      const cv::Point2f& displacement = cv::Point2f{}) {
     detection_interfaces::msg::DetectionResult detectionResult;
     detectionResult.detection_type =
         detection_interfaces::msg::DetectionType::CIRCLE;
     detectionResult.timestamp =
         static_cast<double>(image->header.stamp.sec) +
         static_cast<double>(image->header.stamp.nanosec) * 1e-9;
+    detectionResult.displacement.x = displacement.x;
+    detectionResult.displacement.y = displacement.y;
 
     auto rgbdAlignment{getOrCreateRgbdAlignment()};
     auto depthXyz{getDepthXyz(image)};
@@ -1172,6 +1257,7 @@ class DetectionNode : public rclcpp::Node {
   std::unique_ptr<LaserDetector> laserDetector_;
   std::unique_ptr<RunnerDetector> runnerDetector_;
   std::unique_ptr<CircleDetector> circleDetector_;
+  std::unique_ptr<SparseOpticalFlow> sparseOpticalFlow_;
   std::thread detectionThread_;
   std::thread debugDepthImageThread_;
   std::atomic<bool> threadStopSignal_{false};

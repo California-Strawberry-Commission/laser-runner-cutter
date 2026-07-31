@@ -12,8 +12,6 @@ namespace common {
  */
 class Event {
  public:
-  Event() : flag_(false) {}
-
   void set() {
     std::lock_guard<std::mutex> lock(mtx_);
     flag_ = true;
@@ -39,7 +37,7 @@ class Event {
  private:
   std::mutex mtx_;
   std::condition_variable cv_;
-  bool flag_;
+  bool flag_{false};
 };
 
 }  // namespace common
