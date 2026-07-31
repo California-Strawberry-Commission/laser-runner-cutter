@@ -15,6 +15,7 @@ import RunnerCutterCard, {
   RunnerCutterState,
 } from "@/components/runner-cutter/runner-cutter-card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import useROS from "@/lib/ros/useROS";
 import useCameraNode, {
@@ -25,7 +26,7 @@ import useDetectionNode, { DetectionType } from "@/lib/useDetectionNode";
 import useLaserNode from "@/lib/useLaserNode";
 import useLifecycleManagerNode from "@/lib/useLifecycleManagerNode";
 import { enumToLabel } from "@/lib/utils";
-import { AlertCircleIcon } from "lucide-react";
+import { CircleAlert, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
 const DEVICE_TEMPERATURE_ALERT_THRESHOLD = 70.0;
@@ -54,6 +55,7 @@ export default function Controls({
   const controlNode = useControlNode(controlNodeName);
 
   const [manualMode, setManualMode] = useState<boolean>(false);
+  const [showDepthPreview, setShowDepthPreview] = useState<boolean>(false);
 
   const onImageClick = useCallback(
     (normalizedX: number, normalizedY: number) => {
@@ -98,7 +100,7 @@ export default function Controls({
     cameraNode.state.depthDeviceTemperature >=
       DEVICE_TEMPERATURE_ALERT_THRESHOLD ? (
       <Alert variant="destructive">
-        <AlertCircleIcon />
+        <CircleAlert />
         <AlertTitle>Camera temperatures are high.</AlertTitle>
         <AlertDescription>
           <p>
@@ -253,19 +255,50 @@ export default function Controls({
         </CardContent>
       </Card>
       {deviceTemperatureAlert}
-      <FramePreviewLiveKit
-        className="w-full h-90"
-        topicName={`${detectionNodeName}/debug/image`}
-        enableStream={
-          cameraNode.state.deviceState === CameraDeviceState.STREAMING
-        }
-        onImageClick={onImageClick}
-        enableOverlay
-        overlayText={framePreviewOverlayText}
-        overlaySubtext={framePreviewOverlaySubtext}
-        overlayNormalizedRect={controlNode.state.normalizedLaserBounds}
-        showRotateButton
-      />
+      <div className="relative w-full">
+        <FramePreviewLiveKit
+          className="w-full h-90"
+          topicName={`${detectionNodeName}/debug/image`}
+          enableStream={
+            cameraNode.state.deviceState === CameraDeviceState.STREAMING
+          }
+          onImageClick={onImageClick}
+          enableOverlay
+          overlayText={framePreviewOverlayText}
+          overlaySubtext={framePreviewOverlaySubtext}
+          overlayNormalizedRect={controlNode.state.normalizedLaserBounds}
+          showRotateButton
+        />
+        {!showDepthPreview && (
+          <Button
+            className="absolute top-4 right-4"
+            variant="secondary"
+            size="sm"
+            onClick={() => setShowDepthPreview(true)}
+          >
+            Depth Preview
+          </Button>
+        )}
+        {showDepthPreview && (
+          <div className="absolute top-4 right-4 w-64 h-48">
+            <FramePreviewLiveKit
+              className="w-full h-full"
+              topicName={`${detectionNodeName}/debug/depth_image`}
+              enableStream={
+                cameraNode.state.deviceState === CameraDeviceState.STREAMING
+              }
+            />
+            <Button
+              className="absolute top-2 right-2 h-6 w-6"
+              variant="secondary"
+              size="icon"
+              onClick={() => setShowDepthPreview(false)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
