@@ -46,6 +46,9 @@ find_package(vpi REQUIRED)
 
 include_directories(include)
 
+# Add BS Thread Pool
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/bs_thread_pool/include)
+
 # Add CLI11
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/CLI11 ${CMAKE_CURRENT_BINARY_DIR}/cli11-build EXCLUDE_FROM_ALL)
 
@@ -119,7 +122,7 @@ target_link_libraries(optflow
 add_library(detection_node_composable SHARED
   src/detection_node.cpp
 )
-target_link_libraries(detection_node_composable PRIVATE detector camera_control::utils fmt::fmt ${OpenCV_LIBS})
+target_link_libraries(detection_node_composable PRIVATE detector optflow camera_control::utils fmt::fmt ${OpenCV_LIBS})
 ament_target_dependencies(detection_node_composable PUBLIC
   rclcpp
   rclcpp_components

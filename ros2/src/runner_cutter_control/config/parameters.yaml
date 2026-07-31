@@ -21,6 +21,8 @@ camera0:
 detection0:
   ros__parameters:
     runner_model: "RunnerSegYoloV8l.engine"
+    enable_optflow: False
+    optflow_normalized_bounds: [0.25, 0.25, 0.5, 0.5]
 laser0:
   ros__parameters:
     dac_type: "helios"
