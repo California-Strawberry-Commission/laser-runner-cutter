@@ -26,8 +26,9 @@ class SparseOpticalFlow {
   cv::Point2f computeFlow(const cv::Mat& prevFrame, const cv::Mat& currFrame,
                           cv::Rect includeRegion = cv::Rect());
 
-  // Same as above, but for frames already resident on the GPU. The device
-  // memory is wrapped directly (no host copy).
+  // Detects feature points in prevFrame within includeRegion, tracks them
+  // into currFrame, and returns the median displacement vector (dx, dy) in
+  // pixels over successfully tracked points.
   cv::Point2f computeFlow(const cv::cuda::GpuMat& prevFrame,
                           const cv::cuda::GpuMat& currFrame,
                           cv::Rect includeRegion = cv::Rect());

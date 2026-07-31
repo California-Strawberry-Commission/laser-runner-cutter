@@ -27,12 +27,17 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  DenseOpticalFlow opticalFlow{4, VPI_OPTICAL_FLOW_QUALITY_MEDIUM};
+  cv::cuda::GpuMat gpuPrevFrame;
+  cv::cuda::GpuMat gpuCurrFrame;
+  gpuPrevFrame.upload(prevFrame);
+  gpuCurrFrame.upload(currFrame);
+
+  DenseOpticalFlow opticalFlow{};
 
   // Warmup
   std::cout << "Warming up..." << std::endl;
   for (int i = 0; i < 10; ++i) {
-    opticalFlow.computeFlow(prevFrame, currFrame);
+    opticalFlow.computeFlow(gpuPrevFrame, gpuCurrFrame);
   }
 
   // Benchmarking
@@ -42,7 +47,7 @@ int main(int argc, char* argv[]) {
   cv::Point2f medianFlow;
   for (int i = 0; i < numIterations; ++i) {
     auto start{std::chrono::high_resolution_clock::now()};
-    medianFlow = opticalFlow.computeFlow(prevFrame, currFrame);
+    medianFlow = opticalFlow.computeFlow(gpuPrevFrame, gpuCurrFrame);
     auto end{std::chrono::high_resolution_clock::now()};
     std::chrono::duration<double, std::milli> duration = end - start;
     totalTimeMs += duration.count();
