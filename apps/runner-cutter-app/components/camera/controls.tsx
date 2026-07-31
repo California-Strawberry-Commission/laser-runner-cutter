@@ -280,7 +280,6 @@ export default function Controls({
         enableStream={
           cameraNode.state.deviceState === CameraDeviceState.STREAMING
         }
-        showRotateButton
       />
     </div>
   );
