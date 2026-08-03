@@ -331,12 +331,15 @@ void LucidCamera::startStream(const Arena::DeviceInfo& colorDeviceInfo,
 
   // Select GPIO line to take trigger signal from master (triton) to slave (helios)
   // Line 0 chosen because its range covers 24V trigger signal
-  Arena::SetNodeValue<GenICam::gcstring>(
+  // SYNCHRONIZED means cameras are synced at hardware level; unreachable until exposed by msg, inert for now
+  if (captureMode == CaptureMode::SYNCHRONIZED){
+    Arena::SetNodeValue<GenICam::gcstring>(
       depthDevice_->GetNodeMap(), "TriggerSelector", "FrameStart");
-  Arena::SetNodeValue<GenICam::gcstring>(
+    Arena::SetNodeValue<GenICam::gcstring>(
       depthDevice_->GetNodeMap(), "TriggerSource", "Line0"); // opto-isolated input
-  Arena::SetNodeValue<GenICam::gcstring>(
+    Arena::SetNodeValue<GenICam::gcstring>(
       depthDevice_->GetNodeMap(), "TriggerMode", "On");
+  }
   
     ////////////////////////
   // Set exposure and gain
