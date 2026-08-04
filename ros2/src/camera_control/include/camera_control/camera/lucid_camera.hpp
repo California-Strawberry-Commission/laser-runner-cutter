@@ -19,7 +19,7 @@ class LucidCamera {
                                                              "HTR", "HTW"};
 
   enum class State { STREAMING, CONNECTING, DISCONNECTED };
-  enum class CaptureMode { CONTINUOUS, SINGLE_FRAME };
+  enum class CaptureMode { CONTINUOUS, SINGLE_FRAME, SYNCHRONIZED };
 
   struct Frame {
     sensor_msgs::msg::Image::UniquePtr colorImage;
