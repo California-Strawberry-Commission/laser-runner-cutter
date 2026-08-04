@@ -181,4 +181,15 @@ install(DIRECTORY calibration_params
   DESTINATION share/${PROJECT_NAME}/
 )
 
+#############
+## Testing ##
+#############
+
+if(BUILD_TESTING)
+    find_package(ament_cmake_gtest REQUIRED)
+
+    ament_add_gtest(test_rgbd_alignment test/test_rgbd_alignment.cpp)
+    target_link_libraries(test_rgbd_alignment utils ${OpenCV_LIBS})
+endif()
+
 ament_package()
