@@ -331,8 +331,8 @@ void LucidCamera::startStream(const Arena::DeviceInfo& colorDeviceInfo,
 
   // Select GPIO line to take trigger signal from master (triton) to slave (helios)
   // Line 0 chosen because its range covers 24V trigger signal
-  // SYNCHRONIZED means cameras are synced at hardware level; unreachable until exposed by msg, inert for now
-  if (captureMode == CaptureMode::SYNCHRONIZED){
+  // SYNCHRONIZED means cameras are synced at hardware level; nothing sets this mode yet, inert for now.
+  if (captureMode == CaptureMode::SYNCHRONIZED) {
     Arena::SetNodeValue<GenICam::gcstring>(
       depthDevice_->GetNodeMap(), "TriggerSelector", "FrameStart");
     Arena::SetNodeValue<GenICam::gcstring>(
@@ -367,7 +367,6 @@ void LucidCamera::startStream(const Arena::DeviceInfo& colorDeviceInfo,
       depthCameraSerialNumber_.value(), depthFrameSize_.first,
       depthFrameSize_.second);
   callStateChangeCallback();
-
 }
 
 void LucidCamera::setNetworkSettings(Arena::IDevice* device) {
