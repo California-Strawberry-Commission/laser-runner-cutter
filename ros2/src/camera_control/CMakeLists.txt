@@ -187,9 +187,21 @@ install(DIRECTORY calibration_params
 
 if(BUILD_TESTING)
     find_package(ament_cmake_gtest REQUIRED)
+    find_package(launch_testing_ament_cmake REQUIRED)
 
+    # Run via: `./build/camera_control/test_rgbd_alignment`
     ament_add_gtest(test_rgbd_alignment test/test_rgbd_alignment.cpp)
     target_link_libraries(test_rgbd_alignment utils ${OpenCV_LIBS})
+
+    # Run via: `./build/camera_control/test_lucid_camera_integration`
+    # Requires a real Triton + Helios camera pair connected via Arena SDK.
+    ament_add_gtest(test_lucid_camera_integration
+      test/test_lucid_camera_integration.cpp)
+    target_link_libraries(test_lucid_camera_integration camera)
+
+    # Run via: `python -m launch_testing.launch_test src/camera_control/test/test_camera_control_node_integration.py`
+    # Requires a real Triton + Helios camera pair connected via Arena SDK.
+    add_launch_test(test/test_camera_control_node_integration.py TIMEOUT 120)
 endif()
 
 ament_package()
