@@ -218,6 +218,7 @@ install(DIRECTORY models
 
 if(BUILD_TESTING)
     find_package(ament_cmake_gtest REQUIRED)
+    find_package(launch_testing_ament_cmake REQUIRED)
 
     # Run via: `./build/detection/test_sparse_optical_flow`
     # Requires a Jetson with PVA hardware.
@@ -247,6 +248,11 @@ if(BUILD_TESTING)
     target_compile_definitions(test_runner_detector PRIVATE
       TEST_IMAGES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test_images")
     target_link_libraries(test_runner_detector detector ${OpenCV_LIBS})
+
+    # Run via: `python -m launch_testing.launch_test src/detection/test/test_detection_node.py`
+    # Requires a GPU whose TensorRT engine plan matches the one under models/,
+    # as well as PVA hardware.
+    add_launch_test(test/test_detection_node.py TIMEOUT 120)
 endif()
 
 ament_package()
