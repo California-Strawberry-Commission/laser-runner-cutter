@@ -232,6 +232,21 @@ if(BUILD_TESTING)
     target_compile_definitions(test_dense_optical_flow PRIVATE
       TEST_IMAGES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test_images")
     target_link_libraries(test_dense_optical_flow optflow ${OpenCV_LIBS})
+
+    # Run via: `./build/detection/test_yolov8`
+    # Requires a GPU whose TensorRT engine plan matches the one under models/.
+    ament_add_gtest(test_yolov8 test/detector/test_yolov8.cpp)
+    target_compile_definitions(test_yolov8 PRIVATE
+      TEST_IMAGES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test_images"
+      MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/models")
+    target_link_libraries(test_yolov8 detector ${OpenCV_LIBS})
+
+    # Run via: `./build/detection/test_runner_detector`
+    # Requires a GPU whose TensorRT engine plan matches the one under models/.
+    ament_add_gtest(test_runner_detector test/detector/test_runner_detector.cpp)
+    target_compile_definitions(test_runner_detector PRIVATE
+      TEST_IMAGES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test_images")
+    target_link_libraries(test_runner_detector detector ${OpenCV_LIBS})
 endif()
 
 ament_package()
