@@ -190,18 +190,18 @@ if(BUILD_TESTING)
     find_package(launch_testing_ament_cmake REQUIRED)
 
     # Run via: `./build/camera_control/test_rgbd_alignment`
-    ament_add_gtest(test_rgbd_alignment test/test_rgbd_alignment.cpp)
+    ament_add_gtest(test_rgbd_alignment test/utils/test_rgbd_alignment.cpp)
     target_link_libraries(test_rgbd_alignment utils ${OpenCV_LIBS})
 
-    # Run via: `./build/camera_control/test_lucid_camera_integration`
+    # Run via: `./build/camera_control/test_lucid_camera`
     # Requires a real Triton + Helios camera pair connected via Arena SDK.
-    ament_add_gtest(test_lucid_camera_integration
-      test/test_lucid_camera_integration.cpp)
-    target_link_libraries(test_lucid_camera_integration camera)
+    ament_add_gtest(test_lucid_camera
+      test/camera/test_lucid_camera.cpp)
+    target_link_libraries(test_lucid_camera camera)
 
-    # Run via: `python -m launch_testing.launch_test src/camera_control/test/test_camera_control_node_integration.py`
+    # Run via: `python -m launch_testing.launch_test src/camera_control/test/test_camera_control_node.py`
     # Requires a real Triton + Helios camera pair connected via Arena SDK.
-    add_launch_test(test/test_camera_control_node_integration.py TIMEOUT 120)
+    add_launch_test(test/test_camera_control_node.py TIMEOUT 120)
 endif()
 
 ament_package()
