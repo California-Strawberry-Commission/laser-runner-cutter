@@ -221,14 +221,14 @@ if(BUILD_TESTING)
 
     # Run via: `./build/detection/test_sparse_optical_flow`
     # Requires a Jetson with PVA hardware.
-    ament_add_gtest(test_sparse_optical_flow test/test_sparse_optical_flow.cpp)
+    ament_add_gtest(test_sparse_optical_flow test/optflow/test_sparse_optical_flow.cpp)
     target_compile_definitions(test_sparse_optical_flow PRIVATE
       TEST_IMAGES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test_images")
     target_link_libraries(test_sparse_optical_flow optflow ${OpenCV_LIBS})
 
     # Run via: `./build/detection/test_dense_optical_flow`
     # Requires a Jetson with an Optical Flow Accelerator.
-    ament_add_gtest(test_dense_optical_flow test/test_dense_optical_flow.cpp)
+    ament_add_gtest(test_dense_optical_flow test/optflow/test_dense_optical_flow.cpp)
     target_compile_definitions(test_dense_optical_flow PRIVATE
       TEST_IMAGES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test_images")
     target_link_libraries(test_dense_optical_flow optflow ${OpenCV_LIBS})
