@@ -116,14 +116,14 @@ SparseOpticalFlow::~SparseOpticalFlow() {
     vpiStreamSync(stream_);
   }
   destroyBuffers();
-  vpiImageDestroy(imgPrevPL_);
-  vpiImageDestroy(imgCurrPL_);
   vpiStreamDestroy(stream_);
 }
 
 void SparseOpticalFlow::destroyBuffers() {
   vpiPayloadDestroy(harrisPayload_);
   vpiPayloadDestroy(lkPayload_);
+  vpiImageDestroy(imgPrevPL_);
+  vpiImageDestroy(imgCurrPL_);
   vpiImageDestroy(imgPrevGray_);
   vpiImageDestroy(imgCurrGray_);
   vpiImageDestroy(imgPrevGrayHarris_);
@@ -136,6 +136,11 @@ void SparseOpticalFlow::destroyBuffers() {
 
   harrisPayload_ = nullptr;
   lkPayload_ = nullptr;
+  // imgPrevPL_/imgCurrPL_ wrap externally-owned frame data and must be
+  // recreated (not just rebound) whenever the frame size changes, so they are
+  // reset here alongside the other size-dependent buffers.
+  imgPrevPL_ = nullptr;
+  imgCurrPL_ = nullptr;
   imgPrevGray_ = nullptr;
   imgCurrGray_ = nullptr;
   imgPrevGrayHarris_ = nullptr;
