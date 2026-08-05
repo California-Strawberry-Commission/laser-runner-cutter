@@ -160,25 +160,25 @@ rclcpp_components_register_node(
 )
 
 # Tools
-add_executable(test_yolov8
-  src/tools/test_yolov8.cpp
+add_executable(benchmark_yolov8
+  src/tools/benchmark_yolov8.cpp
 )
-target_link_libraries(test_yolov8 PRIVATE CLI11::CLI11 detector ${OpenCV_LIBS})
+target_link_libraries(benchmark_yolov8 PRIVATE CLI11::CLI11 detector ${OpenCV_LIBS})
 
-add_executable(test_runner_detector
-  src/tools/test_runner_detector.cpp
+add_executable(run_runner_detector
+  src/tools/run_runner_detector.cpp
 )
-target_link_libraries(test_runner_detector PRIVATE CLI11::CLI11 detector ${OpenCV_LIBS})
+target_link_libraries(run_runner_detector PRIVATE CLI11::CLI11 detector ${OpenCV_LIBS})
 
-add_executable(test_optflow_dense
-  src/tools/test_optflow_dense.cpp
+add_executable(benchmark_optflow_dense
+  src/tools/benchmark_optflow_dense.cpp
 )
-target_link_libraries(test_optflow_dense PRIVATE CLI11::CLI11 optflow ${OpenCV_LIBS})
+target_link_libraries(benchmark_optflow_dense PRIVATE CLI11::CLI11 optflow ${OpenCV_LIBS})
 
-add_executable(test_optflow_sparse
-  src/tools/test_optflow_sparse.cpp
+add_executable(benchmark_optflow_sparse
+  src/tools/benchmark_optflow_sparse.cpp
 )
-target_link_libraries(test_optflow_sparse PRIVATE CLI11::CLI11 optflow ${OpenCV_LIBS})
+target_link_libraries(benchmark_optflow_sparse PRIVATE CLI11::CLI11 optflow ${OpenCV_LIBS})
 
 #############
 ## Install ##
@@ -195,10 +195,10 @@ install(TARGETS
 
 # Install tools
 install(TARGETS
-  test_yolov8
-  test_runner_detector
-  test_optflow_dense
-  test_optflow_sparse
+  benchmark_yolov8
+  run_runner_detector
+  benchmark_optflow_dense
+  benchmark_optflow_sparse
   DESTINATION lib/${PROJECT_NAME}
 )
 
