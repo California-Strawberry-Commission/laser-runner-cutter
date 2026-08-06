@@ -844,7 +844,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
     }
 
     while (!taskStopSignal_) {
-      auto trackOpt{tracker_->getNextPendingTrack()};
+      auto trackOpt{tracker_->activateNextPendingTrack()};
       if (!trackOpt) {
         return std::nullopt;
       }

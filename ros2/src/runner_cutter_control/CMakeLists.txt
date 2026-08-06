@@ -113,11 +113,6 @@ ament_target_dependencies(runner_cutter_control_node PUBLIC
 )
 
 # Tools
-add_executable(test_calibration
-  src/tools/test_calibration.cpp
-)
-target_link_libraries(test_calibration PRIVATE calibration)
-
 add_executable(test_predictor
   src/tools/test_predictor.cpp
 )
@@ -129,7 +124,6 @@ target_link_libraries(test_predictor PRIVATE prediction matplotlib_cpp)
 
 install(TARGETS
   runner_cutter_control_node
-  test_calibration
   test_predictor
   DESTINATION lib/${PROJECT_NAME})
 
@@ -154,6 +148,10 @@ if(BUILD_TESTING)
     ament_add_gtest(test_point_correspondences
       test/calibration/test_point_correspondences.cpp)
     target_link_libraries(test_point_correspondences calibration)
+
+    # Run via: `./build/runner_cutter_control/test_tracker`
+    ament_add_gtest(test_tracker test/tracking/test_tracker.cpp)
+    target_link_libraries(test_tracker tracking)
 endif()
 
 ament_package()
