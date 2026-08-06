@@ -63,19 +63,22 @@ class Tracker {
                                   float confidence = 1.0f);
 
   /**
-   * Get the next pending track.
+   * Pops the next pending track from the queue, setting its state to ACTIVE in
+   * the process.
    *
    * @return The next pending track.
    */
-  std::optional<std::shared_ptr<Track>> getNextPendingTrack();
+  std::optional<std::shared_ptr<Track>> activateNextPendingTrack();
 
   /**
    * Change the state of a track.
    *
    * @param trackId The track ID.
    * @param newState The new state.
+   * @return Whether the track was found and transitioned to newState. False
+   * if no track with trackId exists, or if it was already in newState.
    */
-  void processTrack(uint32_t trackId, Track::State newState);
+  bool processTrack(uint32_t trackId, Track::State newState);
 
   /**
    * Clear all tracks from the tracker.
@@ -83,9 +86,9 @@ class Tracker {
   void clear();
 
   /**
-   * Get a summary of all tracks with the count of each state.
+   * Get the number of tracks in each state.
    */
-  std::unordered_map<Track::State, size_t> getSummary() const;
+  std::unordered_map<Track::State, size_t> getCountsByState() const;
 
  private:
   std::unordered_map<uint32_t, std::shared_ptr<Track>> tracks_;

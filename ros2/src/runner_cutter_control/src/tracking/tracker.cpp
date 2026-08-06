@@ -45,7 +45,7 @@ std::shared_ptr<Track> Tracker::addTrack(uint32_t trackId,
                                          const PixelCoord& pixel,
                                          const Position& position,
                                          double timestampMs, float confidence) {
-  if (trackId <= 0) {
+  if (trackId == 0) {
     throw std::invalid_argument("Track ID must be positive");
   }
 
@@ -72,7 +72,7 @@ std::shared_ptr<Track> Tracker::addTrack(uint32_t trackId,
   return track;
 }
 
-std::optional<std::shared_ptr<Track>> Tracker::getNextPendingTrack() {
+std::optional<std::shared_ptr<Track>> Tracker::activateNextPendingTrack() {
   std::lock_guard<std::mutex> lock(tracksMutex_);
 
   if (pendingTracks_.empty()) {
@@ -85,24 +85,25 @@ std::optional<std::shared_ptr<Track>> Tracker::getNextPendingTrack() {
   return nextTrack;
 }
 
-void Tracker::processTrack(uint32_t trackId, Track::State newState) {
-  auto trackOpt{getTrack(trackId)};
-  if (!trackOpt) {
-    return;
-  }
-
-  auto track{std::move(*trackOpt)};
-  if (track->getState() == newState) {
-    return;
-  }
-
+bool Tracker::processTrack(uint32_t trackId, Track::State newState) {
   std::lock_guard<std::mutex> lock(tracksMutex_);
+
+  auto it{tracks_.find(trackId)};
+  if (it == tracks_.end()) {
+    return false;
+  }
+
+  auto& track{it->second};
+  if (track->getState() == newState) {
+    return false;
+  }
 
   // If the track is leaving the PENDING state, remove it from pendingTracks_
   if (track->getState() == Track::State::PENDING) {
-    auto it{std::find(pendingTracks_.begin(), pendingTracks_.end(), track)};
-    if (it != pendingTracks_.end()) {
-      pendingTracks_.erase(it);
+    auto pendingIt{
+        std::find(pendingTracks_.begin(), pendingTracks_.end(), track)};
+    if (pendingIt != pendingTracks_.end()) {
+      pendingTracks_.erase(pendingIt);
     }
   }
 
@@ -117,6 +118,8 @@ void Tracker::processTrack(uint32_t trackId, Track::State newState) {
   if (newState == Track::State::COMPLETED || newState == Track::State::FAILED) {
     track->getPredictor().reset();
   }
+
+  return true;
 }
 
 void Tracker::clear() {
@@ -125,11 +128,11 @@ void Tracker::clear() {
   pendingTracks_.clear();
 }
 
-std::unordered_map<Track::State, size_t> Tracker::getSummary() const {
+std::unordered_map<Track::State, size_t> Tracker::getCountsByState() const {
   std::lock_guard<std::mutex> lock(tracksMutex_);
-  std::unordered_map<Track::State, size_t> summary;
+  std::unordered_map<Track::State, size_t> countsByState;
   for (const auto& track : tracks_) {
-    summary[track.second->getState()]++;
+    countsByState[track.second->getState()]++;
   }
-  return summary;
+  return countsByState;
 }
