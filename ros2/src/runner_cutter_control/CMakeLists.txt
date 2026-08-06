@@ -143,4 +143,17 @@ install(DIRECTORY config
   DESTINATION share/${PROJECT_NAME}/
 )
 
+#############
+## Testing ##
+#############
+
+if(BUILD_TESTING)
+    find_package(ament_cmake_gtest REQUIRED)
+
+    # Run via: `./build/runner_cutter_control/test_point_correspondences`
+    ament_add_gtest(test_point_correspondences
+      test/calibration/test_point_correspondences.cpp)
+    target_link_libraries(test_point_correspondences calibration)
+endif()
+
 ament_package()

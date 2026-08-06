@@ -1,7 +1,28 @@
 #include "runner_cutter_control/calibration/point_correspondences.hpp"
 
+#include <cmath>
 #include <iostream>
 #include <unsupported/Eigen/NonLinearOptimization>
+
+namespace {
+
+constexpr double MIN_HOMOGENEOUS_COORD{1e-3};
+
+// Normalizes a transformed homogeneous matrix (columns [x, y, w]) by its
+// third (homogeneous) column to get (x, y) coordinates, clamping the
+// denominator away from zero.
+Eigen::MatrixXd normalizeByHomogeneousCoordinate(
+    const Eigen::MatrixXd& transformed) {
+  Eigen::ArrayXd denom{transformed.col(2).array()};
+  denom = denom.unaryExpr([](double value) {
+    return std::abs(value) < MIN_HOMOGENEOUS_COORD
+               ? std::copysign(MIN_HOMOGENEOUS_COORD, value)
+               : value;
+  });
+  return transformed.array().colwise() / denom;
+}
+
+}  // namespace
 
 PointCorrespondences::PointCorrespondences()
     : cameraToLaserTransform_{Eigen::MatrixXd::Zero(4, 3)} {}
@@ -76,9 +97,8 @@ struct TransformResidual {
     Eigen::Map<const Eigen::MatrixXd> transform{params.data(), 4, 3};
 
     Eigen::MatrixXd transformed{cameraPositions * transform};
-    // Normalize by the third (homogeneous) coordinate to get (x, y) coordinates
-    Eigen::MatrixXd homogeneousTransformed{transformed.array().colwise() /
-                                           transformed.col(2).array()};
+    Eigen::MatrixXd homogeneousTransformed{
+        normalizeByHomogeneousCoordinate(transformed)};
 
     // Compute the residuals as the difference between transformed coords and
     // laser coords, flattened to a vector
@@ -210,6 +230,11 @@ void PointCorrespondences::updateCameraPixelToLaserCoordJacobian() {
 }
 
 float PointCorrespondences::getReprojectionError() const {
+  if (cameraPositions_.empty() || laserCoords_.empty() ||
+      cameraPositions_.size() != laserCoords_.size()) {
+    return 0.0f;
+  }
+
   // Homogeneous camera positions
   Eigen::MatrixXd cameraMat{cameraPositions_.size(), 4};
   for (size_t i = 0; i < cameraPositions_.size(); ++i) {
@@ -221,9 +246,8 @@ float PointCorrespondences::getReprojectionError() const {
   }
 
   Eigen::MatrixXd transformed{cameraMat * cameraToLaserTransform_};
-  // Normalize by the third (homogeneous) coordinate to get (x, y) coordinates
-  Eigen::MatrixXd homogeneousTransformed{transformed.array().colwise() /
-                                         transformed.col(2).array()};
+  Eigen::MatrixXd homogeneousTransformed{
+      normalizeByHomogeneousCoordinate(transformed)};
 
   float error{0.0f};
   for (int i = 0; i < homogeneousTransformed.rows(); ++i) {
