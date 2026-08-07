@@ -79,7 +79,6 @@ class RunnerCutterControlNode : public rclcpp::Node {
     //////////////
     // Subscribers
     //////////////
-
     rclcpp::SubscriptionOptions options;
     subscriberCallbackGroup_ =
         create_callback_group(rclcpp::CallbackGroupType::Reentrant);

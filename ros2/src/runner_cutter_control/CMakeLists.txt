@@ -143,6 +143,7 @@ install(DIRECTORY config
 
 if(BUILD_TESTING)
     find_package(ament_cmake_gtest REQUIRED)
+    find_package(launch_testing_ament_cmake REQUIRED)
 
     # Run via: `./build/runner_cutter_control/test_point_correspondences`
     ament_add_gtest(test_point_correspondences
@@ -157,6 +158,9 @@ if(BUILD_TESTING)
     ament_add_gtest(test_kalman_filter_predictor
       test/prediction/test_kalman_filter_predictor.cpp)
     target_link_libraries(test_kalman_filter_predictor prediction)
+
+    # Run via: `python -m launch_testing.launch_test src/runner_cutter_control/test/test_runner_cutter_control_node.py`
+    add_launch_test(test/test_runner_cutter_control_node.py TIMEOUT 120)
 endif()
 
 ament_package()
