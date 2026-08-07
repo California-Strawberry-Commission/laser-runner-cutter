@@ -113,10 +113,10 @@ ament_target_dependencies(runner_cutter_control_node PUBLIC
 )
 
 # Tools
-add_executable(test_predictor
-  src/tools/test_predictor.cpp
+add_executable(visualize_predictor
+  src/tools/visualize_predictor.cpp
 )
-target_link_libraries(test_predictor PRIVATE prediction matplotlib_cpp)
+target_link_libraries(visualize_predictor PRIVATE prediction matplotlib_cpp)
 
 #############
 ## Install ##
@@ -124,7 +124,7 @@ target_link_libraries(test_predictor PRIVATE prediction matplotlib_cpp)
 
 install(TARGETS
   runner_cutter_control_node
-  test_predictor
+  visualize_predictor
   DESTINATION lib/${PROJECT_NAME})
 
 # Install launch files
@@ -152,6 +152,11 @@ if(BUILD_TESTING)
     # Run via: `./build/runner_cutter_control/test_tracker`
     ament_add_gtest(test_tracker test/tracking/test_tracker.cpp)
     target_link_libraries(test_tracker tracking)
+
+    # Run via: `./build/runner_cutter_control/test_kalman_filter_predictor`
+    ament_add_gtest(test_kalman_filter_predictor
+      test/prediction/test_kalman_filter_predictor.cpp)
+    target_link_libraries(test_kalman_filter_predictor prediction)
 endif()
 
 ament_package()

@@ -13,26 +13,25 @@ KalmanFilterPredictor::KalmanFilterPredictor(double measurementNoiseStdMin,
   reset();
 }
 
-void KalmanFilterPredictor::add(double timestampSec,
+bool KalmanFilterPredictor::add(double timestampSec,
                                 const Measurement& measurement) {
   double dt{timestampSec - getLastTimestampSec()};
-  Predictor::add(timestampSec, measurement);
+  if (!Predictor::add(timestampSec, measurement)) {
+    return false;
+  }
 
   if (!initialized_) {
     x_.head<3>() = Eigen::Vector3d(
         measurement.position.x, measurement.position.y, measurement.position.z);
     initialized_ = true;
   } else {
-    if (dt <= 0.0) {
-      // Ignore out-of-order or duplicate timestamp
-      return;
-    };
-
     predictStep(dt);
     Eigen::Vector3d z{measurement.position.x, measurement.position.y,
                       measurement.position.z};
     updateStep(z, measurement.confidence);
   }
+
+  return true;
 }
 
 Position KalmanFilterPredictor::predict(double timestampSec) const {

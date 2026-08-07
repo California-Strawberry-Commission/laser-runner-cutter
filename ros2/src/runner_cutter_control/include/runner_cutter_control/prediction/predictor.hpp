@@ -12,17 +12,24 @@ class Predictor {
   };
 
   /**
-   * Add a new position measurement to the predictor. Calls to `add` for
-   * measurements must be done in sequential order with respect to their
-   * timestamps.
+   * Add a new position measurement to the predictor. Measurements with a
+   * timestamp at or before the last added measurement's timestamp are
+   * considered out-of-order and are ignored.
    *
-   * @param timestampSec Timestamp (in seconds) associated with the measurement.
+   * @param timestampSec Timestamp, in seconds, associated with the measurement.
    * @param measurement Measurement taken at the timestamp, which consists
    * of (x, y, z) position and confidence score.
+   * @return True if the measurement was added, and false if it was ignored
+   * for being out of order.
    */
-  virtual void add(double timestampSec, const Measurement& measurement) {
+  virtual bool add(double timestampSec, const Measurement& measurement) {
+    if (!history_.empty() && timestampSec <= lastTimestampSec_) {
+      return false;
+    }
+
     history_[timestampSec] = measurement;
     lastTimestampSec_ = timestampSec;
+    return true;
   }
 
   /**
