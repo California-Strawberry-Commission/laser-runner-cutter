@@ -223,16 +223,18 @@ TEST(TrackerTest, GetCountsByState) {
   tracker.addTrack(2, PIXEL_COORD_1, POSITION_1, 200.0);
   tracker.addTrack(3, PIXEL_COORD_1, POSITION_1, 300.0);
   tracker.addTrack(4, PIXEL_COORD_1, POSITION_1, 400.0);
+  tracker.addTrack(5, PIXEL_COORD_1, POSITION_1, 500.0);
   tracker.activateNextPendingTrack();  // track 1 -> ACTIVE
   tracker.activateNextPendingTrack();  // track 2 -> ACTIVE
   tracker.processTrack(3, Track::State::FAILED);
+  tracker.processTrack(4, Track::State::COMPLETED);
 
   auto countsByState{tracker.getCountsByState()};
 
   EXPECT_EQ(getCount(countsByState, Track::State::ACTIVE), 2u);
   EXPECT_EQ(getCount(countsByState, Track::State::FAILED), 1u);
   EXPECT_EQ(getCount(countsByState, Track::State::PENDING), 1u);
-  EXPECT_EQ(getCount(countsByState, Track::State::COMPLETED), 0u);
+  EXPECT_EQ(getCount(countsByState, Track::State::COMPLETED), 1u);
 }
 
 int main(int argc, char** argv) {
