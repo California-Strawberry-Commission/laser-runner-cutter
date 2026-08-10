@@ -23,30 +23,15 @@
 #include "rcl_interfaces/msg/log.hpp"
 #include "rclcpp/qos.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "rosbag2_cpp/writer.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
 #include "sensor_msgs/msg/compressed_image.hpp"
 #include "sensor_msgs/msg/image.hpp"
 #include "std_srvs/srv/trigger.hpp"
+#include "tf2_msgs/msg/tf_message.hpp"
 #include "tf2_ros/static_transform_broadcaster.h"
 
 namespace {
-
-std::string formatRosTimestamp(const builtin_interfaces::msg::Time& stamp) {
-  rclcpp::Time rosTime(stamp);
-  auto sec{static_cast<time_t>(rosTime.seconds())};
-  auto nsec{rosTime.nanoseconds() % 1'000'000'000};
-
-  // Format date + time
-  std::tm tm;
-  localtime_r(&sec, &tm);
-  std::ostringstream oss;
-  oss << std::put_time(&tm, "%Y%m%d%H%M%S");
-
-  // Add milliseconds
-  oss << std::setw(3) << std::setfill('0') << (nsec / 1'000'000);
-
-  return oss.str();
-}
 
 struct CalibrationParams {
   cv::Mat tritonIntrinsicMatrix;
@@ -284,6 +269,16 @@ class CameraControlNode : public rclcpp::Node {
         std::bind(&CameraControlNode::onGetState, this, std::placeholders::_1,
                   std::placeholders::_2),
         rmw_qos_profile_services_default, serviceCallbackGroup_);
+    startRecordingBagService_ = create_service<std_srvs::srv::Trigger>(
+        "~/start_recording_bag",
+        std::bind(&CameraControlNode::onStartRecordingBag, this,
+                  std::placeholders::_1, std::placeholders::_2),
+        rmw_qos_profile_services_default, serviceCallbackGroup_);
+    stopRecordingBagService_ = create_service<std_srvs::srv::Trigger>(
+        "~/stop_recording_bag",
+        std::bind(&CameraControlNode::onStopRecordingBag, this,
+                  std::placeholders::_1, std::placeholders::_2),
+        rmw_qos_profile_services_default, serviceCallbackGroup_);
 
     ///////////////
     // Camera Setup
@@ -314,6 +309,7 @@ class CameraControlNode : public rclcpp::Node {
     auto worldToDepthTransform{
         createTransformStamped("world", "depth_camera",
                                calibrationParams_.xyzToHeliosExtrinsicMatrix)};
+    staticTransforms_ = {worldToColorTransform, worldToDepthTransform};
     tfStaticBroadcaster_->sendTransform(worldToColorTransform);
     tfStaticBroadcaster_->sendTransform(worldToDepthTransform);
 
@@ -400,6 +396,20 @@ class CameraControlNode : public rclcpp::Node {
           cameraInfo->width = colorImage->width;
           cameraInfo->height = colorImage->height;
 
+          // Write to the rosbag (if recording) before moving the messages
+          // into publish() below.
+          {
+            std::lock_guard<std::mutex> lock(bagMutex_);
+            if (bagWriter_) {
+              bagWriter_->write(*colorImage,
+                                colorImagePublisher_->get_topic_name(),
+                                this->now());
+              bagWriter_->write(*cameraInfo,
+                                colorCameraInfoPublisher_->get_topic_name(),
+                                this->now());
+            }
+          }
+
           // Important: publish frames via zero-copy intra-process. Note that
           // the message needs to be a unique_ptr.
           colorImagePublisher_->publish(std::move(colorImage));
@@ -421,6 +431,22 @@ class CameraControlNode : public rclcpp::Node {
           cameraInfo->header = depthXyz->header;
           cameraInfo->width = depthXyz->width;
           cameraInfo->height = depthXyz->height;
+
+          // Write to the rosbag (if recording) before moving the messages
+          // into publish() below.
+          {
+            std::lock_guard<std::mutex> lock(bagMutex_);
+            if (bagWriter_) {
+              bagWriter_->write(*depthXyz, depthXyzPublisher_->get_topic_name(),
+                                this->now());
+              bagWriter_->write(*depthIntensity,
+                                depthIntensityPublisher_->get_topic_name(),
+                                this->now());
+              bagWriter_->write(*cameraInfo,
+                                depthCameraInfoPublisher_->get_topic_name(),
+                                this->now());
+            }
+          }
 
           // Important: publish frames via zero-copy intra-process. Note that
           // the message needs to be a unique_ptr.
@@ -452,6 +478,7 @@ class CameraControlNode : public rclcpp::Node {
       std::lock_guard<std::mutex> lock(lastColorImageMutex_);
       lastColorImage_.reset();
     }
+    stopRecordingBagInternal();
 
     response->success = true;
   }
@@ -543,6 +570,62 @@ class CameraControlNode : public rclcpp::Node {
     response->state = std::move(*getStateMsg());
   }
 
+  void onStartRecordingBag(
+      const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+      std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+    std::string bagPath;
+    {
+      std::lock_guard<std::mutex> lock(bagMutex_);
+      if (bagWriter_) {
+        response->success = false;
+        response->message =
+            "Bag recording already in progress: " + recordingBagPath_;
+        return;
+      }
+
+      // Create the save directory if it doesn't exist
+      std::string saveDir{common::expandUser(getParamSaveDir())};
+      std::filesystem::create_directories(saveDir);
+      bagPath = fmt::format("{}/bag_{}", saveDir,
+                            common::formatRosTimestamp(this->now()));
+
+      try {
+        bagWriter_ = std::make_unique<rosbag2_cpp::Writer>();
+        rosbag2_storage::StorageOptions storageOptions;
+        storageOptions.uri = bagPath;
+        storageOptions.storage_id = "sqlite3";
+        bagWriter_->open(storageOptions);
+
+        tf2_msgs::msg::TFMessage tfMsg;
+        tfMsg.transforms = staticTransforms_;
+        bagWriter_->write(tfMsg, "/tf_static", this->now());
+      } catch (const std::exception& e) {
+        bagWriter_.reset();
+        response->success = false;
+        response->message = std::string("Failed to open bag: ") + e.what();
+        return;
+      }
+
+      recordingBagPath_ = bagPath;
+    }
+
+    response->success = true;
+    response->message = bagPath;
+
+    publishState();
+    publishNotification("Started recording bag to " + bagPath);
+  }
+
+  void onStopRecordingBag(
+      const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+      std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+    bool stopped{stopRecordingBagInternal()};
+    response->success = stopped;
+    if (!stopped) {
+      response->message = "Bag recording was not active";
+    }
+  }
+
 #pragma endregion
 
   std::optional<std::string> saveImage() {
@@ -556,13 +639,13 @@ class CameraControlNode : public rclcpp::Node {
     }
 
     // Create the save directory if it doesn't exist
-    std::string saveDir{getParamSaveDir()};
-    saveDir = common::expandUser(saveDir);
+    std::string saveDir{common::expandUser(getParamSaveDir())};
     std::filesystem::create_directories(saveDir);
 
     // Generate the image file name and path
-    std::string filepath{fmt::format(
-        "{}/{}.jpg", saveDir, formatRosTimestamp(colorImage->header.stamp))};
+    std::string filepath{
+        fmt::format("{}/{}.jpg", saveDir,
+                    common::formatRosTimestamp(colorImage->header.stamp))};
 
     // Demosaic color image (which is BayerRG8) and save the image
     cv::Mat raw(colorImage->height, colorImage->width, CV_8UC1,
@@ -575,6 +658,25 @@ class CameraControlNode : public rclcpp::Node {
     publishNotification("Saved image: " + filepath);
 
     return filepath;
+  }
+
+  bool stopRecordingBagInternal() {
+    std::string path;
+    {
+      std::lock_guard<std::mutex> lock(bagMutex_);
+      if (!bagWriter_) {
+        return false;
+      }
+
+      bagWriter_->close();
+      bagWriter_.reset();
+      path = recordingBagPath_;
+      recordingBagPath_.clear();
+    }
+
+    publishState();
+    publishNotification("Stopped recording bag: " + path);
+    return true;
   }
 
 #pragma region State and notifs publishing
@@ -598,6 +700,10 @@ class CameraControlNode : public rclcpp::Node {
     auto msg{std::make_unique<camera_control_interfaces::msg::State>()};
     msg->device_state = getDeviceState();
     msg->interval_capture_active = (intervalCaptureTimer_ != nullptr);
+    {
+      std::lock_guard<std::mutex> lock(bagMutex_);
+      msg->recording_bag_active = (bagWriter_ != nullptr);
+    }
     auto exposureUsRange{camera_->getExposureUsRange()};
     msg->exposure_us_range.x = exposureUsRange.first;
     msg->exposure_us_range.y = exposureUsRange.second;
@@ -657,6 +763,8 @@ class CameraControlNode : public rclcpp::Node {
       stopIntervalCaptureService_;
   rclcpp::Service<camera_control_interfaces::srv::GetState>::SharedPtr
       getStateService_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr startRecordingBagService_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr stopRecordingBagService_;
   rclcpp::TimerBase::SharedPtr intervalCaptureTimer_;
   rclcpp::TimerBase::SharedPtr deviceTemperaturePublishTimer_;
 
@@ -669,6 +777,11 @@ class CameraControlNode : public rclcpp::Node {
   CalibrationParams calibrationParams_;
   sensor_msgs::msg::CameraInfo colorCameraInfo_;
   sensor_msgs::msg::CameraInfo depthCameraInfo_;
+  std::vector<geometry_msgs::msg::TransformStamped> staticTransforms_;
+
+  std::mutex bagMutex_;
+  std::unique_ptr<rosbag2_cpp::Writer> bagWriter_;
+  std::string recordingBagPath_;
 };
 
 RCLCPP_COMPONENTS_REGISTER_NODE(CameraControlNode)

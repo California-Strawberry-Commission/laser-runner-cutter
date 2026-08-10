@@ -17,11 +17,13 @@
   <build_depend>geometry_msgs</build_depend>
   <build_depend>tf2</build_depend>
   <build_depend>tf2_ros</build_depend>
+  <build_depend>tf2_msgs</build_depend>
+  <build_depend>rosbag2_cpp</build_depend>
   <build_depend>common</build_depend>
   <build_depend>camera_control_interfaces</build_depend>
   <build_depend>opencv4</build_depend>
   <build_depend>cv_bridge</build_depend>
-  
+
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>rclcpp</exec_depend>
   <exec_depend>rclcpp_components</exec_depend>
@@ -31,6 +33,8 @@
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>tf2</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>tf2_msgs</exec_depend>
+  <exec_depend>rosbag2_cpp</exec_depend>
   <exec_depend>common</exec_depend>
   <exec_depend>camera_control_interfaces</exec_depend>
   <exec_depend>opencv4</exec_depend>

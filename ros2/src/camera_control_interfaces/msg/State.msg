@@ -1,5 +1,6 @@
 uint8 device_state  # DeviceState.msg
 bool interval_capture_active
+bool recording_bag_active
 common_interfaces/Vector2 exposure_us_range
 common_interfaces/Vector2 gain_db_range
 float32 color_device_temperature

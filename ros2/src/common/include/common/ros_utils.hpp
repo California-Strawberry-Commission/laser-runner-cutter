@@ -1,9 +1,31 @@
 #pragma once
 
+#include <ctime>
+#include <iomanip>
 #include <rcl_interfaces/msg/log.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <sstream>
+#include <string>
 
 namespace common {
+
+inline std::string formatRosTimestamp(
+    const builtin_interfaces::msg::Time& stamp) {
+  rclcpp::Time rosTime(stamp);
+  auto sec{static_cast<time_t>(rosTime.seconds())};
+  auto nsec{rosTime.nanoseconds() % 1'000'000'000};
+
+  // Format date + time
+  std::tm tm;
+  localtime_r(&sec, &tm);
+  std::ostringstream oss;
+  oss << std::put_time(&tm, "%Y%m%d%H%M%S");
+
+  // Add milliseconds
+  oss << std::setw(3) << std::setfill('0') << (nsec / 1'000'000);
+
+  return oss.str();
+}
 
 inline void publishNotification(
     const rclcpp::Logger& logger,

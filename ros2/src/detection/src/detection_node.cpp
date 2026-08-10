@@ -1021,22 +1021,12 @@ class DetectionNode : public rclcpp::Node {
 
     if (!videoWriter_.isOpened()) {
       // Create the save directory if it doesn't exist
-      std::string saveDir{getParamSaveDir()};
-      saveDir = common::expandUser(saveDir);
+      std::string saveDir{common::expandUser(getParamSaveDir())};
       std::filesystem::create_directories(saveDir);
 
       // Generate the video file name and path
-      auto now{std::chrono::system_clock::now()};
-      auto timestamp{std::chrono::system_clock::to_time_t(now)};
-      std::stringstream datetimeString;
-      datetimeString << std::put_time(std::localtime(&timestamp),
-                                      "%Y%m%d%H%M%S");
-      auto ms{std::chrono::duration_cast<std::chrono::milliseconds>(
-                  now.time_since_epoch()) %
-              1000};
-      datetimeString << std::setw(3) << std::setfill('0') << ms.count();
-      std::string filepath{
-          fmt::format("{}/{}.avi", saveDir, datetimeString.str())};
+      std::string filepath{fmt::format(
+          "{}/{}.avi", saveDir, common::formatRosTimestamp(this->now()))};
 
       int width{debugImage.cols};
       int height{debugImage.rows};
