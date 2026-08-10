@@ -16,6 +16,7 @@ export enum CaptureMode {
 export type State = {
   deviceState: DeviceState;
   intervalCaptureActive: boolean;
+  recordingBagActive: boolean;
   exposureUsRange: [number, number];
   gainDbRange: [number, number];
   colorDeviceTemperature: number;
@@ -30,6 +31,7 @@ function convertStateMessage(message: any): State {
   return {
     deviceState: message.device_state as DeviceState,
     intervalCaptureActive: message.interval_capture_active,
+    recordingBagActive: message.recording_bag_active,
     exposureUsRange: [message.exposure_us_range.x, message.exposure_us_range.y],
     gainDbRange: [message.gain_db_range.x, message.gain_db_range.y],
     colorDeviceTemperature: message.color_device_temperature,
@@ -57,6 +59,7 @@ export default function useCameraNode(nodeName: string) {
     {
       deviceState: DeviceState.DISCONNECTED,
       intervalCaptureActive: false,
+      recordingBagActive: false,
       exposureUsRange: [0.0, 0.0],
       gainDbRange: [0.0, 0.0],
       colorDeviceTemperature: 0.0,
@@ -66,7 +69,7 @@ export default function useCameraNode(nodeName: string) {
       depthWidth: 0,
       depthHeight: 0,
     },
-    convertStateMessage
+    convertStateMessage,
   );
 
   const startDevice = node.useService(
@@ -76,16 +79,16 @@ export default function useCameraNode(nodeName: string) {
       (captureMode: CaptureMode = CaptureMode.CONTINUOUS) => ({
         capture_mode: captureMode,
       }),
-      []
+      [],
     ),
-    successOutputMapper
+    successOutputMapper,
   );
 
   const closeDevice = node.useService(
     "~/close_device",
     "std_srvs/Trigger",
     triggerInputMapper,
-    successOutputMapper
+    successOutputMapper,
   );
 
   const acquireSingleFrame = node.useService(
@@ -94,8 +97,8 @@ export default function useCameraNode(nodeName: string) {
     triggerInputMapper,
     useCallback(
       (_data: any) => _data.preview_image as { data: any; format: string },
-      []
-    )
+      [],
+    ),
   );
 
   const startIntervalCapture = node.useService(
@@ -103,27 +106,44 @@ export default function useCameraNode(nodeName: string) {
     "camera_control_interfaces/StartIntervalCapture",
     useCallback(
       (intervalSecs: number) => ({ interval_secs: intervalSecs }),
-      []
+      [],
     ),
-    successOutputMapper
+    successOutputMapper,
   );
 
   const stopIntervalCapture = node.useService(
     "~/stop_interval_capture",
     "std_srvs/Trigger",
     triggerInputMapper,
-    successOutputMapper
+    successOutputMapper,
   );
 
   const saveImage = node.useService(
     "~/save_image",
     "std_srvs/Trigger",
     triggerInputMapper,
-    successOutputMapper
+    successOutputMapper,
+  );
+
+  const startRecordingBag = node.useService(
+    "~/start_recording_bag",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper,
+  );
+
+  const stopRecordingBag = node.useService(
+    "~/stop_recording_bag",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper,
   );
 
   const getExposureUs = node.useGetParam<number>("exposure_us");
-  const setExposureUs = node.useSetParam<number>("exposure_us", ParamType.DOUBLE);
+  const setExposureUs = node.useSetParam<number>(
+    "exposure_us",
+    ParamType.DOUBLE,
+  );
 
   const getGainDb = node.useGetParam<number>("gain_db");
   const setGainDb = node.useSetParam<number>("gain_db", ParamType.DOUBLE);
@@ -133,7 +153,7 @@ export default function useCameraNode(nodeName: string) {
 
   const getImageCaptureIntervalSecs = node.useGetParam<number>(
     "image_capture_interval_secs",
-    ParamType.DOUBLE
+    ParamType.DOUBLE,
   );
 
   return {
@@ -145,6 +165,8 @@ export default function useCameraNode(nodeName: string) {
     startIntervalCapture,
     stopIntervalCapture,
     saveImage,
+    startRecordingBag,
+    stopRecordingBag,
     getExposureUs,
     setExposureUs,
     getGainDb,

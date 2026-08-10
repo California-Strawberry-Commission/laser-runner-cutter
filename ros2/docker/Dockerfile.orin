@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y software-properties-common curl python3
     ros-${ROS_DISTRO}-rosbridge-suite \
     ros-${ROS_DISTRO}-async-web-server-cpp \
     ros-${ROS_DISTRO}-diagnostic-updater \
+    ros-${ROS_DISTRO}-rosbag2-storage-mcap \
     && rm -rf /var/lib/apt/lists/*
 
 # GStreamer
