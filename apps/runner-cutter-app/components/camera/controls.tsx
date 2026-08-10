@@ -199,18 +199,6 @@ export default function Controls({
             <div className="flex flex-row items-center gap-4">
               <Button
                 disabled={disableButtons}
-                onClick={() =>
-                  detectionNode.state.recordingVideo
-                    ? detectionNode.stopRecordingVideo()
-                    : detectionNode.startRecordingVideo()
-                }
-              >
-                {detectionNode.state.recordingVideo
-                  ? "Stop Recording Video"
-                  : "Start Recording Video"}
-              </Button>
-              <Button
-                disabled={disableButtons}
                 onClick={() => cameraNode.saveImage()}
               >
                 Save Image
@@ -245,6 +233,32 @@ export default function Controls({
                     : "Start Interval Capture"}
                 </Button>
               </div>
+            </div>
+            <div className="flex flex-row items-center gap-4">
+              <Button
+                disabled={disableButtons}
+                onClick={() =>
+                  detectionNode.state.recordingVideo
+                    ? detectionNode.stopRecordingVideo()
+                    : detectionNode.startRecordingVideo()
+                }
+              >
+                {detectionNode.state.recordingVideo
+                  ? "Stop Recording Debug Video"
+                  : "Start Recording Debug Video"}
+              </Button>
+              <Button
+                disabled={disableButtons}
+                onClick={() =>
+                  cameraNode.state.recordingBagActive
+                    ? cameraNode.stopRecordingBag()
+                    : cameraNode.startRecordingBag()
+                }
+              >
+                {cameraNode.state.recordingBagActive
+                  ? "Stop Recording ROS Bag"
+                  : "Start Recording ROS Bag"}
+              </Button>
             </div>
             <div className="flex flex-row items-center gap-4">
               <DetectionToggleButton
