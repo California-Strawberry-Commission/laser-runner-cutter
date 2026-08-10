@@ -593,7 +593,11 @@ class CameraControlNode : public rclcpp::Node {
         bagWriter_ = std::make_unique<rosbag2_cpp::Writer>();
         rosbag2_storage::StorageOptions storageOptions;
         storageOptions.uri = bagPath;
-        storageOptions.storage_id = "sqlite3";
+        storageOptions.storage_id = "mcap";
+        // Use zstd chunk compression at the fastest level. Writes happen inline
+        // on the camera capture thread, so we favor write throughput over
+        // maximum compression ratio.
+        storageOptions.storage_preset_profile = "zstd_fast";
         bagWriter_->open(storageOptions);
 
         tf2_msgs::msg::TFMessage tfMsg;
