@@ -8,27 +8,6 @@ SHELL ["/bin/bash", "-c"]
 
 WORKDIR /workspaces/ros2
 
-# ROS 2 Humble
-# Based on https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debians.html
-RUN apt-get update && apt-get install -y software-properties-common curl python3-pip && \
-    add-apt-repository universe -y && \
-    export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F'"' '{print $4}') && \
-    curl -L -o /tmp/ros2-apt-source.deb \
-    "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo ${UBUNTU_CODENAME:-${VERSION_CODENAME}})_all.deb" && \
-    dpkg -i /tmp/ros2-apt-source.deb && \
-    rm /tmp/ros2-apt-source.deb && \
-    apt-get update && apt-get install -y \
-    ros-${ROS_DISTRO}-ros-base \
-    ros-${ROS_DISTRO}-cv-bridge \
-    ros-${ROS_DISTRO}-image-transport \
-    ros-${ROS_DISTRO}-image-transport-plugins \
-    ros-dev-tools \
-    ros-${ROS_DISTRO}-rosbridge-suite \
-    ros-${ROS_DISTRO}-async-web-server-cpp \
-    ros-${ROS_DISTRO}-diagnostic-updater \
-    ros-${ROS_DISTRO}-rosbag2-storage-mcap \
-    && rm -rf /var/lib/apt/lists/*
-
 # GStreamer
 # Based on https://gstreamer.freedesktop.org/documentation/installing/on-linux.html?gi-language=c
 RUN apt-get update && apt-get install -y \
@@ -48,6 +27,27 @@ RUN apt-get update && apt-get install -y \
 COPY src/detection/scripts/build_opencv_cuda.sh /tmp/build_opencv_cuda.sh
 RUN apt-get update && apt-get install -y wget unzip cmake ninja-build python3-dev \
     && bash /tmp/build_opencv_cuda.sh \
+    && rm -rf /var/lib/apt/lists/*
+
+# ROS 2 Humble
+# Based on https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debians.html
+RUN apt-get update && apt-get install -y software-properties-common curl python3-pip && \
+    add-apt-repository universe -y && \
+    export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F'"' '{print $4}') && \
+    curl -L -o /tmp/ros2-apt-source.deb \
+    "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo ${UBUNTU_CODENAME:-${VERSION_CODENAME}})_all.deb" && \
+    dpkg -i /tmp/ros2-apt-source.deb && \
+    rm /tmp/ros2-apt-source.deb && \
+    apt-get update && apt-get install -y \
+    ros-${ROS_DISTRO}-ros-base \
+    ros-${ROS_DISTRO}-cv-bridge \
+    ros-${ROS_DISTRO}-image-transport \
+    ros-${ROS_DISTRO}-image-transport-plugins \
+    ros-dev-tools \
+    ros-${ROS_DISTRO}-rosbridge-suite \
+    ros-${ROS_DISTRO}-async-web-server-cpp \
+    ros-${ROS_DISTRO}-diagnostic-updater \
+    ros-${ROS_DISTRO}-rosbag2-storage-mcap \
     && rm -rf /var/lib/apt/lists/*
 
 # Foundational Python packages
@@ -109,7 +109,8 @@ RUN pip install --no-cache-dir \
     farm-ng-amiga \
     pyrealsense2 \
     "PyGObject==3.50.0" \
-    livekit-api
+    "livekit-api==1.1.1" \
+    "livekit-protocol==1.1.17"
 
 # Install aioros2. Note that it is a local package and thus needs to be installed after src/
 # has been copied.
