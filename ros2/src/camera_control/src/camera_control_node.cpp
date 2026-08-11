@@ -598,6 +598,8 @@ class CameraControlNode : public rclcpp::Node {
         // on the camera capture thread, so we favor write throughput over
         // maximum compression ratio.
         storageOptions.storage_preset_profile = "zstd_fast";
+        storageOptions.max_bagfile_size =
+            4ULL * 1024 * 1024 * 1024;  // 4GB per file
         bagWriter_->open(storageOptions);
 
         tf2_msgs::msg::TFMessage tfMsg;
