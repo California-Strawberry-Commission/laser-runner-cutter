@@ -433,6 +433,7 @@ class TopicStream:
         self._pipeline = None
         self._appsrc = None
         self._ice_gathering_complete = False
+        self._start_time_ns = None
 
     # endregion
 
@@ -479,14 +480,14 @@ class TopicStream:
         buf = Gst.Buffer.new_allocate(None, len(data), None)
         buf.fill(0, data)
 
+        # Use wall-clock arrival time (not the source's header.stamp) so pts reflects
+        # actual delivery timing and stays monotonic regardless of upstream timestamp
+        # behavior (which could happen with a looped/replayed rosbag, for example).
+        now_ns = time.monotonic_ns()
         if self._start_time_ns is None:
-            self._start_time_ns = (
-                msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
-            )
+            self._start_time_ns = now_ns
 
-        timestamp_ns = (  # Assigns ROS timestamp to video frame
-            msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
-        ) - self._start_time_ns
+        timestamp_ns = now_ns - self._start_time_ns
         buf.pts = timestamp_ns
         buf.dts = timestamp_ns
         buf.duration = Gst.CLOCK_TIME_NONE
