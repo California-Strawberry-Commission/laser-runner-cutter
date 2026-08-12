@@ -11,11 +11,11 @@ OPENCV_VERSION=4.12.0
 # necessary headers.
 ARCH=$(uname -m); \
   [ ! -e /usr/include/${ARCH}-linux-gnu/cudnn.h ] && \
-  sudo ln -s /usr/include/${ARCH}-linux-gnu/cudnn_v9.h /usr/include/${ARCH}-linux-gnu/cudnn.h || true; \
+  ln -s /usr/include/${ARCH}-linux-gnu/cudnn_v9.h /usr/include/${ARCH}-linux-gnu/cudnn.h || true; \
   [ ! -e /usr/include/${ARCH}-linux-gnu/cudnn_version.h ] && \
-  sudo ln -s /usr/include/${ARCH}-linux-gnu/cudnn_version_v9.h /usr/include/${ARCH}-linux-gnu/cudnn_version.h || true;
+  ln -s /usr/include/${ARCH}-linux-gnu/cudnn_version_v9.h /usr/include/${ARCH}-linux-gnu/cudnn_version.h || true;
 
-sudo apt install -y wget unzip cmake ninja-build python3-dev
+apt install -y wget unzip cmake ninja-build python3-dev
 
 mkdir /tmp/opencv
 cd /tmp/opencv
@@ -62,5 +62,5 @@ cmake -G Ninja \
       -D CUDNN_LIBRARY=/usr/lib/$(uname -m)-linux-gnu/libcudnn.so \
       ..
 
-ninja -j"$(nproc)" && sudo ninja install && sudo ldconfig
+ninja -j"$(nproc)" && ninja install && ldconfig
 rm -rf /tmp/opencv
