@@ -251,6 +251,12 @@ class LaserControlNode : public rclcpp::Node {
 
   void onPlay(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
               std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+    if (!dac_->isConnected()) {
+      response->success = false;
+      response->message = "DAC was not started";
+      return;
+    }
+
     dac_->play(getParamFps(), getParamPps(), getParamTransitionDurationMs());
     publishState();
     response->success = true;

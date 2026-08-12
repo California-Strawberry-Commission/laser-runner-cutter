@@ -55,13 +55,13 @@ void Helios::setColor(float r, float g, float b, float i) {
 }
 
 void Helios::play(int fps, int pps, float transitionDurationMs) {
-  if (!initialized_ || playing_) {
+  if (!initialized_ || playing_ || !isConnected()) {
     return;
   }
 
-  fps = std::max(0, fps);
+  fps = std::max(1, fps);
   // Helios max rate: 65535 pps
-  pps = std::clamp(pps, 0, 65535);
+  pps = std::clamp(pps, 1, Helios::MAX_PPS);
   // For Helios, we need to manually activate the shutter
   heliosDac_.SetShutter(dacIdx_, true);
   playing_ = true;
@@ -131,6 +131,8 @@ std::vector<HeliosPoint> Helios::getFrame(int fps, int pps,
   int numPoints{static_cast<int>(paths_.size())};
   int laxelsPerPoint{static_cast<int>(
       (numPoints == 0) ? std::round(ppf) : std::round(ppf / numPoints))};
+  // Ensure at least one laxel per point
+  laxelsPerPoint = std::max(1, laxelsPerPoint);
   int laxelsPerFrame{(numPoints == 0) ? laxelsPerPoint
                                       : laxelsPerPoint * numPoints};
 

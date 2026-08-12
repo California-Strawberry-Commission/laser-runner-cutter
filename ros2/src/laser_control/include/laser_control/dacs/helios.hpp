@@ -16,6 +16,7 @@ class Helios final : public DAC {
   static constexpr int Y_MAX = 4095;
   // Helios DAC uses 8 bits (unsigned) for r, g, b, i
   static constexpr int MAX_COLOR = 255;
+  static constexpr int MAX_PPS = 65535;
 
   ~Helios() override;
 

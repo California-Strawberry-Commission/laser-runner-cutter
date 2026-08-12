@@ -1,5 +1,7 @@
 #include "runner_cutter_control/clients/detection_client.hpp"
 
+#include "runner_cutter_control/clients/service_client_utils.hpp"
+
 DetectionClient::DetectionClient(rclcpp::Node& callerNode,
                                  const std::string& clientNodeName,
                                  int timeoutSecs)
@@ -45,14 +47,13 @@ DetectionClient::getDetection(uint8_t detectionType) {
   auto request{std::make_shared<
       detection_interfaces::srv::GetDetectionResult::Request>()};
   request->detection_type = detectionType;
-  auto future{getDetectionClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
+  auto result{
+      client_utils::callService<detection_interfaces::srv::GetDetectionResult>(
+          getDetectionClient_, request, timeoutSecs_, node_.get_logger())};
+  if (!result) {
     return std::make_shared<detection_interfaces::msg::DetectionResult>();
   }
 
-  auto result{future.get()};
   return std::make_shared<detection_interfaces::msg::DetectionResult>(
       result->result);
 }
@@ -68,102 +69,58 @@ bool DetectionClient::startDetection(
   normalizedBoundsMsg.y = normalizedBounds.width;
   normalizedBoundsMsg.z = normalizedBounds.height;
   request->normalized_bounds = normalizedBoundsMsg;
-  auto future{startDetectionClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
-
-  auto result{future.get()};
-  return result->success;
+  auto result{
+      client_utils::callService<detection_interfaces::srv::StartDetection>(
+          startDetectionClient_, request, timeoutSecs_, node_.get_logger())};
+  return result && result->success;
 }
 
 bool DetectionClient::stopDetection(uint8_t detectionType) {
   auto request{
       std::make_shared<detection_interfaces::srv::StopDetection::Request>()};
   request->detection_type = detectionType;
-  auto future{stopDetectionClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
-
-  auto result{future.get()};
-  return result->success;
+  auto result{
+      client_utils::callService<detection_interfaces::srv::StopDetection>(
+          stopDetectionClient_, request, timeoutSecs_, node_.get_logger())};
+  return result && result->success;
 }
 
 bool DetectionClient::stopAllDetections() {
   auto request{std::make_shared<std_srvs::srv::Trigger::Request>()};
-  auto future{stopAllDetectionsClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
-
-  auto result{future.get()};
-  return result->success;
+  auto result{client_utils::callService<std_srvs::srv::Trigger>(
+      stopAllDetectionsClient_, request, timeoutSecs_, node_.get_logger())};
+  return result && result->success;
 }
 
 bool DetectionClient::startRecordingVideo() {
   auto request{std::make_shared<std_srvs::srv::Trigger::Request>()};
-  auto future{startRecordingVideoClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
-
-  auto result{future.get()};
-  return result->success;
+  auto result{client_utils::callService<std_srvs::srv::Trigger>(
+      startRecordingVideoClient_, request, timeoutSecs_, node_.get_logger())};
+  return result && result->success;
 }
 
 bool DetectionClient::stopRecordingVideo() {
   auto request{std::make_shared<std_srvs::srv::Trigger::Request>()};
-  auto future{stopRecordingVideoClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
-
-  auto result{future.get()};
-  return result->success;
+  auto result{client_utils::callService<std_srvs::srv::Trigger>(
+      stopRecordingVideoClient_, request, timeoutSecs_, node_.get_logger())};
+  return result && result->success;
 }
 
 bool DetectionClient::setSaveDirectory(const std::string& saveDirectory) {
-  auto future{parametersClient_->set_parameters(
-      {rclcpp::Parameter("save_dir", saveDirectory)})};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Set parameter timed out.");
-    return false;
-  }
-
-  for (const auto& result : future.get()) {
-    if (!result.successful) {
-      RCLCPP_ERROR(node_.get_logger(), "Failed to set parameter: %s",
-                   result.reason.c_str());
-      return false;
-    }
-  }
-
-  return true;
+  return client_utils::setParameters(
+      parametersClient_, {rclcpp::Parameter("save_dir", saveDirectory)},
+      timeoutSecs_, node_.get_logger());
 }
 
 detection_interfaces::msg::State::SharedPtr DetectionClient::getState() {
   auto request{
       std::make_shared<detection_interfaces::srv::GetState::Request>()};
-  auto future{getStateClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
+  auto result{client_utils::callService<detection_interfaces::srv::GetState>(
+      getStateClient_, request, timeoutSecs_, node_.get_logger())};
+  if (!result) {
     return std::make_shared<detection_interfaces::msg::State>();
   }
 
-  auto result{future.get()};
   return std::make_shared<detection_interfaces::msg::State>(result->state);
 }
 
@@ -177,14 +134,13 @@ std::optional<std::vector<Position>> DetectionClient::getPositions(
     coordMsg.y = coord.v;
     request->normalized_pixel_coords.push_back(coordMsg);
   }
-  auto future{getPositionsClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
+  auto result{
+      client_utils::callService<detection_interfaces::srv::GetPositions>(
+          getPositionsClient_, request, timeoutSecs_, node_.get_logger())};
+  if (!result) {
     return std::nullopt;
   }
 
-  auto result{future.get()};
   std::vector<Position> positions;
   for (const auto& position : result->positions) {
     positions.push_back(Position{static_cast<float>(position.x),

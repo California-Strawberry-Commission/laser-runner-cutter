@@ -136,65 +136,74 @@ void LucidCamera::connectionThreadFn(CaptureMode captureMode, double exposureUs,
     if (isRunning_) {
       deviceConnected = false;
 
-      // Get device infos
-      arena_->UpdateDevices(1000);
-      std::vector<Arena::DeviceInfo> deviceInfos{arena_->GetDevices()};
+      try {
+        // Get device infos
+        arena_->UpdateDevices(1000);
+        std::vector<Arena::DeviceInfo> deviceInfos{arena_->GetDevices()};
 
-      std::optional<Arena::DeviceInfo> colorDeviceInfo{std::nullopt};
-      std::optional<Arena::DeviceInfo> depthDeviceInfo{std::nullopt};
+        std::optional<Arena::DeviceInfo> colorDeviceInfo{std::nullopt};
+        std::optional<Arena::DeviceInfo> depthDeviceInfo{std::nullopt};
 
-      // If we don't have a serial number of a device, attempt to find one among
-      // connected devices. Otherwise, find the DeviceInfo with the desired
-      // serial number.
-      if (!colorCameraSerialNumber_) {
-        colorDeviceInfo = findFirstDeviceWithModelPrefix(
-            deviceInfos, LucidCamera::COLOR_CAMERA_MODEL_PREFIXES);
-        if (colorDeviceInfo) {
-          colorCameraSerialNumber_ = colorDeviceInfo.value().SerialNumber();
-        }
-      } else {
-        colorDeviceInfo =
-            findDeviceWithSerial(deviceInfos, colorCameraSerialNumber_.value());
-      }
-      if (!depthCameraSerialNumber_) {
-        depthDeviceInfo = findFirstDeviceWithModelPrefix(
-            deviceInfos, LucidCamera::DEPTH_CAMERA_MODEL_PREFIXES);
-        if (depthDeviceInfo) {
-          depthCameraSerialNumber_ = depthDeviceInfo.value().SerialNumber();
-        }
-      } else {
-        depthDeviceInfo =
-            findDeviceWithSerial(deviceInfos, depthCameraSerialNumber_.value());
-      }
-
-      // If the devices are connected, set up and start streaming
-      if (colorDeviceInfo && depthDeviceInfo) {
-        spdlog::info(
-            "Device (color, model={}, serial={}, firmware={}) and device "
-            "(depth, model={}, serial={}, firmware={}) found",
-            colorDeviceInfo.value().ModelName(),
-            colorDeviceInfo.value().SerialNumber(),
-            colorDeviceInfo.value().DeviceVersion(),
-            depthDeviceInfo.value().ModelName(),
-            depthDeviceInfo.value().SerialNumber(),
-            depthDeviceInfo.value().DeviceVersion());
-        // Start the stream. Only set exposure/gain if this is the first time
-        // the device is connected
-        if (deviceWasEverConnected) {
-          startStream(colorDeviceInfo.value(), depthDeviceInfo.value(),
-                      captureMode);
+        // If we don't have a serial number of a device, attempt to find one
+        // among connected devices. Otherwise, find the DeviceInfo with the
+        // desired serial number.
+        if (!colorCameraSerialNumber_) {
+          colorDeviceInfo = findFirstDeviceWithModelPrefix(
+              deviceInfos, LucidCamera::COLOR_CAMERA_MODEL_PREFIXES);
+          if (colorDeviceInfo) {
+            colorCameraSerialNumber_ = colorDeviceInfo.value().SerialNumber();
+          }
         } else {
-          startStream(colorDeviceInfo.value(), depthDeviceInfo.value(),
-                      captureMode, exposureUs, gainDb);
+          colorDeviceInfo = findDeviceWithSerial(
+              deviceInfos, colorCameraSerialNumber_.value());
         }
-        deviceWasEverConnected = true;
-        deviceConnected = true;
-        {
-          std::lock_guard<std::mutex> lock(streamingStateCvMutex_);
-          streamingStateCv_.notify_all();
+        if (!depthCameraSerialNumber_) {
+          depthDeviceInfo = findFirstDeviceWithModelPrefix(
+              deviceInfos, LucidCamera::DEPTH_CAMERA_MODEL_PREFIXES);
+          if (depthDeviceInfo) {
+            depthCameraSerialNumber_ = depthDeviceInfo.value().SerialNumber();
+          }
+        } else {
+          depthDeviceInfo = findDeviceWithSerial(
+              deviceInfos, depthCameraSerialNumber_.value());
         }
-      } else {
-        spdlog::warn("Either color device or depth device was not found");
+
+        // If the devices are connected, set up and start streaming
+        if (colorDeviceInfo && depthDeviceInfo) {
+          spdlog::info(
+              "Device (color, model={}, serial={}, firmware={}) and device "
+              "(depth, model={}, serial={}, firmware={}) found",
+              colorDeviceInfo.value().ModelName(),
+              colorDeviceInfo.value().SerialNumber(),
+              colorDeviceInfo.value().DeviceVersion(),
+              depthDeviceInfo.value().ModelName(),
+              depthDeviceInfo.value().SerialNumber(),
+              depthDeviceInfo.value().DeviceVersion());
+          // Start the stream. Only set exposure/gain if this is the first
+          // time the device is connected
+          if (deviceWasEverConnected) {
+            startStream(colorDeviceInfo.value(), depthDeviceInfo.value(),
+                        captureMode);
+          } else {
+            startStream(colorDeviceInfo.value(), depthDeviceInfo.value(),
+                        captureMode, exposureUs, gainDb);
+          }
+          deviceWasEverConnected = true;
+          deviceConnected = true;
+          {
+            std::lock_guard<std::mutex> lock(streamingStateCvMutex_);
+            streamingStateCv_.notify_all();
+          }
+        } else {
+          spdlog::warn("Either color device or depth device was not found");
+          std::this_thread::sleep_for(std::chrono::seconds(5));
+        }
+      } catch (const std::exception& e) {
+        spdlog::error(
+            "Exception while connecting to or starting camera devices: {}. "
+            "Retrying.",
+            e.what());
+        stopStream();
         std::this_thread::sleep_for(std::chrono::seconds(5));
       }
     }
@@ -329,19 +338,20 @@ void LucidCamera::startStream(const Arena::DeviceInfo& colorDeviceInfo,
       depthDevice_->GetNodeMap(), "AcquisitionMode",
       captureMode == CaptureMode::SINGLE_FRAME ? "SingleFrame" : "Continuous");
 
-  // Select GPIO line to take trigger signal from master (triton) to slave (helios)
-  // Line 0 chosen because its range covers 24V trigger signal
+  // Select GPIO line to take trigger signal from master (triton) to slave
+  // (helios) Line 0 chosen because its range covers 24V trigger signal
   // SYNCHRONIZED means cameras are synced at hardware level.
   if (captureMode == CaptureMode::SYNCHRONIZED) {
-    Arena::SetNodeValue<GenICam::gcstring>(
-      depthDevice_->GetNodeMap(), "TriggerSelector", "FrameStart");
-    Arena::SetNodeValue<GenICam::gcstring>(
-      depthDevice_->GetNodeMap(), "TriggerSource", "Line0"); // opto-isolated input
-    Arena::SetNodeValue<GenICam::gcstring>(
-      depthDevice_->GetNodeMap(), "TriggerMode", "On");
+    Arena::SetNodeValue<GenICam::gcstring>(depthDevice_->GetNodeMap(),
+                                           "TriggerSelector", "FrameStart");
+    Arena::SetNodeValue<GenICam::gcstring>(depthDevice_->GetNodeMap(),
+                                           "TriggerSource",
+                                           "Line0");  // opto-isolated input
+    Arena::SetNodeValue<GenICam::gcstring>(depthDevice_->GetNodeMap(),
+                                           "TriggerMode", "On");
   }
-  
-    ////////////////////////
+
+  ////////////////////////
   // Set exposure and gain
   ////////////////////////
   if (exposureUs) {

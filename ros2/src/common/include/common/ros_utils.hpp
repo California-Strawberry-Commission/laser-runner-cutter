@@ -35,23 +35,23 @@ inline void publishNotification(
   uint8_t logMsgLevel{0};
   switch (level) {
     case rclcpp::Logger::Level::Debug:
-      RCLCPP_DEBUG(logger, msg.c_str());
+      RCLCPP_DEBUG(logger, "%s", msg.c_str());
       logMsgLevel = rcl_interfaces::msg::Log::DEBUG;
       break;
     case rclcpp::Logger::Level::Info:
-      RCLCPP_INFO(logger, msg.c_str());
+      RCLCPP_INFO(logger, "%s", msg.c_str());
       logMsgLevel = rcl_interfaces::msg::Log::INFO;
       break;
     case rclcpp::Logger::Level::Warn:
-      RCLCPP_WARN(logger, msg.c_str());
+      RCLCPP_WARN(logger, "%s", msg.c_str());
       logMsgLevel = rcl_interfaces::msg::Log::WARN;
       break;
     case rclcpp::Logger::Level::Error:
-      RCLCPP_ERROR(logger, msg.c_str());
+      RCLCPP_ERROR(logger, "%s", msg.c_str());
       logMsgLevel = rcl_interfaces::msg::Log::ERROR;
       break;
     case rclcpp::Logger::Level::Fatal:
-      RCLCPP_FATAL(logger, msg.c_str());
+      RCLCPP_FATAL(logger, "%s", msg.c_str());
       logMsgLevel = rcl_interfaces::msg::Log::FATAL;
       break;
     default:

@@ -493,11 +493,11 @@ class CameraControlNode : public rclcpp::Node {
     if (!frameOpt) {
       publishNotification("Failed to acquire frame",
                           rclcpp::Logger::Level::Error);
+      response->success = false;
+      response->message = "Failed to acquire frame";
       return;
     }
     LucidCamera::Frame frame{std::move(*frameOpt)};
-
-    publishNotification("Successfully acquired frame");
 
     // Demosaic color image (which is BayerRG8)
     cv::Mat raw(frame.colorImage->height, frame.colorImage->width, CV_8UC1,
@@ -512,10 +512,17 @@ class CameraControlNode : public rclcpp::Node {
     compressedImgMsg.format = "jpeg";
     if (!cv::imencode(".jpg", rgb, compressedImgMsg.data,
                       {cv::IMWRITE_JPEG_QUALITY, 90})) {
-      throw std::runtime_error("imencode failed (bayer->jpeg)");
+      publishNotification("Failed to encode acquired frame",
+                          rclcpp::Logger::Level::Error);
+      response->success = false;
+      response->message = "Failed to encode acquired frame";
+      return;
     }
 
+    publishNotification("Successfully acquired frame");
+
     response->preview_image = compressedImgMsg;
+    response->success = true;
   }
 
   void onSaveImage(const std::shared_ptr<std_srvs::srv::Trigger::Request>,

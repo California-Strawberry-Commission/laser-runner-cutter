@@ -98,6 +98,36 @@ std::optional<cv::Mat> getTransformMatrix(
   return T;
 }
 
+// Maps a detector's result element type to the corresponding
+// detection_interfaces::msg::DetectionType value.
+template <typename DetectionT>
+uint8_t detectionTypeFor();
+
+template <>
+uint8_t detectionTypeFor<RunnerDetector::Runner>() {
+  return detection_interfaces::msg::DetectionType::RUNNER;
+}
+template <>
+uint8_t detectionTypeFor<LaserDetector::Laser>() {
+  return detection_interfaces::msg::DetectionType::LASER;
+}
+template <>
+uint8_t detectionTypeFor<CircleDetector::Circle>() {
+  return detection_interfaces::msg::DetectionType::CIRCLE;
+}
+
+// Only runner detections carry a meaningful track ID. Other detection types
+// default to 0 (which indicates no track ID).
+template <typename DetectionT>
+uint32_t trackIdFor(const DetectionT&) {
+  return 0;
+}
+template <>
+uint32_t trackIdFor<RunnerDetector::Runner>(
+    const RunnerDetector::Runner& runner) {
+  return runner.trackId > 0 ? runner.trackId : 0;
+}
+
 }  // namespace
 
 class DetectionNode : public rclcpp::Node {
@@ -633,13 +663,13 @@ class DetectionNode : public rclcpp::Node {
     }
   }
 
+  template <typename DetectionT>
   detection_interfaces::msg::DetectionResult createDetectionResult(
-      const std::vector<RunnerDetector::Runner>& detections,
+      const std::vector<DetectionT>& detections,
       const sensor_msgs::msg::Image::ConstSharedPtr image,
       const cv::Point2f& displacement = cv::Point2f{}) {
     detection_interfaces::msg::DetectionResult detectionResult;
-    detectionResult.detection_type =
-        detection_interfaces::msg::DetectionType::RUNNER;
+    detectionResult.detection_type = detectionTypeFor<DetectionT>();
     detectionResult.timestamp =
         static_cast<double>(image->header.stamp.sec) +
         static_cast<double>(image->header.stamp.nanosec) * 1e-9;
@@ -659,15 +689,16 @@ class DetectionNode : public rclcpp::Node {
                         const_cast<uint8_t*>(depthXyz->data.data()),
                         depthXyz->step);
 
-    for (const auto& runner : detections) {
+    for (const auto& detection : detections) {
       common_interfaces::msg::Vector2 pointMsg;
-      pointMsg.x = static_cast<double>(runner.point.x);
-      pointMsg.y = static_cast<double>(runner.point.y);
+      pointMsg.x = static_cast<double>(detection.point.x);
+      pointMsg.y = static_cast<double>(detection.point.y);
       if (pointMsg.x < 0.0 || pointMsg.y < 0.0) {
         continue;
       }
 
-      auto positionOpt{rgbdAlignment->getPosition(runner.point, depthXyzMat)};
+      auto positionOpt{
+          rgbdAlignment->getPosition(detection.point, depthXyzMat)};
       if (positionOpt) {
         const auto& pos{*positionOpt};
         common_interfaces::msg::Vector3 positionMsg;
@@ -676,120 +707,10 @@ class DetectionNode : public rclcpp::Node {
         positionMsg.z = pos[2];
 
         detection_interfaces::msg::ObjectInstance objectInstance;
-        objectInstance.confidence = runner.conf;
+        objectInstance.confidence = detection.conf;
         objectInstance.point = pointMsg;
         objectInstance.position = positionMsg;
-        objectInstance.track_id = runner.trackId > 0 ? runner.trackId : 0;
-        detectionResult.instances.push_back(objectInstance);
-      } else {
-        detectionResult.invalid_points.push_back(pointMsg);
-      }
-    }
-
-    return detectionResult;
-  }
-
-  detection_interfaces::msg::DetectionResult createDetectionResult(
-      const std::vector<LaserDetector::Laser>& detections,
-      const sensor_msgs::msg::Image::ConstSharedPtr image,
-      const cv::Point2f& displacement = cv::Point2f{}) {
-    detection_interfaces::msg::DetectionResult detectionResult;
-    detectionResult.detection_type =
-        detection_interfaces::msg::DetectionType::LASER;
-    detectionResult.timestamp =
-        static_cast<double>(image->header.stamp.sec) +
-        static_cast<double>(image->header.stamp.nanosec) * 1e-9;
-    detectionResult.displacement.x = displacement.x;
-    detectionResult.displacement.y = displacement.y;
-
-    auto rgbdAlignment{getOrCreateRgbdAlignment()};
-    auto depthXyz{getDepthXyz(image)};
-    if (!rgbdAlignment || !depthXyz) {
-      RCLCPP_WARN(get_logger(),
-                  "[createDetectionResult] RgbdAlignment or depth XYZ is not "
-                  "available");
-      return detectionResult;
-    }
-    // Wrap the depthXyz data pointer (no copy)
-    cv::Mat depthXyzMat(depthXyz->height, depthXyz->width, CV_32FC3,
-                        const_cast<uint8_t*>(depthXyz->data.data()),
-                        depthXyz->step);
-
-    for (const auto& laser : detections) {
-      common_interfaces::msg::Vector2 pointMsg;
-      pointMsg.x = static_cast<double>(laser.point.x);
-      pointMsg.y = static_cast<double>(laser.point.y);
-      if (pointMsg.x < 0.0 || pointMsg.y < 0.0) {
-        continue;
-      }
-
-      auto positionOpt{rgbdAlignment->getPosition(laser.point, depthXyzMat)};
-      if (positionOpt) {
-        const auto& pos{*positionOpt};
-        common_interfaces::msg::Vector3 positionMsg;
-        positionMsg.x = pos[0];
-        positionMsg.y = pos[1];
-        positionMsg.z = pos[2];
-
-        detection_interfaces::msg::ObjectInstance objectInstance;
-        objectInstance.confidence = laser.conf;
-        objectInstance.point = pointMsg;
-        objectInstance.position = positionMsg;
-        detectionResult.instances.push_back(objectInstance);
-      } else {
-        detectionResult.invalid_points.push_back(pointMsg);
-      }
-    }
-
-    return detectionResult;
-  }
-
-  detection_interfaces::msg::DetectionResult createDetectionResult(
-      const std::vector<CircleDetector::Circle>& detections,
-      const sensor_msgs::msg::Image::ConstSharedPtr image,
-      const cv::Point2f& displacement = cv::Point2f{}) {
-    detection_interfaces::msg::DetectionResult detectionResult;
-    detectionResult.detection_type =
-        detection_interfaces::msg::DetectionType::CIRCLE;
-    detectionResult.timestamp =
-        static_cast<double>(image->header.stamp.sec) +
-        static_cast<double>(image->header.stamp.nanosec) * 1e-9;
-    detectionResult.displacement.x = displacement.x;
-    detectionResult.displacement.y = displacement.y;
-
-    auto rgbdAlignment{getOrCreateRgbdAlignment()};
-    auto depthXyz{getDepthXyz(image)};
-    if (!rgbdAlignment || !depthXyz) {
-      RCLCPP_WARN(get_logger(),
-                  "[createDetectionResult] RgbdAlignment or depth XYZ is not "
-                  "available");
-      return detectionResult;
-    }
-    // Wrap the depthXyz data pointer (no copy)
-    cv::Mat depthXyzMat(depthXyz->height, depthXyz->width, CV_32FC3,
-                        const_cast<uint8_t*>(depthXyz->data.data()),
-                        depthXyz->step);
-
-    for (const auto& circle : detections) {
-      common_interfaces::msg::Vector2 pointMsg;
-      pointMsg.x = static_cast<double>(circle.point.x);
-      pointMsg.y = static_cast<double>(circle.point.y);
-      if (pointMsg.x < 0.0 || pointMsg.y < 0.0) {
-        continue;
-      }
-
-      auto positionOpt{rgbdAlignment->getPosition(circle.point, depthXyzMat)};
-      if (positionOpt) {
-        const auto& pos{*positionOpt};
-        common_interfaces::msg::Vector3 positionMsg;
-        positionMsg.x = pos[0];
-        positionMsg.y = pos[1];
-        positionMsg.z = pos[2];
-
-        detection_interfaces::msg::ObjectInstance objectInstance;
-        objectInstance.confidence = circle.conf;
-        objectInstance.point = pointMsg;
-        objectInstance.position = positionMsg;
+        objectInstance.track_id = trackIdFor(detection);
         detectionResult.instances.push_back(objectInstance);
       } else {
         detectionResult.invalid_points.push_back(pointMsg);
@@ -961,13 +882,12 @@ class DetectionNode : public rclcpp::Node {
   void onStartRecordingVideo(
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-    if (videoRecordingTimer_ && videoRecordingTimer_->is_canceled() == false) {
-      videoRecordingTimer_->cancel();
-      videoRecordingTimer_.reset();
-      std::lock_guard<std::mutex> lock(videoWriterMutex_);
-      if (videoWriter_.isOpened()) {
-        videoWriter_.release();
-      }
+    std::lock_guard<std::mutex> lock(videoRecordingMutex_);
+
+    if (videoRecordingTimer_) {
+      response->success = false;
+      response->message = "Video recording already in progress";
+      return;
     }
 
     float fps{getParamDebugVideoFps()};
@@ -988,16 +908,16 @@ class DetectionNode : public rclcpp::Node {
   void onStopRecordingVideo(
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-    if (!videoRecordingTimer_) {
-      response->success = false;
-      response->message = "Video recording was not active";
-      return;
-    }
-
-    videoRecordingTimer_->cancel();
-    videoRecordingTimer_.reset();
     {
-      std::lock_guard<std::mutex> lock(videoWriterMutex_);
+      std::lock_guard<std::mutex> lock(videoRecordingMutex_);
+      if (!videoRecordingTimer_) {
+        response->success = false;
+        response->message = "Video recording was not active";
+        return;
+      }
+
+      videoRecordingTimer_->cancel();
+      videoRecordingTimer_.reset();
       if (videoWriter_.isOpened()) {
         videoWriter_.release();
       }
@@ -1008,7 +928,7 @@ class DetectionNode : public rclcpp::Node {
   }
 
   void writeVideoFrame() {
-    std::lock_guard<std::mutex> lock(videoWriterMutex_);
+    std::lock_guard<std::mutex> lock(videoRecordingMutex_);
 
     cv::Mat debugImage;
     {
@@ -1119,7 +1039,10 @@ class DetectionNode : public rclcpp::Node {
       }
     }
     msg->enabled_detection_types = enabledDetectionTypes;
-    msg->recording_video = videoRecordingTimer_ != nullptr;
+    {
+      std::lock_guard<std::mutex> lock(videoRecordingMutex_);
+      msg->recording_video = videoRecordingTimer_ != nullptr;
+    }
     return msg;
   }
 
@@ -1268,9 +1191,11 @@ class DetectionNode : public rclcpp::Node {
   std::deque<sensor_msgs::msg::Image::ConstSharedPtr> depthXyzQueue_;
   // Notifies the depth debug thread that a new depth frame is available
   common::Event depthXyzEvent_;
+  // Guards both videoRecordingTimer_ and videoWriter_, since they must be
+  // kept in sync with each other
+  std::mutex videoRecordingMutex_;
   rclcpp::TimerBase::SharedPtr videoRecordingTimer_;
   cv::VideoWriter videoWriter_;
-  std::mutex videoWriterMutex_;
   cv::Mat lastDebugImage_;
   std::mutex debugImageMutex_;
 };
