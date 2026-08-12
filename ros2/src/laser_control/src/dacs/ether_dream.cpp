@@ -66,7 +66,7 @@ void EtherDream::play(int fps, int pps, float transitionDurationMs) {
 
   fps = std::max(1, fps);
   // Ether Dream max rate: 100K pps
-  pps = std::clamp(pps, 1, 100000);
+  pps = std::clamp(pps, 1, EtherDream::MAX_PPS);
   playing_ = true;
 
   playbackThread_ = std::thread([this, fps, pps, transitionDurationMs]() {

@@ -1,6 +1,7 @@
 #include "runner_cutter_control/clients/laser_control_client.hpp"
 
 #include "common_interfaces/msg/vector2.hpp"
+#include "runner_cutter_control/clients/service_client_utils.hpp"
 
 LaserControlClient::LaserControlClient(rclcpp::Node& callerNode,
                                        const std::string& clientNodeName,
@@ -41,49 +42,23 @@ LaserControlClient::LaserControlClient(rclcpp::Node& callerNode,
 
 bool LaserControlClient::startDevice() {
   auto request{std::make_shared<std_srvs::srv::Trigger::Request>()};
-  auto future{startDeviceClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
-
-  auto result{future.get()};
-  return result->success;
+  auto result{client_utils::callService<std_srvs::srv::Trigger>(
+      startDeviceClient_, request, timeoutSecs_, node_.get_logger())};
+  return result && result->success;
 }
 
 bool LaserControlClient::closeDevice() {
   auto request{std::make_shared<std_srvs::srv::Trigger::Request>()};
-  auto future{closeDeviceClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
-
-  auto result{future.get()};
-  return result->success;
+  auto result{client_utils::callService<std_srvs::srv::Trigger>(
+      closeDeviceClient_, request, timeoutSecs_, node_.get_logger())};
+  return result && result->success;
 }
 
 bool LaserControlClient::setColor(const LaserColor& color) {
   std::vector<double> colorVec{color.r, color.g, color.b, color.i};
-  auto future{parametersClient_->set_parameters(
-      {rclcpp::Parameter("color", colorVec)})};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Set parameter timed out.");
-    return false;
-  }
-
-  for (const auto& result : future.get()) {
-    if (!result.successful) {
-      RCLCPP_ERROR(node_.get_logger(), "Failed to set parameter: %s",
-                   result.reason.c_str());
-      return false;
-    }
-  }
-
-  return true;
+  return client_utils::setParameters(parametersClient_,
+                                     {rclcpp::Parameter("color", colorVec)},
+                                     timeoutSecs_, node_.get_logger());
 }
 
 bool LaserControlClient::setPoint(const LaserCoord& point) {
@@ -102,53 +77,34 @@ bool LaserControlClient::setPoint(const LaserCoord& point) {
 
 bool LaserControlClient::clearPoint() {
   auto request{std::make_shared<std_srvs::srv::Trigger::Request>()};
-  auto future{clearPathsClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
-
-  auto result{future.get()};
-  return result->success;
+  auto result{client_utils::callService<std_srvs::srv::Trigger>(
+      clearPathsClient_, request, timeoutSecs_, node_.get_logger())};
+  return result && result->success;
 }
 
 bool LaserControlClient::play() {
   auto request{std::make_shared<std_srvs::srv::Trigger::Request>()};
-  auto future{playClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
-
-  auto result{future.get()};
-  return result->success;
+  auto result{client_utils::callService<std_srvs::srv::Trigger>(
+      playClient_, request, timeoutSecs_, node_.get_logger())};
+  return result && result->success;
 }
 
 bool LaserControlClient::stop() {
   auto request{std::make_shared<std_srvs::srv::Trigger::Request>()};
-  auto future{stopClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
-
-  auto result{future.get()};
-  return result->success;
+  auto result{client_utils::callService<std_srvs::srv::Trigger>(
+      stopClient_, request, timeoutSecs_, node_.get_logger())};
+  return result && result->success;
 }
 
 laser_control_interfaces::msg::State::SharedPtr LaserControlClient::getState() {
   auto request{
       std::make_shared<laser_control_interfaces::srv::GetState::Request>()};
-  auto future{getStateClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
+  auto result{
+      client_utils::callService<laser_control_interfaces::srv::GetState>(
+          getStateClient_, request, timeoutSecs_, node_.get_logger())};
+  if (!result) {
     return std::make_shared<laser_control_interfaces::msg::State>();
   }
 
-  auto result{future.get()};
   return std::make_shared<laser_control_interfaces::msg::State>(result->state);
 }

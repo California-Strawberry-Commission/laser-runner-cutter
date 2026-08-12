@@ -18,6 +18,7 @@ class EtherDream final : public DAC {
   static constexpr int16_t Y_MAX = 32767;
   // Ether Dream DAC uses 16 bits (unsigned) for r, g, b, i
   static constexpr uint16_t MAX_COLOR = 65535;
+  static constexpr int MAX_PPS = 100000;
 
   ~EtherDream() override;
 

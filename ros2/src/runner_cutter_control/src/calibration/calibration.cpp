@@ -54,6 +54,14 @@ bool Calibration::calibrate(
     return false;
   }
 
+  if (gridSize.first < 2 || gridSize.second < 2) {
+    spdlog::warn(
+        "Invalid calibration grid size ({}, {}). Each dimension must be at "
+        "least 2.",
+        gridSize.first, gridSize.second);
+    return false;
+  }
+
   // Get calibration points
   float xMin{xBounds.first};
   float xMax{xBounds.second};

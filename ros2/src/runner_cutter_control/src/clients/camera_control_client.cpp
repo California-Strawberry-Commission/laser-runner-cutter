@@ -1,5 +1,7 @@
 #include "runner_cutter_control/clients/camera_control_client.hpp"
 
+#include "runner_cutter_control/clients/service_client_utils.hpp"
+
 CameraControlClient::CameraControlClient(rclcpp::Node& callerNode,
                                          const std::string& clientNodeName,
                                          int timeoutSecs)
@@ -42,42 +44,30 @@ bool CameraControlClient::startDevice(uint8_t captureMode) {
   auto request{
       std::make_shared<camera_control_interfaces::srv::StartDevice::Request>()};
   request->capture_mode = captureMode;
-  auto future{startDeviceClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
-
-  auto result{future.get()};
-  return result->success;
+  auto result{
+      client_utils::callService<camera_control_interfaces::srv::StartDevice>(
+          startDeviceClient_, request, timeoutSecs_, node_.get_logger())};
+  return result && result->success;
 }
 
 bool CameraControlClient::closeDevice() {
   auto request{std::make_shared<std_srvs::srv::Trigger::Request>()};
-  auto future{closeDeviceClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
-
-  auto result{future.get()};
-  return result->success;
+  auto result{client_utils::callService<std_srvs::srv::Trigger>(
+      closeDeviceClient_, request, timeoutSecs_, node_.get_logger())};
+  return result && result->success;
 }
 
 std::optional<sensor_msgs::msg::CompressedImage::SharedPtr>
 CameraControlClient::acquireSingleFrame() {
   auto request{std::make_shared<
       camera_control_interfaces::srv::AcquireSingleFrame::Request>()};
-  auto future{acquireSingleFrameClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
+  auto result{client_utils::callService<
+      camera_control_interfaces::srv::AcquireSingleFrame>(
+      acquireSingleFrameClient_, request, timeoutSecs_, node_.get_logger())};
+  if (!result || !result->success) {
     return std::nullopt;
   }
 
-  auto result{future.get()};
   return std::make_shared<sensor_msgs::msg::CompressedImage>(
       result->preview_image);
 }
@@ -95,23 +85,9 @@ float CameraControlClient::getExposure() {
 }
 
 bool CameraControlClient::setExposure(float exposureUs) {
-  auto future{parametersClient_->set_parameters(
-      {rclcpp::Parameter("exposure_us", exposureUs)})};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Set parameter timed out.");
-    return false;
-  }
-
-  for (const auto& result : future.get()) {
-    if (!result.successful) {
-      RCLCPP_ERROR(node_.get_logger(), "Failed to set parameter: %s",
-                   result.reason.c_str());
-      return false;
-    }
-  }
-
-  return true;
+  return client_utils::setParameters(
+      parametersClient_, {rclcpp::Parameter("exposure_us", exposureUs)},
+      timeoutSecs_, node_.get_logger());
 }
 
 bool CameraControlClient::autoExposure() { return setExposure(-1.0f); }
@@ -129,99 +105,53 @@ float CameraControlClient::getGain() {
 }
 
 bool CameraControlClient::setGain(float gainDb) {
-  auto future{parametersClient_->set_parameters(
-      {rclcpp::Parameter("gain_db", gainDb)})};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Set parameter timed out.");
-    return false;
-  }
-
-  for (const auto& result : future.get()) {
-    if (!result.successful) {
-      RCLCPP_ERROR(node_.get_logger(), "Failed to set parameter: %s",
-                   result.reason.c_str());
-      return false;
-    }
-  }
-
-  return true;
+  return client_utils::setParameters(parametersClient_,
+                                     {rclcpp::Parameter("gain_db", gainDb)},
+                                     timeoutSecs_, node_.get_logger());
 }
 
 bool CameraControlClient::autoGain() { return setGain(-1.0f); }
 
 bool CameraControlClient::saveImage() {
   auto request{std::make_shared<std_srvs::srv::Trigger::Request>()};
-  auto future{saveImageClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
-
-  auto result{future.get()};
-  return result->success;
+  auto result{client_utils::callService<std_srvs::srv::Trigger>(
+      saveImageClient_, request, timeoutSecs_, node_.get_logger())};
+  return result && result->success;
 }
 
 bool CameraControlClient::startIntervalCapture(float intervalSecs) {
   auto request{std::make_shared<
       camera_control_interfaces::srv::StartIntervalCapture::Request>()};
   request->interval_secs = intervalSecs;
-  auto future{startIntervalCaptureClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
-
-  auto result{future.get()};
-  return result->success;
+  auto result{client_utils::callService<
+      camera_control_interfaces::srv::StartIntervalCapture>(
+      startIntervalCaptureClient_, request, timeoutSecs_, node_.get_logger())};
+  return result && result->success;
 }
 
 bool CameraControlClient::stopIntervalCapture() {
   auto request{std::make_shared<std_srvs::srv::Trigger::Request>()};
-  auto future{stopIntervalCaptureClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
-    return false;
-  }
-
-  auto result{future.get()};
-  return result->success;
+  auto result{client_utils::callService<std_srvs::srv::Trigger>(
+      stopIntervalCaptureClient_, request, timeoutSecs_, node_.get_logger())};
+  return result && result->success;
 }
 
 bool CameraControlClient::setSaveDirectory(const std::string& saveDirectory) {
-  auto future{parametersClient_->set_parameters(
-      {rclcpp::Parameter("save_dir", saveDirectory)})};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Set parameter timed out.");
-    return false;
-  }
-
-  for (const auto& result : future.get()) {
-    if (!result.successful) {
-      RCLCPP_ERROR(node_.get_logger(), "Failed to set parameter: %s",
-                   result.reason.c_str());
-      return false;
-    }
-  }
-
-  return true;
+  return client_utils::setParameters(
+      parametersClient_, {rclcpp::Parameter("save_dir", saveDirectory)},
+      timeoutSecs_, node_.get_logger());
 }
 
 camera_control_interfaces::msg::State::SharedPtr
 CameraControlClient::getState() {
   auto request{
       std::make_shared<camera_control_interfaces::srv::GetState::Request>()};
-  auto future{getStateClient_->async_send_request(request)};
-  if (future.wait_for(std::chrono::seconds(timeoutSecs_)) !=
-      std::future_status::ready) {
-    RCLCPP_ERROR(node_.get_logger(), "Service call timed out.");
+  auto result{
+      client_utils::callService<camera_control_interfaces::srv::GetState>(
+          getStateClient_, request, timeoutSecs_, node_.get_logger())};
+  if (!result) {
     return std::make_shared<camera_control_interfaces::msg::State>();
   }
 
-  auto result{future.get()};
   return std::make_shared<camera_control_interfaces::msg::State>(result->state);
 }
