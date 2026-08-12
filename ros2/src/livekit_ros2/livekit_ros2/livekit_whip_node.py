@@ -99,6 +99,11 @@ class TopicStream:
         self._ice_gathering_complete = False
         self._ice_gathering_timeout_source_id: Optional[int] = None
         self._start_time_ns: Optional[int] = None
+        # Bumped every time the pipeline is torn down, so that a WHIP POST
+        # response arriving from a background thread after the pipeline it
+        # was negotiating for has been rebuilt or destroyed is discarded
+        # rather than applied to a stale webrtcbin.
+        self._pipeline_generation = 0
 
     # region GStreamer pipeline
 
@@ -303,23 +308,38 @@ class TopicStream:
         if int(state) == int(GstWebRTC.WebRTCICEGatheringState.COMPLETE):
             self._logger.info(f"ICE gathering complete")
             self._ice_gathering_complete = True
-            self._send_offer_via_whip(webrtcbin)
 
-    def _send_offer_via_whip(self, webrtcbin):
+            # At this point ICE candidates have been gathered. Grab the local SDP which includes
+            # all of the candidates.
+            local = webrtcbin.get_property("local-description")
+            if local is None:
+                self._logger.error("Missing local description; cannot POST to WHIP.")
+                return
+
+            offer_sdp = local.sdp.as_text()
+            pipeline_generation = self._pipeline_generation
+
+            # HTTP POST the SDP offer to the WHIP URL on a separate thread to avoid blocking the
+            # GLib mainloop
+            threading.Thread(
+                target=self._send_offer_via_whip,
+                args=(
+                    webrtcbin,
+                    offer_sdp,
+                    pipeline_generation,
+                ),
+                name=f"whip-post-{self._topic}",
+                daemon=True,
+            ).start()
+
+    def _send_offer_via_whip(self, webrtcbin, offer_sdp, pipeline_generation):
         """
         HTTP POST the SDP offer to the WHIP URL to register the session with the ingress server.
-        Upon receiving a response from the ingress server, set the answer SDP locally.
+        Handle the response from the ingress server (or the failure) on the GLib mainloop in
+        _on_whip_post_complete.
         """
 
         self._logger.info(f"Sending offer via WHIP...")
-
-        # At this point ICE candidates have been gathered. Grab the local SDP which includes all of
-        # the candidates.
-        local = webrtcbin.get_property("local-description")
-        if local is None:
-            self._logger.error("Missing local description; cannot POST to WHIP.")
-            return
-        offer_sdp_text = local.sdp.as_text()
 
         resp = None
         for attempt in range(1, WHIP_POST_MAX_ATTEMPTS + 1):
@@ -330,7 +350,7 @@ class TopicStream:
             try:
                 resp = requests.post(
                     self._whip_url,
-                    data=offer_sdp_text,
+                    data=offer_sdp,
                     headers={"Content-Type": "application/sdp"},
                     timeout=10,
                 )
@@ -352,12 +372,28 @@ class TopicStream:
                 self._logger.info(f"Retrying WHIP POST in {delay}s...")
                 time.sleep(delay)
 
+        GLib.idle_add(self._on_whip_post_complete, webrtcbin, resp, pipeline_generation)
+
+    def _on_whip_post_complete(self, webrtcbin, resp, pipeline_generation):
+        """
+        Runs on the GLib mainloop thread after the WHIP POST attempt. Applies the SDP answer to
+        webrtcbin, or rebuilds the pipeline on failure. If the pipeline has since been rebuilt
+        (pipeline_generation is stale), the result is discarded instead of being applied to a
+        defunct webrtcbin.
+        """
+
+        if pipeline_generation != self._pipeline_generation:
+            self._logger.info(
+                "Pipeline was rebuilt while WHIP POST was in flight. Discarding stale response."
+            )
+            return GLib.SOURCE_REMOVE
+
         if resp is None or resp.status_code not in (200, 201):
             self._logger.error(
-                f"WHIP POST failed after {WHIP_POST_MAX_ATTEMPTS} attempts. Rebuilding pipeline"
+                f"WHIP POST failed after {WHIP_POST_MAX_ATTEMPTS} attempts. Rebuilding pipeline."
             )
             self._restart_pipeline()
-            return
+            return GLib.SOURCE_REMOVE
 
         self._whip_resource_url = resp.headers.get("Location", None)
         if self._whip_resource_url:
@@ -367,7 +403,7 @@ class TopicStream:
         ret, answer_sdp = GstSdp.SDPMessage.new_from_text(answer_text)
         if ret != GstSdp.SDPResult.OK:
             self._logger.error("Failed to parse WHIP SDP answer.")
-            return
+            return GLib.SOURCE_REMOVE
 
         answer = GstWebRTC.WebRTCSessionDescription.new(
             GstWebRTC.WebRTCSDPType.ANSWER, answer_sdp
@@ -376,6 +412,7 @@ class TopicStream:
         webrtcbin.emit("set-remote-description", answer, promise)
         promise.interrupt()
         self._logger.info("Remote description set. WebRTC is live.")
+        return GLib.SOURCE_REMOVE
 
     def _on_ice_candidate(self, webrtcbin, mlineindex, candidate):
         self._logger.info(f"Local ICE candidate: mline={mlineindex} cand={candidate}")
@@ -432,6 +469,7 @@ class TopicStream:
                 pass
         self._pipeline = None
         self._appsrc = None
+        self._pipeline_generation += 1
         self._ice_gathering_complete = False
         self._start_time_ns = None
 
@@ -476,9 +514,10 @@ class TopicStream:
                 format = "BGR"
             self._build_pipeline(msg.width, msg.height, format)
 
+        # Wrap the data directly instead of allocating a new GstBuffer and copying into
+        # it, to avoid a second full-frame copy on top of the bytes() conversion.
         data = bytes(msg.data)
-        buf = Gst.Buffer.new_allocate(None, len(data), None)
-        buf.fill(0, data)
+        buf = Gst.Buffer.new_wrapped(data)
 
         # Use wall-clock arrival time (not the source's header.stamp) so pts reflects
         # actual delivery timing and stays monotonic regardless of upstream timestamp
@@ -566,7 +605,7 @@ class LiveKitWhipNode(Node):
         Gst.init(None)
         self._glib_mainloop = GLib.MainLoop()
         self._glib_thread = threading.Thread(
-            target=self._glib_mainloop.run, daemon=True
+            target=self._glib_mainloop.run, name="glib-mainloop", daemon=True
         )
         self._glib_thread.start()
 
