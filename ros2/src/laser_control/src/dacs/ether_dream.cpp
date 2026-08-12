@@ -60,13 +60,13 @@ void EtherDream::setColor(float r, float g, float b, float i) {
 }
 
 void EtherDream::play(int fps, int pps, float transitionDurationMs) {
-  if (playing_) {
+  if (playing_ || !isConnected()) {
     return;
   }
 
-  fps = std::max(0, fps);
+  fps = std::max(1, fps);
   // Ether Dream max rate: 100K pps
-  pps = std::clamp(pps, 0, 100000);
+  pps = std::clamp(pps, 1, 100000);
   playing_ = true;
 
   playbackThread_ = std::thread([this, fps, pps, transitionDurationMs]() {
@@ -125,6 +125,8 @@ std::vector<etherdream_point> EtherDream::getFrame(int fps, int pps,
   int numPoints{static_cast<int>(paths_.size())};
   int laxelsPerPoint{static_cast<int>(
       (numPoints == 0) ? std::round(ppf) : std::round(ppf / numPoints))};
+  // Ensure at least one laxel per point
+  laxelsPerPoint = std::max(1, laxelsPerPoint);
   int laxelsPerFrame{(numPoints == 0) ? laxelsPerPoint
                                       : laxelsPerPoint * numPoints};
 
@@ -163,9 +165,9 @@ std::vector<etherdream_point> EtherDream::getFrame(int fps, int pps,
                                 0,
                                 0};
       }
-    }
 
-    ++pathIdx;
+      ++pathIdx;
+    }
   }
 
   return frame;
