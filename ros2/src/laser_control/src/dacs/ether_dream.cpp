@@ -114,9 +114,11 @@ void EtherDream::close() {
     }
   }
 
-  etherdream_stop(connectedDacId_);
-  dacConnected_ = false;
-  etherdream_disconnect(connectedDacId_);
+  if (dacConnected_) {
+    etherdream_stop(connectedDacId_);
+    dacConnected_ = false;
+    etherdream_disconnect(connectedDacId_);
+  }
 }
 
 std::vector<etherdream_point> EtherDream::getFrame(int fps, int pps,
