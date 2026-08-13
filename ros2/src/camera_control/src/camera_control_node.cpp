@@ -182,7 +182,6 @@ class CameraControlNode : public rclcpp::Node {
     /////////////
     // Parameters
     /////////////
-    declare_parameter<int>("camera_index", 0);
     declare_parameter<std::string>(
         "calibration_id",
         "1c0faf4b115d1c0faf4d17ce");  // calibration ID is <Triton MAC><Helios
@@ -291,27 +290,38 @@ class CameraControlNode : public rclcpp::Node {
         /*colorCameraSerialNumber=*/std::nullopt,
         /*depthCameraSerialNumber=*/std::nullopt, colorRoiSize,
         stateChangeCallback);
-    calibrationParams_ = readCalibrationParams(getParamCalibrationId());
-    colorCameraInfo_ =
-        createCameraInfo(calibrationParams_.tritonDistCoeffs,
-                         calibrationParams_.tritonIntrinsicMatrix,
-                         cv::Rect{(2048 - colorRoiSize.first) / 2,
-                                  (2048 - colorRoiSize.second) / 2,
-                                  colorRoiSize.first, colorRoiSize.second});
-    depthCameraInfo_ = createCameraInfo(
-        calibrationParams_.heliosDistCoeffs,
-        calibrationParams_.heliosIntrinsicMatrix, cv::Rect{0, 0, 640, 480});
+    try {
+      calibrationParams_ = readCalibrationParams(getParamCalibrationId());
+      colorCameraInfo_ =
+          createCameraInfo(calibrationParams_.tritonDistCoeffs,
+                           calibrationParams_.tritonIntrinsicMatrix,
+                           cv::Rect{(2048 - colorRoiSize.first) / 2,
+                                    (2048 - colorRoiSize.second) / 2,
+                                    colorRoiSize.first, colorRoiSize.second});
+      depthCameraInfo_ = createCameraInfo(
+          calibrationParams_.heliosDistCoeffs,
+          calibrationParams_.heliosIntrinsicMatrix, cv::Rect{0, 0, 640, 480});
 
-    // Publish extrinsics via tf2's StaticTransformBroadcaster once at startup
-    auto worldToColorTransform{
-        createTransformStamped("world", "color_camera",
-                               calibrationParams_.xyzToTritonExtrinsicMatrix)};
-    auto worldToDepthTransform{
-        createTransformStamped("world", "depth_camera",
-                               calibrationParams_.xyzToHeliosExtrinsicMatrix)};
-    staticTransforms_ = {worldToColorTransform, worldToDepthTransform};
-    tfStaticBroadcaster_->sendTransform(worldToColorTransform);
-    tfStaticBroadcaster_->sendTransform(worldToDepthTransform);
+      // Publish extrinsics via tf2's StaticTransformBroadcaster once at
+      // startup
+      auto worldToColorTransform{createTransformStamped(
+          "world", "color_camera",
+          calibrationParams_.xyzToTritonExtrinsicMatrix)};
+      auto worldToDepthTransform{createTransformStamped(
+          "world", "depth_camera",
+          calibrationParams_.xyzToHeliosExtrinsicMatrix)};
+      staticTransforms_ = {worldToColorTransform, worldToDepthTransform};
+      tfStaticBroadcaster_->sendTransform(worldToColorTransform);
+      tfStaticBroadcaster_->sendTransform(worldToDepthTransform);
+
+      calibrationLoaded_ = true;
+    } catch (const std::exception& e) {
+      RCLCPP_ERROR(get_logger(), "Failed to load camera calibration params: %s",
+                   e.what());
+      publishNotification(
+          std::string("Failed to load camera calibration params: ") + e.what(),
+          rclcpp::Logger::Level::Error);
+    }
 
     // Publish initial state
     publishState();
@@ -323,10 +333,6 @@ class CameraControlNode : public rclcpp::Node {
 
  private:
 #pragma region Param helpers
-
-  int getParamDacIndex() {
-    return static_cast<int>(get_parameter("camera_index").as_int());
-  }
 
   std::string getParamCalibrationId() {
     return get_parameter("calibration_id").as_string();
@@ -366,6 +372,14 @@ class CameraControlNode : public rclcpp::Node {
       std::shared_ptr<camera_control_interfaces::srv::StartDevice::Response>
           response) {
     if (camera_->getState() != LucidCamera::State::DISCONNECTED) {
+      response->success = false;
+      return;
+    }
+
+    if (!calibrationLoaded_) {
+      publishNotification(
+          "Calibration params missing. Camera cannot be started.",
+          rclcpp::Logger::Level::Error);
       response->success = false;
       return;
     }
@@ -499,30 +513,39 @@ class CameraControlNode : public rclcpp::Node {
     }
     LucidCamera::Frame frame{std::move(*frameOpt)};
 
-    // Demosaic color image (which is BayerRG8)
-    cv::Mat raw(frame.colorImage->height, frame.colorImage->width, CV_8UC1,
-                const_cast<uint8_t*>(frame.colorImage->data.data()),
-                frame.colorImage->step);
-    cv::Mat rgb;
-    cv::cvtColor(raw, rgb, cv::COLOR_BayerRG2RGB);
+    try {
+      // Demosaic color image (which is BayerRG8)
+      cv::Mat raw(frame.colorImage->height, frame.colorImage->width, CV_8UC1,
+                  const_cast<uint8_t*>(frame.colorImage->data.data()),
+                  frame.colorImage->step);
+      cv::Mat rgb;
+      cv::cvtColor(raw, rgb, cv::COLOR_BayerRG2RGB);
 
-    // Compress to JPEG and write to response
-    sensor_msgs::msg::CompressedImage compressedImgMsg;
-    compressedImgMsg.header = frame.colorImage->header;
-    compressedImgMsg.format = "jpeg";
-    if (!cv::imencode(".jpg", rgb, compressedImgMsg.data,
-                      {cv::IMWRITE_JPEG_QUALITY, 90})) {
-      publishNotification("Failed to encode acquired frame",
-                          rclcpp::Logger::Level::Error);
+      // Compress to JPEG and write to response
+      sensor_msgs::msg::CompressedImage compressedImgMsg;
+      compressedImgMsg.header = frame.colorImage->header;
+      compressedImgMsg.format = "jpeg";
+      if (!cv::imencode(".jpg", rgb, compressedImgMsg.data,
+                        {cv::IMWRITE_JPEG_QUALITY, 90})) {
+        publishNotification("Failed to encode acquired frame",
+                            rclcpp::Logger::Level::Error);
+        response->success = false;
+        response->message = "Failed to encode acquired frame";
+        return;
+      }
+
+      publishNotification("Successfully acquired frame");
+
+      response->preview_image = compressedImgMsg;
+      response->success = true;
+    } catch (const cv::Exception& e) {
+      publishNotification(
+          std::string("Failed to process acquired frame: ") + e.what(),
+          rclcpp::Logger::Level::Error);
       response->success = false;
-      response->message = "Failed to encode acquired frame";
-      return;
+      response->message =
+          std::string("Failed to process acquired frame: ") + e.what();
     }
-
-    publishNotification("Successfully acquired frame");
-
-    response->preview_image = compressedImgMsg;
-    response->success = true;
   }
 
   void onSaveImage(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
@@ -660,13 +683,23 @@ class CameraControlNode : public rclcpp::Node {
         fmt::format("{}/{}.jpg", saveDir,
                     common::formatRosTimestamp(colorImage->header.stamp))};
 
-    // Demosaic color image (which is BayerRG8) and save the image
-    cv::Mat raw(colorImage->height, colorImage->width, CV_8UC1,
-                const_cast<uint8_t*>(colorImage->data.data()),
-                colorImage->step);
-    cv::Mat rgb;
-    cv::cvtColor(raw, rgb, cv::COLOR_BayerRG2RGB);
-    cv::imwrite(filepath, rgb);
+    try {
+      // Demosaic color image (which is BayerRG8) and save the image
+      cv::Mat raw(colorImage->height, colorImage->width, CV_8UC1,
+                  const_cast<uint8_t*>(colorImage->data.data()),
+                  colorImage->step);
+      cv::Mat rgb;
+      cv::cvtColor(raw, rgb, cv::COLOR_BayerRG2RGB);
+      if (!cv::imwrite(filepath, rgb)) {
+        publishNotification("Failed to save image: " + filepath,
+                            rclcpp::Logger::Level::Error);
+        return std::nullopt;
+      }
+    } catch (const cv::Exception& e) {
+      publishNotification(std::string("Failed to save image: ") + e.what(),
+                          rclcpp::Logger::Level::Error);
+      return std::nullopt;
+    }
 
     publishNotification("Saved image: " + filepath);
 
@@ -785,6 +818,8 @@ class CameraControlNode : public rclcpp::Node {
   // Used to prevent frame callback from updating the current frame after the
   // camera device has been stopped
   std::atomic<bool> cameraStarted_{false};
+  // Whether calibration_id resolved to usable calibration params at startup
+  bool calibrationLoaded_{false};
   std::mutex lastColorImageMutex_;
   sensor_msgs::msg::Image::SharedPtr lastColorImage_;
   CalibrationParams calibrationParams_;
