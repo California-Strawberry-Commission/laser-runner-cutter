@@ -80,4 +80,20 @@ install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}/
 )
 
+#############
+## Testing ##
+#############
+
+if(BUILD_TESTING)
+    find_package(ament_cmake_gtest REQUIRED)
+
+    # Run via: `./build/laser_control/test_helios`
+    ament_add_gtest(test_helios test/dacs/test_helios.cpp)
+    target_link_libraries(test_helios dacs)
+
+    # Run via: `./build/laser_control/test_ether_dream`
+    ament_add_gtest(test_ether_dream test/dacs/test_ether_dream.cpp)
+    target_link_libraries(test_ether_dream dacs)
+endif()
+
 ament_package()

@@ -82,8 +82,12 @@ class Helios final : public DAC {
   void close() override;
 
  private:
+  // Allows tests to access the private getFrame()
+  friend class HeliosGetFrameTest;
+
   std::vector<HeliosPoint> getFrame(int fps, int pps,
                                     float transitionDurationMs);
+
   int getNativeStatus() const;
 
   HeliosDac heliosDac_{};

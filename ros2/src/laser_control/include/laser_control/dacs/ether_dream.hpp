@@ -83,6 +83,9 @@ class EtherDream final : public DAC {
   void close() override;
 
  private:
+  // Allows tests to access the private getFrame()
+  friend class EtherDreamGetFrameTest;
+
   std::vector<etherdream_point> getFrame(int fps, int pps,
                                          float transitionDurationMs);
   std::pair<int16_t, int16_t> denormalizePoint(float x, float y) const;
