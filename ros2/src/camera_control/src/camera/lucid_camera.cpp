@@ -198,11 +198,24 @@ void LucidCamera::connectionThreadFn(CaptureMode captureMode, double exposureUs,
           spdlog::warn("Either color device or depth device was not found");
           std::this_thread::sleep_for(std::chrono::seconds(5));
         }
+      } catch (const GenICam::GenericException& e) {
+        spdlog::error(
+            "GenICam exception while connecting to or starting camera "
+            "devices: {}. Retrying.",
+            e.what());
+        stopStream();
+        std::this_thread::sleep_for(std::chrono::seconds(5));
       } catch (const std::exception& e) {
         spdlog::error(
             "Exception while connecting to or starting camera devices: {}. "
             "Retrying.",
             e.what());
+        stopStream();
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+      } catch (...) {
+        spdlog::error(
+            "Unknown exception while connecting to or starting camera "
+            "devices. Retrying.");
         stopStream();
         std::this_thread::sleep_for(std::chrono::seconds(5));
       }
