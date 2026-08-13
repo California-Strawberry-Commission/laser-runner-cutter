@@ -197,6 +197,10 @@ if(BUILD_TESTING)
     ament_add_gtest(test_rgbd_alignment test/utils/test_rgbd_alignment.cpp)
     target_link_libraries(test_rgbd_alignment utils ${OpenCV_LIBS})
 
+    # Run via: `./build/camera_control/test_calibration`
+    ament_add_gtest(test_calibration test/camera/test_calibration.cpp)
+    target_link_libraries(test_calibration camera ${OpenCV_LIBS})
+
     # Run via: `./build/camera_control/test_lucid_camera`
     # Requires a real Triton + Helios camera pair connected via Arena SDK.
     ament_add_gtest(test_lucid_camera
