@@ -38,6 +38,17 @@ void EtherDream::connect(int dacIdx) {
     while (checkConnection_) {
       if (etherdream_is_connected(connectedDacId_) == 0) {
         spdlog::warn("DAC connection error. Attempting to reconnect.");
+        stop();
+        dacConnected_ = false;
+        etherdream_disconnect(connectedDacId_);
+        if (etherdream_connect(connectedDacId_) < 0) {
+          spdlog::warn("Failed to reconnect to DAC [{}]. Will retry.",
+                       dacIdToHex(connectedDacId_));
+        } else {
+          dacConnected_ = true;
+          spdlog::info("Reconnected to DAC with ID: {}",
+                       dacIdToHex(connectedDacId_));
+        }
       }
       std::this_thread::sleep_for(std::chrono::seconds(5));
     }

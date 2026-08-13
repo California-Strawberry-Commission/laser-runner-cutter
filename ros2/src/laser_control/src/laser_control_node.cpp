@@ -1,3 +1,5 @@
+#include <exception>
+
 #include "laser_control/dacs/dac.hpp"
 #include "laser_control/dacs/ether_dream.hpp"
 #include "laser_control/dacs/helios.hpp"
@@ -195,8 +197,14 @@ class LaserControlNode : public rclcpp::Node {
       response->success = false;
       response->message = "Could not find any DACs";
     } else {
-      dac_->connect(getParamDacIndex());
-      response->success = true;
+      try {
+        dac_->connect(getParamDacIndex());
+        response->success = true;
+      } catch (const std::exception& e) {
+        response->success = false;
+        response->message =
+            std::string("Failed to connect to DAC: ") + e.what();
+      }
     }
 
     connecting_ = false;
