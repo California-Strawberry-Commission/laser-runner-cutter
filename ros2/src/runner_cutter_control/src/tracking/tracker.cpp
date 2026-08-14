@@ -5,14 +5,6 @@
 
 #include "runner_cutter_control/prediction/kalman_filter_predictor.hpp"
 
-namespace {
-
-  // Maximum number of measurements in a track's predictor before it is reset.
-  // 1024 points gives reset at >= 34.1s (1024/30 = 34.13)
-  constexpr std::size_t kMaxPredictorPoints{1024};
-
-}
-
 bool Tracker::hasTrackWithState(Track::State state) const {
   std::lock_guard<std::mutex> lock(tracksMutex_);
   return std::any_of(
@@ -76,13 +68,6 @@ std::shared_ptr<Track> Tracker::addTrack(uint32_t trackId,
 
   // Update predictor for the track
   track->getPredictor().add(timestampMs / 1000.0, {position, confidence});
-
-  // Bound predictor history, measurement readded because predict() would
-  // start at the origin until a new detection with call to reset() here.
-  if (track->getPredictor().getHistory().size() >= kMaxPredictorPoints) {
-    track->getPredictor().reset();
-    track->getPredictor().add(timestampMs / 1000.0, {position, confidence});
-  }
 
   return track;
 }
