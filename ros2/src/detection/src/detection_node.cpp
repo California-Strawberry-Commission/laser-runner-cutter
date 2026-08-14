@@ -670,9 +670,7 @@ class DetectionNode : public rclcpp::Node {
       const cv::Point2f& displacement = cv::Point2f{}) {
     detection_interfaces::msg::DetectionResult detectionResult;
     detectionResult.detection_type = detectionTypeFor<DetectionT>();
-    detectionResult.timestamp =
-        static_cast<double>(image->header.stamp.sec) +
-        static_cast<double>(image->header.stamp.nanosec) * 1e-9;
+    detectionResult.timestamp = image->header.stamp;
     detectionResult.displacement.x = displacement.x;
     detectionResult.displacement.y = displacement.y;
 

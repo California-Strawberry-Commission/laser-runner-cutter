@@ -370,10 +370,12 @@ class RunnerCutterControlNode : public rclcpp::Node {
     std::unordered_set<uint32_t> prevDetectedTrackIds{lastDetectedTrackIds_};
     lastDetectedTrackIds_.clear();
 
+    double timestampMs{
+        static_cast<double>(rclcpp::Time(msg->timestamp).nanoseconds()) / 1e6};
     if (msg->detection_type ==
         detection_interfaces::msg::DetectionType::RUNNER) {
       for (const auto& instance : msg->instances) {
-        processDetectionInstance(instance, msg->timestamp * 1000.0);
+        processDetectionInstance(instance, timestampMs);
       }
     } else {
       // Circle tracking is for testing purposes. Just take the detection with
@@ -385,7 +387,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
                                    })};
         auto copy{obj};
         copy.track_id = 1;
-        processDetectionInstance(copy, msg->timestamp * 1000.0);
+        processDetectionInstance(copy, timestampMs);
       }
     }
 
