@@ -29,7 +29,7 @@ find_package(fmt REQUIRED)
 ## Build ##
 ###########
 
-include_directories(include)
+include_directories(include src/common/include)
 
 # Add matplotlib-cpp
 set(MATPLOTLIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/matplotlib-cpp)
