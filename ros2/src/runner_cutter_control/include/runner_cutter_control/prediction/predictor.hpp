@@ -1,7 +1,9 @@
 #pragma once
 
-#include <map>
+#include <cstddef>
+#include <utility>
 
+#include "ring_buffer.hpp"
 #include "runner_cutter_control/common_types.hpp"
 
 class Predictor {
@@ -11,10 +13,19 @@ class Predictor {
     float confidence;
   };
 
+  using HistoryEntry = std::pair<double, Measurement>;
+  static constexpr std::size_t MAX_PREDICTOR_POINTS{1024};
+
+  explicit Predictor(std::size_t maxHistorySize = MAX_PREDICTOR_POINTS)
+      : history_{maxHistorySize} {}
+
+  virtual ~Predictor() = default;
+
   /**
    * Add a new position measurement to the predictor. Measurements with a
    * timestamp at or before the last added measurement's timestamp are
-   * considered out-of-order and are ignored.
+   * considered out-of-order and are ignored. Once the history is at capacity,
+   * adding a measurement evicts the oldest one.
    *
    * @param timestampSec Timestamp, in seconds, associated with the measurement.
    * @param measurement Measurement taken at the timestamp, which consists
@@ -27,7 +38,7 @@ class Predictor {
       return false;
     }
 
-    history_[timestampSec] = measurement;
+    history_.push_back({timestampSec, measurement});
     lastTimestampSec_ = timestampSec;
     return true;
   }
@@ -47,7 +58,7 @@ class Predictor {
     lastTimestampSec_ = 0.0;
   }
 
-  const std::map<double, Measurement>& getHistory() const { return history_; }
+  const RingBuffer<HistoryEntry>& getHistory() const { return history_; }
   double getLastTimestampSec() const { return lastTimestampSec_; }
 
  protected:
@@ -60,6 +71,6 @@ class Predictor {
    */
   Position interpolated(double timestampSec) const;
 
-  std::map<double, Measurement> history_;
+  RingBuffer<HistoryEntry> history_;
   double lastTimestampSec_{0.0};
 };

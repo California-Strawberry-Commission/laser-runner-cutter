@@ -14,11 +14,11 @@ Position AverageVelocityPredictor::predict(double timestampSec) const {
   }
 
   if (history.size() < 2) {
-    return history.rbegin()->second.position;
+    return history.back().second.position;
   }
 
-  const auto& [t0, m0]{*history.begin()};   // oldest
-  const auto& [t1, m1]{*history.rbegin()};  // most recent
+  const auto& [t0, m0]{history.front()};   // oldest
+  const auto& [t1, m1]{history.back()};  // most recent
 
   if ((t1 - t0) <= 0.0) {
     return m1.position;

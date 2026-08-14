@@ -13,5 +13,5 @@ Position LastKnownPredictor::predict(double timestampSec) const {
     return {0, 0, 0};
   }
 
-  return history.rbegin()->second.position;
+  return history.back().second.position;
 }
