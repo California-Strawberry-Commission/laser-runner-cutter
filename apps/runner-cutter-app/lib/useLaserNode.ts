@@ -35,21 +35,21 @@ export default function useLaserNode(nodeName: string) {
     {
       deviceState: DeviceState.DISCONNECTED,
     },
-    convertStateMessage
+    convertStateMessage,
   );
 
   const startDevice = node.useService(
     "~/start_device",
     "std_srvs/Trigger",
     triggerInputMapper,
-    successOutputMapper
+    successOutputMapper,
   );
 
   const closeDevice = node.useService(
     "~/close_device",
     "std_srvs/Trigger",
     triggerInputMapper,
-    successOutputMapper
+    successOutputMapper,
   );
 
   const updatePath = node.usePublisher(
@@ -59,14 +59,14 @@ export default function useLaserNode(nodeName: string) {
       (
         pathId: number,
         destination: { x: number; y: number },
-        durationMs: number
+        timestamp: { sec: number; nanosec: number },
       ) => ({
         path_id: pathId,
         destination,
-        duration_ms: durationMs,
+        timestamp,
       }),
-      []
-    )
+      [],
+    ),
   );
 
   const removePath = node.useService(
@@ -76,37 +76,37 @@ export default function useLaserNode(nodeName: string) {
       (pathId: number) => ({
         path_id: pathId,
       }),
-      []
+      [],
     ),
-    successOutputMapper
+    successOutputMapper,
   );
 
   const clearPaths = node.useService(
     "~/clear_paths",
     "std_srvs/Trigger",
     triggerInputMapper,
-    successOutputMapper
+    successOutputMapper,
   );
 
   const play = node.useService(
     "~/play",
     "std_srvs/Trigger",
     triggerInputMapper,
-    successOutputMapper
+    successOutputMapper,
   );
 
   const stop = node.useService(
     "~/stop",
     "std_srvs/Trigger",
     triggerInputMapper,
-    successOutputMapper
+    successOutputMapper,
   );
 
   const getColor = node.useGetParam<number[]>("color");
   const setColor = node.useSetParam(
     "color",
     ParamType.DOUBLE_ARRAY,
-    useCallback((r: number, g: number, b: number) => [r, g, b, 0.0], [])
+    useCallback((r: number, g: number, b: number) => [r, g, b, 0.0], []),
   );
 
   return {
