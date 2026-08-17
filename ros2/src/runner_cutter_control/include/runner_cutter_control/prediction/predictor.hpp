@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <utility>
 
-#include "ring_buffer.hpp"
+#include "common/ring_buffer.hpp"
 #include "runner_cutter_control/common_types.hpp"
 
 class Predictor {
