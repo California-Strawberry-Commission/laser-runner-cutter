@@ -1,12 +1,12 @@
 #include "runner_cutter_control/tracking/track.hpp"
 
 Track::Track(uint32_t id, const PixelCoord& pixel, const Position& position,
-             double timestampMs, Track::State state,
+             double timestampSecs, Track::State state,
              std::unique_ptr<Predictor> predictor)
     : id_{id},
       pixel_{pixel},
       position_{position},
-      timestampMs_{timestampMs},
+      timestampSecs_{timestampSecs},
       predictor_{predictor ? std::move(predictor) : nullptr} {
   stateCount_ = {{Track::State::PENDING, 0},
                  {Track::State::ACTIVE, 0},
@@ -33,4 +33,6 @@ void Track::setState(Track::State state) {
   stateCount_[state]++;
 }
 
-void Track::setTimestampMs(double timestampMs) { timestampMs_ = timestampMs; }
+void Track::setTimestampSecs(double timestampSecs) {
+  timestampSecs_ = timestampSecs;
+}

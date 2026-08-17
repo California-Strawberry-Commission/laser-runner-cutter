@@ -370,12 +370,11 @@ class RunnerCutterControlNode : public rclcpp::Node {
     std::unordered_set<uint32_t> prevDetectedTrackIds{lastDetectedTrackIds_};
     lastDetectedTrackIds_.clear();
 
-    double timestampMs{
-        static_cast<double>(rclcpp::Time(msg->timestamp).nanoseconds()) / 1e6};
+    double timestampSecs{rclcpp::Time(msg->timestamp).seconds()};
     if (msg->detection_type ==
         detection_interfaces::msg::DetectionType::RUNNER) {
       for (const auto& instance : msg->instances) {
-        processDetectionInstance(instance, timestampMs);
+        processDetectionInstance(instance, timestampSecs);
       }
     } else {
       // Circle tracking is for testing purposes. Just take the detection with
@@ -387,7 +386,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
                                    })};
         auto copy{obj};
         copy.track_id = 1;
-        processDetectionInstance(copy, timestampMs);
+        processDetectionInstance(copy, timestampSecs);
       }
     }
 
@@ -423,7 +422,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
   void processDetectionInstance(
       const detection_interfaces::msg::ObjectInstance& instance,
-      double timestampMs) {
+      double timestampSecs) {
     // A track ID of 0 is invalid (indicates that there is no track ID
     // associated with the instance)
     if (instance.track_id <= 0) {
@@ -440,7 +439,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
     std::shared_ptr<Track> track;
     try {
       track = tracker_->addTrack(instance.track_id, pixel, position,
-                                 timestampMs, instance.confidence);
+                                 timestampSecs, instance.confidence);
     } catch (const std::exception& e) {
       return;
     }

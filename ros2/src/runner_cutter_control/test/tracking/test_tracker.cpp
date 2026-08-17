@@ -51,7 +51,7 @@ TEST(TrackerTest, AddTrackCreatesNewPendingTrack) {
   EXPECT_EQ(track->getId(), 1u);
   expectPixelCoordEq(track->getPixel(), PIXEL_COORD_1);
   expectPositionEq(track->getPosition(), POSITION_1);
-  EXPECT_DOUBLE_EQ(track->getTimestampMs(), 100.0);
+  EXPECT_DOUBLE_EQ(track->getTimestampSecs(), 100.0);
   EXPECT_EQ(track->getState(), Track::State::PENDING);
 
   EXPECT_TRUE(tracker.hasTrackWithState(Track::State::PENDING));
@@ -63,7 +63,7 @@ TEST(TrackerTest, AddTrackCreatesNewPendingTrack) {
 
   // addTrack() should have fed the measurement into the track's predictor
   EXPECT_EQ(track->getPredictor().getHistory().size(), 1u);
-  EXPECT_DOUBLE_EQ(track->getPredictor().getLastTimestampSec(), 0.1);
+  EXPECT_DOUBLE_EQ(track->getPredictor().getLastTimestampSec(), 100.0);
 }
 
 TEST(TrackerTest, AddTrackWithExistingIdUpdatesInPlace) {
@@ -75,7 +75,7 @@ TEST(TrackerTest, AddTrackWithExistingIdUpdatesInPlace) {
   EXPECT_EQ(updated, original);
   expectPixelCoordEq(updated->getPixel(), PIXEL_COORD_2);
   expectPositionEq(updated->getPosition(), POSITION_2);
-  EXPECT_DOUBLE_EQ(updated->getTimestampMs(), 200.0);
+  EXPECT_DOUBLE_EQ(updated->getTimestampSecs(), 200.0);
   EXPECT_EQ(updated->getState(), Track::State::PENDING);
 
   // Both calls to addTrack() should have recorded a predictor measurement

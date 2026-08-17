@@ -44,7 +44,8 @@ std::unordered_map<uint32_t, std::shared_ptr<Track>> Tracker::getTracks()
 std::shared_ptr<Track> Tracker::addTrack(uint32_t trackId,
                                          const PixelCoord& pixel,
                                          const Position& position,
-                                         double timestampMs, float confidence) {
+                                         double timestampSecs,
+                                         float confidence) {
   if (trackId == 0) {
     throw std::invalid_argument("Track ID must be positive");
   }
@@ -56,10 +57,10 @@ std::shared_ptr<Track> Tracker::addTrack(uint32_t trackId,
     track = tracks_[trackId];
     track->setPixel(pixel);
     track->setPosition(position);
-    track->setTimestampMs(timestampMs);
+    track->setTimestampSecs(timestampSecs);
   } else {
     // Create a new track and set as PENDING
-    track = std::make_shared<Track>(trackId, pixel, position, timestampMs,
+    track = std::make_shared<Track>(trackId, pixel, position, timestampSecs,
                                     Track::State::PENDING,
                                     std::make_unique<KalmanFilterPredictor>());
     tracks_[trackId] = track;
@@ -67,7 +68,7 @@ std::shared_ptr<Track> Tracker::addTrack(uint32_t trackId,
   }
 
   // Update predictor for the track
-  track->getPredictor().add(timestampMs / 1000.0, {position, confidence});
+  track->getPredictor().add(timestampSecs, {position, confidence});
 
   return track;
 }
