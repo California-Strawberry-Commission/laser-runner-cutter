@@ -54,12 +54,13 @@ class Tracker {
    * positive integer.
    * @param pixel Pixel coordinates (x, y) of the target in the camera frame.
    * @param position 3D position (x, y, z) of the target in camera-space.
-   * @param timestampMs Timestamp, in ms, of the camera frame.
+   * @param timestampSecs Timestamp, in seconds, of the camera frame.
    * @param confidence Confidence score associated with the detected target.
    * @return The newly created track, or existing track if it already exists.
    */
   std::shared_ptr<Track> addTrack(uint32_t trackId, const PixelCoord& pixel,
-                                  const Position& position, double timestampMs,
+                                  const Position& position,
+                                  double timestampSecs,
                                   float confidence = 1.0f);
 
   /**
