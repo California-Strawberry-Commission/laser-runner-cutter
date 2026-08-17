@@ -1,7 +1,6 @@
 # Type of detected object
 uint8 detection_type  # DetectionType.msg
-# Seconds since epoch
-float64 timestamp
+builtin_interfaces/Time timestamp
 # Detected object instances
 ObjectInstance[] instances
 # 2D pixel coordinates on camera color frame that did not have valid 3D positions

@@ -37,7 +37,7 @@ TEST_F(HeliosGetFrameTest, NoPathsProducesBlankFrameOfExpectedSize) {
 TEST_F(HeliosGetFrameTest, SinglePathProducesDenormalizedPositionAndColor) {
   Helios helios;
   helios.setColor(1.0f, 0.5f, 0.25f, 0.1f);
-  helios.setPath(1, Point{0.5f, 0.5f}, /*durationMs=*/0.0f);
+  helios.addWaypoint(1, Point{0.5f, 0.5f}, /*timestampSec=*/0.0);
 
   auto frame{getFrame(helios, /*fps=*/1, /*pps=*/10,
                       /*transitionDurationMs=*/0.0f)};
@@ -58,7 +58,7 @@ TEST_F(HeliosGetFrameTest, LaxelsPerPointIsClampedToAtLeastOne) {
   // ppf / numPoints = (pps / fps) / numPoints = (100 / 100) / 5 = 0.2, which
   // rounds to 0 and should be clamped to 1
   for (uint32_t id = 0; id < 5; ++id) {
-    helios.setPath(id, Point{0.0f, 0.0f}, /*durationMs=*/0.0f);
+    helios.addWaypoint(id, Point{0.0f, 0.0f}, /*timestampSec=*/0.0);
   }
 
   auto frame{getFrame(helios, /*fps=*/100, /*pps=*/100,
@@ -72,8 +72,8 @@ TEST_F(HeliosGetFrameTest, TransitionLaxelsAreBlankButKeepPosition) {
   helios.setColor(1.0f, 1.0f, 1.0f, 1.0f);
   Point pointA{0.0f, 0.0f};
   Point pointB{1.0f, 1.0f};
-  helios.setPath(1, pointA, /*durationMs=*/0.0f);
-  helios.setPath(2, pointB, /*durationMs=*/0.0f);
+  helios.addWaypoint(1, pointA, /*timestampSec=*/0.0);
+  helios.addWaypoint(2, pointB, /*timestampSec=*/0.0);
 
   // pps=100 -> 10ms per laxel. transitionDurationMs=30 -> 3 transition
   // laxels per point out of 50 laxels per point (100 pps / 1 fps / 2 points)

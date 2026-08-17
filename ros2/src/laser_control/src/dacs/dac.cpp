@@ -5,16 +5,23 @@ bool DAC::hasPath(uint32_t pathId) {
   return paths_.find(pathId) != paths_.end();
 }
 
-void DAC::setPath(uint32_t pathId, const Point& destination, float durationMs) {
+void DAC::addWaypoint(uint32_t pathId, const Point& destination,
+                      double timestampSec) {
   std::lock_guard<std::mutex> lock(pathsMutex_);
   auto it = paths_.find(pathId);
-  if (it != paths_.end()) {
-    // If path already exists, update the destination
-    it->second->setDestination(destination, durationMs);
-  } else {
-    // If path does not exist, create it
-    paths_.emplace(pathId, std::make_unique<Path>(pathId, destination));
+  if (it == paths_.end()) {
+    it = paths_.emplace(pathId, std::make_unique<Path>(pathId)).first;
   }
+  it->second->addWaypoint(destination, timestampSec);
+}
+
+void DAC::setPoint(uint32_t pathId, const Point& destination) {
+  std::lock_guard<std::mutex> lock(pathsMutex_);
+  auto it = paths_.find(pathId);
+  if (it == paths_.end()) {
+    it = paths_.emplace(pathId, std::make_unique<Path>(pathId)).first;
+  }
+  it->second->setPoint(destination);
 }
 
 bool DAC::removePath(uint32_t pathId) {

@@ -23,6 +23,7 @@ find_package(ament_cmake REQUIRED)
 
 find_package(sensor_msgs REQUIRED)
 find_package(common_interfaces REQUIRED)
+find_package(builtin_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
@@ -35,7 +36,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetState.srv"
   "srv/StartDetection.srv"
   "srv/StopDetection.srv"
-  DEPENDENCIES sensor_msgs common_interfaces
+  DEPENDENCIES sensor_msgs common_interfaces builtin_interfaces
 )
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

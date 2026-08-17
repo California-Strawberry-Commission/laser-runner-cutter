@@ -35,7 +35,7 @@ TEST_F(EtherDreamGetFrameTest, NoPathsProducesBlankFrameOfExpectedSize) {
 TEST_F(EtherDreamGetFrameTest, SinglePathProducesDenormalizedPositionAndColor) {
   EtherDream etherDream;
   etherDream.setColor(1.0f, 0.5f, 0.25f, 0.1f);
-  etherDream.setPath(1, Point{0.0f, 0.0f}, /*durationMs=*/0.0f);
+  etherDream.addWaypoint(1, Point{0.0f, 0.0f}, /*timestampSec=*/0.0);
 
   auto frame{getFrame(etherDream, /*fps=*/1, /*pps=*/10,
                       /*transitionDurationMs=*/0.0f)};
@@ -56,7 +56,7 @@ TEST_F(EtherDreamGetFrameTest, LaxelsPerPointIsClampedToAtLeastOne) {
   // ppf / numPoints = (pps / fps) / numPoints = (100 / 100) / 5 = 0.2, which
   // rounds to 0 and should be clamped to 1
   for (uint32_t id = 0; id < 5; ++id) {
-    etherDream.setPath(id, Point{0.0f, 0.0f}, /*durationMs=*/0.0f);
+    etherDream.addWaypoint(id, Point{0.0f, 0.0f}, /*timestampSec=*/0.0);
   }
 
   auto frame{getFrame(etherDream, /*fps=*/100, /*pps=*/100,
@@ -70,8 +70,8 @@ TEST_F(EtherDreamGetFrameTest, TransitionLaxelsAreColorBlankedButKeepPosition) {
   etherDream.setColor(1.0f, 1.0f, 1.0f, 1.0f);
   Point pointA{0.0f, 0.0f};
   Point pointB{1.0f, 1.0f};
-  etherDream.setPath(1, pointA, /*durationMs=*/0.0f);
-  etherDream.setPath(2, pointB, /*durationMs=*/0.0f);
+  etherDream.addWaypoint(1, pointA, /*timestampSec=*/0.0);
+  etherDream.addWaypoint(2, pointB, /*timestampSec=*/0.0);
 
   // pps=100 -> 10ms per laxel. transitionDurationMs=30 -> 3 transition
   // laxels per point out of 50 laxels per point (100 pps / 1 fps / 2 points)

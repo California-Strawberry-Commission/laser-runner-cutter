@@ -94,6 +94,10 @@ if(BUILD_TESTING)
     # Run via: `./build/laser_control/test_ether_dream`
     ament_add_gtest(test_ether_dream test/dacs/test_ether_dream.cpp)
     target_link_libraries(test_ether_dream dacs)
+
+    # Run via: `./build/laser_control/test_path`
+    ament_add_gtest(test_path test/dacs/test_path.cpp)
+    target_link_libraries(test_path dacs)
 endif()
 
 ament_package()

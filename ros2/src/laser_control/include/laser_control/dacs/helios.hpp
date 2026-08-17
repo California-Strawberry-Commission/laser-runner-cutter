@@ -8,6 +8,7 @@
 
 #include "HeliosDac.h"
 #include "laser_control/dacs/dac.hpp"
+#include "laser_control/dacs/path.hpp"
 
 class Helios final : public DAC {
  public:
@@ -85,8 +86,12 @@ class Helios final : public DAC {
   // Allows tests to access the private getFrame()
   friend class HeliosGetFrameTest;
 
-  std::vector<HeliosPoint> getFrame(int fps, int pps,
-                                    float transitionDurationMs);
+  /**
+   * Get the frame data for the given parameters. The returned reference
+   * points into a buffer owned by this instance that is reused across calls.
+   */
+  std::vector<HeliosPoint>& getFrame(int fps, int pps,
+                                     float transitionDurationMs);
 
   int getNativeStatus() const;
 
@@ -98,4 +103,8 @@ class Helios final : public DAC {
   std::atomic<bool> checkConnection_{false};
   std::thread checkConnectionThread_;
   std::thread playbackThread_;
+
+  // Reused across `getFrame` calls to avoid per-call heap allocation.
+  std::vector<Point> pointsToRender_;
+  std::vector<HeliosPoint> frame_;
 };

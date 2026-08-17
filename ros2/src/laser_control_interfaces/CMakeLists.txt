@@ -22,6 +22,7 @@ find_package(ament_cmake REQUIRED)
 # find_package(<dependency> REQUIRED)
 
 find_package(common_interfaces REQUIRED)
+find_package(builtin_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
@@ -30,7 +31,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/State.msg"
   "srv/GetState.srv"
   "srv/RemovePath.srv"
-  DEPENDENCIES common_interfaces
+  DEPENDENCIES common_interfaces builtin_interfaces
 )
 
 if(BUILD_TESTING)
