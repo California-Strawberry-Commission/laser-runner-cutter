@@ -82,7 +82,7 @@ void EtherDream::play(int fps, int pps, float transitionDurationMs) {
 
   playbackThread_ = std::thread([this, fps, pps, transitionDurationMs]() {
     while (playing_) {
-      std::vector<etherdream_point> frame{
+      const std::vector<etherdream_point>& frame{
           getFrame(fps, pps, transitionDurationMs)};
 
       etherdream_wait_for_ready(connectedDacId_);
@@ -121,13 +121,20 @@ void EtherDream::close() {
   }
 }
 
-std::vector<etherdream_point> EtherDream::getFrame(int fps, int pps,
-                                                   float transitionDurationMs) {
+const std::vector<etherdream_point>& EtherDream::getFrame(
+    int fps, int pps, float transitionDurationMs) {
   // We'll use "laxel", or laser "pixel", to refer to each point that the laser
   // projector renders, which disambiguates it from "point", which refers to the
   // (x, y) coordinates we want to have rendered
 
   std::lock_guard<std::mutex> lock(pathsMutex_);
+
+  pointsToRender_.clear();
+  for (const auto& [pathId, path] : paths_) {
+    if (auto point{path->getCurrentPoint()}) {
+      pointsToRender_.push_back(*point);
+    }
+  }
 
   // Calculate how many laxels of transition we need to add per point
   int laxelsPerTransition{
@@ -135,7 +142,7 @@ std::vector<etherdream_point> EtherDream::getFrame(int fps, int pps,
 
   // Calculate how many laxels we render each point
   float ppf{static_cast<float>(pps) / fps};
-  int numPoints{static_cast<int>(paths_.size())};
+  int numPoints{static_cast<int>(pointsToRender_.size())};
   int laxelsPerPoint{static_cast<int>(
       (numPoints == 0) ? std::round(ppf) : std::round(ppf / numPoints))};
   // Ensure at least one laxel per point
@@ -143,8 +150,9 @@ std::vector<etherdream_point> EtherDream::getFrame(int fps, int pps,
   int laxelsPerFrame{(numPoints == 0) ? laxelsPerPoint
                                       : laxelsPerPoint * numPoints};
 
-  // Prepare frame
-  std::vector<etherdream_point> frame(laxelsPerFrame);
+  // Prepare frame. `frame_` is a member reused across calls to avoid a heap
+  // allocation on every call.
+  frame_.resize(laxelsPerFrame);
 
   // Extract color components from tuple and convert to DAC range
   auto [rNorm, gNorm, bNorm, iNorm]{color_};
@@ -154,13 +162,11 @@ std::vector<etherdream_point> EtherDream::getFrame(int fps, int pps,
     // Even if there are no points to render, we still to send over laxels so
     // that we don't underflow the DAC buffer
     for (int laxelIdx = 0; laxelIdx < laxelsPerFrame; ++laxelIdx) {
-      frame[laxelIdx] = {0, 0, 0, 0, 0, 0, 0, 0};
+      frame_[laxelIdx] = {0, 0, 0, 0, 0, 0, 0, 0};
     }
   } else {
     int pathIdx{0};
-    for (const auto& [pathId, path] : paths_) {
-      auto point{path->getCurrentPoint()};
-
+    for (const auto& point : pointsToRender_) {
       for (int laxelIdx = 0; laxelIdx < laxelsPerPoint; ++laxelIdx) {
         // Pad BEFORE the "on" laxel so that the galvo settles first, and only
         // if there is more than one point
@@ -169,21 +175,21 @@ std::vector<etherdream_point> EtherDream::getFrame(int fps, int pps,
                           laxelIdx};
 
         auto pointDenorm = denormalizePoint(point.x, point.y);
-        frame[frameLaxelIdx] = {pointDenorm.first,
-                                pointDenorm.second,
-                                isTransition ? static_cast<uint16_t>(0) : r,
-                                isTransition ? static_cast<uint16_t>(0) : g,
-                                isTransition ? static_cast<uint16_t>(0) : b,
-                                isTransition ? static_cast<uint16_t>(0) : i,
-                                0,
-                                0};
+        frame_[frameLaxelIdx] = {pointDenorm.first,
+                                 pointDenorm.second,
+                                 isTransition ? static_cast<uint16_t>(0) : r,
+                                 isTransition ? static_cast<uint16_t>(0) : g,
+                                 isTransition ? static_cast<uint16_t>(0) : b,
+                                 isTransition ? static_cast<uint16_t>(0) : i,
+                                 0,
+                                 0};
       }
 
       ++pathIdx;
     }
   }
 
-  return frame;
+  return frame_;
 }
 
 std::pair<int16_t, int16_t> EtherDream::denormalizePoint(float x,

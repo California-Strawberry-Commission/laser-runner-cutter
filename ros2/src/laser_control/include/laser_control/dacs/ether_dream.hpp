@@ -8,6 +8,7 @@
 
 #include "etherdream.h"
 #include "laser_control/dacs/dac.hpp"
+#include "laser_control/dacs/path.hpp"
 
 class EtherDream final : public DAC {
  public:
@@ -86,8 +87,12 @@ class EtherDream final : public DAC {
   // Allows tests to access the private getFrame()
   friend class EtherDreamGetFrameTest;
 
-  std::vector<etherdream_point> getFrame(int fps, int pps,
-                                         float transitionDurationMs);
+  /**
+   * Get the frame data for the given parameters. The returned reference
+   * points into a buffer owned by this instance that is reused across calls.
+   */
+  const std::vector<etherdream_point>& getFrame(int fps, int pps,
+                                                float transitionDurationMs);
   std::pair<int16_t, int16_t> denormalizePoint(float x, float y) const;
   std::tuple<uint16_t, uint16_t, uint16_t, uint16_t> denormalizeColor(
       float r, float g, float b, float i) const;
@@ -100,4 +105,8 @@ class EtherDream final : public DAC {
   std::atomic<bool> checkConnection_{false};
   std::thread checkConnectionThread_;
   std::thread playbackThread_;
+
+  // Reused across `getFrame` calls to avoid per-call heap allocation.
+  std::vector<Point> pointsToRender_;
+  std::vector<etherdream_point> frame_;
 };

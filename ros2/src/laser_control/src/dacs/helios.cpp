@@ -68,7 +68,7 @@ void Helios::play(int fps, int pps, float transitionDurationMs) {
 
   playbackThread_ = std::thread([this, fps, pps, transitionDurationMs]() {
     while (playing_) {
-      std::vector<HeliosPoint> frame{getFrame(fps, pps, transitionDurationMs)};
+      std::vector<HeliosPoint>& frame{getFrame(fps, pps, transitionDurationMs)};
 
       int statusAttempts = 0;
       while (statusAttempts < 512 && getNativeStatus() != 1) {
@@ -114,13 +114,20 @@ void Helios::close() {
   dacIdx_ = -1;
 }
 
-std::vector<HeliosPoint> Helios::getFrame(int fps, int pps,
-                                          float transitionDurationMs) {
+std::vector<HeliosPoint>& Helios::getFrame(int fps, int pps,
+                                           float transitionDurationMs) {
   // We'll use "laxel", or laser "pixel", to refer to each point that the laser
   // projector renders, which disambiguates it from "point", which refers to the
   // (x, y) coordinates we want to have rendered
 
   std::lock_guard<std::mutex> lock(pathsMutex_);
+
+  pointsToRender_.clear();
+  for (const auto& [pathId, path] : paths_) {
+    if (auto point{path->getCurrentPoint()}) {
+      pointsToRender_.push_back(*point);
+    }
+  }
 
   // Calculate how many laxels of transition we need to add per point
   int laxelsPerTransition{
@@ -128,7 +135,7 @@ std::vector<HeliosPoint> Helios::getFrame(int fps, int pps,
 
   // Calculate how many laxels we render each point
   float ppf{static_cast<float>(pps) / fps};
-  int numPoints{static_cast<int>(paths_.size())};
+  int numPoints{static_cast<int>(pointsToRender_.size())};
   int laxelsPerPoint{static_cast<int>(
       (numPoints == 0) ? std::round(ppf) : std::round(ppf / numPoints))};
   // Ensure at least one laxel per point
@@ -136,8 +143,7 @@ std::vector<HeliosPoint> Helios::getFrame(int fps, int pps,
   int laxelsPerFrame{(numPoints == 0) ? laxelsPerPoint
                                       : laxelsPerPoint * numPoints};
 
-  // Prepare frame
-  std::vector<HeliosPoint> frame(laxelsPerFrame);
+  frame_.resize(laxelsPerFrame);
 
   // Extract color components from tuple and convert to DAC range
   auto [rNorm, gNorm, bNorm, iNorm]{color_};
@@ -150,13 +156,11 @@ std::vector<HeliosPoint> Helios::getFrame(int fps, int pps,
     // Even if there are no points to render, we still to send over laxels so
     // that we don't underflow the DAC buffer
     for (int laxelIdx = 0; laxelIdx < laxelsPerFrame; ++laxelIdx) {
-      frame[laxelIdx] = {0, 0, 0, 0, 0, 0};
+      frame_[laxelIdx] = {0, 0, 0, 0, 0, 0};
     }
   } else {
     int pathIdx{0};
-    for (const auto& [pathId, path] : paths_) {
-      auto point{path->getCurrentPoint()};
-
+    for (const auto& point : pointsToRender_) {
       for (int laxelIdx = 0; laxelIdx < laxelsPerPoint; ++laxelIdx) {
         // Pad BEFORE the "on" laxel so that the galvo settles first, and only
         // if there is more than one point
@@ -164,7 +168,7 @@ std::vector<HeliosPoint> Helios::getFrame(int fps, int pps,
         int frameLaxelIdx{static_cast<int>(pathIdx) * laxelsPerPoint +
                           laxelIdx};
 
-        frame[frameLaxelIdx] = {
+        frame_[frameLaxelIdx] = {
             static_cast<uint16_t>(
                 std::round(point.x * Helios::X_MAX)),  // convert to DAC range
             static_cast<uint16_t>(
@@ -179,7 +183,7 @@ std::vector<HeliosPoint> Helios::getFrame(int fps, int pps,
     }
   }
 
-  return frame;
+  return frame_;
 }
 
 int Helios::getNativeStatus() const {

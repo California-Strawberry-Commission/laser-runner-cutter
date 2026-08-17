@@ -239,7 +239,8 @@ class LaserControlNode : public rclcpp::Node {
 
     Point destination{static_cast<float>(msg->destination.x),
                       static_cast<float>(msg->destination.y)};
-    dac_->setPath(msg->path_id, destination, msg->duration_ms);
+    double timestampSec{rclcpp::Time(msg->timestamp).seconds()};
+    dac_->addWaypoint(msg->path_id, destination, timestampSec);
   }
 
   void onRemovePath(
