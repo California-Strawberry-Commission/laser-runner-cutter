@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y \
 
 # OpenCV with CUDA support
 COPY src/detection/scripts/build_opencv_cuda.sh /tmp/build_opencv_cuda.sh
-RUN apt-get update && apt-get install -y wget unzip cmake ninja-build python3-dev sudo \
+RUN apt-get update && apt-get install -y wget unzip cmake ninja-build python3-dev \
     && bash /tmp/build_opencv_cuda.sh \
     && rm -rf /var/lib/apt/lists/*
 
