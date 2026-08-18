@@ -143,7 +143,7 @@ std::size_t Calibration::addCalibrationPoints(
 
   std::size_t numPointCorrespondencesAdded{0};
   laser_->setColor(laserColor);
-  laser_->clearPoint();
+  laser_->clearPaths();
 
   {
     // Prepare laser and camera for laser detection
@@ -153,7 +153,7 @@ std::size_t Calibration::addCalibrationPoints(
         return 0;
       }
 
-      laser_->setPoint(laserCoord);
+      laser_->setPoint(0, laserCoord);
       // Give sufficient time for the galvo to settle and for a new camera frame
       // to become available
       std::this_thread::sleep_for(std::chrono::duration<float>(0.15f));
@@ -172,7 +172,7 @@ std::size_t Calibration::addCalibrationPoints(
       addPointCorrespondence(laserCoord, cameraPixelCoord, cameraPosition);
       ++numPointCorrespondencesAdded;
 
-      laser_->clearPoint();
+      laser_->clearPaths();
     }
   }
 

@@ -7,7 +7,7 @@ LaserDetectionContext::LaserDetectionContext(
   prevExposureUs_ = camera_->getExposure();
   prevGainDb_ = camera_->getGain();
 
-  laser_->clearPoint();
+  laser_->clearPaths();
   laser_->play();
   camera_->setExposure(1.0f);
   camera_->setGain(0.0f);
@@ -20,7 +20,7 @@ void LaserDetectionContext::restore() {
     return;
   }
 
-  laser_->clearPoint();
+  laser_->clearPaths();
   laser_->stop();
   camera_->setGain(prevGainDb_);
   camera_->setExposure(prevExposureUs_);

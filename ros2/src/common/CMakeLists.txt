@@ -9,9 +9,10 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rcl_interfaces REQUIRED)
+find_package(builtin_interfaces REQUIRED)
 
 install(DIRECTORY include/ DESTINATION include)
 ament_export_include_directories(include)
-ament_export_dependencies(rclcpp rcl_interfaces)
+ament_export_dependencies(rclcpp rcl_interfaces builtin_interfaces)
 
 ament_package()
