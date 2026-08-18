@@ -71,6 +71,7 @@ ament_target_dependencies(clients PUBLIC
   laser_control_interfaces
   camera_control_interfaces
   detection_interfaces
+  common
 )
 
 # calibration

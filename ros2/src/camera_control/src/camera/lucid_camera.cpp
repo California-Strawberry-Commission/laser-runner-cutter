@@ -1,22 +1,11 @@
 #include "camera_control/camera/lucid_camera.hpp"
 
-#include <chrono>
-
 #include "BS_thread_pool.hpp"
+#include "common/ros_utils.hpp"
 #include "sensor_msgs/image_encodings.hpp"
 #include "spdlog/spdlog.h"
 
 namespace {
-
-builtin_interfaces::msg::Time nowAsRosTime() {
-  auto nowNs{std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::system_clock::now().time_since_epoch())
-                 .count()};
-  builtin_interfaces::msg::Time stamp;
-  stamp.sec = static_cast<int32_t>(nowNs / 1'000'000'000);
-  stamp.nanosec = static_cast<uint32_t>(nowNs % 1'000'000'000);
-  return stamp;
-}
 
 std::optional<Arena::DeviceInfo> findFirstDeviceWithModelPrefix(
     std::vector<Arena::DeviceInfo>& deviceInfos,
@@ -685,7 +674,7 @@ sensor_msgs::msg::Image::UniquePtr LucidCamera::getColorFrame() {
   // and we leverage zero-copy intra-process comms to publish the image data to
   // other nodes
   auto imageMsg{std::make_unique<sensor_msgs::msg::Image>()};
-  imageMsg->header.stamp = nowAsRosTime();
+  imageMsg->header.stamp = common::nowAsRosTime();
   imageMsg->header.frame_id = "triton_color_camera";
   imageMsg->height = height;
   imageMsg->width = width;
@@ -725,7 +714,7 @@ std::optional<LucidCamera::GetDepthFrameResult> LucidCamera::getDepthFrame() {
 
   // Prepare Image messages
   auto xyzMsg{std::make_unique<sensor_msgs::msg::Image>()};
-  xyzMsg->header.stamp = nowAsRosTime();
+  xyzMsg->header.stamp = common::nowAsRosTime();
   xyzMsg->header.frame_id = "helios_depth_camera";
   xyzMsg->height = height;
   xyzMsg->width = width;

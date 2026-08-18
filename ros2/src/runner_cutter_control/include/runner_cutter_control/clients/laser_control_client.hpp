@@ -18,8 +18,10 @@ class LaserControlClient {
   bool startDevice();
   bool closeDevice();
   bool setColor(const LaserColor& color);
-  bool setPoint(const LaserCoord& point);
-  bool clearPoint();
+  bool setPoint(uint32_t pathId, const LaserCoord& point);
+  bool addWaypoint(uint32_t pathId, const LaserCoord& destination,
+                   double timestampSec);
+  bool clearPaths();
   bool play();
   bool stop();
   laser_control_interfaces::msg::State::SharedPtr getState();

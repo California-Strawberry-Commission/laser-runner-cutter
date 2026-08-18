@@ -1,5 +1,6 @@
 #include "runner_cutter_control/clients/laser_control_client.hpp"
 
+#include "common/ros_utils.hpp"
 #include "common_interfaces/msg/vector2.hpp"
 #include "runner_cutter_control/clients/service_client_utils.hpp"
 
@@ -61,13 +62,13 @@ bool LaserControlClient::setColor(const LaserColor& color) {
                                      timeoutSecs_, node_.get_logger());
 }
 
-bool LaserControlClient::setPoint(const LaserCoord& point) {
+bool LaserControlClient::setPoint(uint32_t pathId, const LaserCoord& point) {
   if (point.x < 0.0 || point.x > 1.0 || point.y < 0.0 || point.y > 1.0) {
     return false;
   }
 
   auto msg{laser_control_interfaces::msg::PathUpdate()};
-  msg.path_id = 1;
+  msg.path_id = pathId;
   msg.destination.x = point.x;
   msg.destination.y = point.y;
   updatePathPublisher_->publish(std::move(msg));
@@ -75,7 +76,25 @@ bool LaserControlClient::setPoint(const LaserCoord& point) {
   return true;
 }
 
-bool LaserControlClient::clearPoint() {
+bool LaserControlClient::addWaypoint(uint32_t pathId,
+                                     const LaserCoord& destination,
+                                     double timestampSec) {
+  if (destination.x < 0.0 || destination.x > 1.0 || destination.y < 0.0 ||
+      destination.y > 1.0) {
+    return false;
+  }
+
+  auto msg{laser_control_interfaces::msg::PathUpdate()};
+  msg.path_id = pathId;
+  msg.destination.x = destination.x;
+  msg.destination.y = destination.y;
+  msg.timestamp = common::toRosTime(timestampSec);
+  updatePathPublisher_->publish(std::move(msg));
+
+  return true;
+}
+
+bool LaserControlClient::clearPaths() {
   auto request{std::make_shared<std_srvs::srv::Trigger::Request>()};
   auto result{client_utils::callService<std_srvs::srv::Trigger>(
       clearPathsClient_, request, timeoutSecs_, node_.get_logger())};
