@@ -88,6 +88,7 @@ add_library(prediction SHARED
   src/prediction/kalman_filter_predictor.cpp
 )
 target_link_libraries(prediction PUBLIC Eigen3::Eigen)
+ament_target_dependencies(prediction PUBLIC common)
 
 # tracking
 add_library(tracking SHARED

@@ -1,11 +1,18 @@
 #include "runner_cutter_control/prediction/predictor.hpp"
 
+#include <algorithm>
+#include <iterator>
+
 Position Predictor::interpolated(double timestampSec) const {
   if (history_.empty()) {
     return {0.0f, 0.0f, 0.0f};
   }
 
-  auto it{history_.lower_bound(timestampSec)};
+  auto it{std::lower_bound(history_.begin(), history_.end(), timestampSec,
+                           [](const HistoryEntry& entry, double timestamp) {
+                             return entry.first < timestamp;
+                           })};
+
   if (it == history_.begin()) {
     const auto& pos{it->second.position};
     return {pos.x, pos.y, pos.z};
