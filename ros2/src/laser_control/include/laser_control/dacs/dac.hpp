@@ -112,6 +112,11 @@ class DAC {
    */
   void clearPaths();
 
+  /**
+   * @return Whether any paths exist.
+   */
+  bool hasPaths();
+
  protected:
   std::unordered_map<uint32_t, std::unique_ptr<Path>> paths_;
   std::mutex pathsMutex_;
