@@ -60,6 +60,9 @@ class RunnerCutterControlNode : public rclcpp::Node {
     // Duration, in seconds, during which if no viable target becomes available,
     // the runner cutter task will stop. A negative number means no auto disarm.
     declare_parameter<float>("auto_disarm_secs", -1.0);
+    // Grace period, in seconds, to tolerate a track not appearing in a
+    // detection frame before treating it as missing.
+    declare_parameter<float>("track_miss_timeout_secs", 0.2);
     declare_parameter<std::string>("save_dir", "~/runner_cutter");
 
     /////////////
@@ -242,6 +245,11 @@ class RunnerCutterControlNode : public rclcpp::Node {
     return static_cast<float>(get_parameter("auto_disarm_secs").as_double());
   }
 
+  float getParamTrackMissTimeoutSecs() {
+    return static_cast<float>(
+        get_parameter("track_miss_timeout_secs").as_double());
+  }
+
   std::string getParamSaveDir() {
     return get_parameter("save_dir").as_string();
   }
@@ -367,7 +375,6 @@ class RunnerCutterControlNode : public rclcpp::Node {
       prevPendingTracks.insert(track->getId());
     }
 
-    std::unordered_set<uint32_t> prevDetectedTrackIds{lastDetectedTrackIds_};
     lastDetectedTrackIds_.clear();
 
     double timestampSecs{rclcpp::Time(msg->timestamp).seconds()};
@@ -392,22 +399,31 @@ class RunnerCutterControlNode : public rclcpp::Node {
       }
     }
 
-    // Mark as FAILED any tracks that were previously detected, are PENDING,
-    // but are no longer detected.
-    for (auto trackId : prevDetectedTrackIds) {
-      if (lastDetectedTrackIds_.find(trackId) == lastDetectedTrackIds_.end()) {
-        // We found a track that was previously detected but not anymore
-        auto trackOpt{tracker_->getTrack(trackId)};
-        if (!trackOpt) {
-          continue;
-        }
-        auto track{std::move(*trackOpt)};
+    // Fail any PENDING or ACTIVE track that hasn't been detected within the
+    // miss-tolerance window.
+    float missTimeoutSecs{getParamTrackMissTimeoutSecs()};
+    // TODO: Iterating through all tracks ever found is not optimal in terms of
+    // performance. Since we only care about pending and active tracks, we
+    // should just iterate over those.
+    for (const auto& [trackId, track] : tracker_->getTracks()) {
+      if (lastDetectedTrackIds_.find(trackId) != lastDetectedTrackIds_.end()) {
+        continue;
+      }
 
-        track->setPixel({-1, -1});
-        track->setPosition({-1.0f, -1.0f, -1.0f});
-        if (track->getState() == Track::State::PENDING) {
-          tracker_->processTrack(trackId, Track::State::FAILED);
-        }
+      Track::State state{track->getState()};
+      if (state != Track::State::PENDING && state != Track::State::ACTIVE) {
+        continue;
+      }
+
+      // TODO: If the track was not detected this frame, use optical flow
+      // displacement (if available) to estimate where it would be
+
+      if (timestampSecs - track->getTimestampSecs() > missTimeoutSecs) {
+        RCLCPP_INFO(get_logger(),
+                    "Track %u is PENDING or ACTIVE and has not been detected "
+                    "within %f secs. Marking as FAILED.",
+                    trackId, missTimeoutSecs);
+        tracker_->processTrack(trackId, Track::State::FAILED);
       }
     }
 
@@ -456,6 +472,9 @@ class RunnerCutterControlNode : public rclcpp::Node {
     if (track->getState() == Track::State::FAILED &&
         (numAttempts < 0 || track->getStateCount(Track::State::FAILED) <
                                 static_cast<std::size_t>(numAttempts))) {
+      RCLCPP_INFO(get_logger(),
+                  "Track %u was FAILED but redetected. Marking as PENDING.",
+                  track->getId());
       tracker_->processTrack(track->getId(), Track::State::PENDING);
     }
   }
@@ -843,7 +862,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
   std::optional<std::shared_ptr<Track>> acquireNextTarget() {
     auto activeTracks{tracker_->getTracksWithState(Track::State::ACTIVE)};
     if (!activeTracks.empty()) {
-      RCLCPP_INFO(get_logger(), "Using active track [%u]",
+      RCLCPP_INFO(get_logger(), "Using active track %u",
                   activeTracks[0]->getId());
       return activeTracks[0];
     }
@@ -855,19 +874,18 @@ class RunnerCutterControlNode : public rclcpp::Node {
       }
 
       auto track{std::move(*trackOpt)};
-      RCLCPP_INFO(get_logger(), "Processing pending track [%u]",
-                  track->getId());
+      RCLCPP_INFO(get_logger(), "Processing pending track %u", track->getId());
 
       LaserCoord laserCoord{
           calibration_->cameraPositionToLaserCoord(track->getPosition())};
       if (laserCoord.x >= 0.0 && laserCoord.x <= 1.0 && laserCoord.y >= 0.0 &&
           laserCoord.y <= 1.0) {
-        RCLCPP_INFO(get_logger(), "Setting track [%u] as target.",
+        RCLCPP_INFO(get_logger(), "Setting track %u as target.",
                     track->getId());
         return track;
       }
 
-      RCLCPP_INFO(get_logger(), "Track [%u] out of bounds. Marking as failed.",
+      RCLCPP_INFO(get_logger(), "Track %u out of bounds. Marking as failed.",
                   track->getId());
       tracker_->processTrack(track->getId(), Track::State::FAILED);
     }
@@ -881,14 +899,14 @@ class RunnerCutterControlNode : public rclcpp::Node {
     laser_->clearPaths();
     laser_->setColor(getParamBurnLaserColor());
     laser_->play();
-    RCLCPP_INFO(get_logger(), "Burning track %u for %f secs...", targetTrackId,
+    RCLCPP_INFO(get_logger(), "Burning track %u for %f secs", targetTrackId,
                 burnTimeSecs);
     laser_->setPoint(targetTrackId, laserCoord);
     std::this_thread::sleep_for(std::chrono::duration<float>(burnTimeSecs));
     laser_->clearPaths();
     laser_->stop();
     tracker_->processTrack(targetTrackId, Track::State::COMPLETED);
-    RCLCPP_INFO(get_logger(), "Burn complete on track %u...", targetTrackId);
+    RCLCPP_INFO(get_logger(), "Burn complete on track %u", targetTrackId);
   }
 
   void circleFollowerTask(float laserIntervalSecs = 0.25f) {

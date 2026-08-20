@@ -16,6 +16,7 @@ std::vector<std::shared_ptr<Track>> Tracker::getTracksWithState(
     Track::State state) const {
   std::lock_guard<std::mutex> lock(tracksMutex_);
   std::vector<std::shared_ptr<Track>> result;
+  // TODO: Optimize this so we don't linearly scan through all Tracks
   for (const auto& track : tracks_) {
     if (track.second->getState() == state) {
       result.push_back(track.second);
