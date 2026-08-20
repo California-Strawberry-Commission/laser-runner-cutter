@@ -218,12 +218,9 @@ class LaserControlNode : public rclcpp::Node {
     }
 
     std::scoped_lock lock{dacMutex_};
-    if (!dac_->isConnected() || !dac_->isPlaying() || !dac_->hasPaths()) {
-      return;
-    }
     const auto elapsed{std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - lastCommand_)};
-    if (elapsed < timeout) {
+    if (elapsed < timeout || !dac_->isConnected() || !dac_->isPlaying() || !dac_->hasPaths()) {
       return;
     }
 
