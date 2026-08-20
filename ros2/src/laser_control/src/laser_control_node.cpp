@@ -1,4 +1,7 @@
+#include <atomic>
+#include <chrono>
 #include <exception>
+#include <mutex>
 
 #include "laser_control/dacs/dac.hpp"
 #include "laser_control/dacs/ether_dream.hpp"
@@ -24,10 +27,16 @@ class LaserControlNode : public rclcpp::Node {
     declare_parameter<int>("pps", 30000);
     declare_parameter<float>("transition_duration_ms", 0.5f);
     declare_parameter<std::vector<float>>("color", {0.15f, 0.0f, 0.0f, 0.0f});
+    declare_parameter<int>("watchdog_timeout_ms", 1000);
     paramSubscriber_ = std::make_shared<rclcpp::ParameterEventHandler>(this);
     colorParamCallback_ = paramSubscriber_->add_parameter_callback(
         "color", std::bind(&LaserControlNode::onColorChanged, this,
                            std::placeholders::_1));
+    watchdogTimeoutMs_.store(getParamWatchdogTimeoutMs());
+    watchdogTimeoutParamCallback_ = paramSubscriber_->add_parameter_callback(
+        "watchdog_timeout_ms",
+        std::bind(&LaserControlNode::onWatchdogTimeoutChanged, this,
+                  std::placeholders::_1));
 
     /////////////
     // Publishers
@@ -107,6 +116,13 @@ class LaserControlNode : public rclcpp::Node {
     auto [r, g, b, i]{getParamColor()};
     dac_->setColor(r, g, b, i);
 
+    watchdogCallbackGroup_ =
+        create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    watchdogTimer_ =
+        create_wall_timer(std::chrono::milliseconds(WATCHDOG_CHECK_PERIOD_MS),
+                          std::bind(&LaserControlNode::onWatchdogTick, this),
+                          watchdogCallbackGroup_);
+
     // Publish initial state
     publishState();
   }
@@ -136,6 +152,10 @@ class LaserControlNode : public rclcpp::Node {
     return {param[0], param[1], param[2], param[3]};
   }
 
+  int getParamWatchdogTimeoutMs() {
+    return static_cast<int>(get_parameter("watchdog_timeout_ms").as_int());
+  }
+
   void onColorChanged(const rclcpp::Parameter& param) {
     std::vector<double> values{param.as_double_array()};
     if (values.size() == 4) {
@@ -143,6 +163,7 @@ class LaserControlNode : public rclcpp::Node {
       float g{static_cast<float>(values[1])};
       float b{static_cast<float>(values[2])};
       float i{static_cast<float>(values[3])};
+      std::scoped_lock lock{dacMutex_};
       dac_->setColor(r, g, b, i);
     } else {
       RCLCPP_WARN(get_logger(), "Expected 4 values for 'color', got %zu",
@@ -178,11 +199,49 @@ class LaserControlNode : public rclcpp::Node {
 
 #pragma endregion
 
+#pragma region Watchdog
+
+  void onWatchdogTimeoutChanged(const rclcpp::Parameter& param) {
+    const int timeoutMs{static_cast<int>(param.as_int())};
+    watchdogTimeoutMs_.store(timeoutMs, std::memory_order_relaxed);
+    RCLCPP_INFO(get_logger(), "Watchdog timeout set to %d ms%s", timeoutMs,
+                timeoutMs <= 0 ? " (disabled)" : "");
+  }
+
+  void noteCommand() { lastCommand_ = std::chrono::steady_clock::now(); }
+
+  void onWatchdogTick() {
+    const std::chrono::milliseconds timeout{
+        watchdogTimeoutMs_.load(std::memory_order_relaxed)};
+    if (timeout <= std::chrono::milliseconds::zero()) {
+      return;
+    }
+
+    std::scoped_lock lock{dacMutex_};
+    const auto elapsed{std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - lastCommand_)};
+    if (elapsed < timeout || !dac_->isConnected() || !dac_->isPlaying() || !dac_->hasPaths()) {
+      return;
+    }
+
+    RCLCPP_ERROR(get_logger(),
+                 "Watchdog expired: no laser command for %ld ms (timeout %ld "
+                 "ms). Stopping laser.",
+                 static_cast<long>(elapsed.count()),
+                 static_cast<long>(timeout.count()));
+    dac_->stop();
+    dac_->clearPaths();
+    publishState();
+  }
+
+#pragma endregion
+
 #pragma region Callbacks
 
   void onStartDevice(
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+    std::scoped_lock lock{dacMutex_};
     if (dac_->isConnected()) {
       response->success = false;
       response->message = "DAC was already started";
@@ -214,6 +273,7 @@ class LaserControlNode : public rclcpp::Node {
   void onCloseDevice(
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+    std::scoped_lock lock{dacMutex_};
     if (!dac_->isConnected()) {
       response->success = false;
       response->message = "DAC was not started";
@@ -240,6 +300,8 @@ class LaserControlNode : public rclcpp::Node {
     Point destination{static_cast<float>(msg->destination.x),
                       static_cast<float>(msg->destination.y)};
     double timestampSec{rclcpp::Time(msg->timestamp).seconds()};
+    std::scoped_lock lock{dacMutex_};
+    noteCommand();
     dac_->addWaypoint(msg->path_id, destination, timestampSec);
   }
 
@@ -248,24 +310,30 @@ class LaserControlNode : public rclcpp::Node {
           request,
       std::shared_ptr<laser_control_interfaces::srv::RemovePath::Response>
           response) {
+    std::scoped_lock lock{dacMutex_};
+    noteCommand();
     response->success = dac_->removePath(request->path_id);
   }
 
   void onClearPaths(
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+    std::scoped_lock lock{dacMutex_};
+    noteCommand();
     dac_->clearPaths();
     response->success = true;
   }
 
   void onPlay(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
               std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+    std::scoped_lock lock{dacMutex_};
     if (!dac_->isConnected()) {
       response->success = false;
       response->message = "DAC was not started";
       return;
     }
 
+    noteCommand();
     dac_->play(getParamFps(), getParamPps(), getParamTransitionDurationMs());
     publishState();
     response->success = true;
@@ -273,6 +341,8 @@ class LaserControlNode : public rclcpp::Node {
 
   void onStop(const std::shared_ptr<std_srvs::srv::Trigger::Request>,
               std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+    std::scoped_lock lock{dacMutex_};
+    noteCommand();
     dac_->stop();
     publishState();
     response->success = true;
@@ -282,6 +352,7 @@ class LaserControlNode : public rclcpp::Node {
       const std::shared_ptr<laser_control_interfaces::srv::GetState::Request>,
       std::shared_ptr<laser_control_interfaces::srv::GetState::Response>
           response) {
+    std::scoped_lock lock{dacMutex_};
     response->state = std::move(*getStateMsg());
   }
 
@@ -289,6 +360,8 @@ class LaserControlNode : public rclcpp::Node {
 
   std::shared_ptr<rclcpp::ParameterEventHandler> paramSubscriber_;
   std::shared_ptr<rclcpp::ParameterCallbackHandle> colorParamCallback_;
+  std::shared_ptr<rclcpp::ParameterCallbackHandle>
+      watchdogTimeoutParamCallback_;
   rclcpp::Publisher<laser_control_interfaces::msg::State>::SharedPtr
       statePublisher_;
   rclcpp::CallbackGroup::SharedPtr subscriberCallbackGroup_;
@@ -308,6 +381,13 @@ class LaserControlNode : public rclcpp::Node {
   std::shared_ptr<DAC> dac_;
   std::atomic<bool> connecting_{false};
   std::atomic<bool> disconnecting_{false};
+  static constexpr int WATCHDOG_CHECK_PERIOD_MS{20};
+  rclcpp::CallbackGroup::SharedPtr watchdogCallbackGroup_;
+  rclcpp::TimerBase::SharedPtr watchdogTimer_;
+  std::atomic<int> watchdogTimeoutMs_{0};
+  std::mutex dacMutex_;
+  std::chrono::steady_clock::time_point lastCommand_{
+      std::chrono::steady_clock::now()};
 };
 
 int main(int argc, char* argv[]) {

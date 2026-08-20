@@ -33,3 +33,8 @@ void DAC::clearPaths() {
   std::lock_guard<std::mutex> lock(pathsMutex_);
   paths_.clear();
 }
+
+bool DAC::hasPaths() {
+  std::lock_guard<std::mutex> lock(pathsMutex_);
+  return !paths_.empty();
+}

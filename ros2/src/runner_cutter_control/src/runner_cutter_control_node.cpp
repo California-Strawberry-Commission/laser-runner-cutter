@@ -884,7 +884,15 @@ class RunnerCutterControlNode : public rclcpp::Node {
     RCLCPP_INFO(get_logger(), "Burning track %u for %f secs...", targetTrackId,
                 burnTimeSecs);
     laser_->setPoint(targetTrackId, laserCoord);
-    std::this_thread::sleep_for(std::chrono::duration<float>(burnTimeSecs));
+    constexpr auto KEEPALIVE_PERIOD{std::chrono::milliseconds(100)};
+    auto deadline{
+        std::chrono::steady_clock::now() +
+        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::duration<float>(burnTimeSecs))};
+    while (std::chrono::steady_clock::now() < deadline) {
+      std::this_thread::sleep_for(KEEPALIVE_PERIOD);
+      laser_->setPoint(targetTrackId, laserCoord);
+    }
     laser_->clearPaths();
     laser_->stop();
     tracker_->processTrack(targetTrackId, Track::State::COMPLETED);
