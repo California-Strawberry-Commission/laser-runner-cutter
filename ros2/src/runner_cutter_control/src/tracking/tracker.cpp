@@ -7,20 +7,21 @@
 
 bool Tracker::hasTrackWithState(Track::State state) const {
   std::lock_guard<std::mutex> lock(tracksMutex_);
-  return std::any_of(
-      tracks_.begin(), tracks_.end(),
-      [state](const auto& track) { return track.second->getState() == state; });
+  auto it{tracksByState_.find(state)};
+  return it != tracksByState_.end() && !it->second.empty();
 }
 
 std::vector<std::shared_ptr<Track>> Tracker::getTracksWithState(
     Track::State state) const {
   std::lock_guard<std::mutex> lock(tracksMutex_);
   std::vector<std::shared_ptr<Track>> result;
-  // TODO: Optimize this so we don't linearly scan through all Tracks
-  for (const auto& track : tracks_) {
-    if (track.second->getState() == state) {
-      result.push_back(track.second);
-    }
+  auto stateIt{tracksByState_.find(state)};
+  if (stateIt == tracksByState_.end()) {
+    return result;
+  }
+  result.reserve(stateIt->second.size());
+  for (uint32_t id : stateIt->second) {
+    result.push_back(tracks_.at(id));
   }
   return result;
 }
@@ -42,11 +43,11 @@ std::unordered_map<uint32_t, std::shared_ptr<Track>> Tracker::getTracks()
   return tracks_;
 }
 
-std::shared_ptr<Track> Tracker::addTrack(uint32_t trackId,
-                                         const PixelCoord& pixel,
-                                         const Position& position,
-                                         double timestampSecs,
-                                         float confidence) {
+std::shared_ptr<Track> Tracker::addOrUpdateTrack(uint32_t trackId,
+                                                 const PixelCoord& pixel,
+                                                 const Position& position,
+                                                 double timestampSecs,
+                                                 float confidence) {
   if (trackId == 0) {
     throw std::invalid_argument("Track ID must be positive");
   }
@@ -65,7 +66,8 @@ std::shared_ptr<Track> Tracker::addTrack(uint32_t trackId,
                                     Track::State::PENDING,
                                     std::make_unique<KalmanFilterPredictor>());
     tracks_[trackId] = track;
-    pendingTracks_.push_back(track);
+    pendingTracks_.push_back(trackId);
+    tracksByState_[Track::State::PENDING].insert(trackId);
   }
 
   // Update predictor for the track
@@ -81,9 +83,12 @@ std::optional<std::shared_ptr<Track>> Tracker::activateNextPendingTrack() {
     return std::nullopt;
   }
 
-  auto nextTrack{pendingTracks_.front()};
+  uint32_t nextTrackId{pendingTracks_.front()};
   pendingTracks_.pop_front();
+  auto nextTrack{tracks_.at(nextTrackId)};
+  tracksByState_[Track::State::PENDING].erase(nextTrackId);
   nextTrack->setState(Track::State::ACTIVE);
+  tracksByState_[Track::State::ACTIVE].insert(nextTrackId);
   return nextTrack;
 }
 
@@ -96,24 +101,27 @@ bool Tracker::processTrack(uint32_t trackId, Track::State newState) {
   }
 
   auto& track{it->second};
-  if (track->getState() == newState) {
+  Track::State oldState{track->getState()};
+  if (oldState == newState) {
     return false;
   }
 
   // If the track is leaving the PENDING state, remove it from pendingTracks_
-  if (track->getState() == Track::State::PENDING) {
+  if (oldState == Track::State::PENDING) {
     auto pendingIt{
-        std::find(pendingTracks_.begin(), pendingTracks_.end(), track)};
+        std::find(pendingTracks_.begin(), pendingTracks_.end(), trackId)};
     if (pendingIt != pendingTracks_.end()) {
       pendingTracks_.erase(pendingIt);
     }
   }
 
+  tracksByState_[oldState].erase(trackId);
   track->setState(newState);
+  tracksByState_[newState].insert(trackId);
 
   // If the track is entering the PENDING state, add it to pendingTracks_
   if (newState == Track::State::PENDING) {
-    pendingTracks_.push_back(track);
+    pendingTracks_.push_back(trackId);
   }
 
   // Reset the predictor if the track is COMPLETED or FAILED
@@ -128,13 +136,16 @@ void Tracker::clear() {
   std::lock_guard<std::mutex> lock(tracksMutex_);
   tracks_.clear();
   pendingTracks_.clear();
+  tracksByState_.clear();
 }
 
 std::unordered_map<Track::State, size_t> Tracker::getCountsByState() const {
   std::lock_guard<std::mutex> lock(tracksMutex_);
   std::unordered_map<Track::State, size_t> countsByState;
-  for (const auto& track : tracks_) {
-    countsByState[track.second->getState()]++;
+  for (const auto& [state, ids] : tracksByState_) {
+    if (!ids.empty()) {
+      countsByState[state] = ids.size();
+    }
   }
   return countsByState;
 }

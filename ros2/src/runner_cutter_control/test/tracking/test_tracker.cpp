@@ -45,7 +45,8 @@ TEST(TrackerTest, EmptyTrackerHasNoTracks) {
 TEST(TrackerTest, AddTrackCreatesNewPendingTrack) {
   Tracker tracker;
 
-  auto track{tracker.addTrack(1, PIXEL_COORD_1, POSITION_1, 100.0, 0.9f)};
+  auto track{
+      tracker.addOrUpdateTrack(1, PIXEL_COORD_1, POSITION_1, 100.0, 0.9f)};
 
   ASSERT_NE(track, nullptr);
   EXPECT_EQ(track->getId(), 1u);
@@ -61,16 +62,17 @@ TEST(TrackerTest, AddTrackCreatesNewPendingTrack) {
   ASSERT_TRUE(trackOpt.has_value());
   EXPECT_EQ(*trackOpt, track);
 
-  // addTrack() should have fed the measurement into the track's predictor
+  // addOrUpdateTrack() should have fed the measurement into the track's
+  // predictor
   EXPECT_EQ(track->getPredictor().getHistory().size(), 1u);
   EXPECT_DOUBLE_EQ(track->getPredictor().getLastTimestampSec(), 100.0);
 }
 
 TEST(TrackerTest, AddTrackWithExistingIdUpdatesInPlace) {
   Tracker tracker;
-  auto original{tracker.addTrack(1, PIXEL_COORD_1, POSITION_1, 100.0)};
+  auto original{tracker.addOrUpdateTrack(1, PIXEL_COORD_1, POSITION_1, 100.0)};
 
-  auto updated{tracker.addTrack(1, PIXEL_COORD_2, POSITION_2, 200.0)};
+  auto updated{tracker.addOrUpdateTrack(1, PIXEL_COORD_2, POSITION_2, 200.0)};
 
   EXPECT_EQ(updated, original);
   expectPixelCoordEq(updated->getPixel(), PIXEL_COORD_2);
@@ -78,7 +80,8 @@ TEST(TrackerTest, AddTrackWithExistingIdUpdatesInPlace) {
   EXPECT_DOUBLE_EQ(updated->getTimestampSecs(), 200.0);
   EXPECT_EQ(updated->getState(), Track::State::PENDING);
 
-  // Both calls to addTrack() should have recorded a predictor measurement
+  // Both calls to addOrUpdateTrack() should have recorded a predictor
+  // measurement
   EXPECT_EQ(updated->getPredictor().getHistory().size(), 2u);
 
   EXPECT_EQ(tracker.getTracks().size(), 1u);
@@ -86,10 +89,10 @@ TEST(TrackerTest, AddTrackWithExistingIdUpdatesInPlace) {
 
 TEST(TrackerTest, AddTrackOnActiveTrackRemainsActive) {
   Tracker tracker;
-  tracker.addTrack(1, PIXEL_COORD_1, POSITION_1, 100.0);
+  tracker.addOrUpdateTrack(1, PIXEL_COORD_1, POSITION_1, 100.0);
   tracker.activateNextPendingTrack();  // transitions track 1 to ACTIVE
 
-  tracker.addTrack(1, PIXEL_COORD_2, POSITION_2, 200.0);
+  tracker.addOrUpdateTrack(1, PIXEL_COORD_2, POSITION_2, 200.0);
 
   auto trackOpt{tracker.getTrack(1)};
   ASSERT_TRUE(trackOpt.has_value());
@@ -99,15 +102,15 @@ TEST(TrackerTest, AddTrackOnActiveTrackRemainsActive) {
 
 TEST(TrackerTest, AddTrackThrowsForZeroId) {
   Tracker tracker;
-  EXPECT_THROW(tracker.addTrack(0, PIXEL_COORD_1, POSITION_1, 0.0),
+  EXPECT_THROW(tracker.addOrUpdateTrack(0, PIXEL_COORD_1, POSITION_1, 0.0),
                std::invalid_argument);
 }
 
 TEST(TrackerTest, ActivateNextPendingTrackReturnsFifoOrder) {
   Tracker tracker;
-  tracker.addTrack(1, PIXEL_COORD_1, POSITION_1, 100.0);
-  tracker.addTrack(2, PIXEL_COORD_1, POSITION_1, 200.0);
-  tracker.addTrack(3, PIXEL_COORD_1, POSITION_1, 300.0);
+  tracker.addOrUpdateTrack(1, PIXEL_COORD_1, POSITION_1, 100.0);
+  tracker.addOrUpdateTrack(2, PIXEL_COORD_1, POSITION_1, 200.0);
+  tracker.addOrUpdateTrack(3, PIXEL_COORD_1, POSITION_1, 300.0);
 
   auto first{tracker.activateNextPendingTrack()};
   ASSERT_TRUE(first.has_value());
@@ -130,8 +133,8 @@ TEST(TrackerTest, ActivateNextPendingTrackReturnsFifoOrder) {
 
 TEST(TrackerTest, ProcessTrackTransitionsStateAndUpdatesPendingQueue) {
   Tracker tracker;
-  tracker.addTrack(1, PIXEL_COORD_1, POSITION_1, 100.0);
-  tracker.addTrack(2, PIXEL_COORD_1, POSITION_1, 200.0);
+  tracker.addOrUpdateTrack(1, PIXEL_COORD_1, POSITION_1, 100.0);
+  tracker.addOrUpdateTrack(2, PIXEL_COORD_1, POSITION_1, 200.0);
 
   EXPECT_TRUE(tracker.processTrack(1, Track::State::ACTIVE));
 
@@ -149,7 +152,7 @@ TEST(TrackerTest, ProcessTrackTransitionsStateAndUpdatesPendingQueue) {
 
 TEST(TrackerTest, ProcessTrackBackToPendingReAddsToQueue) {
   Tracker tracker;
-  tracker.addTrack(1, PIXEL_COORD_1, POSITION_1, 100.0);
+  tracker.addOrUpdateTrack(1, PIXEL_COORD_1, POSITION_1, 100.0);
   tracker.activateNextPendingTrack();  // transitions track 1 to ACTIVE
 
   EXPECT_TRUE(tracker.processTrack(1, Track::State::PENDING));
@@ -162,7 +165,7 @@ TEST(TrackerTest, ProcessTrackBackToPendingReAddsToQueue) {
 
 TEST(TrackerTest, ProcessTrackToSameStateIsNoOp) {
   Tracker tracker;
-  tracker.addTrack(1, PIXEL_COORD_1, POSITION_1, 100.0);
+  tracker.addOrUpdateTrack(1, PIXEL_COORD_1, POSITION_1, 100.0);
 
   // Track 1 is already PENDING, so this should report no transition.
   EXPECT_FALSE(tracker.processTrack(1, Track::State::PENDING));
@@ -182,7 +185,7 @@ TEST(TrackerTest, ProcessTrackOnUnknownIdIsNoOp) {
 
 TEST(TrackerTest, ProcessTrackToCompletedResetsPredictor) {
   Tracker tracker;
-  auto track{tracker.addTrack(1, PIXEL_COORD_1, POSITION_1, 100.0)};
+  auto track{tracker.addOrUpdateTrack(1, PIXEL_COORD_1, POSITION_1, 100.0)};
   ASSERT_EQ(track->getPredictor().getHistory().size(), 1u);
 
   EXPECT_TRUE(tracker.processTrack(1, Track::State::COMPLETED));
@@ -193,7 +196,7 @@ TEST(TrackerTest, ProcessTrackToCompletedResetsPredictor) {
 
 TEST(TrackerTest, ProcessTrackToFailedResetsPredictor) {
   Tracker tracker;
-  auto track{tracker.addTrack(1, PIXEL_COORD_1, POSITION_1, 100.0)};
+  auto track{tracker.addOrUpdateTrack(1, PIXEL_COORD_1, POSITION_1, 100.0)};
   ASSERT_EQ(track->getPredictor().getHistory().size(), 1u);
 
   EXPECT_TRUE(tracker.processTrack(1, Track::State::FAILED));
@@ -204,8 +207,8 @@ TEST(TrackerTest, ProcessTrackToFailedResetsPredictor) {
 
 TEST(TrackerTest, ClearRemovesAllTracks) {
   Tracker tracker;
-  tracker.addTrack(1, PIXEL_COORD_1, POSITION_1, 100.0);
-  tracker.addTrack(2, PIXEL_COORD_1, POSITION_1, 200.0);
+  tracker.addOrUpdateTrack(1, PIXEL_COORD_1, POSITION_1, 100.0);
+  tracker.addOrUpdateTrack(2, PIXEL_COORD_1, POSITION_1, 200.0);
   tracker.activateNextPendingTrack();
 
   tracker.clear();
@@ -219,11 +222,11 @@ TEST(TrackerTest, ClearRemovesAllTracks) {
 
 TEST(TrackerTest, GetCountsByState) {
   Tracker tracker;
-  tracker.addTrack(1, PIXEL_COORD_1, POSITION_1, 100.0);
-  tracker.addTrack(2, PIXEL_COORD_1, POSITION_1, 200.0);
-  tracker.addTrack(3, PIXEL_COORD_1, POSITION_1, 300.0);
-  tracker.addTrack(4, PIXEL_COORD_1, POSITION_1, 400.0);
-  tracker.addTrack(5, PIXEL_COORD_1, POSITION_1, 500.0);
+  tracker.addOrUpdateTrack(1, PIXEL_COORD_1, POSITION_1, 100.0);
+  tracker.addOrUpdateTrack(2, PIXEL_COORD_1, POSITION_1, 200.0);
+  tracker.addOrUpdateTrack(3, PIXEL_COORD_1, POSITION_1, 300.0);
+  tracker.addOrUpdateTrack(4, PIXEL_COORD_1, POSITION_1, 400.0);
+  tracker.addOrUpdateTrack(5, PIXEL_COORD_1, POSITION_1, 500.0);
   tracker.activateNextPendingTrack();  // track 1 -> ACTIVE
   tracker.activateNextPendingTrack();  // track 2 -> ACTIVE
   tracker.processTrack(3, Track::State::FAILED);

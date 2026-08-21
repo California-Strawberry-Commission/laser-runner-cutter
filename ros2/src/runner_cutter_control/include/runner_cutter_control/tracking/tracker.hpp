@@ -5,6 +5,7 @@
 #include <mutex>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "runner_cutter_control/common_types.hpp"
@@ -13,7 +14,7 @@
 /**
  * Tracker maintains a collection of Tracks with state management. Thread-safe.
  * New tracks start in the PENDING state. PENDING tracks are maintained in a
- * queue for FIFO ordering.
+ * queue for FIFO ordering when becoming ACTIVE.
  */
 class Tracker {
  public:
@@ -48,7 +49,8 @@ class Tracker {
   std::unordered_map<uint32_t, std::shared_ptr<Track>> getTracks() const;
 
   /**
-   * Add a track to list of current tracks.
+   * Adds a new PENDING track if trackId doesn't exist yet, otherwise updates
+   * the existing track.
    *
    * @param trackId Unique instance ID assigned to the object. Must be a
    * positive integer.
@@ -58,16 +60,17 @@ class Tracker {
    * @param confidence Confidence score associated with the detected target.
    * @return The newly created track, or existing track if it already exists.
    */
-  std::shared_ptr<Track> addTrack(uint32_t trackId, const PixelCoord& pixel,
-                                  const Position& position,
-                                  double timestampSecs,
-                                  float confidence = 1.0f);
+  std::shared_ptr<Track> addOrUpdateTrack(uint32_t trackId,
+                                          const PixelCoord& pixel,
+                                          const Position& position,
+                                          double timestampSecs,
+                                          float confidence = 1.0f);
 
   /**
    * Pops the next pending track from the queue, setting its state to ACTIVE in
    * the process.
    *
-   * @return The next pending track.
+   * @return The track that was just activated.
    */
   std::optional<std::shared_ptr<Track>> activateNextPendingTrack();
 
@@ -87,12 +90,18 @@ class Tracker {
   void clear();
 
   /**
-   * Get the number of tracks in each state.
+   * Get the number of tracks in each state. States with zero tracks are omitted
+   * from the result.
+   *
+   * @return Number of tracks in each state.
    */
   std::unordered_map<Track::State, size_t> getCountsByState() const;
 
  private:
   std::unordered_map<uint32_t, std::shared_ptr<Track>> tracks_;
-  std::deque<std::shared_ptr<Track>> pendingTracks_;
+  // Maintain a queue of pending tracks for FIFO ordering when activating
+  std::deque<uint32_t> pendingTracks_;
+  // Secondary index of track IDs by State
+  std::unordered_map<Track::State, std::unordered_set<uint32_t>> tracksByState_;
   mutable std::mutex tracksMutex_;
 };
