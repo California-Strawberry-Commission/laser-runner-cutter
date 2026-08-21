@@ -402,7 +402,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
     // Fail any PENDING or ACTIVE track that hasn't been detected within the
     // miss-tolerance window.
     float missTimeoutSecs{getParamTrackMissTimeoutSecs()};
-    std::vector<std::shared_ptr<Track>> trackedTracks{
+    std::vector<std::shared_ptr<const Track>> trackedTracks{
         tracker_->getTracksWithState(Track::State::PENDING)};
     auto activeTracks{tracker_->getTracksWithState(Track::State::ACTIVE)};
     trackedTracks.insert(trackedTracks.end(), activeTracks.begin(),
@@ -452,7 +452,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
                       static_cast<float>(instance.position.y),
                       static_cast<float>(instance.position.z)};
 
-    std::shared_ptr<Track> track;
+    std::shared_ptr<const Track> track;
     try {
       track = tracker_->addOrUpdateTrack(instance.track_id, pixel, position,
                                          timestampSecs, instance.confidence);
@@ -857,7 +857,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
    *
    * @return The target Track, if one is available.
    */
-  std::optional<std::shared_ptr<Track>> acquireNextTarget() {
+  std::optional<std::shared_ptr<const Track>> acquireNextTarget() {
     auto activeTracks{tracker_->getTracksWithState(Track::State::ACTIVE)};
     if (!activeTracks.empty()) {
       RCLCPP_INFO(get_logger(), "Using active track %u",
