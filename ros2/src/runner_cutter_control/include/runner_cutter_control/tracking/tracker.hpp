@@ -82,7 +82,7 @@ class Tracker {
    * @return Whether the track was found and transitioned to newState. False
    * if no track with trackId exists, or if it was already in newState.
    */
-  bool processTrack(uint32_t trackId, Track::State newState);
+  bool transitionTrackState(uint32_t trackId, Track::State newState);
 
   /**
    * Clear all tracks from the tracker.

@@ -92,7 +92,7 @@ std::optional<std::shared_ptr<Track>> Tracker::activateNextPendingTrack() {
   return nextTrack;
 }
 
-bool Tracker::processTrack(uint32_t trackId, Track::State newState) {
+bool Tracker::transitionTrackState(uint32_t trackId, Track::State newState) {
   std::lock_guard<std::mutex> lock(tracksMutex_);
 
   auto it{tracks_.find(trackId)};

@@ -421,7 +421,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
                     "Track %u is PENDING or ACTIVE and has not been detected "
                     "within %f secs. Marking as FAILED.",
                     trackId, missTimeoutSecs);
-        tracker_->processTrack(trackId, Track::State::FAILED);
+        tracker_->transitionTrackState(trackId, Track::State::FAILED);
       }
     }
 
@@ -473,7 +473,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
       RCLCPP_INFO(get_logger(),
                   "Track %u was FAILED but redetected. Marking as PENDING.",
                   track->getId());
-      tracker_->processTrack(track->getId(), Track::State::PENDING);
+      tracker_->transitionTrackState(track->getId(), Track::State::PENDING);
     }
   }
 
@@ -833,7 +833,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
         if (!laserCoordOpt) {
           RCLCPP_INFO(get_logger(), "Failed to aim laser at track %u.",
                       target->getId());
-          tracker_->processTrack(target->getId(), Track::State::FAILED);
+          tracker_->transitionTrackState(target->getId(), Track::State::FAILED);
           continue;
         }
         laserCoord = std::move(*laserCoordOpt);
@@ -885,7 +885,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
       RCLCPP_INFO(get_logger(), "Track %u out of bounds. Marking as failed.",
                   track->getId());
-      tracker_->processTrack(track->getId(), Track::State::FAILED);
+      tracker_->transitionTrackState(track->getId(), Track::State::FAILED);
     }
 
     return std::nullopt;
@@ -911,7 +911,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
     }
     laser_->clearPaths();
     laser_->stop();
-    tracker_->processTrack(targetTrackId, Track::State::COMPLETED);
+    tracker_->transitionTrackState(targetTrackId, Track::State::COMPLETED);
     RCLCPP_INFO(get_logger(), "Burn complete on track %u", targetTrackId);
   }
 
