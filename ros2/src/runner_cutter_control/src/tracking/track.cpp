@@ -15,7 +15,28 @@ Track::Track(uint32_t id, const PixelCoord& pixel, const Position& position,
   setState(state);
 }
 
+PixelCoord Track::getPixel() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return pixel_;
+}
+
+Position Track::getPosition() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return position_;
+}
+
+double Track::getTimestampSecs() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return timestampSecs_;
+}
+
+Track::State Track::getState() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return state_;
+}
+
 size_t Track::getStateCount(Track::State state) const {
+  std::lock_guard<std::mutex> lock(mutex_);
   auto it = stateCount_.find(state);
   if (it != stateCount_.end()) {
     return it->second;
@@ -24,15 +45,23 @@ size_t Track::getStateCount(Track::State state) const {
   }
 }
 
-void Track::setPixel(const PixelCoord& pixel) { pixel_ = pixel; }
+void Track::setPixel(const PixelCoord& pixel) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  pixel_ = pixel;
+}
 
-void Track::setPosition(const Position& position) { position_ = position; }
+void Track::setPosition(const Position& position) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  position_ = position;
+}
 
 void Track::setState(Track::State state) {
+  std::lock_guard<std::mutex> lock(mutex_);
   state_ = state;
   stateCount_[state]++;
 }
 
 void Track::setTimestampSecs(double timestampSecs) {
+  std::lock_guard<std::mutex> lock(mutex_);
   timestampSecs_ = timestampSecs;
 }
