@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 
 #include "runner_cutter_control/common_types.hpp"
@@ -21,10 +22,10 @@ class Track {
   ~Track() = default;
 
   uint32_t getId() const { return id_; };
-  PixelCoord getPixel() const { return pixel_; };
-  Position getPosition() const { return position_; };
-  double getTimestampSecs() const { return timestampSecs_; };
-  State getState() const { return state_; };
+  PixelCoord getPixel() const;
+  Position getPosition() const;
+  double getTimestampSecs() const;
+  State getState() const;
   size_t getStateCount(State state) const;
   Predictor& getPredictor() { return *predictor_; }
   const Predictor& getPredictor() const { return *predictor_; }
@@ -36,9 +37,11 @@ class Track {
 
  private:
   uint32_t id_{0};
+  mutable std::mutex mutex_;
   PixelCoord pixel_;
   Position position_;
   double timestampSecs_;
+  // Keeps track of how many times the Track has visited each state
   std::unordered_map<State, size_t> stateCount_;
   State state_{State::PENDING};
   std::unique_ptr<Predictor> predictor_;

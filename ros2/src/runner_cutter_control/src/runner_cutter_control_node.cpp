@@ -402,16 +402,14 @@ class RunnerCutterControlNode : public rclcpp::Node {
     // Fail any PENDING or ACTIVE track that hasn't been detected within the
     // miss-tolerance window.
     float missTimeoutSecs{getParamTrackMissTimeoutSecs()};
-    // TODO: Iterating through all tracks ever found is not optimal in terms of
-    // performance. Since we only care about pending and active tracks, we
-    // should just iterate over those.
-    for (const auto& [trackId, track] : tracker_->getTracks()) {
+    std::vector<std::shared_ptr<Track>> trackedTracks{
+        tracker_->getTracksWithState(Track::State::PENDING)};
+    auto activeTracks{tracker_->getTracksWithState(Track::State::ACTIVE)};
+    trackedTracks.insert(trackedTracks.end(), activeTracks.begin(),
+                         activeTracks.end());
+    for (const auto& track : trackedTracks) {
+      uint32_t trackId{track->getId()};
       if (lastDetectedTrackIds_.find(trackId) != lastDetectedTrackIds_.end()) {
-        continue;
-      }
-
-      Track::State state{track->getState()};
-      if (state != Track::State::PENDING && state != Track::State::ACTIVE) {
         continue;
       }
 
@@ -456,8 +454,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
     std::shared_ptr<Track> track;
     try {
-      track = tracker_->addTrack(instance.track_id, pixel, position,
-                                 timestampSecs, instance.confidence);
+      track = tracker_->addOrUpdateTrack(instance.track_id, pixel, position,
+                                         timestampSecs, instance.confidence);
     } catch (const std::exception& e) {
       return;
     }
