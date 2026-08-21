@@ -131,12 +131,12 @@ TEST(TrackerTest, ActivateNextPendingTrackReturnsFifoOrder) {
   EXPECT_FALSE(tracker.activateNextPendingTrack().has_value());
 }
 
-TEST(TrackerTest, ProcessTrackTransitionsStateAndUpdatesPendingQueue) {
+TEST(TrackerTest, TransitionTrackStateUpdatesPendingQueue) {
   Tracker tracker;
   tracker.addOrUpdateTrack(1, PIXEL_COORD_1, POSITION_1, 100.0);
   tracker.addOrUpdateTrack(2, PIXEL_COORD_1, POSITION_1, 200.0);
 
-  EXPECT_TRUE(tracker.processTrack(1, Track::State::ACTIVE));
+  EXPECT_TRUE(tracker.transitionTrackState(1, Track::State::ACTIVE));
 
   EXPECT_TRUE(tracker.hasTrackWithState(Track::State::ACTIVE));
   auto activeTracks{tracker.getTracksWithState(Track::State::ACTIVE)};
@@ -150,12 +150,12 @@ TEST(TrackerTest, ProcessTrackTransitionsStateAndUpdatesPendingQueue) {
   EXPECT_EQ((*nextPending)->getId(), 2u);
 }
 
-TEST(TrackerTest, ProcessTrackBackToPendingReAddsToQueue) {
+TEST(TrackerTest, TransitionTrackStateBackToPendingReAddsToQueue) {
   Tracker tracker;
   tracker.addOrUpdateTrack(1, PIXEL_COORD_1, POSITION_1, 100.0);
   tracker.activateNextPendingTrack();  // transitions track 1 to ACTIVE
 
-  EXPECT_TRUE(tracker.processTrack(1, Track::State::PENDING));
+  EXPECT_TRUE(tracker.transitionTrackState(1, Track::State::PENDING));
 
   auto nextPending{tracker.activateNextPendingTrack()};
   ASSERT_TRUE(nextPending.has_value());
@@ -163,43 +163,43 @@ TEST(TrackerTest, ProcessTrackBackToPendingReAddsToQueue) {
   EXPECT_EQ((*nextPending)->getState(), Track::State::ACTIVE);
 }
 
-TEST(TrackerTest, ProcessTrackToSameStateIsNoOp) {
+TEST(TrackerTest, TransitionTrackStateToSameStateIsNoOp) {
   Tracker tracker;
   tracker.addOrUpdateTrack(1, PIXEL_COORD_1, POSITION_1, 100.0);
 
   // Track 1 is already PENDING, so this should report no transition.
-  EXPECT_FALSE(tracker.processTrack(1, Track::State::PENDING));
+  EXPECT_FALSE(tracker.transitionTrackState(1, Track::State::PENDING));
 
   // Track 1 should still only appear once in the pending queue
   ASSERT_TRUE(tracker.activateNextPendingTrack().has_value());
   EXPECT_FALSE(tracker.activateNextPendingTrack().has_value());
 }
 
-TEST(TrackerTest, ProcessTrackOnUnknownIdIsNoOp) {
+TEST(TrackerTest, TransitionTrackStateOnUnknownIdIsNoOp) {
   Tracker tracker;
 
-  EXPECT_FALSE(tracker.processTrack(999, Track::State::ACTIVE));
+  EXPECT_FALSE(tracker.transitionTrackState(999, Track::State::ACTIVE));
 
   EXPECT_TRUE(tracker.getTracks().empty());
 }
 
-TEST(TrackerTest, ProcessTrackToCompletedResetsPredictor) {
+TEST(TrackerTest, TransitionTrackStateToCompletedResetsPredictor) {
   Tracker tracker;
   auto track{tracker.addOrUpdateTrack(1, PIXEL_COORD_1, POSITION_1, 100.0)};
   ASSERT_EQ(track->getPredictor().getHistory().size(), 1u);
 
-  EXPECT_TRUE(tracker.processTrack(1, Track::State::COMPLETED));
+  EXPECT_TRUE(tracker.transitionTrackState(1, Track::State::COMPLETED));
 
   EXPECT_EQ(track->getState(), Track::State::COMPLETED);
   EXPECT_TRUE(track->getPredictor().getHistory().empty());
 }
 
-TEST(TrackerTest, ProcessTrackToFailedResetsPredictor) {
+TEST(TrackerTest, TransitionTrackStateToFailedResetsPredictor) {
   Tracker tracker;
   auto track{tracker.addOrUpdateTrack(1, PIXEL_COORD_1, POSITION_1, 100.0)};
   ASSERT_EQ(track->getPredictor().getHistory().size(), 1u);
 
-  EXPECT_TRUE(tracker.processTrack(1, Track::State::FAILED));
+  EXPECT_TRUE(tracker.transitionTrackState(1, Track::State::FAILED));
 
   EXPECT_EQ(track->getState(), Track::State::FAILED);
   EXPECT_TRUE(track->getPredictor().getHistory().empty());
@@ -229,8 +229,8 @@ TEST(TrackerTest, GetCountsByState) {
   tracker.addOrUpdateTrack(5, PIXEL_COORD_1, POSITION_1, 500.0);
   tracker.activateNextPendingTrack();  // track 1 -> ACTIVE
   tracker.activateNextPendingTrack();  // track 2 -> ACTIVE
-  tracker.processTrack(3, Track::State::FAILED);
-  tracker.processTrack(4, Track::State::COMPLETED);
+  tracker.transitionTrackState(3, Track::State::FAILED);
+  tracker.transitionTrackState(4, Track::State::COMPLETED);
 
   auto countsByState{tracker.getCountsByState()};
 

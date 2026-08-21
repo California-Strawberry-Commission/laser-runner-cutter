@@ -11,10 +11,10 @@ bool Tracker::hasTrackWithState(Track::State state) const {
   return it != tracksByState_.end() && !it->second.empty();
 }
 
-std::vector<std::shared_ptr<Track>> Tracker::getTracksWithState(
+std::vector<std::shared_ptr<const Track>> Tracker::getTracksWithState(
     Track::State state) const {
   std::lock_guard<std::mutex> lock(tracksMutex_);
-  std::vector<std::shared_ptr<Track>> result;
+  std::vector<std::shared_ptr<const Track>> result;
   auto stateIt{tracksByState_.find(state)};
   if (stateIt == tracksByState_.end()) {
     return result;
@@ -26,7 +26,7 @@ std::vector<std::shared_ptr<Track>> Tracker::getTracksWithState(
   return result;
 }
 
-std::optional<std::shared_ptr<Track>> Tracker::getTrack(
+std::optional<std::shared_ptr<const Track>> Tracker::getTrack(
     uint32_t trackId) const {
   std::lock_guard<std::mutex> lock(tracksMutex_);
   auto it{tracks_.find(trackId)};
@@ -36,18 +36,22 @@ std::optional<std::shared_ptr<Track>> Tracker::getTrack(
   return std::nullopt;
 }
 
-std::unordered_map<uint32_t, std::shared_ptr<Track>> Tracker::getTracks()
+std::unordered_map<uint32_t, std::shared_ptr<const Track>> Tracker::getTracks()
     const {
   std::lock_guard<std::mutex> lock(tracksMutex_);
-  // Return a copy for thread-safety
-  return tracks_;
+  std::unordered_map<uint32_t, std::shared_ptr<const Track>> result;
+  result.reserve(tracks_.size());
+  for (const auto& [id, track] : tracks_) {
+    result[id] = track;
+  }
+  return result;
 }
 
-std::shared_ptr<Track> Tracker::addOrUpdateTrack(uint32_t trackId,
-                                                 const PixelCoord& pixel,
-                                                 const Position& position,
-                                                 double timestampSecs,
-                                                 float confidence) {
+std::shared_ptr<const Track> Tracker::addOrUpdateTrack(uint32_t trackId,
+                                                       const PixelCoord& pixel,
+                                                       const Position& position,
+                                                       double timestampSecs,
+                                                       float confidence) {
   if (trackId == 0) {
     throw std::invalid_argument("Track ID must be positive");
   }
@@ -76,7 +80,8 @@ std::shared_ptr<Track> Tracker::addOrUpdateTrack(uint32_t trackId,
   return track;
 }
 
-std::optional<std::shared_ptr<Track>> Tracker::activateNextPendingTrack() {
+std::optional<std::shared_ptr<const Track>>
+Tracker::activateNextPendingTrack() {
   std::lock_guard<std::mutex> lock(tracksMutex_);
 
   if (pendingTracks_.empty()) {
@@ -92,7 +97,7 @@ std::optional<std::shared_ptr<Track>> Tracker::activateNextPendingTrack() {
   return nextTrack;
 }
 
-bool Tracker::processTrack(uint32_t trackId, Track::State newState) {
+bool Tracker::transitionTrackState(uint32_t trackId, Track::State newState) {
   std::lock_guard<std::mutex> lock(tracksMutex_);
 
   auto it{tracks_.find(trackId)};

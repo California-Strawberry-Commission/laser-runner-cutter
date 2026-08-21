@@ -35,7 +35,7 @@ class Tracker {
    * @param state The desired state.
    * @return Tracks that are in that state.
    */
-  std::vector<std::shared_ptr<Track>> getTracksWithState(
+  std::vector<std::shared_ptr<const Track>> getTracksWithState(
       Track::State state) const;
 
   /**
@@ -44,9 +44,9 @@ class Tracker {
    * @param trackId The track ID.
    * @return The track, if it exists.
    */
-  std::optional<std::shared_ptr<Track>> getTrack(uint32_t trackId) const;
+  std::optional<std::shared_ptr<const Track>> getTrack(uint32_t trackId) const;
 
-  std::unordered_map<uint32_t, std::shared_ptr<Track>> getTracks() const;
+  std::unordered_map<uint32_t, std::shared_ptr<const Track>> getTracks() const;
 
   /**
    * Adds a new PENDING track if trackId doesn't exist yet, otherwise updates
@@ -60,11 +60,11 @@ class Tracker {
    * @param confidence Confidence score associated with the detected target.
    * @return The newly created track, or existing track if it already exists.
    */
-  std::shared_ptr<Track> addOrUpdateTrack(uint32_t trackId,
-                                          const PixelCoord& pixel,
-                                          const Position& position,
-                                          double timestampSecs,
-                                          float confidence = 1.0f);
+  std::shared_ptr<const Track> addOrUpdateTrack(uint32_t trackId,
+                                                const PixelCoord& pixel,
+                                                const Position& position,
+                                                double timestampSecs,
+                                                float confidence = 1.0f);
 
   /**
    * Pops the next pending track from the queue, setting its state to ACTIVE in
@@ -72,7 +72,7 @@ class Tracker {
    *
    * @return The track that was just activated.
    */
-  std::optional<std::shared_ptr<Track>> activateNextPendingTrack();
+  std::optional<std::shared_ptr<const Track>> activateNextPendingTrack();
 
   /**
    * Change the state of a track.
@@ -82,7 +82,7 @@ class Tracker {
    * @return Whether the track was found and transitioned to newState. False
    * if no track with trackId exists, or if it was already in newState.
    */
-  bool processTrack(uint32_t trackId, Track::State newState);
+  bool transitionTrackState(uint32_t trackId, Track::State newState);
 
   /**
    * Clear all tracks from the tracker.
