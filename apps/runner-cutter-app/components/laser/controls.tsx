@@ -219,12 +219,6 @@ export default function Controls({ laserNodeName }: { laserNodeName: string }) {
                 >
                   Stop/Reset
                 </Button>
-                <Button
-                  disabled={disableButtons}
-                  onClick={() => setWaypoints([])}
-                >
-                  Clear Waypoints
-                </Button>
               </div>
             )}
           </CardContent>

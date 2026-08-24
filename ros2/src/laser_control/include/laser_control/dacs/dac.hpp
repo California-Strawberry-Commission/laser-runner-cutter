@@ -82,22 +82,11 @@ class DAC {
    *
    * @param pathId The ID of the path to update.
    * @param destination The destination point.
-   * @param timestampSec Timestamp, in seconds since epoch, at which the
-   * path should arrive at `destination`. A value <= 0 delegates to
-   * `setPoint`, moving to `destination` immediately, overriding any queued
-   * waypoints.
+   * @param timestampSec Timestamp, in seconds since epoch, at which the path
+   * should arrive at `destination`.
    */
   void addWaypoint(uint32_t pathId, const Point& destination,
                    double timestampSec);
-
-  /**
-   * Move the specified path to `destination` immediately and hold there,
-   * discarding any queued waypoints, until a new waypoint or point is set.
-   *
-   * @param pathId The ID of the path to update.
-   * @param destination The destination point.
-   */
-  void setPoint(uint32_t pathId, const Point& destination);
 
   /**
    * Remove the specified path.
