@@ -374,6 +374,9 @@ class DetectionNode : public rclcpp::Node {
     cv::Mat debugImage;
     cv::cuda::GpuMat gpuPrevImage;
     cv::cuda::GpuMat gpuCurrImage;
+    // Timestamps of the frames currently held in gpuPrevImage/gpuCurrImage
+    rclcpp::Time prevFrameTimestamp;
+    rclcpp::Time currFrameTimestamp;
 
     BS::thread_pool optflowThreadPool{1};
 
@@ -403,6 +406,8 @@ class DetectionNode : public rclcpp::Node {
       // Swap so that gpuPrevImage holds the last iteration's frame data, and
       // gpuCurrImage is ready to be overwritten with the new frame data.
       std::swap(gpuCurrImage, gpuPrevImage);
+      std::swap(currFrameTimestamp, prevFrameTimestamp);
+      currFrameTimestamp = imgMsg->header.stamp;
 
       // Demosaic on GPU, directly into this iteration's frame buffer
       gpuCurrImage.create(imgMsg->height, imgMsg->width, CV_8UC3);
@@ -444,28 +449,37 @@ class DetectionNode : public rclcpp::Node {
         enabledDetections = enabledDetections_;
       }
 
-      // If any detections are enabled, kick off optical flow
-      std::future<cv::Point2f> flowFuture;
-      if (getParamEnableOptflow() && !enabledDetections.empty() &&
-          !gpuPrevImage.empty() && gpuPrevImage.size() == gpuCurrImage.size()) {
-        cv::Rect2d normalizedBounds{getParamOptflowNormalizedBounds()};
-        cv::Rect includeRegion{
-            static_cast<int>(std::ceil(normalizedBounds.x * imgMsg->width)),
-            static_cast<int>(std::ceil(normalizedBounds.y * imgMsg->height)),
-            static_cast<int>(
-                std::floor(normalizedBounds.width * imgMsg->width)),
-            static_cast<int>(
-                std::floor(normalizedBounds.height * imgMsg->height))};
-        flowFuture = optflowThreadPool.submit_task(
-            [this, &gpuPrevImage, &gpuCurrImage, includeRegion]() {
-              return sparseOpticalFlow_->computeFlow(gpuPrevImage, gpuCurrImage,
-                                                     includeRegion);
-            });
-      }
-
       if (enabledDetections.find(
               detection_interfaces::msg::DetectionType::RUNNER) !=
           enabledDetections.end()) {
+        // Kick off optical flow
+        std::future<cv::Point2f> flowFuture;
+        std::optional<cv::Point2f> flowCenter;
+        double flowDeltaTimeSecs{0.0};
+        if (getParamEnableOptflow() && !gpuPrevImage.empty() &&
+            gpuPrevImage.size() == gpuCurrImage.size()) {
+          cv::Rect2d normalizedBounds{getParamOptflowNormalizedBounds()};
+          cv::Rect includeRegion{
+              static_cast<int>(std::ceil(normalizedBounds.x * imgMsg->width)),
+              static_cast<int>(std::ceil(normalizedBounds.y * imgMsg->height)),
+              static_cast<int>(
+                  std::floor(normalizedBounds.width * imgMsg->width)),
+              static_cast<int>(
+                  std::floor(normalizedBounds.height * imgMsg->height))};
+          flowCenter =
+              includeRegion.empty()
+                  ? cv::Point2f(imgMsg->width / 2.0f, imgMsg->height / 2.0f)
+                  : cv::Point2f(includeRegion.x + includeRegion.width / 2.0f,
+                                includeRegion.y + includeRegion.height / 2.0f);
+          flowDeltaTimeSecs =
+              (currFrameTimestamp - prevFrameTimestamp).seconds();
+          flowFuture = optflowThreadPool.submit_task(
+              [this, &gpuPrevImage, &gpuCurrImage, includeRegion]() {
+                return sparseOpticalFlow_->computeFlow(
+                    gpuPrevImage, gpuCurrImage, includeRegion);
+              });
+        }
+
         cv::Rect2d normalizedBounds{
             enabledDetections
                 [detection_interfaces::msg::DetectionType::RUNNER]};
@@ -485,8 +499,8 @@ class DetectionNode : public rclcpp::Node {
         }
 
         // Create and publish DetectionResult
-        auto detectionResult{
-            createDetectionResult(runners, imgMsg, displacement)};
+        auto detectionResult{createDetectionResult(
+            runners, imgMsg, displacement, flowDeltaTimeSecs, flowCenter)};
         detectionsPublisher_->publish(detectionResult);
 
         // Draw detections to debug image
@@ -504,15 +518,8 @@ class DetectionNode : public rclcpp::Node {
         // Run detection
         auto lasers{laserDetector_->detect(rgbImage)};
 
-        // Wait for optical flow results
-        cv::Point2f displacement{0.0f, 0.0f};
-        if (flowFuture.valid()) {
-          displacement = flowFuture.get();
-        }
-
         // Create and publish DetectionResult
-        auto detectionResult{
-            createDetectionResult(lasers, imgMsg, displacement)};
+        auto detectionResult{createDetectionResult(lasers, imgMsg)};
         detectionsPublisher_->publish(detectionResult);
 
         // Draw detections to debug image
@@ -530,27 +537,13 @@ class DetectionNode : public rclcpp::Node {
         // Run detection
         auto circles{circleDetector_->detect(rgbImage)};
 
-        // Wait for optical flow results
-        cv::Point2f displacement{0.0f, 0.0f};
-        if (flowFuture.valid()) {
-          displacement = flowFuture.get();
-        }
-
         // Create and publish DetectionResult
-        auto detectionResult{
-            createDetectionResult(circles, imgMsg, displacement)};
+        auto detectionResult{createDetectionResult(circles, imgMsg)};
         detectionsPublisher_->publish(detectionResult);
 
         // Draw detections to debug image
         CircleDetector::drawDetections(debugImage, circles,
                                        cv::Size(imgMsg->width, imgMsg->height));
-      }
-
-      // Just in case optical flow was dispatched above but the result was never
-      // consumed, we wait for it here to ensure the task completes so that we
-      // can safely read/write from the GPU image buffers in the next iteration.
-      if (flowFuture.valid()) {
-        flowFuture.wait();
       }
 
       //////////////////////
@@ -667,12 +660,15 @@ class DetectionNode : public rclcpp::Node {
   detection_interfaces::msg::DetectionResult createDetectionResult(
       const std::vector<DetectionT>& detections,
       const sensor_msgs::msg::Image::ConstSharedPtr image,
-      const cv::Point2f& displacement = cv::Point2f{}) {
+      const cv::Point2f& displacement = cv::Point2f{},
+      double deltaTimeSecs = 0.0,
+      const std::optional<cv::Point2f>& flowAnchorPixel = std::nullopt) {
     detection_interfaces::msg::DetectionResult detectionResult;
     detectionResult.detection_type = detectionTypeFor<DetectionT>();
     detectionResult.timestamp = image->header.stamp;
-    detectionResult.displacement.x = displacement.x;
-    detectionResult.displacement.y = displacement.y;
+    detectionResult.flow_displacement.pixel_displacement.x = displacement.x;
+    detectionResult.flow_displacement.pixel_displacement.y = displacement.y;
+    detectionResult.flow_displacement.delta_time_secs = deltaTimeSecs;
 
     auto rgbdAlignment{getOrCreateRgbdAlignment()};
     auto depthXyz{getDepthXyz(image)};
@@ -686,6 +682,29 @@ class DetectionNode : public rclcpp::Node {
     cv::Mat depthXyzMat(depthXyz->height, depthXyz->width, CV_32FC3,
                         const_cast<uint8_t*>(depthXyz->data.data()),
                         depthXyz->step);
+
+    // Derive the 3D position displacement from the pixel displacement by
+    // looking up the 3D positions of the anchor pixel and the anchor pixel
+    // shifted by the displacement, using the same depth frame for both.
+    if (flowAnchorPixel && displacement != cv::Point2f{}) {
+      cv::Point2i prevPixel{static_cast<int>(std::round(flowAnchorPixel->x)),
+                            static_cast<int>(std::round(flowAnchorPixel->y))};
+      cv::Point2i currPixel{
+          static_cast<int>(std::round(flowAnchorPixel->x + displacement.x)),
+          static_cast<int>(std::round(flowAnchorPixel->y + displacement.y))};
+      auto prevPositionOpt{rgbdAlignment->getPosition(prevPixel, depthXyzMat)};
+      auto currPositionOpt{rgbdAlignment->getPosition(currPixel, depthXyzMat)};
+      if (prevPositionOpt && currPositionOpt) {
+        const auto& prevPosition{*prevPositionOpt};
+        const auto& currPosition{*currPositionOpt};
+        detectionResult.flow_displacement.position_displacement.x =
+            currPosition[0] - prevPosition[0];
+        detectionResult.flow_displacement.position_displacement.y =
+            currPosition[1] - prevPosition[1];
+        detectionResult.flow_displacement.position_displacement.z =
+            currPosition[2] - prevPosition[2];
+      }
+    }
 
     for (const auto& detection : detections) {
       common_interfaces::msg::Vector2 pointMsg;
