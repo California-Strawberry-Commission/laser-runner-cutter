@@ -29,6 +29,7 @@ find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DetectionResult.msg"
   "msg/DetectionType.msg"
+  "msg/FlowDisplacement.msg"
   "msg/ObjectInstance.msg"
   "msg/State.msg"
   "srv/GetDetectionResult.srv"
