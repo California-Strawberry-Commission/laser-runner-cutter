@@ -14,7 +14,8 @@ struct Point {
  * `addWaypoint` queues a new waypoint (destination + arrival time), and
  * `getCurrentPoint` interpolates between the queued waypoints based on the
  * current time, so that the traced path passes through each waypoint
- * at its associated time.
+ * at its associated time. Once the path reaches its last waypoint, it holds
+ * there until a new waypoint is added.
  */
 class Path {
  public:
@@ -30,20 +31,10 @@ class Path {
    * @param destination Destination point, with values normalized to [0, 1].
    * (0, 0) corresponds to bottom left.
    * @param timestampSec Timestamp, in seconds since epoch, at which the
-   * path should arrive at `destination`. A value <= 0 delegates to
-   * `setPoint`, moving to `destination` immediately and staying there,
-   * discarding any queued waypoints.
+   * path should arrive at `destination`. A value <= now moves to `destination`
+   * immediately, and discards any queued waypoints.
    */
   void addWaypoint(const Point& destination, double timestampSec);
-
-  /**
-   * Move to `destination` immediately and hold there, discarding any queued
-   * waypoints, until a new waypoint or point is set.
-   *
-   * @param destination Destination point, with values normalized to [0, 1].
-   * (0, 0) corresponds to bottom left.
-   */
-  void setPoint(const Point& destination);
 
   /**
    * Get the interpolated point for the current wall-clock time, based on the
@@ -65,5 +56,4 @@ class Path {
   std::optional<Waypoint> last_;
   // Upcoming waypoints not yet reached, sorted by ascending time
   std::deque<Waypoint> upcoming_;
-  bool holdingStaticPoint_{false};
 };

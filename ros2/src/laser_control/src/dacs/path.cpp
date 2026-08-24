@@ -15,12 +15,25 @@ std::chrono::system_clock::time_point toTimePoint(double timestampSec) {
 Path::Path(uint32_t id) : id_(id) {}
 
 void Path::addWaypoint(const Point& destination, double timestampSec) {
-  if (timestampSec <= 0.0) {
-    setPoint(destination);
+  auto now{std::chrono::system_clock::now()};
+  auto time{timestampSec <= 0.0 ? now : toTimePoint(timestampSec)};
+
+  if (time <= now) {
+    // The arrival time has already passed, so move to `destination` immediately
+    // and hold there, discarding any queued waypoints.
+    upcoming_.clear();
+    last_ = {now, destination};
     return;
   }
 
-  auto time{toTimePoint(timestampSec)};
+  if (upcoming_.empty() && last_) {
+    // We're resuming from a held point (either the end of a prior path, or an
+    // immediate arrival added above). Treat the hold as starting now, so that
+    // we interpolate from the current position rather than from a stale arrival
+    // time.
+    last_->time = now;
+  }
+
   auto latestTime{
       upcoming_.empty()
           ? (last_ ? last_->time : std::chrono::system_clock::time_point::min())
@@ -33,12 +46,6 @@ void Path::addWaypoint(const Point& destination, double timestampSec) {
   upcoming_.push_back({time, destination});
 }
 
-void Path::setPoint(const Point& destination) {
-  upcoming_.clear();
-  last_ = {std::chrono::system_clock::now(), destination};
-  holdingStaticPoint_ = true;
-}
-
 std::optional<Point> Path::getCurrentPoint() {
   // Advance past any queued waypoints whose arrival time has passed, updating
   // `last_` to the most recently reached one.
@@ -46,22 +53,16 @@ std::optional<Point> Path::getCurrentPoint() {
   while (!upcoming_.empty() && upcoming_.front().time <= now) {
     last_ = upcoming_.front();
     upcoming_.pop_front();
-    holdingStaticPoint_ = false;
   }
 
   if (!last_) {
     return std::nullopt;
   }
 
-  if (holdingStaticPoint_) {
-    // We are still holding the point added via `setPoint`
-    return last_->point;
-  }
-
   if (upcoming_.empty()) {
-    // We have reached the end of a timed path with nothing queued, so render
-    // nothing
-    return std::nullopt;
+    // We have reached the end of the path with nothing queued, so keep
+    // rendering the last waypoint reached until a new one comes in.
+    return last_->point;
   }
 
   // Interpolate between the last and next upcoming waypoint
