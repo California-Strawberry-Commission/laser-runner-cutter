@@ -64,7 +64,7 @@ class KalmanFilterPredictor final : public Predictor {
    * hasn't been initialized with a position yet, or if the timestamp is out
    * of order.
    */
-  bool addVelocity(double timestampSec, const Position& velocity,
+  bool addVelocity(double timestampSec, const Velocity& velocity,
                    float confidence) override;
 
   /**

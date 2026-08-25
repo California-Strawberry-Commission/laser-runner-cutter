@@ -137,6 +137,18 @@ bool Tracker::transitionTrackState(uint32_t trackId, Track::State newState) {
   return true;
 }
 
+bool Tracker::updateTrackVelocity(uint32_t trackId, const Velocity& velocity,
+                                  double timestampSecs, float confidence) {
+  std::lock_guard<std::mutex> lock(tracksMutex_);
+  auto it{tracks_.find(trackId)};
+  if (it == tracks_.end()) {
+    return false;
+  }
+
+  return it->second->getPredictor().addVelocity(timestampSecs, velocity,
+                                                confidence);
+}
+
 void Tracker::clear() {
   std::lock_guard<std::mutex> lock(tracksMutex_);
   tracks_.clear();

@@ -399,6 +399,20 @@ class RunnerCutterControlNode : public rclcpp::Node {
       }
     }
 
+    // Calculate estimated velocity vector
+    const auto& flowDisplacement{msg->flow_displacement};
+    bool flowAvailable{flowDisplacement.delta_time_secs > 0.0};
+    Velocity flowVelocity{};
+    if (flowAvailable) {
+      flowVelocity = {
+          static_cast<float>(flowDisplacement.position_displacement.x /
+                             flowDisplacement.delta_time_secs),
+          static_cast<float>(flowDisplacement.position_displacement.y /
+                             flowDisplacement.delta_time_secs),
+          static_cast<float>(flowDisplacement.position_displacement.z /
+                             flowDisplacement.delta_time_secs)};
+    }
+
     // Fail any PENDING or ACTIVE track that hasn't been detected within the
     // miss-tolerance window.
     float missTimeoutSecs{getParamTrackMissTimeoutSecs()};
@@ -413,8 +427,13 @@ class RunnerCutterControlNode : public rclcpp::Node {
         continue;
       }
 
-      // TODO: If the track was not detected this frame, use optical flow
-      // displacement (if available) to estimate where it would be
+      // This is a PENDING or ACTIVE track that has not been detected this
+      // frame. Use estimated velocity derived from optical flow (if available)
+      // to do a velocity-only update on the predictor
+      if (flowAvailable) {
+        tracker_->updateTrackVelocity(trackId, flowVelocity, timestampSecs,
+                                      0.5f);
+      }
 
       if (timestampSecs - track->getTimestampSecs() > missTimeoutSecs) {
         RCLCPP_INFO(get_logger(),

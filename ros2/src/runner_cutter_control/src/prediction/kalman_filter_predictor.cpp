@@ -36,7 +36,7 @@ bool KalmanFilterPredictor::add(double timestampSec, const Position& position,
 }
 
 bool KalmanFilterPredictor::addVelocity(double timestampSec,
-                                        const Position& velocity,
+                                        const Velocity& velocity,
                                         float confidence) {
   double dt{timestampSec - getLastTimestampSec()};
   if (!initialized_ || dt <= 0.0) {
@@ -44,7 +44,7 @@ bool KalmanFilterPredictor::addVelocity(double timestampSec,
   }
 
   predictStep(dt);
-  Eigen::Vector3d zVel{velocity.x, velocity.y, velocity.z};
+  Eigen::Vector3d zVel{velocity.vx, velocity.vy, velocity.vz};
   correctStep(zVel, Hvel_, velocityMeasurementNoiseStdMin_,
               velocityMeasurementNoiseStdMax_, confidence);
   lastTimestampSec_ = timestampSec;

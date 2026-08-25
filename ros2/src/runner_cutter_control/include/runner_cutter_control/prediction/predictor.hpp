@@ -56,7 +56,7 @@ class Predictor {
    * ignored (e.g. out of order).
    */
   virtual bool addVelocity(double /*timestampSec*/,
-                           const Position& /*velocity*/, float /*confidence*/) {
+                           const Velocity& /*velocity*/, float /*confidence*/) {
     return false;
   }
 
