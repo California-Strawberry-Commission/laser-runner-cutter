@@ -84,8 +84,8 @@ void DenseOpticalFlow::allocateBuffers(int32_t width, int32_t height) {
 
   if (payload_ != nullptr) {
     spdlog::warn(
-        "DenseOpticalFlow: frame size changed from {}x{} to {}x{}; "
-        "reallocating VPI buffers",
+        "[DenseOpticalFlow] Frame size changed from {}x{} to {}x{}. "
+        "Reallocating VPI buffers.",
         bufferedSize_.width, bufferedSize_.height, width, height);
   }
   destroyBuffers();
@@ -123,8 +123,8 @@ void DenseOpticalFlow::allocateBuffers(int32_t width, int32_t height) {
   bufferedSize_ = cv::Size(width, height);
 }
 
-cv::Point2f DenseOpticalFlow::computeFlow(const cv::Mat& prevFrame,
-                                          const cv::Mat& currFrame) {
+std::optional<cv::Point2f> DenseOpticalFlow::computeFlow(
+    const cv::Mat& prevFrame, const cv::Mat& currFrame) {
   if (prevFrame.empty() || currFrame.empty()) {
     throw std::invalid_argument("Input frames must not be empty");
   }
@@ -150,8 +150,8 @@ cv::Point2f DenseOpticalFlow::computeFlow(const cv::Mat& prevFrame,
   return trackAndComputeMedianFlow();
 }
 
-cv::Point2f DenseOpticalFlow::computeFlow(const cv::cuda::GpuMat& prevFrame,
-                                          const cv::cuda::GpuMat& currFrame) {
+std::optional<cv::Point2f> DenseOpticalFlow::computeFlow(
+    const cv::cuda::GpuMat& prevFrame, const cv::cuda::GpuMat& currFrame) {
   if (prevFrame.empty() || currFrame.empty()) {
     throw std::invalid_argument("Input frames must not be empty");
   }
@@ -207,7 +207,7 @@ void DenseOpticalFlow::wrapCudaMat(VPIImage& img, const cv::cuda::GpuMat& mat) {
   }
 }
 
-cv::Point2f DenseOpticalFlow::trackAndComputeMedianFlow() {
+std::optional<cv::Point2f> DenseOpticalFlow::trackAndComputeMedianFlow() {
   // BGR/PL -> Y8/PL on CUDA
   CHECK_STATUS(vpiSubmitConvertImageFormat(stream_, VPI_BACKEND_CUDA,
                                            imgPrevPL_, imgPrevTmp_, nullptr));
@@ -234,7 +234,7 @@ cv::Point2f DenseOpticalFlow::trackAndComputeMedianFlow() {
   CHECK_STATUS(vpiImageLockData(imgMotionVecPL_, VPI_LOCK_READ,
                                 VPI_IMAGE_BUFFER_HOST_PITCH_LINEAR, &mvData));
 
-  cv::Point2f medianFlow;
+  std::optional<cv::Point2f> medianFlow;
   try {
     cv::Mat mvImage;
     CHECK_STATUS(vpiImageDataExportOpenCVMat(mvData, &mvImage));
@@ -248,7 +248,13 @@ cv::Point2f DenseOpticalFlow::trackAndComputeMedianFlow() {
     cv::split(flow, channels);
     std::vector<float> xs(channels[0].begin<float>(), channels[0].end<float>());
     std::vector<float> ys(channels[1].begin<float>(), channels[1].end<float>());
-    medianFlow = cv::Point2f(median(xs), median(ys));
+    if (!xs.empty()) {
+      medianFlow = cv::Point2f(median(xs), median(ys));
+    } else {
+      spdlog::warn(
+          "[DenseOpticalFlow] Motion vector grid is empty; flow could not be "
+          "computed");
+    }
   } catch (...) {
     vpiImageUnlock(imgMotionVecPL_);
     throw;

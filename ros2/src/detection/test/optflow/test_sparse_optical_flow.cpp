@@ -71,10 +71,11 @@ TEST_F(SparseOpticalFlowTest, IdenticalFramesReturnZeroFlow) {
   SparseOpticalFlow opticalFlow;
   cv::Mat frame{cropAt(sourceImage_, CROP_X, CROP_Y, CROP_WIDTH, CROP_HEIGHT)};
 
-  cv::Point2f flow{opticalFlow.computeFlow(frame, frame)};
+  std::optional<cv::Point2f> flow{opticalFlow.computeFlow(frame, frame)};
 
-  EXPECT_NEAR(flow.x, 0.0f, FLOW_TOLERANCE_PX);
-  EXPECT_NEAR(flow.y, 0.0f, FLOW_TOLERANCE_PX);
+  ASSERT_TRUE(flow.has_value());
+  EXPECT_NEAR(flow->x, 0.0f, FLOW_TOLERANCE_PX);
+  EXPECT_NEAR(flow->y, 0.0f, FLOW_TOLERANCE_PX);
 }
 
 TEST_F(SparseOpticalFlowTest, DetectsKnownTranslation) {
@@ -84,16 +85,18 @@ TEST_F(SparseOpticalFlowTest, DetectsKnownTranslation) {
   cv::Mat currFrame{cropAt(sourceImage_, CROP_X + SHIFT_DX, CROP_Y + SHIFT_DY,
                            CROP_WIDTH, CROP_HEIGHT)};
 
-  cv::Point2f flow{opticalFlow.computeFlow(prevFrame, currFrame)};
+  std::optional<cv::Point2f> flow{
+      opticalFlow.computeFlow(prevFrame, currFrame)};
 
   // currFrame is cropped further right/down in the source image than
   // prevFrame, so content appears to have moved left/up by (SHIFT_DX,
   // SHIFT_DY) between prevFrame and currFrame.
-  EXPECT_NEAR(flow.x, -SHIFT_DX, FLOW_TOLERANCE_PX);
-  EXPECT_NEAR(flow.y, -SHIFT_DY, FLOW_TOLERANCE_PX);
+  ASSERT_TRUE(flow.has_value());
+  EXPECT_NEAR(flow->x, -SHIFT_DX, FLOW_TOLERANCE_PX);
+  EXPECT_NEAR(flow->y, -SHIFT_DY, FLOW_TOLERANCE_PX);
 }
 
-TEST_F(SparseOpticalFlowTest, IncludeRegionWithNoFeaturesReturnsZeroFlow) {
+TEST_F(SparseOpticalFlowTest, IncludeRegionWithNoFeaturesReturnsNullopt) {
   SparseOpticalFlow opticalFlow;
   cv::Mat prevFrame{
       cropAt(sourceImage_, CROP_X, CROP_Y, CROP_WIDTH, CROP_HEIGHT)};
@@ -107,11 +110,10 @@ TEST_F(SparseOpticalFlowTest, IncludeRegionWithNoFeaturesReturnsZeroFlow) {
   cv::Rect includeRegion{175, 175, 150, 150};
   prevFrame(flatPatch).setTo(cv::Scalar(0, 0, 0));
 
-  cv::Point2f flow{
+  std::optional<cv::Point2f> flow{
       opticalFlow.computeFlow(prevFrame, currFrame, includeRegion)};
 
-  EXPECT_FLOAT_EQ(flow.x, 0.0f);
-  EXPECT_FLOAT_EQ(flow.y, 0.0f);
+  EXPECT_FALSE(flow.has_value());
 }
 
 TEST_F(SparseOpticalFlowTest, ReallocatesBuffersWhenFrameSizeChanges) {
@@ -125,10 +127,12 @@ TEST_F(SparseOpticalFlowTest, ReallocatesBuffersWhenFrameSizeChanges) {
                            CROP_WIDTH, CROP_HEIGHT)};
 
   opticalFlow.computeFlow(smallPrev, smallCurr);
-  cv::Point2f flow{opticalFlow.computeFlow(largePrev, largeCurr)};
+  std::optional<cv::Point2f> flow{
+      opticalFlow.computeFlow(largePrev, largeCurr)};
 
-  EXPECT_NEAR(flow.x, -SHIFT_DX, FLOW_TOLERANCE_PX);
-  EXPECT_NEAR(flow.y, -SHIFT_DY, FLOW_TOLERANCE_PX);
+  ASSERT_TRUE(flow.has_value());
+  EXPECT_NEAR(flow->x, -SHIFT_DX, FLOW_TOLERANCE_PX);
+  EXPECT_NEAR(flow->y, -SHIFT_DY, FLOW_TOLERANCE_PX);
 }
 
 int main(int argc, char** argv) {

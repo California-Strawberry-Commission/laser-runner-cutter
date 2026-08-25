@@ -160,8 +160,8 @@ void SparseOpticalFlow::allocateBuffers(int32_t width, int32_t height) {
 
   if (harrisPayload_ != nullptr) {
     spdlog::warn(
-        "SparseOpticalFlow: frame size changed from {}x{} to {}x{}; "
-        "reallocating VPI buffers",
+        "[SparseOpticalFlow] Frame size changed from {}x{} to {}x{}. "
+        "Reallocating VPI buffers.",
         bufferedSize_.width, bufferedSize_.height, width, height);
   }
   destroyBuffers();
@@ -214,9 +214,9 @@ void SparseOpticalFlow::allocateBuffers(int32_t width, int32_t height) {
   bufferedSize_ = cv::Size(width, height);
 }
 
-cv::Point2f SparseOpticalFlow::computeFlow(const cv::Mat& prevFrame,
-                                           const cv::Mat& currFrame,
-                                           cv::Rect includeRegion) {
+std::optional<cv::Point2f> SparseOpticalFlow::computeFlow(
+    const cv::Mat& prevFrame, const cv::Mat& currFrame,
+    cv::Rect includeRegion) {
   if (prevFrame.empty() || currFrame.empty()) {
     throw std::invalid_argument("Input frames must not be empty");
   }
@@ -242,9 +242,9 @@ cv::Point2f SparseOpticalFlow::computeFlow(const cv::Mat& prevFrame,
   return trackAndComputeMedianFlow(includeRegion);
 }
 
-cv::Point2f SparseOpticalFlow::computeFlow(const cv::cuda::GpuMat& prevFrame,
-                                           const cv::cuda::GpuMat& currFrame,
-                                           cv::Rect includeRegion) {
+std::optional<cv::Point2f> SparseOpticalFlow::computeFlow(
+    const cv::cuda::GpuMat& prevFrame, const cv::cuda::GpuMat& currFrame,
+    cv::Rect includeRegion) {
   if (prevFrame.empty() || currFrame.empty()) {
     throw std::invalid_argument("Input frames must not be empty");
   }
@@ -301,7 +301,7 @@ void SparseOpticalFlow::wrapCudaMat(VPIImage& img,
   }
 }
 
-cv::Point2f SparseOpticalFlow::trackAndComputeMedianFlow(
+std::optional<cv::Point2f> SparseOpticalFlow::trackAndComputeMedianFlow(
     const cv::Rect& includeRegion) {
   // Convert to grayscale on CUDA. Harris with PVA backend only supports S16
   // input, distinct from the U8 copy used to build the pyramids for PyrLK.
@@ -353,7 +353,7 @@ cv::Point2f SparseOpticalFlow::trackAndComputeMedianFlow(
   CHECK_STATUS(vpiArrayLockData(status_, VPI_LOCK_READ,
                                 VPI_ARRAY_BUFFER_HOST_AOS, &statusData));
 
-  cv::Point2f medianFlow{0.0f, 0.0f};
+  std::optional<cv::Point2f> medianFlow;
   try {
     const VPIKeypointF32* prevPts =
         reinterpret_cast<const VPIKeypointF32*>(prevData.buffer.aos.data);
@@ -377,7 +377,7 @@ cv::Point2f SparseOpticalFlow::trackAndComputeMedianFlow(
       medianFlow = cv::Point2f(median(dxs), median(dys));
     } else {
       spdlog::warn(
-          "SparseOpticalFlow: no feature points were tracked ({} corners "
+          "[SparseOpticalFlow] No feature points were tracked ({} corners "
           "detected, 0 tracked)",
           numPoints);
     }

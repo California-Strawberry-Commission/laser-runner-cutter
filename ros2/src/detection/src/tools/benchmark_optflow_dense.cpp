@@ -44,7 +44,7 @@ int main(int argc, char* argv[]) {
   std::cout << "Benchmarking..." << std::endl;
   double totalTimeMs{0.0};
   int numIterations{20};
-  cv::Point2f medianFlow;
+  std::optional<cv::Point2f> medianFlow;
   for (int i = 0; i < numIterations; ++i) {
     auto start{std::chrono::high_resolution_clock::now()};
     medianFlow = opticalFlow.computeFlow(gpuPrevFrame, gpuCurrFrame);
@@ -55,8 +55,13 @@ int main(int argc, char* argv[]) {
   std::cout << "Average computeFlow time: " << (totalTimeMs / numIterations)
             << " ms" << std::endl;
 
-  std::cout << "Median displacement: dx=" << medianFlow.x
-            << " px, dy=" << medianFlow.y << " px" << std::endl;
+  if (medianFlow) {
+    std::cout << "Median displacement: dx=" << medianFlow->x
+              << " px, dy=" << medianFlow->y << " px" << std::endl;
+  } else {
+    std::cout << "Median displacement: unavailable (empty motion vector grid)"
+              << std::endl;
+  }
 
   return 0;
 }

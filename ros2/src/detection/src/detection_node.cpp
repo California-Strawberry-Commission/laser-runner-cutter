@@ -453,7 +453,7 @@ class DetectionNode : public rclcpp::Node {
               detection_interfaces::msg::DetectionType::RUNNER) !=
           enabledDetections.end()) {
         // Kick off optical flow
-        std::future<cv::Point2f> flowFuture;
+        std::future<std::optional<cv::Point2f>> flowFuture;
         std::optional<cv::Point2f> flowCenter;
         double flowDeltaTimeSecs{0.0};
         if (getParamEnableOptflow() && !gpuPrevImage.empty() &&
@@ -493,14 +493,14 @@ class DetectionNode : public rclcpp::Node {
         auto runners{runnerDetector_->track(gpuCurrImage, bounds)};
 
         // Wait for optical flow results
-        cv::Point2f displacement{0.0f, 0.0f};
+        std::optional<cv::Point2f> pixelDisplacement;
         if (flowFuture.valid()) {
-          displacement = flowFuture.get();
+          pixelDisplacement = flowFuture.get();
         }
 
         // Create and publish DetectionResult
         auto detectionResult{createDetectionResult(
-            runners, imgMsg, displacement, flowDeltaTimeSecs, flowCenter)};
+            runners, imgMsg, pixelDisplacement, flowDeltaTimeSecs, flowCenter)};
         detectionsPublisher_->publish(detectionResult);
 
         // Draw detections to debug image
@@ -660,15 +660,19 @@ class DetectionNode : public rclcpp::Node {
   detection_interfaces::msg::DetectionResult createDetectionResult(
       const std::vector<DetectionT>& detections,
       const sensor_msgs::msg::Image::ConstSharedPtr image,
-      const cv::Point2f& displacement = cv::Point2f{},
+      const std::optional<cv::Point2f>& pixelDisplacement = std::nullopt,
       double deltaTimeSecs = 0.0,
       const std::optional<cv::Point2f>& flowAnchorPixel = std::nullopt) {
     detection_interfaces::msg::DetectionResult detectionResult;
     detectionResult.detection_type = detectionTypeFor<DetectionT>();
     detectionResult.timestamp = image->header.stamp;
-    detectionResult.flow_displacement.pixel_displacement.x = displacement.x;
-    detectionResult.flow_displacement.pixel_displacement.y = displacement.y;
-    detectionResult.flow_displacement.delta_time_secs = deltaTimeSecs;
+    if (pixelDisplacement) {
+      detectionResult.flow_displacement.pixel_displacement.x =
+          pixelDisplacement->x;
+      detectionResult.flow_displacement.pixel_displacement.y =
+          pixelDisplacement->y;
+      detectionResult.flow_displacement.delta_time_secs = deltaTimeSecs;
+    }
 
     auto rgbdAlignment{getOrCreateRgbdAlignment()};
     auto depthXyz{getDepthXyz(image)};
@@ -686,12 +690,13 @@ class DetectionNode : public rclcpp::Node {
     // Derive the 3D position displacement from the pixel displacement by
     // looking up the 3D positions of the anchor pixel and the anchor pixel
     // shifted by the displacement, using the same depth frame for both.
-    if (flowAnchorPixel && displacement != cv::Point2f{}) {
+    if (pixelDisplacement && flowAnchorPixel) {
       cv::Point2i prevPixel{static_cast<int>(std::round(flowAnchorPixel->x)),
                             static_cast<int>(std::round(flowAnchorPixel->y))};
-      cv::Point2i currPixel{
-          static_cast<int>(std::round(flowAnchorPixel->x + displacement.x)),
-          static_cast<int>(std::round(flowAnchorPixel->y + displacement.y))};
+      cv::Point2i currPixel{static_cast<int>(std::round(flowAnchorPixel->x +
+                                                        pixelDisplacement->x)),
+                            static_cast<int>(std::round(flowAnchorPixel->y +
+                                                        pixelDisplacement->y))};
       auto prevPositionOpt{rgbdAlignment->getPosition(prevPixel, depthXyzMat)};
       auto currPositionOpt{rgbdAlignment->getPosition(currPixel, depthXyzMat)};
       if (prevPositionOpt && currPositionOpt) {
