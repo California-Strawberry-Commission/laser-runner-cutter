@@ -6,6 +6,7 @@
 
 #include <opencv2/core/cuda.hpp>
 #include <opencv2/opencv.hpp>
+#include <optional>
 
 class DenseOpticalFlow {
  public:
@@ -16,14 +17,39 @@ class DenseOpticalFlow {
   DenseOpticalFlow(const DenseOpticalFlow&) = delete;
   DenseOpticalFlow& operator=(const DenseOpticalFlow&) = delete;
 
-  // Computes dense optical flow between two same-sized frames and returns the
-  // median displacement vector (dx, dy) in pixels.
-  cv::Point2f computeFlow(const cv::Mat& prevFrame, const cv::Mat& currFrame);
+  /**
+   * Computes dense optical flow between two same-sized frames and the median
+   * displacement vector (dx, dy) in pixels over the resulting motion vector
+   * grid. Host (CPU) frame overload.
+   *
+   * @param prevFrame Previous frame, on host memory.
+   * @param currFrame Current frame, on host memory. Must match prevFrame's
+   * size and type.
+   * @return Median (dx, dy) displacement in pixels over the motion vector
+   * grid, or std::nullopt if flow could not be computed (e.g. the motion
+   * vector grid is empty for the given frame size).
+   * @throws std::invalid_argument if either frame is empty, or if their
+   * sizes or types don't match.
+   */
+  std::optional<cv::Point2f> computeFlow(const cv::Mat& prevFrame,
+                                         const cv::Mat& currFrame);
 
-  // Computes dense optical flow between two same-sized frames and returns the
-  // median displacement vector (dx, dy) in pixels.
-  cv::Point2f computeFlow(const cv::cuda::GpuMat& prevFrame,
-                          const cv::cuda::GpuMat& currFrame);
+  /**
+   * Computes dense optical flow between two same-sized frames and the median
+   * displacement vector (dx, dy) in pixels over the resulting motion vector
+   * grid. GPU frame overload.
+   *
+   * @param prevFrame Previous frame, on GPU (CUDA) memory.
+   * @param currFrame Current frame, on GPU (CUDA) memory. Must match
+   * prevFrame's size and type.
+   * @return Median (dx, dy) displacement in pixels over the motion vector
+   * grid, or std::nullopt if flow could not be computed (e.g. the motion
+   * vector grid is empty for the given frame size).
+   * @throws std::invalid_argument if either frame is empty, or if their
+   * sizes or types don't match.
+   */
+  std::optional<cv::Point2f> computeFlow(const cv::cuda::GpuMat& prevFrame,
+                                         const cv::cuda::GpuMat& currFrame);
 
  private:
   enum class InputMemory { NONE, HOST, CUDA };
@@ -37,7 +63,7 @@ class DenseOpticalFlow {
 
   void wrapCudaMat(VPIImage& img, const cv::cuda::GpuMat& mat);
 
-  cv::Point2f trackAndComputeMedianFlow();
+  std::optional<cv::Point2f> trackAndComputeMedianFlow();
 
   int32_t gridSize_;
   VPIOpticalFlowQuality quality_;

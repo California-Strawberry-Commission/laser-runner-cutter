@@ -41,7 +41,7 @@ int main() {
   std::vector<float> measX, measY, predX, predY;
 
   for (const auto& [timestampMs, position] : data) {
-    predictor.add(timestampMs / 1000.0, {position, 1.0f});
+    predictor.add(timestampMs / 1000.0, position, 1.0f);
     measX.push_back(position.x);
     measY.push_back(position.y);
   }

@@ -21,6 +21,12 @@ struct Position {
   float z;
 };
 
+struct Velocity {
+  float vx;
+  float vy;
+  float vz;
+};
+
 struct PixelRect {
   int u;
   int v;

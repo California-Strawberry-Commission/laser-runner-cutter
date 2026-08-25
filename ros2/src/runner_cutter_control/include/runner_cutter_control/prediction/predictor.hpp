@@ -14,9 +14,8 @@ class Predictor {
   };
 
   using HistoryEntry = std::pair<double, Measurement>;
-  static constexpr std::size_t MAX_PREDICTOR_POINTS{1024};
 
-  explicit Predictor(std::size_t maxHistorySize = MAX_PREDICTOR_POINTS)
+  explicit Predictor(std::size_t maxHistorySize = 1024)
       : history_{maxHistorySize} {}
 
   virtual ~Predictor() = default;
@@ -28,19 +27,37 @@ class Predictor {
    * adding a measurement evicts the oldest one.
    *
    * @param timestampSec Timestamp, in seconds, associated with the measurement.
-   * @param measurement Measurement taken at the timestamp, which consists
-   * of (x, y, z) position and confidence score.
-   * @return True if the measurement was added, and false if it was ignored
-   * for being out of order.
+   * @param position Position (x, y, z) measurement.
+   * @param confidence Confidence score associated with the position
+   * measurement.
+   * @return True if the measurement was added, false if ignored (e.g. out of
+   * order).
    */
-  virtual bool add(double timestampSec, const Measurement& measurement) {
+  virtual bool add(double timestampSec, const Position& position,
+                   float confidence) {
     if (!history_.empty() && timestampSec <= lastTimestampSec_) {
       return false;
     }
 
-    history_.push_back({timestampSec, measurement});
+    history_.push_back({timestampSec, {position, confidence}});
     lastTimestampSec_ = timestampSec;
     return true;
+  }
+
+  /**
+   * Add a velocity-only measurement update.
+   *
+   * @param timestampSec Timestamp, in seconds, associated with the
+   * measurement.
+   * @param velocity Velocity (vx, vy, vz) measurement.
+   * @param confidence Confidence score associated with the velocity
+   * measurement.
+   * @return True if the measurement was applied, false if unsupported or
+   * ignored (e.g. out of order).
+   */
+  virtual bool addVelocity(double /*timestampSec*/,
+                           const Velocity& /*velocity*/, float /*confidence*/) {
+    return false;
   }
 
   /**

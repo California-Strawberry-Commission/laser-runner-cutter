@@ -85,6 +85,20 @@ class Tracker {
   bool transitionTrackState(uint32_t trackId, Track::State newState);
 
   /**
+   * Apply a velocity-only measurement update to a track's predictor.
+   *
+   * @param trackId The track ID.
+   * @param velocity Velocity (vx, vy, vz) measurement.
+   * @param timestampSecs Timestamp, in seconds, associated with the
+   * measurement.
+   * @param confidence Confidence score associated with the velocity
+   * measurement.
+   * @return Whether the track was found and the update was applied.
+   */
+  bool updateTrackVelocity(uint32_t trackId, const Velocity& velocity,
+                           double timestampSecs, float confidence);
+
+  /**
    * Clear all tracks from the tracker.
    */
   void clear();
