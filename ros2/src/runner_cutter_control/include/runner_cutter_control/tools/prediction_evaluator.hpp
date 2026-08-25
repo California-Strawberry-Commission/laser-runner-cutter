@@ -22,7 +22,7 @@ double evaluatePredictor(std::unique_ptr<Predictor> predictor,
     const Position& position{positions[i]};
     float confidence{confidences[i]};
 
-    predictor->add(timestampSec, {position, confidence});
+    predictor->add(timestampSec, position, confidence);
 
     double predictTime{timestampSec + predictionOffsetSec};
 

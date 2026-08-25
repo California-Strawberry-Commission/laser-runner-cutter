@@ -24,7 +24,7 @@ TEST(KalmanFilterPredictorTest, PredictBeforeAnyMeasurementReturnsZero) {
 TEST(KalmanFilterPredictorTest, SingleMeasurementPrediction) {
   KalmanFilterPredictor predictor;
   Position position{5.0f, 6.0f, 7.0f};
-  predictor.add(2.0, {position, 1.0f});
+  predictor.add(2.0, position, 1.0f);
 
   // A prediction at the single measurement timestamp should return the
   // measurement
@@ -44,11 +44,11 @@ TEST(KalmanFilterPredictorTest, OutOfOrderMeasurementIsIgnored) {
   Position positionA{5.0f, 5.0f, 5.0f};
   Position positionB{100.0f, 100.0f, 100.0f};
 
-  EXPECT_TRUE(predictor.add(2.0, {positionA, 1.0f}));
+  EXPECT_TRUE(predictor.add(2.0, positionA, 1.0f));
   // Attempting to add a measurement with a timestamp earlier than or equal to
   // the last added should be rejected
-  EXPECT_FALSE(predictor.add(1.0, {positionB, 1.0f}));
-  EXPECT_FALSE(predictor.add(2.0, {positionB, 1.0f}));
+  EXPECT_FALSE(predictor.add(1.0, positionB, 1.0f));
+  EXPECT_FALSE(predictor.add(2.0, positionB, 1.0f));
 
   EXPECT_EQ(predictor.getHistory().size(), 1u);
   EXPECT_DOUBLE_EQ(predictor.getLastTimestampSec(), 2.0);
@@ -60,7 +60,7 @@ TEST(KalmanFilterPredictorTest, OutOfOrderMeasurementIsIgnored) {
 
 TEST(KalmanFilterPredictorTest, ResetClearsStateAndHistory) {
   KalmanFilterPredictor predictor;
-  predictor.add(5.0, {{1.0f, 2.0f, 3.0f}, 1.0f});
+  predictor.add(5.0, {1.0f, 2.0f, 3.0f}, 1.0f);
 
   predictor.reset();
 
@@ -70,7 +70,7 @@ TEST(KalmanFilterPredictorTest, ResetClearsStateAndHistory) {
   expectPositionEq(predictor.predict(100.0), ZERO_POSITION);
 
   Position position{7.0f, 8.0f, 9.0f};
-  predictor.add(10.0, {position, 1.0f});
+  predictor.add(10.0, position, 1.0f);
   expectPositionEq(predictor.predict(20.0), position);
 }
 
@@ -84,7 +84,7 @@ TEST(KalmanFilterPredictorTest, ConstantVelocityMeasurementsPrediction) {
   int numMeasurements{20};
   for (int i = 0; i < numMeasurements; ++i) {
     Position position{velocityX * i, velocityY * i, velocityZ * i};
-    predictor.add(static_cast<double>(i), {position, 1.0f});
+    predictor.add(static_cast<double>(i), position, 1.0f);
   }
 
   Position lastMeasuredPosition{velocityX * (numMeasurements - 1),

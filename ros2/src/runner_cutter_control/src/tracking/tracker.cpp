@@ -74,8 +74,8 @@ std::shared_ptr<const Track> Tracker::addOrUpdateTrack(uint32_t trackId,
     tracksByState_[Track::State::PENDING].insert(trackId);
   }
 
-  // Update predictor for the track
-  track->getPredictor().add(timestampSecs, {position, confidence});
+  // Add position measurement to the Track's predictor
+  track->getPredictor().add(timestampSecs, position, confidence);
 
   return track;
 }
