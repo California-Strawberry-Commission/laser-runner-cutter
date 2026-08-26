@@ -1,6 +1,7 @@
 #include <fmt/core.h>
 
 #include <algorithm>
+#include <functional>
 
 #include "camera_control_interfaces/msg/device_state.hpp"
 #include "camera_control_interfaces/msg/state.hpp"
@@ -17,16 +18,19 @@
 #include "runner_cutter_control/clients/camera_control_client.hpp"
 #include "runner_cutter_control/clients/detection_client.hpp"
 #include "runner_cutter_control/clients/laser_control_client.hpp"
-#include "runner_cutter_control/clients/laser_detection_context.hpp"
 #include "runner_cutter_control/common_types.hpp"
 #include "runner_cutter_control/prediction/average_velocity_predictor.hpp"
 #include "runner_cutter_control/prediction/kalman_filter_predictor.hpp"
 #include "runner_cutter_control/prediction/last_known_predictor.hpp"
+#include "runner_cutter_control/tasks/add_calibration_points_task.hpp"
+#include "runner_cutter_control/tasks/calibration_task.hpp"
+#include "runner_cutter_control/tasks/circle_follower_task.hpp"
+#include "runner_cutter_control/tasks/laser_targeting.hpp"
+#include "runner_cutter_control/tasks/manual_target_laser_task.hpp"
+#include "runner_cutter_control/tasks/runner_cutter_task.hpp"
 #include "runner_cutter_control/tools/prediction_evaluator.hpp"
 #include "runner_cutter_control/tracking/tracker.hpp"
 #include "runner_cutter_control_interfaces/msg/state.hpp"
-#include "runner_cutter_control_interfaces/msg/track.hpp"
-#include "runner_cutter_control_interfaces/msg/track_state.hpp"
 #include "runner_cutter_control_interfaces/msg/tracks.hpp"
 #include "runner_cutter_control_interfaces/srv/add_calibration_points.hpp"
 #include "runner_cutter_control_interfaces/srv/calibrate.hpp"
@@ -180,6 +184,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
     calibration_ = std::make_shared<Calibration>(laser_, camera_, detection_);
     tracker_ = std::make_shared<Tracker>();
+    laserTargeting_ = std::make_shared<LaserTargeting>(
+        laser_, camera_, detection_, calibration_, get_logger());
 
     // Publish initial state
     publishState();
@@ -274,45 +280,6 @@ class RunnerCutterControlNode : public rclcpp::Node {
     return msg;
   }
 
-  runner_cutter_control_interfaces::msg::Tracks::UniquePtr getTracksMsg() {
-    auto msg{std::make_unique<runner_cutter_control_interfaces::msg::Tracks>()};
-    auto [frameWidth, frameHeight]{calibration_->getCameraFrameSize()};
-    for (const auto& [id, track] : tracker_->getTracks()) {
-      runner_cutter_control_interfaces::msg::Track trackMsg;
-      trackMsg.id = track->getId();
-      common_interfaces::msg::Vector2 normalizedPixelCoordMsg;
-      normalizedPixelCoordMsg.x =
-          frameWidth > 0 ? static_cast<float>(track->getPixel().u) /
-                               static_cast<float>(frameWidth)
-                         : -1.0f;
-      normalizedPixelCoordMsg.y =
-          frameHeight > 0 ? static_cast<float>(track->getPixel().v) /
-                                static_cast<float>(frameHeight)
-                          : -1.0f;
-      trackMsg.normalized_pixel_coord = normalizedPixelCoordMsg;
-      switch (track->getState()) {
-        case Track::State::PENDING:
-          trackMsg.state =
-              runner_cutter_control_interfaces::msg::TrackState::PENDING;
-          break;
-        case Track::State::ACTIVE:
-          trackMsg.state =
-              runner_cutter_control_interfaces::msg::TrackState::ACTIVE;
-          break;
-        case Track::State::COMPLETED:
-          trackMsg.state =
-              runner_cutter_control_interfaces::msg::TrackState::COMPLETED;
-          break;
-        case Track::State::FAILED:
-          trackMsg.state =
-              runner_cutter_control_interfaces::msg::TrackState::FAILED;
-          break;
-      }
-      msg->tracks.push_back(trackMsg);
-    }
-    return msg;
-  }
-
   void publishState() { statePublisher_->publish(std::move(getStateMsg())); }
 
   void publishNotification(
@@ -321,8 +288,6 @@ class RunnerCutterControlNode : public rclcpp::Node {
     common::publishNotification(get_logger(), notificationsPublisher_, msg,
                                 level);
   }
-
-  void publishTracks() { tracksPublisher_->publish(std::move(getTracksMsg())); }
 
 #pragma endregion
 
@@ -503,8 +468,13 @@ class RunnerCutterControlNode : public rclcpp::Node {
       std::shared_ptr<
           runner_cutter_control_interfaces::srv::Calibrate::Response>
           response) {
-    bool res{startTask("calibration", &RunnerCutterControlNode::calibrationTask,
-                       request->save_images)};
+    bool saveImages{request->save_images};
+    bool res{startTask("calibration", [this, saveImages]() {
+      CalibrationTask task{calibration_, get_logger(), notificationsPublisher_};
+      task.run(saveImages, getParamTrackingLaserColor(),
+               getParamCalibrationGridSize(), getParamCalibrationXBounds(),
+               getParamCalibrationYBounds(), taskStopSignal_);
+    })};
     response->success = res;
   }
 
@@ -547,15 +517,21 @@ class RunnerCutterControlNode : public rclcpp::Node {
       std::shared_ptr<
           runner_cutter_control_interfaces::srv::AddCalibrationPoints::Response>
           response) {
-    auto normalizedPixelCoords{
-        std::make_shared<std::vector<NormalizedPixelCoord>>()};
+    std::vector<NormalizedPixelCoord> normalizedPixelCoords;
     for (const auto& coord : request->normalized_pixel_coords) {
-      normalizedPixelCoords->push_back(NormalizedPixelCoord{
+      normalizedPixelCoords.push_back(NormalizedPixelCoord{
           static_cast<float>(coord.x), static_cast<float>(coord.y)});
     }
-    bool res{startTask("add_calibration_points",
-                       &RunnerCutterControlNode::addCalibrationPointsTask,
-                       normalizedPixelCoords, request->save_images)};
+    bool saveImages{request->save_images};
+    bool res{startTask(
+        "add_calibration_points",
+        [this, normalizedPixelCoords = std::move(normalizedPixelCoords),
+         saveImages]() {
+          AddCalibrationPointsTask task{detection_, calibration_, get_logger(),
+                                        notificationsPublisher_};
+          task.run(normalizedPixelCoords, saveImages,
+                   getParamTrackingLaserColor(), taskStopSignal_);
+        })};
     response->success = res;
   }
 
@@ -569,26 +545,49 @@ class RunnerCutterControlNode : public rclcpp::Node {
     NormalizedPixelCoord normalizedPixelCoord{
         static_cast<float>(request->normalized_pixel_coord.x),
         static_cast<float>(request->normalized_pixel_coord.y)};
-    bool res{startTask("manual_target_laser",
-                       &RunnerCutterControlNode::manualTargetLaserTask,
-                       normalizedPixelCoord, request->aim, request->burn)};
+    bool shouldAim{request->aim};
+    bool shouldBurn{request->burn};
+    bool res{startTask("manual_target_laser", [this, normalizedPixelCoord,
+                                               shouldAim, shouldBurn]() {
+      ManualTargetLaserTask task{detection_, calibration_, laserTargeting_,
+                                 get_logger()};
+      task.run(normalizedPixelCoord, shouldAim, shouldBurn,
+               getParamTrackingLaserColor(), getParamBurnLaserColor(),
+               getParamBurnTimeSecs(), taskStopSignal_);
+    })};
     response->success = res;
   }
 
   void onStartRunnerCutter(
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-    bool res{
-        startTask("runner_cutter", &RunnerCutterControlNode::runnerCutterTask,
-                  detection_interfaces::msg::DetectionType::RUNNER, false)};
+    bool res{startTask("runner_cutter", [this]() {
+      RunnerCutterTask task{camera_,
+                            detection_,
+                            calibration_,
+                            tracker_,
+                            laserTargeting_,
+                            get_logger(),
+                            notificationsPublisher_,
+                            tracksPublisher_};
+      task.run(detection_interfaces::msg::DetectionType::RUNNER, false,
+               getParamEnableAiming(), getParamAutoDisarmSecs(),
+               getParamSaveDir(), getParamTrackingLaserColor(),
+               getParamBurnLaserColor(), getParamBurnTimeSecs(),
+               taskStopSignal_, pendingTracksChangedEvent_);
+    })};
     response->success = res;
   }
 
   void onStartCircleFollower(
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-    bool res{startTask("circle_follower",
-                       &RunnerCutterControlNode::circleFollowerTask, 0.25f)};
+    bool res{startTask("circle_follower", [this]() {
+      CircleFollowerTask task{laser_, detection_, calibration_, tracker_,
+                              get_logger()};
+      task.run(0.25f, getParamTrackingLaserColor(), taskStopSignal_,
+               pendingTracksChangedEvent_, trackUpdatedEvent_);
+    })};
     response->success = res;
   }
 
@@ -621,8 +620,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
     }
   }
 
-  template <typename Function, typename... Args>
-  bool startTask(const std::string& taskName, Function&& func, Args&&... args) {
+  bool startTask(const std::string& taskName, std::function<void()> taskFunc) {
     std::unique_lock<std::mutex> lock(taskMutex_);
 
     // If a task is already running, don't start another task
@@ -641,34 +639,24 @@ class RunnerCutterControlNode : public rclcpp::Node {
     taskName_ = taskName;
     taskRunning_ = true;
 
-    // Store arguments in a tuple for C++17 compatibility
-    auto taskArgs{std::make_tuple(std::forward<Args>(args)...)};
+    taskThread_ = std::thread([this, taskFunc = std::move(taskFunc)]() {
+      try {
+        resetToIdle();
+        publishState();
+        taskFunc();
+      } catch (const std::exception& e) {
+        RCLCPP_ERROR(get_logger(), "Task exception: %s", e.what());
+      }
 
-    taskThread_ =
-        std::thread([this, func = std::forward<Function>(func), taskArgs]() {
-          try {
-            resetToIdle();
-            publishState();
-            std::apply(
-                [this, &func](auto&&... unpackedArgs) {
-                  std::invoke(
-                      func, this,
-                      std::forward<decltype(unpackedArgs)>(unpackedArgs)...);
-                },
-                taskArgs);
-          } catch (const std::exception& e) {
-            RCLCPP_ERROR(get_logger(), "Task exception: %s", e.what());
-          }
+      resetToIdle();
 
-          resetToIdle();
+      {
+        std::lock_guard<std::mutex> lock(taskMutex_);
+        taskRunning_ = false;
+      }
 
-          {
-            std::lock_guard<std::mutex> lock(taskMutex_);
-            taskRunning_ = false;
-          }
-
-          publishState();
-        });
+      publishState();
+    });
 
     return true;
   }
@@ -687,455 +675,6 @@ class RunnerCutterControlNode : public rclcpp::Node {
     taskThread_.join();
     lock.lock();
     return true;
-  }
-
-#pragma endregion
-
-#pragma region Task definitions
-
-  void calibrationTask(bool saveImages = false) {
-    publishNotification("Calibration started");
-    calibration_->calibrate(
-        getParamTrackingLaserColor(), getParamCalibrationGridSize(),
-        getParamCalibrationXBounds(), getParamCalibrationYBounds(), saveImages,
-        taskStopSignal_);
-    publishNotification(
-        fmt::format("Calibration complete with {} point correspondences",
-                    calibration_->getPointCorrespondencesCount()));
-  }
-
-  void addCalibrationPointsTask(
-      std::shared_ptr<std::vector<NormalizedPixelCoord>> normalizedPixelCoords,
-      bool saveImages = false) {
-    // For each camera pixel coord, find the 3D position wrt the camera
-    auto positionsOpt{detection_->getPositions(*normalizedPixelCoords)};
-    if (!positionsOpt) {
-      return;
-    }
-    auto positions{std::move(*positionsOpt)};
-
-    // Filter out any invalid positions (x, y, and z are all negative)
-    positions.erase(std::remove_if(positions.begin(), positions.end(),
-                                   [](const Position& position) {
-                                     return position.x < 0.0f &&
-                                            position.y < 0.0f &&
-                                            position.z < 0.0f;
-                                   }),
-                    positions.end());
-
-    // Convert camera positions to laser pixels
-    std::vector<LaserCoord> laserCoords;
-    for (const auto& position : positions) {
-      laserCoords.push_back(calibration_->cameraPositionToLaserCoord(position));
-    }
-
-    // Filter out laser coords that are out of bounds
-    laserCoords.erase(
-        std::remove_if(laserCoords.begin(), laserCoords.end(),
-                       [](const LaserCoord& coord) {
-                         return !(0.0f <= coord.x && coord.x <= 1.0f &&
-                                  0.0f <= coord.y && coord.y <= 1.0f);
-                       }),
-        laserCoords.end());
-
-    std::size_t numPointsAdded{calibration_->addCalibrationPoints(
-        laserCoords, getParamTrackingLaserColor(), true, saveImages,
-        taskStopSignal_)};
-
-    publishNotification(
-        fmt::format("Added {} calibration point(s)", numPointsAdded));
-  }
-
-  void manualTargetLaserTask(const NormalizedPixelCoord& normalizedPixelCoord,
-                             bool shouldAim, bool shouldBurn) {
-    // Find the 3D position wrt the camera
-    std::vector<NormalizedPixelCoord> normalizedPixelCoords{
-        normalizedPixelCoord};
-    auto positionsOpt{detection_->getPositions(normalizedPixelCoords)};
-    if (!positionsOpt) {
-      return;
-    }
-
-    auto positions{std::move(*positionsOpt)};
-    auto targetPosition{positions[0]};
-    auto [frameWidth, frameHeight]{calibration_->getCameraFrameSize()};
-    PixelCoord targetPixel{
-        static_cast<int>(std::round(normalizedPixelCoord.u * frameWidth)),
-        static_cast<int>(std::round(normalizedPixelCoord.v * frameHeight))};
-
-    // Aim
-    LaserCoord laserCoord;
-    if (shouldAim) {
-      auto laserCoordOpt{aim(0, targetPosition, targetPixel)};
-      if (!laserCoordOpt) {
-        RCLCPP_INFO(get_logger(), "Failed to aim laser");
-        return;
-      }
-      RCLCPP_INFO(get_logger(), "Aim laser successful");
-      laserCoord = std::move(*laserCoordOpt);
-    } else {
-      laserCoord = calibration_->cameraPositionToLaserCoord(targetPosition);
-    }
-
-    // Burn
-    if (shouldBurn) {
-      burnTarget(0, laserCoord);
-    }
-  }
-
-  void runnerCutterTask(
-      uint8_t detectionType = detection_interfaces::msg::DetectionType::RUNNER,
-      bool enableDetectionDuringBurn = false) {
-    publishTracks();
-
-    auto timestamp{
-        std::chrono::system_clock::to_time_t(std::chrono::system_clock::now())};
-    std::stringstream datetimeString;
-    datetimeString << std::put_time(std::localtime(&timestamp), "%Y%m%d%H%M%S");
-    std::string runDataDir{
-        fmt::format("{}/runs/{}", getParamSaveDir(), datetimeString.str())};
-    camera_->setSaveDirectory(runDataDir);
-    camera_->saveImage();
-
-    // Start runner detection with detection bounds set to the laser's FOV.
-    // Note: The ML model will still detect runners and assign instance IDs
-    // using the full color camera frame, but if the runner is completely out of
-    // the detection bounds, the result is not published via the detections
-    // topic.
-    NormalizedPixelRect normalizedLaserBounds{
-        calibration_->getNormalizedLaserBounds()};
-    RCLCPP_INFO(get_logger(),
-                "Runner cutter ARMED: detectionType=%d, "
-                "normalizedLaserBounds=[u=%f, v=%f, width=%f, height=%f]",
-                static_cast<int>(detectionType), normalizedLaserBounds.u,
-                normalizedLaserBounds.v, normalizedLaserBounds.width,
-                normalizedLaserBounds.height);
-    detection_->startDetection(detectionType, normalizedLaserBounds);
-
-    while (!taskStopSignal_) {
-      // Attempt to acquire target
-      auto targetOpt{acquireNextTarget()};
-      publishTracks();
-
-      // If there are no valid targets, wait for another detection event
-      if (!targetOpt) {
-        RCLCPP_INFO(get_logger(), "No targets found. Waiting for detection.");
-        float timeoutSecs{getParamAutoDisarmSecs()};
-        if (timeoutSecs > 0.0f) {
-          // End task if no new valid targets for timeoutSecs
-          if (!pendingTracksChangedEvent_.wait_for(timeoutSecs)) {
-            publishNotification(fmt::format(
-                "No new targets after {} second(s). Ending runner cutter task.",
-                timeoutSecs));
-            break;
-          }
-
-        } else {
-          pendingTracksChangedEvent_.wait();
-        }
-        pendingTracksChangedEvent_.clear();
-        continue;
-      }
-
-      // Temporarily disable runner detection during aim/burn if needed
-      if (!enableDetectionDuringBurn) {
-        detection_->stopDetection(detectionType);
-      }
-
-      auto target{std::move(*targetOpt)};
-
-      // Aim
-      LaserCoord laserCoord;
-      if (getParamEnableAiming()) {
-        auto laserCoordOpt{
-            aim(target->getId(), target->getPosition(), target->getPixel())};
-        if (!laserCoordOpt) {
-          RCLCPP_INFO(get_logger(), "Failed to aim laser at track %u.",
-                      target->getId());
-          tracker_->transitionTrackState(target->getId(), Track::State::FAILED);
-          continue;
-        }
-        laserCoord = std::move(*laserCoordOpt);
-      } else {
-        laserCoord =
-            calibration_->cameraPositionToLaserCoord(target->getPosition());
-      }
-
-      // Burn
-      burnTarget(target->getId(), laserCoord);
-
-      // Re-enable runner detection after burn if needed
-      if (!enableDetectionDuringBurn) {
-        detection_->startDetection(detectionType, normalizedLaserBounds);
-      }
-    }
-  }
-
-  /**
-   * Get the next suitable target from the tracker.
-   *
-   * @return The target Track, if one is available.
-   */
-  std::optional<std::shared_ptr<const Track>> acquireNextTarget() {
-    auto activeTracks{tracker_->getTracksWithState(Track::State::ACTIVE)};
-    if (!activeTracks.empty()) {
-      RCLCPP_INFO(get_logger(), "Using active track %u",
-                  activeTracks[0]->getId());
-      return activeTracks[0];
-    }
-
-    while (!taskStopSignal_) {
-      auto trackOpt{tracker_->activateNextPendingTrack()};
-      if (!trackOpt) {
-        return std::nullopt;
-      }
-
-      auto track{std::move(*trackOpt)};
-      RCLCPP_INFO(get_logger(), "Processing pending track %u", track->getId());
-
-      LaserCoord laserCoord{
-          calibration_->cameraPositionToLaserCoord(track->getPosition())};
-      if (laserCoord.x >= 0.0 && laserCoord.x <= 1.0 && laserCoord.y >= 0.0 &&
-          laserCoord.y <= 1.0) {
-        RCLCPP_INFO(get_logger(), "Setting track %u as target.",
-                    track->getId());
-        return track;
-      }
-
-      RCLCPP_INFO(get_logger(), "Track %u out of bounds. Marking as failed.",
-                  track->getId());
-      tracker_->transitionTrackState(track->getId(), Track::State::FAILED);
-    }
-
-    return std::nullopt;
-  }
-
-  void burnTarget(uint32_t targetTrackId, const LaserCoord& laserCoord) {
-    LaserDetectionContext context{laser_, camera_};
-    float burnTimeSecs{getParamBurnTimeSecs()};
-    laser_->clearPaths();
-    laser_->setColor(getParamBurnLaserColor());
-    laser_->play();
-    RCLCPP_INFO(get_logger(), "Burning track %u for %f secs", targetTrackId,
-                burnTimeSecs);
-    laser_->setPoint(targetTrackId, laserCoord);
-    constexpr auto KEEPALIVE_PERIOD{std::chrono::milliseconds(100)};
-    auto deadline{
-        std::chrono::steady_clock::now() +
-        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-            std::chrono::duration<float>(burnTimeSecs))};
-    while (std::chrono::steady_clock::now() < deadline) {
-      std::this_thread::sleep_for(KEEPALIVE_PERIOD);
-      laser_->setPoint(targetTrackId, laserCoord);
-    }
-    laser_->clearPaths();
-    laser_->stop();
-    tracker_->transitionTrackState(targetTrackId, Track::State::COMPLETED);
-    RCLCPP_INFO(get_logger(), "Burn complete on track %u", targetTrackId);
-  }
-
-  void circleFollowerTask(float laserIntervalSecs = 0.25f) {
-    laser_->clearPaths();
-    laser_->setColor(LaserColor{0.0f, 0.0f, 0.0f, 0.0f});
-    // Arm laser and start detection
-    laser_->play();
-    detection_->startDetection(
-        detection_interfaces::msg::DetectionType::CIRCLE);
-
-    while (!taskStopSignal_) {
-      auto trackOpt{tracker_->activateNextPendingTrack()};
-      if (!trackOpt) {
-        pendingTracksChangedEvent_.wait();
-        pendingTracksChangedEvent_.clear();
-        continue;
-      }
-
-      auto track{std::move(*trackOpt)};
-      RCLCPP_INFO(get_logger(), "Following circle");
-
-      // Continuously follow the track for as long as the task is running. A
-      // new waypoint is added as soon as a new detection comes in for the
-      // track. The laser is strobed every laserIntervalSecs.
-      auto nextLaserTime{std::chrono::steady_clock::now()};
-      while (!taskStopSignal_) {
-        float remainingSecs{
-            std::chrono::duration<float>(nextLaserTime -
-                                         std::chrono::steady_clock::now())
-                .count()};
-        if (remainingSecs > 0.0f &&
-            trackUpdatedEvent_.wait_for(remainingSecs)) {
-          trackUpdatedEvent_.clear();
-          if (taskStopSignal_) {
-            break;
-          }
-
-          constexpr double LOOKAHEAD_SECS{0.2};
-          double trackLastDetected{track->getTimestampSecs()};
-          double lookaheadTimestampSecs{trackLastDetected + LOOKAHEAD_SECS};
-          Position lookaheadPosition{
-              track->getPredictor().predict(lookaheadTimestampSecs)};
-          LaserCoord lookaheadLaserCoord{
-              calibration_->cameraPositionToLaserCoord(lookaheadPosition)};
-
-          laser_->addWaypoint(track->getId(), lookaheadLaserCoord,
-                              lookaheadTimestampSecs);
-          continue;
-        }
-
-        if (taskStopSignal_) {
-          break;
-        }
-
-        // Strobe the laser on briefly so the beam is visible at the target
-        // without staying continuously lit
-        laser_->setColor(getParamTrackingLaserColor());
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        laser_->setColor(LaserColor{0.0f, 0.0f, 0.0f, 0.0f});
-
-        nextLaserTime =
-            std::chrono::steady_clock::now() +
-            std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                std::chrono::duration<float>(laserIntervalSecs));
-      }
-    }
-
-    laser_->clearPaths();
-    laser_->stop();
-    detection_->stopAllDetections();
-  }
-
-  /**
-   * Attempt to incrementally guide the laser to a target camera pixel. The
-   * target camera position is used to calculate the initial laser coordinate,
-   * from which incremental corrections are applied until the laser reaches
-   * the target camera pixel.
-   *
-   * @param targetId ID of the target.
-   * @param targetCameraPosition Camera-space position of the target.
-   * @param targetCameraPixel Camera pixel coordinate of the target.
-   * @return The corrected laser coordinate that projects to the target camera
-   * pixel.
-   */
-  std::optional<LaserCoord> aim(uint32_t targetId,
-                                const Position& targetCameraPosition,
-                                const PixelCoord& targetCameraPixel) {
-    LaserDetectionContext context{laser_, camera_};
-    LaserCoord initialLaserCoord{
-        calibration_->cameraPositionToLaserCoord(targetCameraPosition)};
-    laser_->setColor(getParamTrackingLaserColor());
-    return correctLaser(targetId, initialLaserCoord, targetCameraPixel);
-  }
-
-  /**
-   * Find a laser coordinate that projects to the target camera pixel
-   * coordinate to within a specified pixel distance. Starts from an initial
-   * coordinate and incrementally calculates laser coordinates to attempt to
-   * get within the threshold distance.
-   *
-   * @param targetId ID of the target.
-   * @param initialLaserCoord Initial laser coordinate.
-   * @param targetCameraPixel Target camera pixel coordinate.
-   * @param pixelDistanceThreshold Pixel distance threshold under which the
-   * corrected laser coordinate is considered close enough to the target.
-   * @param maxAttempts Maximum number of iterations.
-   * @return The corrected laser coordinate that projects to the target camera
-   * pixel.
-   */
-  std::optional<LaserCoord> correctLaser(uint32_t targetId,
-                                         const LaserCoord& initialLaserCoord,
-                                         const PixelCoord& targetCameraPixel,
-                                         float pixelDistanceThreshold = 6.0f,
-                                         int maxAttempts = 10) {
-    LaserCoord currentLaserCoord{initialLaserCoord};
-    int attempt{0};
-    while (attempt < maxAttempts && !taskStopSignal_) {
-      laser_->setPoint(targetId, currentLaserCoord);
-      // Give sufficient time for the galvo to settle and for a new camera frame
-      // to become available
-      std::this_thread::sleep_for(std::chrono::duration<float>(0.15f));
-      // Get detected camera pixel coord and camera-space position for laser
-      auto detectResultOpt{detectLaser()};
-      if (!detectResultOpt) {
-        RCLCPP_WARN(get_logger(), "Could not detect laser during correction");
-        return std::nullopt;
-      }
-
-      // Calculate camera pixel distance
-      auto [laserPixel, laserPosition]{std::move(*detectResultOpt)};
-      PixelCoord cameraPixelDelta{targetCameraPixel.u - laserPixel.u,
-                                  targetCameraPixel.v - laserPixel.v};
-      float dist{static_cast<float>(
-          std::hypot(cameraPixelDelta.u, cameraPixelDelta.v))};
-      RCLCPP_INFO(
-          get_logger(),
-          "Aiming laser. Target camera pixel = (%d, %d), laser detected at = "
-          "(%d, %d), dist = %f",
-          targetCameraPixel.u, targetCameraPixel.v, laserPixel.u, laserPixel.v,
-          dist);
-
-      if (dist <= pixelDistanceThreshold) {
-        RCLCPP_INFO(get_logger(), "Correction successful");
-        return currentLaserCoord;
-      }
-
-      // Calculate new laser coord
-      LaserCoord laserCoordCorrection{
-          calibration_->cameraPixelDeltaToLaserCoordDelta(cameraPixelDelta)};
-      LaserCoord newLaserCoord{currentLaserCoord.x + laserCoordCorrection.x,
-                               currentLaserCoord.y + laserCoordCorrection.y};
-      RCLCPP_INFO(get_logger(),
-                  "Distance too large. Correcting laser. Camera pixel delta = "
-                  "(%d, %d), laser coord correction = (%f, %f). Current laser "
-                  "coord = (%f, %f), corrected laser coord = (%f, %f)",
-                  cameraPixelDelta.u, cameraPixelDelta.v,
-                  laserCoordCorrection.x, laserCoordCorrection.y,
-                  currentLaserCoord.x, currentLaserCoord.y, newLaserCoord.x,
-                  newLaserCoord.y);
-
-      if (newLaserCoord.x > 1.0f || newLaserCoord.y > 1.0f ||
-          newLaserCoord.x < 0.0f || newLaserCoord.y < 0.0f) {
-        RCLCPP_INFO(get_logger(), "Laser coord is outside of renderable area.");
-        return std::nullopt;
-      }
-
-      currentLaserCoord = newLaserCoord;
-      ++attempt;
-    }
-
-    return std::nullopt;
-  }
-
-  struct DetectLaserResult {
-    PixelCoord cameraPixel;
-    Position cameraPosition;
-  };
-  std::optional<DetectLaserResult> detectLaser(int maxAttempts = 3) {
-    int attempt{0};
-    while (attempt < maxAttempts && !taskStopSignal_) {
-      auto detectionResult{detection_->getDetection(
-          detection_interfaces::msg::DetectionType::LASER)};
-      auto instances{detectionResult->instances};
-      if (instances.size() > 0) {
-        // In case multiple lasers were detected, use the instance with the
-        // highest confidence
-        const auto& bestInstance =
-            *std::max_element(instances.begin(), instances.end(),
-                              [](const auto& a, const auto& b) {
-                                return a.confidence < b.confidence;
-                              });
-        return DetectLaserResult{
-            {static_cast<int>(std::round(bestInstance.point.x)),
-             static_cast<int>(std::round(bestInstance.point.y))},
-            {static_cast<float>(bestInstance.position.x),
-             static_cast<float>(bestInstance.position.y),
-             static_cast<float>(bestInstance.position.z)}};
-      }
-
-      // No lasers detected. Try again.
-      ++attempt;
-    }
-
-    return std::nullopt;
   }
 
 #pragma endregion
@@ -1173,6 +712,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
   std::shared_ptr<CameraControlClient> camera_;
   std::shared_ptr<DetectionClient> detection_;
   std::shared_ptr<Calibration> calibration_;
+  std::shared_ptr<LaserTargeting> laserTargeting_;
   std::thread taskThread_;
   std::mutex taskMutex_;
   std::atomic<bool> taskStopSignal_{false};
