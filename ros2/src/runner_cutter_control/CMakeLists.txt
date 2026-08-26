@@ -98,11 +98,28 @@ add_library(tracking SHARED
 )
 target_link_libraries(tracking PUBLIC prediction)
 
+# tasks
+add_library(tasks SHARED
+  src/tasks/laser_targeting.cpp
+  src/tasks/calibration_task.cpp
+  src/tasks/add_calibration_points_task.cpp
+  src/tasks/manual_target_laser_task.cpp
+  src/tasks/runner_cutter_task.cpp
+  src/tasks/circle_follower_task.cpp
+)
+target_link_libraries(tasks PUBLIC clients calibration tracking)
+ament_target_dependencies(tasks PUBLIC
+  rclcpp
+  common
+  runner_cutter_control_interfaces
+  detection_interfaces
+)
+
 # Node executable
 add_executable(runner_cutter_control_node
   src/runner_cutter_control_node.cpp
 )
-target_link_libraries(runner_cutter_control_node PRIVATE fmt::fmt clients calibration tracking prediction)
+target_link_libraries(runner_cutter_control_node PRIVATE fmt::fmt clients calibration tracking prediction tasks)
 ament_target_dependencies(runner_cutter_control_node PUBLIC
   rclcpp
   std_msgs
