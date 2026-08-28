@@ -22,7 +22,7 @@ CircleFollowerTask::CircleFollowerTask(
       logger_(std::move(logger)) {}
 
 void CircleFollowerTask::run(float trackMissTimeoutSecs, int targetAttempts,
-                             const LaserColor& laserColor,
+                             float lookaheadSecs, const LaserColor& laserColor,
                              float laserIntervalSecs,
                              std::atomic<bool>& stopSignal) {
   auto tracker{std::make_shared<Tracker>()};
@@ -37,9 +37,9 @@ void CircleFollowerTask::run(float trackMissTimeoutSecs, int targetAttempts,
 
   // Register to receive per-frame detection updates during the task
   detectionCallbackRegistry_->set(
-      [this, tracker, &updater,
+      [this, lookaheadSecs, tracker, &updater,
        &stopSignal](detection_interfaces::msg::DetectionResult::SharedPtr msg) {
-        // Only process CIRCLE detections
+        // Only process test circle detections
         if (stopSignal ||
             msg->detection_type !=
                 detection_interfaces::msg::DetectionType::CIRCLE) {
@@ -81,9 +81,8 @@ void CircleFollowerTask::run(float trackMissTimeoutSecs, int targetAttempts,
 
         // Push a new lookahead waypoint for the active track
         auto activeTrack{std::move(*activeTrackOpt)};
-        constexpr double LOOKAHEAD_SECS{0.2};
         double trackLastDetected{activeTrack->getTimestampSecs()};
-        double lookaheadTimestampSecs{trackLastDetected + LOOKAHEAD_SECS};
+        double lookaheadTimestampSecs{trackLastDetected + lookaheadSecs};
         Position lookaheadPosition{
             activeTrack->getPredictor().predict(lookaheadTimestampSecs)};
         LaserCoord lookaheadLaserCoord{
@@ -92,7 +91,7 @@ void CircleFollowerTask::run(float trackMissTimeoutSecs, int targetAttempts,
                             lookaheadTimestampSecs);
       });
 
-  // Start detection
+  // Start circle detection
   detection_->startDetection(detection_interfaces::msg::DetectionType::CIRCLE);
 
   auto nextLaserTime{std::chrono::steady_clock::now()};

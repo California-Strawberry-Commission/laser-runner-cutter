@@ -66,7 +66,7 @@ void StaticRunnerCutterTask::run(float trackMissTimeoutSecs, int targetAttempts,
   detectionCallbackRegistry_->set(
       [this, &updater,
        &stopSignal](detection_interfaces::msg::DetectionResult::SharedPtr msg) {
-        // Only process RUNNER detections
+        // Only process runner detections
         if (stopSignal ||
             msg->detection_type !=
                 detection_interfaces::msg::DetectionType::RUNNER) {

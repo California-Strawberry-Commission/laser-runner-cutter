@@ -451,7 +451,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
       CircleFollowerTask task{detectionCallbackRegistry_, laser_, detection_,
                               calibration_, get_logger()};
       task.run(getParamTrackMissTimeoutSecs(), getParamTargetAttempts(),
-               getParamTrackingLaserColor(), 0.25f, taskStopSignal_);
+               /*lookaheadSecs=*/0.2f, getParamTrackingLaserColor(),
+               /*laserIntervalSecs=*/0.25f, taskStopSignal_);
     })};
     response->success = res;
   }
