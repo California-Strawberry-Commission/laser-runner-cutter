@@ -94,6 +94,16 @@ bool LaserControlClient::addWaypoint(uint32_t pathId,
   return true;
 }
 
+bool LaserControlClient::removePath(uint32_t pathId) {
+  auto request{
+      std::make_shared<laser_control_interfaces::srv::RemovePath::Request>()};
+  request->path_id = pathId;
+  auto result{
+      client_utils::callService<laser_control_interfaces::srv::RemovePath>(
+          removePathClient_, request, timeoutSecs_, node_.get_logger())};
+  return result && result->success;
+}
+
 bool LaserControlClient::clearPaths() {
   auto request{std::make_shared<std_srvs::srv::Trigger::Request>()};
   auto result{client_utils::callService<std_srvs::srv::Trigger>(

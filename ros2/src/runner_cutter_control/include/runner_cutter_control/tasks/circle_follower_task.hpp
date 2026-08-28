@@ -3,7 +3,6 @@
 #include <atomic>
 #include <string>
 
-#include "common/event.hpp"
 #include "detection_interfaces/msg/detection_result.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "runner_cutter_control/calibration/calibration.hpp"
@@ -30,7 +29,7 @@ class CircleFollowerTask {
       std::shared_ptr<Calibration> calibration, rclcpp::Logger logger);
   ~CircleFollowerTask() = default;
 
-  void run(float trackMissTimeoutSecs, int targetAttempts,
+  void run(float trackMissTimeoutSecs, int targetAttempts, float lookaheadSecs,
            const LaserColor& laserColor, float laserIntervalSecs,
            std::atomic<bool>& stopSignal);
 

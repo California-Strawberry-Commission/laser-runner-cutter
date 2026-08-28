@@ -25,6 +25,7 @@
 #include "runner_cutter_control/tasks/circle_follower_task.hpp"
 #include "runner_cutter_control/tasks/manual_target_laser_task.hpp"
 #include "runner_cutter_control/tasks/runner_cutter_task.hpp"
+#include "runner_cutter_control/tasks/static_runner_cutter_task.hpp"
 #include "runner_cutter_control/tools/prediction_evaluator.hpp"
 #include "runner_cutter_control_interfaces/msg/state.hpp"
 #include "runner_cutter_control_interfaces/msg/tracks.hpp"
@@ -427,14 +428,14 @@ class RunnerCutterControlNode : public rclcpp::Node {
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
     bool res{startTask("runner_cutter", [this]() {
-      RunnerCutterTask task{detectionCallbackRegistry_,
-                            camera_,
-                            detection_,
-                            calibration_,
-                            laser_,
-                            get_logger(),
-                            notificationsPublisher_,
-                            tracksPublisher_};
+      StaticRunnerCutterTask task{detectionCallbackRegistry_,
+                                  camera_,
+                                  detection_,
+                                  calibration_,
+                                  laser_,
+                                  get_logger(),
+                                  notificationsPublisher_,
+                                  tracksPublisher_};
       task.run(getParamTrackMissTimeoutSecs(), getParamTargetAttempts(), false,
                getParamEnableAiming(), getParamAutoDisarmSecs(),
                getParamSaveDir(), getParamTrackingLaserColor(),
@@ -451,7 +452,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
       CircleFollowerTask task{detectionCallbackRegistry_, laser_, detection_,
                               calibration_, get_logger()};
       task.run(getParamTrackMissTimeoutSecs(), getParamTargetAttempts(),
-               getParamTrackingLaserColor(), 0.25f, taskStopSignal_);
+               /*lookaheadSecs=*/0.2f, getParamTrackingLaserColor(),
+               /*laserIntervalSecs=*/0.25f, taskStopSignal_);
     })};
     response->success = res;
   }
