@@ -20,14 +20,14 @@
 #include "runner_cutter_control_interfaces/msg/tracks.hpp"
 
 /**
- * The main runner-cutting automation loop. Arms the laser, starts detection,
- * repeatedly acquires the next pending/active track from the Tracker, aims the
+ * A runner-cutting automation loop for static scene. Arms the laser, starts
+ * detection, repeatedly acquires the next target from the Tracker, aims the
  * laser at it, and burns it. Runs until stopped or auto-disarmed after a period
  * with no viable targets.
  */
-class RunnerCutterTask {
+class StaticRunnerCutterTask {
  public:
-  RunnerCutterTask(
+  StaticRunnerCutterTask(
       std::shared_ptr<
           CallbackRegistry<detection_interfaces::msg::DetectionResult>>
           detectionCallbackRegistry,
@@ -39,7 +39,7 @@ class RunnerCutterTask {
           notificationsPublisher,
       rclcpp::Publisher<runner_cutter_control_interfaces::msg::Tracks>::
           SharedPtr tracksPublisher);
-  ~RunnerCutterTask() = default;
+  ~StaticRunnerCutterTask() = default;
 
   void run(float trackMissTimeoutSecs, int targetAttempts,
            bool enableDetectionDuringBurn, bool enableAiming,

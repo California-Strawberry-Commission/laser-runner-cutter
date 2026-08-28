@@ -1,4 +1,4 @@
-#include "runner_cutter_control/tasks/runner_cutter_task.hpp"
+#include "runner_cutter_control/tasks/static_runner_cutter_task.hpp"
 
 #include <fmt/core.h>
 
@@ -16,7 +16,7 @@
 #include "runner_cutter_control_interfaces/msg/track.hpp"
 #include "runner_cutter_control_interfaces/msg/track_state.hpp"
 
-RunnerCutterTask::RunnerCutterTask(
+StaticRunnerCutterTask::StaticRunnerCutterTask(
     std::shared_ptr<
         CallbackRegistry<detection_interfaces::msg::DetectionResult>>
         detectionCallbackRegistry,
@@ -39,12 +39,14 @@ RunnerCutterTask::RunnerCutterTask(
       tracksPublisher_(std::move(tracksPublisher)),
       tracker_(std::make_shared<Tracker>()) {}
 
-void RunnerCutterTask::run(float trackMissTimeoutSecs, int targetAttempts,
-                           bool enableDetectionDuringBurn, bool enableAiming,
-                           float autoDisarmSecs, const std::string& saveDir,
-                           const LaserColor& trackingLaserColor,
-                           const LaserColor& burnLaserColor, float burnTimeSecs,
-                           std::atomic<bool>& stopSignal) {
+void StaticRunnerCutterTask::run(float trackMissTimeoutSecs, int targetAttempts,
+                                 bool enableDetectionDuringBurn,
+                                 bool enableAiming, float autoDisarmSecs,
+                                 const std::string& saveDir,
+                                 const LaserColor& trackingLaserColor,
+                                 const LaserColor& burnLaserColor,
+                                 float burnTimeSecs,
+                                 std::atomic<bool>& stopSignal) {
   // Save image to saveDir
   auto timestamp{
       std::chrono::system_clock::to_time_t(std::chrono::system_clock::now())};
@@ -171,7 +173,7 @@ void RunnerCutterTask::run(float trackMissTimeoutSecs, int targetAttempts,
 }
 
 std::optional<std::shared_ptr<const Track>>
-RunnerCutterTask::acquireNextTarget() {
+StaticRunnerCutterTask::acquireNextTarget() {
   // If there is already an active track, return the first one
   auto activeTracks{tracker_->getTracksWithState(Track::State::ACTIVE)};
   if (!activeTracks.empty()) {
@@ -206,7 +208,7 @@ RunnerCutterTask::acquireNextTarget() {
 }
 
 runner_cutter_control_interfaces::msg::Tracks::UniquePtr
-RunnerCutterTask::getTracksMsg() {
+StaticRunnerCutterTask::getTracksMsg() {
   auto msg{std::make_unique<runner_cutter_control_interfaces::msg::Tracks>()};
   auto [frameWidth, frameHeight]{calibration_->getCameraFrameSize()};
   for (const auto& [id, track] : tracker_->getTracks()) {
@@ -245,12 +247,12 @@ RunnerCutterTask::getTracksMsg() {
   return msg;
 }
 
-void RunnerCutterTask::publishTracks() {
+void StaticRunnerCutterTask::publishTracks() {
   tracksPublisher_->publish(std::move(getTracksMsg()));
 }
 
-bool RunnerCutterTask::waitForPendingTracks(float timeoutSecs,
-                                            std::atomic<bool>& stopSignal) {
+bool StaticRunnerCutterTask::waitForPendingTracks(
+    float timeoutSecs, std::atomic<bool>& stopSignal) {
   bool hasDeadline{timeoutSecs > 0.0f};
   auto deadline{std::chrono::steady_clock::now() +
                 std::chrono::duration_cast<std::chrono::steady_clock::duration>(
