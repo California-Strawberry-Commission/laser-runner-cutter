@@ -24,6 +24,7 @@
 #include "runner_cutter_control/tasks/callback_registry.hpp"
 #include "runner_cutter_control/tasks/circle_follower_task.hpp"
 #include "runner_cutter_control/tasks/manual_target_laser_task.hpp"
+#include "runner_cutter_control/tasks/runner_cutter_task.hpp"
 #include "runner_cutter_control/tasks/static_runner_cutter_task.hpp"
 #include "runner_cutter_control/tools/prediction_evaluator.hpp"
 #include "runner_cutter_control_interfaces/msg/state.hpp"
