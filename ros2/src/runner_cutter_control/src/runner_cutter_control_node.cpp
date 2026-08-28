@@ -52,7 +52,6 @@ class RunnerCutterControlNode : public rclcpp::Node {
     declare_parameter<std::vector<float>>("burn_laser_color",
                                           {0.0f, 0.0f, 1.0f, 0.0f});
     declare_parameter<float>("burn_time_secs", 1.0);
-    declare_parameter<bool>("enable_aiming", true);
     // Max number of times to attempt to target a detected runner to burn. An
     // attempt may fail if the runner burn point is outside the laser bounds, if
     // the aiming process failed, or if the runner was no longer detected. A
@@ -65,6 +64,12 @@ class RunnerCutterControlNode : public rclcpp::Node {
     // detection frame before treating it as missing.
     declare_parameter<float>("track_miss_timeout_secs", 0.2);
     declare_parameter<std::string>("save_dir", "~/runner_cutter");
+    // Whether to enable the new runner cutter task (burn-while-moving using
+    // prediction)
+    declare_parameter<bool>("enable_runner_cutter_v2", false);
+    // How far ahead, in seconds, to predict the target's position when placing
+    // laser waypoints.
+    declare_parameter<float>("lookahead_secs", 0.2);
 
     /////////////
     // Publishers
@@ -246,10 +251,6 @@ class RunnerCutterControlNode : public rclcpp::Node {
     return static_cast<float>(get_parameter("burn_time_secs").as_double());
   }
 
-  bool getParamEnableAiming() {
-    return get_parameter("enable_aiming").as_bool();
-  }
-
   int getParamTargetAttempts() {
     return static_cast<int>(get_parameter("target_attempts").as_int());
   }
@@ -265,6 +266,14 @@ class RunnerCutterControlNode : public rclcpp::Node {
 
   std::string getParamSaveDir() {
     return get_parameter("save_dir").as_string();
+  }
+
+  bool getParamEnableRunnerCutterV2() {
+    return get_parameter("enable_runner_cutter_v2").as_bool();
+  }
+
+  float getParamLookaheadSecs() {
+    return static_cast<float>(get_parameter("lookahead_secs").as_double());
   }
 
 #pragma endregion
@@ -428,19 +437,27 @@ class RunnerCutterControlNode : public rclcpp::Node {
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
     bool res{startTask("runner_cutter", [this]() {
-      StaticRunnerCutterTask task{detectionCallbackRegistry_,
-                                  camera_,
-                                  detection_,
-                                  calibration_,
-                                  laser_,
-                                  get_logger(),
-                                  notificationsPublisher_,
-                                  tracksPublisher_};
-      task.run(getParamTrackMissTimeoutSecs(), getParamTargetAttempts(), false,
-               getParamEnableAiming(), getParamAutoDisarmSecs(),
-               getParamSaveDir(), getParamTrackingLaserColor(),
-               getParamBurnLaserColor(), getParamBurnTimeSecs(),
-               taskStopSignal_);
+      if (getParamEnableRunnerCutterV2()) {
+        RunnerCutterTask task{detectionCallbackRegistry_, laser_, detection_,
+                              calibration_, get_logger()};
+        task.run(getParamTrackMissTimeoutSecs(), getParamTargetAttempts(),
+                 getParamLookaheadSecs(), getParamBurnLaserColor(),
+                 getParamBurnTimeSecs(), taskStopSignal_);
+      } else {
+        StaticRunnerCutterTask task{detectionCallbackRegistry_,
+                                    camera_,
+                                    detection_,
+                                    calibration_,
+                                    laser_,
+                                    get_logger(),
+                                    notificationsPublisher_,
+                                    tracksPublisher_};
+        task.run(getParamTrackMissTimeoutSecs(), getParamTargetAttempts(),
+                 /*enableDetectionDuringBurn=*/false, /*enableAiming=*/true,
+                 getParamAutoDisarmSecs(), getParamSaveDir(),
+                 getParamTrackingLaserColor(), getParamBurnLaserColor(),
+                 getParamBurnTimeSecs(), taskStopSignal_);
+      }
     })};
     response->success = res;
   }
@@ -452,7 +469,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
       CircleFollowerTask task{detectionCallbackRegistry_, laser_, detection_,
                               calibration_, get_logger()};
       task.run(getParamTrackMissTimeoutSecs(), getParamTargetAttempts(),
-               /*lookaheadSecs=*/0.2f, getParamTrackingLaserColor(),
+               getParamLookaheadSecs(), getParamTrackingLaserColor(),
                /*laserIntervalSecs=*/0.25f, taskStopSignal_);
     })};
     response->success = res;
