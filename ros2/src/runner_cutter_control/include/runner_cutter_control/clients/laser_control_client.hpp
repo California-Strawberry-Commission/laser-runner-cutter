@@ -21,6 +21,7 @@ class LaserControlClient {
   bool setPoint(uint32_t pathId, const LaserCoord& point);
   bool addWaypoint(uint32_t pathId, const LaserCoord& destination,
                    double timestampSec);
+  bool removePath(uint32_t pathId);
   bool clearPaths();
   bool play();
   bool stop();
