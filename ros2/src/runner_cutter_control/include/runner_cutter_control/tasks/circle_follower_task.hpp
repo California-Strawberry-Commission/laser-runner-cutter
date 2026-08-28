@@ -1,14 +1,16 @@
 #pragma once
 
 #include <atomic>
+#include <string>
 
 #include "common/event.hpp"
+#include "detection_interfaces/msg/detection_result.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "runner_cutter_control/calibration/calibration.hpp"
 #include "runner_cutter_control/clients/detection_client.hpp"
 #include "runner_cutter_control/clients/laser_control_client.hpp"
 #include "runner_cutter_control/common_types.hpp"
-#include "runner_cutter_control/tracking/tracker.hpp"
+#include "runner_cutter_control/tasks/callback_registry.hpp"
 
 /**
  * Test/demo task that continuously follows a detected circle target: unlike
@@ -19,21 +21,24 @@
  */
 class CircleFollowerTask {
  public:
-  CircleFollowerTask(std::shared_ptr<LaserControlClient> laser,
-                     std::shared_ptr<DetectionClient> detection,
-                     std::shared_ptr<Calibration> calibration,
-                     std::shared_ptr<Tracker> tracker, rclcpp::Logger logger);
+  CircleFollowerTask(
+      std::shared_ptr<
+          CallbackRegistry<detection_interfaces::msg::DetectionResult>>
+          detectionCallbackRegistry,
+      std::shared_ptr<LaserControlClient> laser,
+      std::shared_ptr<DetectionClient> detection,
+      std::shared_ptr<Calibration> calibration, rclcpp::Logger logger);
   ~CircleFollowerTask() = default;
 
-  void run(float laserIntervalSecs, const LaserColor& trackingLaserColor,
-           std::atomic<bool>& stopSignal,
-           common::Event& pendingTracksChangedEvent,
-           common::Event& trackUpdatedEvent);
+  void run(float trackMissTimeoutSecs, int targetAttempts,
+           const LaserColor& laserColor, float laserIntervalSecs,
+           std::atomic<bool>& stopSignal);
 
  private:
+  std::shared_ptr<CallbackRegistry<detection_interfaces::msg::DetectionResult>>
+      detectionCallbackRegistry_;
   std::shared_ptr<LaserControlClient> laser_;
   std::shared_ptr<DetectionClient> detection_;
   std::shared_ptr<Calibration> calibration_;
-  std::shared_ptr<Tracker> tracker_;
   rclcpp::Logger logger_;
 };

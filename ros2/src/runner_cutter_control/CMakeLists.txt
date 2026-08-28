@@ -104,6 +104,7 @@ add_library(tasks SHARED
   src/tasks/calibration_task.cpp
   src/tasks/add_calibration_points_task.cpp
   src/tasks/manual_target_laser_task.cpp
+  src/tasks/detection_tracker_updater.cpp
   src/tasks/runner_cutter_task.cpp
   src/tasks/circle_follower_task.cpp
 )

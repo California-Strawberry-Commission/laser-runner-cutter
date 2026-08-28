@@ -4,7 +4,9 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "runner_cutter_control/calibration/calibration.hpp"
+#include "runner_cutter_control/clients/camera_control_client.hpp"
 #include "runner_cutter_control/clients/detection_client.hpp"
+#include "runner_cutter_control/clients/laser_control_client.hpp"
 #include "runner_cutter_control/common_types.hpp"
 #include "runner_cutter_control/tasks/laser_targeting.hpp"
 
@@ -14,9 +16,10 @@
  */
 class ManualTargetLaserTask {
  public:
-  ManualTargetLaserTask(std::shared_ptr<DetectionClient> detection,
+  ManualTargetLaserTask(std::shared_ptr<LaserControlClient> laser,
+                        std::shared_ptr<CameraControlClient> camera,
+                        std::shared_ptr<DetectionClient> detection,
                         std::shared_ptr<Calibration> calibration,
-                        std::shared_ptr<LaserTargeting> laserTargeting,
                         rclcpp::Logger logger);
   ~ManualTargetLaserTask() = default;
 
@@ -28,6 +31,6 @@ class ManualTargetLaserTask {
  private:
   std::shared_ptr<DetectionClient> detection_;
   std::shared_ptr<Calibration> calibration_;
-  std::shared_ptr<LaserTargeting> laserTargeting_;
+  LaserTargeting laserTargeting_;
   rclcpp::Logger logger_;
 };

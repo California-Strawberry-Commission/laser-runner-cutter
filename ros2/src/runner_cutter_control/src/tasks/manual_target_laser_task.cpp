@@ -3,12 +3,14 @@
 #include <cmath>
 
 ManualTargetLaserTask::ManualTargetLaserTask(
+    std::shared_ptr<LaserControlClient> laser,
+    std::shared_ptr<CameraControlClient> camera,
     std::shared_ptr<DetectionClient> detection,
-    std::shared_ptr<Calibration> calibration,
-    std::shared_ptr<LaserTargeting> laserTargeting, rclcpp::Logger logger)
+    std::shared_ptr<Calibration> calibration, rclcpp::Logger logger)
     : detection_(std::move(detection)),
       calibration_(std::move(calibration)),
-      laserTargeting_(std::move(laserTargeting)),
+      laserTargeting_(std::move(laser), std::move(camera), detection_,
+                      calibration_, logger),
       logger_(std::move(logger)) {}
 
 void ManualTargetLaserTask::run(
@@ -33,8 +35,8 @@ void ManualTargetLaserTask::run(
   // Aim
   LaserCoord laserCoord;
   if (shouldAim) {
-    auto laserCoordOpt{laserTargeting_->aim(0, targetPosition, targetPixel,
-                                            trackingLaserColor, stopSignal)};
+    auto laserCoordOpt{laserTargeting_.aim(0, targetPosition, targetPixel,
+                                           trackingLaserColor, stopSignal)};
     if (!laserCoordOpt) {
       RCLCPP_INFO(logger_, "Failed to aim laser");
       return;
@@ -47,6 +49,6 @@ void ManualTargetLaserTask::run(
 
   // Burn
   if (shouldBurn) {
-    laserTargeting_->burn(0, laserCoord, burnLaserColor, burnTimeSecs);
+    laserTargeting_.burn(0, laserCoord, burnLaserColor, burnTimeSecs);
   }
 }
