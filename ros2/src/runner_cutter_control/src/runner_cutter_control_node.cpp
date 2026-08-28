@@ -1,15 +1,12 @@
 #include <fmt/core.h>
 
-#include <algorithm>
 #include <functional>
 
 #include "camera_control_interfaces/msg/device_state.hpp"
 #include "camera_control_interfaces/msg/state.hpp"
-#include "common/event.hpp"
 #include "common/ros_utils.hpp"
 #include "common/utils.hpp"
 #include "detection_interfaces/msg/detection_result.hpp"
-#include "detection_interfaces/msg/detection_type.hpp"
 #include "laser_control_interfaces/msg/device_state.hpp"
 #include "laser_control_interfaces/msg/state.hpp"
 #include "rcl_interfaces/msg/log.hpp"
@@ -24,12 +21,11 @@
 #include "runner_cutter_control/prediction/last_known_predictor.hpp"
 #include "runner_cutter_control/tasks/add_calibration_points_task.hpp"
 #include "runner_cutter_control/tasks/calibration_task.hpp"
+#include "runner_cutter_control/tasks/callback_registry.hpp"
 #include "runner_cutter_control/tasks/circle_follower_task.hpp"
-#include "runner_cutter_control/tasks/laser_targeting.hpp"
 #include "runner_cutter_control/tasks/manual_target_laser_task.hpp"
 #include "runner_cutter_control/tasks/runner_cutter_task.hpp"
 #include "runner_cutter_control/tools/prediction_evaluator.hpp"
-#include "runner_cutter_control/tracking/tracker.hpp"
 #include "runner_cutter_control_interfaces/msg/state.hpp"
 #include "runner_cutter_control_interfaces/msg/tracks.hpp"
 #include "runner_cutter_control_interfaces/srv/add_calibration_points.hpp"
@@ -106,14 +102,27 @@ class RunnerCutterControlNode : public rclcpp::Node {
             std::bind(&RunnerCutterControlNode::onCameraState, this,
                       std::placeholders::_1),
             options);
+
+    // For detections, we subscribe once here at the node level and allow
+    // runtime registration of callbacks inside tasks via CallbackRegistry. We
+    // need to do this as there is a risk of a race condition if we attempt to
+    // create/destroy a subscription from a thread that the executor doesn't
+    // own.
+    detectionCallbackRegistry_ = std::make_shared<
+        CallbackRegistry<detection_interfaces::msg::DetectionResult>>();
+    detectionsCallbackGroup_ =
+        create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    rclcpp::SubscriptionOptions detectionsOptions;
+    detectionsOptions.callback_group = detectionsCallbackGroup_;
     auto detectionsTopicName{
         fmt::format("/{}/detections", getParamDetectionNodeName())};
     detectionsSubscriber_ =
         create_subscription<detection_interfaces::msg::DetectionResult>(
             detectionsTopicName, rclcpp::SensorDataQoS(),
-            std::bind(&RunnerCutterControlNode::onDetection, this,
-                      std::placeholders::_1),
-            options);
+            [this](detection_interfaces::msg::DetectionResult::SharedPtr msg) {
+              detectionCallbackRegistry_->invoke(msg);
+            },
+            detectionsOptions);
 
     ///////////
     // Services
@@ -183,9 +192,6 @@ class RunnerCutterControlNode : public rclcpp::Node {
         std::make_shared<DetectionClient>(*this, getParamDetectionNodeName());
 
     calibration_ = std::make_shared<Calibration>(laser_, camera_, detection_);
-    tracker_ = std::make_shared<Tracker>();
-    laserTargeting_ = std::make_shared<LaserTargeting>(
-        laser_, camera_, detection_, calibration_, get_logger());
 
     // Publish initial state
     publishState();
@@ -320,147 +326,6 @@ class RunnerCutterControlNode : public rclcpp::Node {
     }
   }
 
-  void onDetection(
-      const detection_interfaces::msg::DetectionResult::SharedPtr msg) {
-    if (msg->detection_type !=
-            detection_interfaces::msg::DetectionType::RUNNER &&
-        msg->detection_type !=
-            detection_interfaces::msg::DetectionType::CIRCLE) {
-      return;
-    }
-
-    std::lock_guard<std::mutex> lock(lastDetectedTrackIdsMutex_);
-
-    // For new tracks, add to tracker and set as pending. For tracks that are
-    // detected again, update the track pixel and position; for FAILED tracks,
-    // set them as PENDING since they may have moved since the last detection.
-    std::unordered_set<uint32_t> prevPendingTracks;
-    for (const auto& track :
-         tracker_->getTracksWithState(Track::State::PENDING)) {
-      prevPendingTracks.insert(track->getId());
-    }
-
-    lastDetectedTrackIds_.clear();
-
-    double timestampSecs{rclcpp::Time(msg->timestamp).seconds()};
-    if (msg->detection_type ==
-        detection_interfaces::msg::DetectionType::RUNNER) {
-      for (const auto& instance : msg->instances) {
-        processDetectionInstance(instance, timestampSecs);
-      }
-    } else {
-      // Circle tracking is for testing purposes. Just take the detection with
-      // the highest confidence to track.
-      if (!msg->instances.empty()) {
-        auto obj{*std::max_element(msg->instances.begin(), msg->instances.end(),
-                                   [](const auto& a, const auto& b) {
-                                     return a.confidence < b.confidence;
-                                   })};
-        // Set the track ID to 1 to assume that this circle is always the same
-        // instance being tracked across frames
-        auto copy{obj};
-        copy.track_id = 1;
-        processDetectionInstance(copy, timestampSecs);
-      }
-    }
-
-    // Calculate estimated velocity vector
-    const auto& flowDisplacement{msg->flow_displacement};
-    bool flowAvailable{flowDisplacement.delta_time_secs > 0.0};
-    Velocity flowVelocity{};
-    if (flowAvailable) {
-      flowVelocity = {
-          static_cast<float>(flowDisplacement.position_displacement.x /
-                             flowDisplacement.delta_time_secs),
-          static_cast<float>(flowDisplacement.position_displacement.y /
-                             flowDisplacement.delta_time_secs),
-          static_cast<float>(flowDisplacement.position_displacement.z /
-                             flowDisplacement.delta_time_secs)};
-    }
-
-    // Fail any PENDING or ACTIVE track that hasn't been detected within the
-    // miss-tolerance window.
-    float missTimeoutSecs{getParamTrackMissTimeoutSecs()};
-    std::vector<std::shared_ptr<const Track>> trackedTracks{
-        tracker_->getTracksWithState(Track::State::PENDING)};
-    auto activeTracks{tracker_->getTracksWithState(Track::State::ACTIVE)};
-    trackedTracks.insert(trackedTracks.end(), activeTracks.begin(),
-                         activeTracks.end());
-    for (const auto& track : trackedTracks) {
-      uint32_t trackId{track->getId()};
-      if (lastDetectedTrackIds_.find(trackId) != lastDetectedTrackIds_.end()) {
-        continue;
-      }
-
-      // This is a PENDING or ACTIVE track that has not been detected this
-      // frame. Use estimated velocity derived from optical flow (if available)
-      // to do a velocity-only update on the predictor
-      if (flowAvailable) {
-        tracker_->updateTrackVelocity(trackId, flowVelocity, timestampSecs,
-                                      0.5f);
-      }
-
-      if (timestampSecs - track->getTimestampSecs() > missTimeoutSecs) {
-        RCLCPP_INFO(get_logger(),
-                    "Track %u is PENDING or ACTIVE and has not been detected "
-                    "within %f secs. Marking as FAILED.",
-                    trackId, missTimeoutSecs);
-        tracker_->transitionTrackState(trackId, Track::State::FAILED);
-      }
-    }
-
-    // Notify when the pending tracks have changed
-    std::unordered_set<uint32_t> pendingTracks;
-    for (const auto& track :
-         tracker_->getTracksWithState(Track::State::PENDING)) {
-      pendingTracks.insert(track->getId());
-    }
-    if (prevPendingTracks != pendingTracks) {
-      pendingTracksChangedEvent_.set();
-    }
-  }
-
-  void processDetectionInstance(
-      const detection_interfaces::msg::ObjectInstance& instance,
-      double timestampSecs) {
-    // A track ID of 0 is invalid (indicates that there is no track ID
-    // associated with the instance)
-    if (instance.track_id <= 0) {
-      return;
-    }
-
-    // Attempt to add the track to the Tracker.
-    PixelCoord pixel{static_cast<int>(std::round(instance.point.x)),
-                     static_cast<int>(std::round(instance.point.y))};
-    Position position{static_cast<float>(instance.position.x),
-                      static_cast<float>(instance.position.y),
-                      static_cast<float>(instance.position.z)};
-
-    std::shared_ptr<const Track> track;
-    try {
-      track = tracker_->addOrUpdateTrack(instance.track_id, pixel, position,
-                                         timestampSecs, instance.confidence);
-    } catch (const std::exception& e) {
-      return;
-    }
-
-    lastDetectedTrackIds_.insert(instance.track_id);
-    trackUpdatedEvent_.set();
-
-    // Put detected tracks that are marked as failed back into the pending
-    // queue, since we want to reattempt to burn them (up to targetAttempts
-    // times) as they could now potentially be in bounds.
-    int numAttempts{getParamTargetAttempts()};
-    if (track->getState() == Track::State::FAILED &&
-        (numAttempts < 0 || track->getStateCount(Track::State::FAILED) <
-                                static_cast<std::size_t>(numAttempts))) {
-      RCLCPP_INFO(get_logger(),
-                  "Track %u was FAILED but redetected. Marking as PENDING.",
-                  track->getId());
-      tracker_->transitionTrackState(track->getId(), Track::State::PENDING);
-    }
-  }
-
   void onCalibrate(
       const std::shared_ptr<
           runner_cutter_control_interfaces::srv::Calibrate::Request>
@@ -549,7 +414,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
     bool shouldBurn{request->burn};
     bool res{startTask("manual_target_laser", [this, normalizedPixelCoord,
                                                shouldAim, shouldBurn]() {
-      ManualTargetLaserTask task{detection_, calibration_, laserTargeting_,
+      ManualTargetLaserTask task{laser_, camera_, detection_, calibration_,
                                  get_logger()};
       task.run(normalizedPixelCoord, shouldAim, shouldBurn,
                getParamTrackingLaserColor(), getParamBurnLaserColor(),
@@ -562,19 +427,19 @@ class RunnerCutterControlNode : public rclcpp::Node {
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
     bool res{startTask("runner_cutter", [this]() {
-      RunnerCutterTask task{camera_,
+      RunnerCutterTask task{detectionCallbackRegistry_,
+                            camera_,
                             detection_,
                             calibration_,
-                            tracker_,
-                            laserTargeting_,
+                            laser_,
                             get_logger(),
                             notificationsPublisher_,
                             tracksPublisher_};
-      task.run(detection_interfaces::msg::DetectionType::RUNNER, false,
+      task.run(getParamTrackMissTimeoutSecs(), getParamTargetAttempts(), false,
                getParamEnableAiming(), getParamAutoDisarmSecs(),
                getParamSaveDir(), getParamTrackingLaserColor(),
                getParamBurnLaserColor(), getParamBurnTimeSecs(),
-               taskStopSignal_, pendingTracksChangedEvent_);
+               taskStopSignal_);
     })};
     response->success = res;
   }
@@ -583,10 +448,10 @@ class RunnerCutterControlNode : public rclcpp::Node {
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
     bool res{startTask("circle_follower", [this]() {
-      CircleFollowerTask task{laser_, detection_, calibration_, tracker_,
-                              get_logger()};
-      task.run(0.25f, getParamTrackingLaserColor(), taskStopSignal_,
-               pendingTracksChangedEvent_, trackUpdatedEvent_);
+      CircleFollowerTask task{detectionCallbackRegistry_, laser_, detection_,
+                              calibration_, get_logger()};
+      task.run(getParamTrackMissTimeoutSecs(), getParamTargetAttempts(),
+               getParamTrackingLaserColor(), 0.25f, taskStopSignal_);
     })};
     response->success = res;
   }
@@ -613,11 +478,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
     laser_->clearPaths();
     laser_->stop();
     detection_->stopAllDetections();
-    tracker_->clear();
-    {
-      std::lock_guard<std::mutex> lock(lastDetectedTrackIdsMutex_);
-      lastDetectedTrackIds_.clear();
-    }
+    detectionCallbackRegistry_->clear();
   }
 
   bool startTask(const std::string& taskName, std::function<void()> taskFunc) {
@@ -669,8 +530,6 @@ class RunnerCutterControlNode : public rclcpp::Node {
     }
 
     taskStopSignal_ = true;
-    pendingTracksChangedEvent_.set();
-    trackUpdatedEvent_.set();
     lock.unlock();  // unlock before joining to prevent deadlock
     taskThread_.join();
     lock.lock();
@@ -690,8 +549,11 @@ class RunnerCutterControlNode : public rclcpp::Node {
       laserStateSubscriber_;
   rclcpp::Subscription<camera_control_interfaces::msg::State>::SharedPtr
       cameraStateSubscriber_;
+  rclcpp::CallbackGroup::SharedPtr detectionsCallbackGroup_;
   rclcpp::Subscription<detection_interfaces::msg::DetectionResult>::SharedPtr
       detectionsSubscriber_;
+  std::shared_ptr<CallbackRegistry<detection_interfaces::msg::DetectionResult>>
+      detectionCallbackRegistry_;
   rclcpp::CallbackGroup::SharedPtr serviceCallbackGroup_;
   rclcpp::Service<runner_cutter_control_interfaces::srv::Calibrate>::SharedPtr
       calibrateService_;
@@ -712,20 +574,11 @@ class RunnerCutterControlNode : public rclcpp::Node {
   std::shared_ptr<CameraControlClient> camera_;
   std::shared_ptr<DetectionClient> detection_;
   std::shared_ptr<Calibration> calibration_;
-  std::shared_ptr<LaserTargeting> laserTargeting_;
   std::thread taskThread_;
   std::mutex taskMutex_;
   std::atomic<bool> taskStopSignal_{false};
   std::atomic<bool> taskRunning_{false};
   std::string taskName_;
-  std::shared_ptr<Tracker> tracker_;
-  std::unordered_set<uint32_t> lastDetectedTrackIds_;
-  std::mutex lastDetectedTrackIdsMutex_;
-  // Notifies waiting threads that new pending tracks were detected
-  common::Event pendingTracksChangedEvent_;
-  // Notifies waiting threads that a track's position was updated from a new
-  // detection
-  common::Event trackUpdatedEvent_;
 };
 
 int main(int argc, char* argv[]) {
