@@ -44,6 +44,9 @@ class RunnerDetector {
       const cv::cuda::GpuMat& imageRgb,
       const std::optional<cv::Rect>& bounds = std::nullopt);
 
+  // Clears tracking state
+  void reset();
+
  private:
   std::unique_ptr<YoloV8> model_;
   std::unique_ptr<byte_track::BYTETracker> tracker_;

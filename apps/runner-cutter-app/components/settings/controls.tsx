@@ -58,7 +58,6 @@ export default function Controls({
     b: 0.0,
   });
   const [burnTimeSecs, setBurnTimeSecs] = useState<number>(0.0);
-  const [enableAiming, setEnableAiming] = useState<boolean>(false);
   const [targetAttempts, setTargetAttempts] = useState<number>(0);
   const [autoDisarmSecs, setAutoDisarmSecs] = useState<number>(0.0);
   const [saveDir, setSaveDir] = useState<string>("");
@@ -125,9 +124,6 @@ export default function Controls({
           const burnTimeSecsRes = await controlNode.getBurnTimeSecs();
           setBurnTimeSecs(burnTimeSecsRes);
 
-          const enableAimingRes = await controlNode.getEnableAiming();
-          setEnableAiming(enableAimingRes);
-
           const targetAttemptsRes = await controlNode.getTargetAttempts();
           if (Number.isInteger(targetAttemptsRes)) {
             setTargetAttempts(targetAttemptsRes);
@@ -180,7 +176,6 @@ export default function Controls({
       burnLaserColor.b,
     );
     controlNode.setBurnTimeSecs(burnTimeSecs);
-    controlNode.setEnableAiming(enableAiming);
     controlNode.setTargetAttempts(targetAttempts);
     controlNode.setAutoDisarmSecs(autoDisarmSecs);
     controlNode.setSaveDir(saveDir);
@@ -418,18 +413,6 @@ export default function Controls({
               setBurnTimeSecs(value);
               setDirty(true);
             }
-          }}
-        />
-      </SettingRow>
-      <SettingRow>
-        <Label>Enable aiming</Label>
-        <Switch
-          id="enableAiming"
-          disabled={!enableFields}
-          checked={enableAiming}
-          onCheckedChange={(checked) => {
-            setEnableAiming(checked);
-            setDirty(true);
           }}
         />
       </SettingRow>
