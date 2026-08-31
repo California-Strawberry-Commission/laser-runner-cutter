@@ -67,14 +67,14 @@ export default function useControlNode(nodeName: string) {
       state: "idle",
       normalizedLaserBounds: { x: 0, y: 0, width: 0, height: 0 },
     },
-    convertStateMessage
+    convertStateMessage,
   );
 
   const tracks = node.useSubscription(
     "~/tracks",
     "runner_cutter_control_interfaces/Tracks",
     [],
-    convertTracksMessage
+    convertTracksMessage,
   );
 
   const calibrate = node.useService(
@@ -84,23 +84,23 @@ export default function useControlNode(nodeName: string) {
       (saveImages: boolean = false) => ({
         save_images: saveImages,
       }),
-      []
+      [],
     ),
-    successOutputMapper
+    successOutputMapper,
   );
 
   const saveCalibration = node.useService(
     "~/save_calibration",
     "std_srvs/Trigger",
     triggerInputMapper,
-    successOutputMapper
+    successOutputMapper,
   );
 
   const loadCalibration = node.useService(
     "~/load_calibration",
     "std_srvs/Trigger",
     triggerInputMapper,
-    successOutputMapper
+    successOutputMapper,
   );
 
   const addCalibrationPoint = node.useService(
@@ -110,14 +110,14 @@ export default function useControlNode(nodeName: string) {
       (
         normalizedX: number,
         normalizedY: number,
-        saveImage: boolean = false
+        saveImage: boolean = false,
       ) => ({
         normalized_pixel_coords: [{ x: normalizedX, y: normalizedY }],
         save_images: saveImage,
       }),
-      []
+      [],
     ),
-    successOutputMapper
+    successOutputMapper,
   );
 
   const manualTargetLaser = node.useService(
@@ -128,106 +128,100 @@ export default function useControlNode(nodeName: string) {
         normalizedX: number,
         normalizedY: number,
         aim: boolean,
-        burn: boolean
+        burn: boolean,
       ) => ({
         normalized_pixel_coord: { x: normalizedX, y: normalizedY },
         aim,
         burn,
       }),
-      []
+      [],
     ),
-    successOutputMapper
+    successOutputMapper,
   );
 
   const startRunnerCutter = node.useService(
     "~/start_runner_cutter",
     "std_srvs/Trigger",
     triggerInputMapper,
-    successOutputMapper
+    successOutputMapper,
   );
 
   const startCircleFollower = node.useService(
     "~/start_circle_follower",
     "std_srvs/Trigger",
     triggerInputMapper,
-    successOutputMapper
+    successOutputMapper,
   );
 
   const stop = node.useService(
     "~/stop",
     "std_srvs/Trigger",
     triggerInputMapper,
-    successOutputMapper
+    successOutputMapper,
   );
 
   const getCalibrationGridSize = node.useGetParam<number[]>(
-    "calibration_grid_size"
+    "calibration_grid_size",
   );
   const setCalibrationGridSize = node.useSetParam(
     "calibration_grid_size",
     ParamType.INTEGER_ARRAY,
     useCallback(
       (numPointsX: number, numPointsY: number) => [numPointsX, numPointsY],
-      []
-    )
+      [],
+    ),
   );
 
   const getCalibrationXBounds = node.useGetParam<number[]>(
-    "calibration_x_bounds"
+    "calibration_x_bounds",
   );
   const setCalibrationXBounds = node.useSetParam(
     "calibration_x_bounds",
     ParamType.DOUBLE_ARRAY,
-    useCallback((min: number, max: number) => [min, max], [])
+    useCallback((min: number, max: number) => [min, max], []),
   );
 
   const getCalibrationYBounds = node.useGetParam<number[]>(
-    "calibration_y_bounds"
+    "calibration_y_bounds",
   );
   const setCalibrationYBounds = node.useSetParam(
     "calibration_y_bounds",
     ParamType.DOUBLE_ARRAY,
-    useCallback((min: number, max: number) => [min, max], [])
+    useCallback((min: number, max: number) => [min, max], []),
   );
 
   const getTrackingLaserColor = node.useGetParam<number[]>(
-    "tracking_laser_color"
+    "tracking_laser_color",
   );
   const setTrackingLaserColor = node.useSetParam(
     "tracking_laser_color",
     ParamType.DOUBLE_ARRAY,
-    useCallback((r: number, g: number, b: number) => [r, g, b, 0.0], [])
+    useCallback((r: number, g: number, b: number) => [r, g, b, 0.0], []),
   );
 
   const getBurnLaserColor = node.useGetParam<number[]>("burn_laser_color");
   const setBurnLaserColor = node.useSetParam(
     "burn_laser_color",
     ParamType.DOUBLE_ARRAY,
-    useCallback((r: number, g: number, b: number) => [r, g, b, 0.0], [])
+    useCallback((r: number, g: number, b: number) => [r, g, b, 0.0], []),
   );
 
   const getBurnTimeSecs = node.useGetParam<number>("burn_time_secs");
   const setBurnTimeSecs = node.useSetParam<number>(
     "burn_time_secs",
-    ParamType.DOUBLE
-  );
-
-  const getEnableAiming = node.useGetParam<boolean>("enable_aiming");
-  const setEnableAiming = node.useSetParam<boolean>(
-    "enable_aiming",
-    ParamType.BOOL
+    ParamType.DOUBLE,
   );
 
   const getTargetAttempts = node.useGetParam<number>("target_attempts");
   const setTargetAttempts = node.useSetParam<number>(
     "target_attempts",
-    ParamType.INTEGER
+    ParamType.INTEGER,
   );
 
   const getAutoDisarmSecs = node.useGetParam<number>("auto_disarm_secs");
   const setAutoDisarmSecs = node.useSetParam<number>(
     "auto_disarm_secs",
-    ParamType.DOUBLE
+    ParamType.DOUBLE,
   );
 
   const getSaveDir = node.useGetParam<string>("save_dir");
@@ -257,8 +251,6 @@ export default function useControlNode(nodeName: string) {
     setBurnLaserColor,
     getBurnTimeSecs,
     setBurnTimeSecs,
-    getEnableAiming,
-    setEnableAiming,
     getTargetAttempts,
     setTargetAttempts,
     getAutoDisarmSecs,

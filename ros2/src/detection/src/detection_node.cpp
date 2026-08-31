@@ -377,6 +377,8 @@ class DetectionNode : public rclcpp::Node {
     // Timestamps of the frames currently held in gpuPrevImage/gpuCurrImage
     rclcpp::Time prevFrameTimestamp;
     rclcpp::Time currFrameTimestamp;
+    // Whether runner detection was enabled on the previous iteration
+    bool prevRunnerEnabled{false};
 
     BS::thread_pool optflowThreadPool{1};
 
@@ -449,9 +451,18 @@ class DetectionNode : public rclcpp::Node {
         enabledDetections = enabledDetections_;
       }
 
-      if (enabledDetections.find(
+      const bool runnerEnabled{
+          enabledDetections.find(
               detection_interfaces::msg::DetectionType::RUNNER) !=
-          enabledDetections.end()) {
+          enabledDetections.end()};
+      // If runner detection was just enabled, reset the runner detector as it
+      // may have left over tracking state
+      if (runnerEnabled && !prevRunnerEnabled) {
+        runnerDetector_->reset();
+      }
+      prevRunnerEnabled = runnerEnabled;
+
+      if (runnerEnabled) {
         // Kick off optical flow
         std::future<std::optional<cv::Point2f>> flowFuture;
         std::optional<cv::Point2f> flowCenter;

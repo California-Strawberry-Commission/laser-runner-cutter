@@ -384,3 +384,7 @@ std::vector<RunnerDetector::Runner> RunnerDetector::track(
 
   return runners;
 }
+
+void RunnerDetector::reset() {
+  tracker_ = std::make_unique<byte_track::BYTETracker>();
+}
