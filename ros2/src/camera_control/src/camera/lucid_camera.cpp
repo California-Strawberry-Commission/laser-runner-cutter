@@ -1,5 +1,8 @@
 #include "camera_control/camera/lucid_camera.hpp"
 
+#include <iomanip>
+#include <sstream>
+
 #include "BS_thread_pool.hpp"
 #include "common/ros_utils.hpp"
 #include "sensor_msgs/image_encodings.hpp"
@@ -43,6 +46,12 @@ std::optional<Arena::DeviceInfo> findDeviceWithSerial(
   return std::nullopt;
 }
 
+std::string macToHex(uint64_t mac) {
+  std::ostringstream oss;
+  oss << std::hex << std::setfill('0') << std::setw(12) << mac;
+  return oss.str();
+}
+
 }  // namespace
 
 LucidCamera::LucidCamera(std::optional<std::string> colorCameraSerialNumber,
@@ -68,6 +77,66 @@ LucidCamera::State LucidCamera::getState() const {
     return LucidCamera::State::CONNECTING;
   } else {
     return LucidCamera::State::DISCONNECTED;
+  }
+}
+
+std::optional<std::pair<Arena::DeviceInfo, Arena::DeviceInfo>>
+LucidCamera::findDevicePair(std::vector<Arena::DeviceInfo>& deviceInfos) const {
+  std::optional<Arena::DeviceInfo> colorDeviceInfo{
+      colorCameraSerialNumber_
+          ? findDeviceWithSerial(deviceInfos, colorCameraSerialNumber_.value())
+          : findFirstDeviceWithModelPrefix(
+                deviceInfos, LucidCamera::COLOR_CAMERA_MODEL_PREFIXES)};
+  std::optional<Arena::DeviceInfo> depthDeviceInfo{
+      depthCameraSerialNumber_
+          ? findDeviceWithSerial(deviceInfos, depthCameraSerialNumber_.value())
+          : findFirstDeviceWithModelPrefix(
+                deviceInfos, LucidCamera::DEPTH_CAMERA_MODEL_PREFIXES)};
+  if (!colorDeviceInfo || !depthDeviceInfo) {
+    return std::nullopt;
+  }
+  return std::make_pair(colorDeviceInfo.value(), depthDeviceInfo.value());
+}
+
+std::optional<std::string> LucidCamera::detectCalibrationId(
+    uint64_t timeoutMs) {
+  if (isRunning_) {
+    spdlog::warn(
+        "detectCalibrationId() called while running; device discovery is "
+        "owned by the connection thread");
+    return std::nullopt;
+  }
+
+  std::scoped_lock<std::mutex> lock(systemMutex_);
+  try {
+    arena_->UpdateDevices(timeoutMs);
+    std::vector<Arena::DeviceInfo> deviceInfos{arena_->GetDevices()};
+    auto devicePair{findDevicePair(deviceInfos)};
+    if (!devicePair) {
+      spdlog::warn(
+          "Either color device or depth device was not found ({} device(s) "
+          "enumerated)",
+          deviceInfos.size());
+      return std::nullopt;
+    }
+
+    Arena::DeviceInfo& colorDeviceInfo{devicePair->first};
+    Arena::DeviceInfo& depthDeviceInfo{devicePair->second};
+    spdlog::info(
+        "Detected device (color, model={}, serial={}, mac={}) and device "
+        "(depth, model={}, serial={}, mac={})",
+        colorDeviceInfo.ModelName(), colorDeviceInfo.SerialNumber(),
+        macToHex(colorDeviceInfo.MacAddress()), depthDeviceInfo.ModelName(),
+        depthDeviceInfo.SerialNumber(), macToHex(depthDeviceInfo.MacAddress()));
+
+    return macToHex(colorDeviceInfo.MacAddress()) +
+           macToHex(depthDeviceInfo.MacAddress());
+  } catch (const GenICam::GenericException& e) {
+    spdlog::error("GenICam exception while enumerating devices: {}", e.what());
+    return std::nullopt;
+  } catch (const std::exception& e) {
+    spdlog::error("Exception while enumerating devices: {}", e.what());
+    return std::nullopt;
   }
 }
 
@@ -136,55 +205,42 @@ void LucidCamera::connectionThreadFn(CaptureMode captureMode, double exposureUs,
 
       try {
         // Get device infos
-        arena_->UpdateDevices(1000);
-        std::vector<Arena::DeviceInfo> deviceInfos{arena_->GetDevices()};
 
-        std::optional<Arena::DeviceInfo> colorDeviceInfo{std::nullopt};
-        std::optional<Arena::DeviceInfo> depthDeviceInfo{std::nullopt};
+        std::optional<std::pair<Arena::DeviceInfo, Arena::DeviceInfo>>
+            devicePair;
+        {
+          std::scoped_lock<std::mutex> systemLock(systemMutex_);
+          arena_->UpdateDevices(1000);
+          std::vector<Arena::DeviceInfo> deviceInfos{arena_->GetDevices()};
+          devicePair = findDevicePair(deviceInfos);
 
-        // If we don't have a serial number of a device, attempt to find one
-        // among connected devices. Otherwise, find the DeviceInfo with the
-        // desired serial number.
-        if (!colorCameraSerialNumber_) {
-          colorDeviceInfo = findFirstDeviceWithModelPrefix(
-              deviceInfos, LucidCamera::COLOR_CAMERA_MODEL_PREFIXES);
-          if (colorDeviceInfo) {
-            colorCameraSerialNumber_ = colorDeviceInfo.value().SerialNumber();
+          if (devicePair) {
+            colorCameraSerialNumber_ = devicePair->first.SerialNumber();
+            depthCameraSerialNumber_ = devicePair->second.SerialNumber();
           }
-        } else {
-          colorDeviceInfo = findDeviceWithSerial(
-              deviceInfos, colorCameraSerialNumber_.value());
-        }
-        if (!depthCameraSerialNumber_) {
-          depthDeviceInfo = findFirstDeviceWithModelPrefix(
-              deviceInfos, LucidCamera::DEPTH_CAMERA_MODEL_PREFIXES);
-          if (depthDeviceInfo) {
-            depthCameraSerialNumber_ = depthDeviceInfo.value().SerialNumber();
-          }
-        } else {
-          depthDeviceInfo = findDeviceWithSerial(
-              deviceInfos, depthCameraSerialNumber_.value());
         }
 
         // If the devices are connected, set up and start streaming
-        if (colorDeviceInfo && depthDeviceInfo) {
+        if (devicePair) {
+          Arena::DeviceInfo& colorDeviceInfo{devicePair->first};
+          Arena::DeviceInfo& depthDeviceInfo{devicePair->second};
           spdlog::info(
-              "Device (color, model={}, serial={}, firmware={}) and device "
-              "(depth, model={}, serial={}, firmware={}) found",
-              colorDeviceInfo.value().ModelName(),
-              colorDeviceInfo.value().SerialNumber(),
-              colorDeviceInfo.value().DeviceVersion(),
-              depthDeviceInfo.value().ModelName(),
-              depthDeviceInfo.value().SerialNumber(),
-              depthDeviceInfo.value().DeviceVersion());
+              "Device (color, model={}, serial={}, firmware={}, mac={}) and "
+              "device (depth, model={}, serial={}, firmware={}, mac={}) found",
+              colorDeviceInfo.ModelName(), colorDeviceInfo.SerialNumber(),
+              colorDeviceInfo.DeviceVersion(),
+              macToHex(colorDeviceInfo.MacAddress()),
+              depthDeviceInfo.ModelName(), depthDeviceInfo.SerialNumber(),
+              depthDeviceInfo.DeviceVersion(),
+              macToHex(depthDeviceInfo.MacAddress()));
+
           // Start the stream. Only set exposure/gain if this is the first
           // time the device is connected
           if (deviceWasEverConnected) {
-            startStream(colorDeviceInfo.value(), depthDeviceInfo.value(),
-                        captureMode);
+            startStream(colorDeviceInfo, depthDeviceInfo, captureMode);
           } else {
-            startStream(colorDeviceInfo.value(), depthDeviceInfo.value(),
-                        captureMode, exposureUs, gainDb);
+            startStream(colorDeviceInfo, depthDeviceInfo, captureMode,
+                        exposureUs, gainDb);
           }
           deviceWasEverConnected = true;
           deviceConnected = true;
@@ -236,8 +292,8 @@ void LucidCamera::startStream(const Arena::DeviceInfo& colorDeviceInfo,
     depthDevice_ = arena_->CreateDevice(depthDeviceInfo);
   }
 
-  // Note: A camera's node list can be found in the camera's Technical Reference
-  // Manual such as https://support.thinklucid.com/triton-tri032s/.
+  // Note: A camera's node list can be found in the camera's Technical
+  // Reference Manual such as https://support.thinklucid.com/triton-tri032s/.
   // To get more in depth information about a node (such as type and accepted
   // values), you can use the Arena SDK's precompiled example
   // `C_Explore_NodeTypes`:
@@ -670,9 +726,9 @@ sensor_msgs::msg::Image::UniquePtr LucidCamera::getColorFrame() {
   const size_t width{image->GetWidth()};
   const uint8_t* imageData{static_cast<const uint8_t*>(image->GetData())};
 
-  // Note: we only do a single copy from the Arena buffer into an Image message,
-  // and we leverage zero-copy intra-process comms to publish the image data to
-  // other nodes
+  // Note: we only do a single copy from the Arena buffer into an Image
+  // message, and we leverage zero-copy intra-process comms to publish the
+  // image data to other nodes
   auto imageMsg{std::make_unique<sensor_msgs::msg::Image>()};
   imageMsg->header.stamp = common::nowAsRosTime();
   imageMsg->header.frame_id = "triton_color_camera";
