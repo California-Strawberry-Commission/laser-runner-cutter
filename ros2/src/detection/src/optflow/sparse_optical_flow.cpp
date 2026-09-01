@@ -6,11 +6,22 @@
 #include <vpi/algo/GaussianPyramid.h>
 
 #include <algorithm>
+#include <chrono>
 #include <numeric>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
 #include <vpi/OpenCVInterop.hpp>
+
+#define SPDLOG_THROTTLED(interval_ms, level, ...)                 \
+  do {                                                            \
+    static auto _last = std::chrono::steady_clock::time_point{};  \
+    auto _now = std::chrono::steady_clock::now();                 \
+    if (_now - _last >= std::chrono::milliseconds(interval_ms)) { \
+      _last = _now;                                               \
+      spdlog::log(level, __VA_ARGS__);                            \
+    }                                                             \
+  } while (0)
 
 namespace {
 
@@ -376,7 +387,8 @@ std::optional<cv::Point2f> SparseOpticalFlow::trackAndComputeMedianFlow(
     if (!dxs.empty()) {
       medianFlow = cv::Point2f(median(dxs), median(dys));
     } else {
-      spdlog::warn(
+      SPDLOG_THROTTLED(
+          1000, spdlog::level::warn,
           "[SparseOpticalFlow] No feature points were tracked ({} corners "
           "detected, 0 tracked)",
           numPoints);

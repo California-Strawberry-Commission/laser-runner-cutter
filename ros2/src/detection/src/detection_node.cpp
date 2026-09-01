@@ -686,11 +686,16 @@ class DetectionNode : public rclcpp::Node {
     }
 
     auto rgbdAlignment{getOrCreateRgbdAlignment()};
-    auto depthXyz{getDepthXyz(image)};
-    if (!rgbdAlignment || !depthXyz) {
+    if (!rgbdAlignment) {
       RCLCPP_WARN(get_logger(),
-                  "[createDetectionResult] RgbdAlignment or depth XYZ is not "
-                  "available");
+                  "[createDetectionResult] RgbdAlignment is not available");
+      return detectionResult;
+    }
+
+    auto depthXyz{getDepthXyz(image)};
+    if (!depthXyz) {
+      RCLCPP_WARN(get_logger(),
+                  "[createDetectionResult] Depth XYZ is not available");
       return detectionResult;
     }
     // Wrap the depthXyz data pointer (no copy)
@@ -761,6 +766,9 @@ class DetectionNode : public rclcpp::Node {
     std::lock_guard<std::mutex> lock(depthXyzQueueMutex_);
 
     if (depthXyzQueue_.empty()) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "[getDepthXyz] Depth XYZ queue is empty - no depth frames buffered.");
       return nullptr;
     }
 
@@ -782,6 +790,17 @@ class DetectionNode : public rclcpp::Node {
       // We have a match
       return bestDepthXyz;
     } else {
+      const rclcpp::Time oldestDepthStamp{depthXyzQueue_.front()->header.stamp};
+      const rclcpp::Time newestDepthStamp{depthXyzQueue_.back()->header.stamp};
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "[getDepthXyz] No depth frame found within %.4fs of the color frame. "
+          "Best dt=%.4fs, queue size=%zu, color stamp=%.4f, buffered depth "
+          "stamps [%.4f .. %.4f]. "
+          "The depth stream is likely lagging behind the color stream.",
+          maxIntervalDuration_.seconds(), bestDelta.seconds(),
+          depthXyzQueue_.size(), tc.seconds(), oldestDepthStamp.seconds(),
+          newestDepthStamp.seconds());
       return nullptr;
     }
   }
@@ -1018,13 +1037,18 @@ class DetectionNode : public rclcpp::Node {
     }
 
     auto rgbdAlignment{getOrCreateRgbdAlignment()};
-    auto depthXyz{getDepthXyz(image)};
-    if (!rgbdAlignment || !depthXyz) {
-      RCLCPP_WARN(
-          get_logger(),
-          "[onGetPositions] RgbdAlignment or depth XYZ is not available");
+    if (!rgbdAlignment) {
+      RCLCPP_WARN(get_logger(),
+                  "[onGetPositions] RgbdAlignment is not available");
       return;
     }
+
+    auto depthXyz{getDepthXyz(image)};
+    if (!depthXyz) {
+      RCLCPP_WARN(get_logger(), "[onGetPositions] Depth XYZ is not available");
+      return;
+    }
+
     // Wrap the depthXyz data pointer (no copy)
     cv::Mat depthXyzMat(depthXyz->height, depthXyz->width, CV_32FC3,
                         const_cast<uint8_t*>(depthXyz->data.data()),
