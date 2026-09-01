@@ -1,0 +1,11 @@
+# QoS overrides for `ros2 bag play` of a camera bag recorded by
+# CameraControlNode::onStartRecordingBag.
+#
+# `ros2 bag play` publishes /tf_static with volatile durability by default, but
+# DetectionNode's static-TF listener is transient_local and subscribes only
+# after playback has started.
+/tf_static:
+  durability: transient_local
+  history: keep_last
+  depth: 100
+  reliability: reliable
