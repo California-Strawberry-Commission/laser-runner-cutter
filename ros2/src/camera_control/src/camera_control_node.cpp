@@ -2,12 +2,16 @@
 #include <fmt/core.h>
 
 #include <Eigen/Geometry>
+#include <algorithm>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <atomic>
 #include <filesystem>
+#include <mutex>
 #include <opencv2/opencv.hpp>
 #include <optional>
 #include <rclcpp_components/register_node_macro.hpp>
+#include <string>
+#include <vector>
 
 #include "camera_control/camera/calibration.hpp"
 #include "camera_control/camera/lucid_camera.hpp"
@@ -41,13 +45,32 @@ struct CalibrationParams {
   cv::Mat xyzToTritonExtrinsicMatrix;
   cv::Mat xyzToHeliosExtrinsicMatrix;
 };
-CalibrationParams readCalibrationParams(
-    const std::string& calib_id = "1c0faf4b115d1c0faf4d17ce") {
-  std::string packageShareDirectory{
-      ament_index_cpp::get_package_share_directory("camera_control")};
-  std::filesystem::path calibParamsDir{
-      std::filesystem::path(packageShareDirectory) / "calibration_params" /
-      calib_id};
+
+std::filesystem::path calibrationParamsDir() {
+  return std::filesystem::path(
+             ament_index_cpp::get_package_share_directory("camera_control")) /
+         "calibration_params";
+}
+
+std::string availableCalibrationIds() {
+  std::vector<std::string> ids;
+  std::error_code ec;
+  for (const auto& entry :
+       std::filesystem::directory_iterator(calibrationParamsDir(), ec)) {
+    if (entry.is_directory(ec)) {
+      ids.push_back(entry.path().filename().string());
+    }
+  }
+  std::sort(ids.begin(), ids.end());
+  std::string out;
+  for (size_t i = 0; i < ids.size(); ++i) {
+    out += (i ? ", " : "") + ids[i];
+  }
+  return out;
+}
+
+CalibrationParams readCalibrationParams(const std::string& calibId) {
+  std::filesystem::path calibParamsDir{calibrationParamsDir() / calibId};
   std::filesystem::path tritonIntrinsicsPath{calibParamsDir /
                                              "triton_intrinsics.yml"};
   std::filesystem::path heliosIntrinsicsPath{calibParamsDir /
@@ -184,8 +207,8 @@ class CameraControlNode : public rclcpp::Node {
     /////////////
     declare_parameter<std::string>(
         "calibration_id",
-        "1c0faf4b115d1c0faf4d17ce");  // calibration ID is <Triton MAC><Helios
-                                      // MAC>
+        "");  // calibration_id will be auto populated with Triton <MAC> Helios
+              // <MAC> concatenated.
     declare_parameter<double>("exposure_us", -1.0);
     declare_parameter<double>("gain_db", -1.0);
     declare_parameter<std::string>("save_dir", "~/runner_cutter/camera");
@@ -290,45 +313,21 @@ class CameraControlNode : public rclcpp::Node {
         /*colorCameraSerialNumber=*/std::nullopt,
         /*depthCameraSerialNumber=*/std::nullopt, colorRoiSize,
         stateChangeCallback);
-    try {
-      calibrationParams_ = readCalibrationParams(getParamCalibrationId());
-      colorCameraInfo_ =
-          createCameraInfo(calibrationParams_.tritonDistCoeffs,
-                           calibrationParams_.tritonIntrinsicMatrix,
-                           cv::Rect{(2048 - colorRoiSize.first) / 2,
-                                    (2048 - colorRoiSize.second) / 2,
-                                    colorRoiSize.first, colorRoiSize.second});
-      depthCameraInfo_ = createCameraInfo(
-          calibrationParams_.heliosDistCoeffs,
-          calibrationParams_.heliosIntrinsicMatrix, cv::Rect{0, 0, 640, 480});
-
-      // Publish extrinsics via tf2's StaticTransformBroadcaster once at
-      // startup
-      auto worldToColorTransform{createTransformStamped(
-          "world", "color_camera",
-          calibrationParams_.xyzToTritonExtrinsicMatrix)};
-      auto worldToDepthTransform{createTransformStamped(
-          "world", "depth_camera",
-          calibrationParams_.xyzToHeliosExtrinsicMatrix)};
-      staticTransforms_ = {worldToColorTransform, worldToDepthTransform};
-      tfStaticBroadcaster_->sendTransform(worldToColorTransform);
-      tfStaticBroadcaster_->sendTransform(worldToDepthTransform);
-
-      calibrationLoaded_ = true;
-    } catch (const std::exception& e) {
-      RCLCPP_ERROR(get_logger(), "Failed to load camera calibration params: %s",
-                   e.what());
-      publishNotification(
-          std::string("Failed to load camera calibration params: ") + e.what(),
-          rclcpp::Logger::Level::Error);
-    }
-
     // Publish initial state
     publishState();
 
     // Publish device temperatures at a regular interval
     deviceTemperaturePublishTimer_ = create_wall_timer(
         std::chrono::duration<double>(5.0), [this]() { publishState(); });
+
+    calibrationInitTimer_ = create_wall_timer(
+        std::chrono::seconds(2),
+        [this]() {
+          if (ensureCalibrationLoaded() || ++calibrationInitAttempts_ >= 3) {
+            calibrationInitTimer_->cancel();
+          }
+        },
+        serviceCallbackGroup_);
   }
 
  private:
@@ -363,6 +362,79 @@ class CameraControlNode : public rclcpp::Node {
 
 #pragma endregion
 
+#pragma region Calibration
+
+  bool ensureCalibrationLoaded() {
+    std::scoped_lock<std::mutex> lock(calibrationMutex_);
+    if (calibrationLoaded_) {
+      return true;
+    }
+
+    std::string calibId{getParamCalibrationId()};
+    const bool autoDetected{calibId.empty()};
+    if (autoDetected) {
+      auto detected{camera_->detectCalibrationId()};
+      if (!detected) {
+        RCLCPP_WARN(get_logger(),
+                    "Could not detect connected cameras. Set 'calibration_id' "
+                    "explicitly to bypass autodetection.");
+        return false;
+      }
+      calibId = *detected;
+    }
+
+    if (!std::filesystem::is_directory(calibrationParamsDir() / calibId)) {
+      RCLCPP_WARN(get_logger(),
+                  "No calibration params for ID '%s' (%s). Available: [%s]",
+                  calibId.c_str(),
+                  autoDetected ? "autodetected" : "from parameter",
+                  availableCalibrationIds().c_str());
+      return false;
+    }
+
+    try {
+      calibrationParams_ = readCalibrationParams(calibId);
+      colorCameraInfo_ =
+          createCameraInfo(calibrationParams_.tritonDistCoeffs,
+                           calibrationParams_.tritonIntrinsicMatrix,
+                           cv::Rect{(2048 - colorRoiSize_.first) / 2,
+                                    (2048 - colorRoiSize_.second) / 2,
+                                    colorRoiSize_.first, colorRoiSize_.second});
+      depthCameraInfo_ = createCameraInfo(
+          calibrationParams_.heliosDistCoeffs,
+          calibrationParams_.heliosIntrinsicMatrix, cv::Rect{0, 0, 640, 480});
+
+      auto worldToColorTransform{createTransformStamped(
+          "world", "color_camera",
+          calibrationParams_.xyzToTritonExtrinsicMatrix)};
+      auto worldToDepthTransform{createTransformStamped(
+          "world", "depth_camera",
+          calibrationParams_.xyzToHeliosExtrinsicMatrix)};
+      staticTransforms_ = {worldToColorTransform, worldToDepthTransform};
+      tfStaticBroadcaster_->sendTransform(worldToColorTransform);
+      tfStaticBroadcaster_->sendTransform(worldToDepthTransform);
+
+      calibrationLoaded_ = true;
+    } catch (const std::exception& e) {
+      RCLCPP_ERROR(get_logger(), "Failed to load camera calibration params: %s",
+                   e.what());
+      publishNotification(
+          std::string("Failed to load camera calibration params: ") + e.what(),
+          rclcpp::Logger::Level::Error);
+      return false;
+    }
+
+    if (autoDetected) {
+      set_parameter(rclcpp::Parameter("calibration_id", calibId));
+    }
+    RCLCPP_INFO(get_logger(), "Loaded calibration params '%s' (%s)",
+                calibId.c_str(),
+                autoDetected ? "autodetected" : "from parameter");
+    return true;
+  }
+
+#pragma endregion
+
 #pragma region Service callback definitions
 
   void onStartDevice(
@@ -376,7 +448,7 @@ class CameraControlNode : public rclcpp::Node {
       return;
     }
 
-    if (!calibrationLoaded_) {
+    if (!ensureCalibrationLoaded()) {
       publishNotification(
           "Calibration params missing. Camera cannot be started.",
           rclcpp::Logger::Level::Error);
@@ -813,6 +885,7 @@ class CameraControlNode : public rclcpp::Node {
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr stopRecordingBagService_;
   rclcpp::TimerBase::SharedPtr intervalCaptureTimer_;
   rclcpp::TimerBase::SharedPtr deviceTemperaturePublishTimer_;
+  rclcpp::TimerBase::SharedPtr calibrationInitTimer_;
 
   std::unique_ptr<LucidCamera> camera_;
   // Used to prevent frame callback from updating the current frame after the
@@ -820,6 +893,9 @@ class CameraControlNode : public rclcpp::Node {
   std::atomic<bool> cameraStarted_{false};
   // Whether calibration_id resolved to usable calibration params at startup
   bool calibrationLoaded_{false};
+  std::pair<int, int> colorRoiSize_{2048, 1536};
+  std::mutex calibrationMutex_;
+  int calibrationInitAttempts_{0};
   std::mutex lastColorImageMutex_;
   sensor_msgs::msg::Image::SharedPtr lastColorImage_;
   CalibrationParams calibrationParams_;
