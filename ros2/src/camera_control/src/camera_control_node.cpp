@@ -2,7 +2,6 @@
 #include <fmt/core.h>
 
 #include <Eigen/Geometry>
-#include <algorithm>
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <atomic>
 #include <filesystem>
@@ -11,7 +10,6 @@
 #include <optional>
 #include <rclcpp_components/register_node_macro.hpp>
 #include <string>
-#include <vector>
 
 #include "camera_control/camera/calibration.hpp"
 #include "camera_control/camera/lucid_camera.hpp"
@@ -50,23 +48,6 @@ std::filesystem::path calibrationParamsDir() {
   return std::filesystem::path(
              ament_index_cpp::get_package_share_directory("camera_control")) /
          "calibration_params";
-}
-
-std::string availableCalibrationIds() {
-  std::vector<std::string> ids;
-  std::error_code ec;
-  for (const auto& entry :
-       std::filesystem::directory_iterator(calibrationParamsDir(), ec)) {
-    if (entry.is_directory(ec)) {
-      ids.push_back(entry.path().filename().string());
-    }
-  }
-  std::sort(ids.begin(), ids.end());
-  std::string out;
-  for (size_t i = 0; i < ids.size(); ++i) {
-    out += (i ? ", " : "") + ids[i];
-  }
-  return out;
 }
 
 CalibrationParams readCalibrationParams(const std::string& calibId) {
@@ -326,8 +307,7 @@ class CameraControlNode : public rclcpp::Node {
           if (ensureCalibrationLoaded() || ++calibrationInitAttempts_ >= 3) {
             calibrationInitTimer_->cancel();
           }
-        },
-        serviceCallbackGroup_);
+        });
   }
 
  private:
@@ -385,10 +365,9 @@ class CameraControlNode : public rclcpp::Node {
 
     if (!std::filesystem::is_directory(calibrationParamsDir() / calibId)) {
       RCLCPP_WARN(get_logger(),
-                  "No calibration params for ID '%s' (%s). Available: [%s]",
+                  "No calibration params for ID '%s' (%s).",
                   calibId.c_str(),
-                  autoDetected ? "autodetected" : "from parameter",
-                  availableCalibrationIds().c_str());
+                  autoDetected ? "autodetected" : "from parameter");
       return false;
     }
 
@@ -398,7 +377,7 @@ class CameraControlNode : public rclcpp::Node {
           createCameraInfo(calibrationParams_.tritonDistCoeffs,
                            calibrationParams_.tritonIntrinsicMatrix,
                            cv::Rect{(2048 - colorRoiSize_.first) / 2,
-                                    (2048 - colorRoiSize_.second) / 2,
+                                    (1536 - colorRoiSize_.second) / 2,
                                     colorRoiSize_.first, colorRoiSize_.second});
       depthCameraInfo_ = createCameraInfo(
           calibrationParams_.heliosDistCoeffs,
