@@ -24,6 +24,7 @@ find_package(detection_interfaces REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(fmt REQUIRED)
+find_package(rosbag2_cpp REQUIRED)
 
 ###########
 ## Build ##
@@ -57,6 +58,9 @@ if(Python3_NumPy_FOUND)
 else()
   target_compile_definitions(matplotlib_cpp INTERFACE WITHOUT_NUMPY)
 endif()
+
+# Add CLI11
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/CLI11 ${CMAKE_CURRENT_BINARY_DIR}/cli11-build EXCLUDE_FROM_ALL)
 
 # clients
 add_library(clients SHARED
@@ -139,6 +143,18 @@ add_executable(visualize_predictor
 )
 target_link_libraries(visualize_predictor PRIVATE prediction matplotlib_cpp)
 
+add_executable(evaluate_lookahead
+  src/tools/evaluate_lookahead.cpp
+)
+target_link_libraries(evaluate_lookahead PRIVATE
+  tasks tracking prediction matplotlib_cpp CLI11::CLI11)
+ament_target_dependencies(evaluate_lookahead PUBLIC
+  rclcpp
+  rosbag2_cpp
+  detection_interfaces
+  common
+)
+
 #############
 ## Install ##
 #############
@@ -146,6 +162,7 @@ target_link_libraries(visualize_predictor PRIVATE prediction matplotlib_cpp)
 install(TARGETS
   runner_cutter_control_node
   visualize_predictor
+  evaluate_lookahead
   DESTINATION lib/${PROJECT_NAME})
 
 # Install launch files
