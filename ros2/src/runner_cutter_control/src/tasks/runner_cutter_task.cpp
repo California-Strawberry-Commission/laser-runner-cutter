@@ -94,13 +94,15 @@ void RunnerCutterTask::run(float trackMissTimeoutSecs, int targetAttempts,
 
         auto activeTrack{std::move(*activeTrackOpt)};
         uint32_t activeTrackId{activeTrack->getId()};
-        double lastDetected{activeTrack->getTimestampSecs()};
-        double lookaheadTimestampSecs{lastDetected + lookaheadSecs};
+        double lookaheadTimestampSecs{rclcpp::Time(msg->timestamp).seconds() +
+                                      lookaheadSecs};
 
         // Set the burn end time the first time this track becomes active: the
         // laser reaches the track's path at lookaheadTimestampSecs and burns it
         // for burnTimeSecs. Once we reach that time, mark it as completed and
         // remove its laser path.
+        // TODO: this currently results in a lookaheadSecs delay between burns.
+        // Figure out a way to instantaneously start burning the next target.
         auto [burnEnd, isNewBurn]{burnEndTimes.try_emplace(
             activeTrackId, toTimePoint(lookaheadTimestampSecs + burnTimeSecs))};
         if (!isNewBurn && std::chrono::system_clock::now() >= burnEnd->second) {

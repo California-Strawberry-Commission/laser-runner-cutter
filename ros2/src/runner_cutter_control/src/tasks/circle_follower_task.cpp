@@ -81,8 +81,8 @@ void CircleFollowerTask::run(float trackMissTimeoutSecs, int targetAttempts,
 
         // Push a new lookahead waypoint for the active track
         auto activeTrack{std::move(*activeTrackOpt)};
-        double trackLastDetected{activeTrack->getTimestampSecs()};
-        double lookaheadTimestampSecs{trackLastDetected + lookaheadSecs};
+        double lookaheadTimestampSecs{rclcpp::Time(msg->timestamp).seconds() +
+                                      lookaheadSecs};
         Position lookaheadPosition{
             activeTrack->getPredictor().predict(lookaheadTimestampSecs)};
         LaserCoord lookaheadLaserCoord{
