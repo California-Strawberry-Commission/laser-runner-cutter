@@ -37,6 +37,7 @@ class LucidCamera {
 
   State getState() const;
 
+  std::optional<std::string> detectCalibrationId(uint64_t timeoutMs = 1000);
   /**
    * Connects device and starts streaming.
    *
@@ -141,6 +142,7 @@ class LucidCamera {
   std::condition_variable
       streamingStateCv_;  // Used for notifying that cameras are streaming
   std::mutex streamingStateCvMutex_;
+  std::mutex systemMutex_;
   Arena::ISystem* arena_{nullptr};
   std::atomic<bool> isRunning_{false};
   std::optional<std::string> colorCameraSerialNumber_{std::nullopt};
@@ -158,6 +160,8 @@ class LucidCamera {
   std::atomic<double> exposureUs_{0.0};
   std::atomic<double> gainDb_{0.0};
 
+  std::optional<std::pair<Arena::DeviceInfo, Arena::DeviceInfo>> findDevicePair(
+      std::vector<Arena::DeviceInfo>& deviceInfos) const;
   void connectionThreadFn(CaptureMode captureMode, double exposureUs,
                           double gainDb);
   void startStream(const Arena::DeviceInfo& colorDeviceInfo,
