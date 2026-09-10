@@ -98,8 +98,7 @@ LucidCamera::findDevicePair(std::vector<Arena::DeviceInfo>& deviceInfos) const {
   return std::make_pair(colorDeviceInfo.value(), depthDeviceInfo.value());
 }
 
-std::optional<std::string> LucidCamera::detectCalibrationId(
-    uint64_t timeoutMs) {
+std::optional<std::string> LucidCamera::detectCalibrationId() {
   if (isRunning_) {
     spdlog::warn(
         "detectCalibrationId() called while running; device discovery is "
@@ -109,7 +108,7 @@ std::optional<std::string> LucidCamera::detectCalibrationId(
 
   std::scoped_lock<std::mutex> lock(systemMutex_);
   try {
-    arena_->UpdateDevices(timeoutMs);
+    arena_->UpdateDevices(1000);
     std::vector<Arena::DeviceInfo> deviceInfos{arena_->GetDevices()};
     auto devicePair{findDevicePair(deviceInfos)};
     if (!devicePair) {

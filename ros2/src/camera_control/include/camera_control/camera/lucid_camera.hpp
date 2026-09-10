@@ -37,7 +37,20 @@ class LucidCamera {
 
   State getState() const;
 
-  std::optional<std::string> detectCalibrationId(uint64_t timeoutMs = 1000);
+  /**
+   * Enumerate connected devices and derive a stable identifier for the
+   * currently attached color/depth camera pair. The identifier is the
+   * concatenation of the color and depth device MAC addresses (as hex), so it
+   * stays constant for a given physical pair and can be used to look up the
+   * matching calibration data.
+   *
+   * Cannot be called while the camera is running.
+   *
+   * @return The calibration ID, or std::nullopt if the camera is running, a
+   * color/depth device pair was not found, or device enumeration failed.
+   */
+  std::optional<std::string> detectCalibrationId();
+
   /**
    * Connects device and starts streaming.
    *
