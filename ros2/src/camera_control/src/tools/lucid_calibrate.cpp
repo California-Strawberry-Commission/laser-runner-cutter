@@ -28,11 +28,11 @@ void captureFrame(double exposureUs, double gainDb,
   cv::Mat raw(frame.colorImage->height, frame.colorImage->width, CV_8UC1,
               const_cast<uint8_t*>(frame.colorImage->data.data()),
               frame.colorImage->step);
-  cv::Mat rgb;
-  cv::cvtColor(raw, rgb, cv::COLOR_BayerRG2RGB);
+  cv::Mat bgr;
+  cv::cvtColor(raw, bgr, cv::COLOR_BayerRGGB2BGR);
   std::filesystem::path colorImagePath{
       std::filesystem::path(outputDirExpandedPath) / "triton.png"};
-  cv::imwrite(colorImagePath, rgb);
+  cv::imwrite(colorImagePath, bgr);
   spdlog::info("Saved color camera image to: {}", colorImagePath.string());
 
   // Depth intensity is MONO16
