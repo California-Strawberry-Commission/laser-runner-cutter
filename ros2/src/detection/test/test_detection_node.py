@@ -63,8 +63,7 @@ def generate_test_description():
 
 
 def _make_bayer_image_from_rgb(rgb, stamp):
-    # Mosaic an RGB image down into a single-channel RGGB Bayer pattern (the
-    # inverse of cv::COLOR_BayerRG2RGB)
+    # Mosaic an RGB image down into a single-channel RGGB Bayer pattern
     height, width = rgb.shape[:2]
     bayer = np.zeros((height, width), dtype=np.uint8)
     bayer[0::2, 0::2] = rgb[0::2, 0::2, 0]  # R

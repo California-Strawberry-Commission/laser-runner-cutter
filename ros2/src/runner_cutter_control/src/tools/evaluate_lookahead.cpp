@@ -242,7 +242,7 @@ cv::Mat toBgrMat(const sensor_msgs::msg::Image& image) {
   cv::Mat raw(static_cast<int>(image.height), static_cast<int>(image.width),
               CV_8UC1, const_cast<uint8_t*>(image.data.data()), image.step);
   cv::Mat bgr;
-  cv::cvtColor(raw, bgr, cv::COLOR_BayerRG2BGR);
+  cv::cvtColor(raw, bgr, cv::COLOR_BayerRGGB2BGR);
   return bgr;
 }
 

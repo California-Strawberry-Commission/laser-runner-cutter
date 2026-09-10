@@ -413,8 +413,8 @@ class DetectionNode : public rclcpp::Node {
 
       // Demosaic on GPU, directly into this iteration's frame buffer
       gpuCurrImage.create(imgMsg->height, imgMsg->width, CV_8UC3);
-      cv::cuda::demosaicing(gpuRaw, gpuCurrImage, cv::COLOR_BayerRG2RGB, -1,
-                            cvStream0_);
+      cv::cuda::cvtColor(gpuRaw, gpuCurrImage, cv::COLOR_BayerRGGB2RGB, 0,
+                         cvStream0_);
 
       cvStream0_.waitForCompletion();
 
@@ -828,7 +828,7 @@ class DetectionNode : public rclcpp::Node {
 
     // Demosaic
     cv::Mat rgb;
-    cv::cvtColor(raw, rgb, cv::COLOR_BayerRG2RGB);
+    cv::cvtColor(raw, rgb, cv::COLOR_BayerRGGB2RGB);
 
     switch (request->detection_type) {
       case detection_interfaces::msg::DetectionType::RUNNER: {

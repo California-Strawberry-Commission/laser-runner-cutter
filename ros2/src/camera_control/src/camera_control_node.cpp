@@ -301,9 +301,8 @@ class CameraControlNode : public rclcpp::Node {
     deviceTemperaturePublishTimer_ = create_wall_timer(
         std::chrono::duration<double>(5.0), [this]() { publishState(); });
 
-    calibrationInitTimer_ = create_wall_timer(
-        std::chrono::seconds(2),
-        [this]() {
+    calibrationInitTimer_ =
+        create_wall_timer(std::chrono::seconds(2), [this]() {
           if (ensureCalibrationLoaded() || ++calibrationInitAttempts_ >= 3) {
             calibrationInitTimer_->cancel();
           }
@@ -364,8 +363,7 @@ class CameraControlNode : public rclcpp::Node {
     }
 
     if (!std::filesystem::is_directory(calibrationParamsDir() / calibId)) {
-      RCLCPP_WARN(get_logger(),
-                  "No calibration params for ID '%s' (%s).",
+      RCLCPP_WARN(get_logger(), "No calibration params for ID '%s' (%s).",
                   calibId.c_str(),
                   autoDetected ? "autodetected" : "from parameter");
       return false;
@@ -569,14 +567,14 @@ class CameraControlNode : public rclcpp::Node {
       cv::Mat raw(frame.colorImage->height, frame.colorImage->width, CV_8UC1,
                   const_cast<uint8_t*>(frame.colorImage->data.data()),
                   frame.colorImage->step);
-      cv::Mat rgb;
-      cv::cvtColor(raw, rgb, cv::COLOR_BayerRG2RGB);
+      cv::Mat bgr;
+      cv::cvtColor(raw, bgr, cv::COLOR_BayerRGGB2BGR);
 
       // Compress to JPEG and write to response
       sensor_msgs::msg::CompressedImage compressedImgMsg;
       compressedImgMsg.header = frame.colorImage->header;
       compressedImgMsg.format = "jpeg";
-      if (!cv::imencode(".jpg", rgb, compressedImgMsg.data,
+      if (!cv::imencode(".jpg", bgr, compressedImgMsg.data,
                         {cv::IMWRITE_JPEG_QUALITY, 90})) {
         publishNotification("Failed to encode acquired frame",
                             rclcpp::Logger::Level::Error);
@@ -739,9 +737,9 @@ class CameraControlNode : public rclcpp::Node {
       cv::Mat raw(colorImage->height, colorImage->width, CV_8UC1,
                   const_cast<uint8_t*>(colorImage->data.data()),
                   colorImage->step);
-      cv::Mat rgb;
-      cv::cvtColor(raw, rgb, cv::COLOR_BayerRG2RGB);
-      if (!cv::imwrite(filepath, rgb)) {
+      cv::Mat bgr;
+      cv::cvtColor(raw, bgr, cv::COLOR_BayerRGGB2BGR);
+      if (!cv::imwrite(filepath, bgr)) {
         publishNotification("Failed to save image: " + filepath,
                             rclcpp::Logger::Level::Error);
         return std::nullopt;
