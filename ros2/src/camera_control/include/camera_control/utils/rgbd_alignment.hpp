@@ -41,6 +41,22 @@ class RgbdAlignment {
   std::optional<cv::Vec3f> getPosition(const cv::Point2i& colorPixel,
                                        const cv::Mat& depthXyz) const;
 
+  /**
+   * Project a 3D position onto a camera's image plane.
+   *
+   * @param position (x, y, z) position to project.
+   * @param cameraMatrix Camera intrinsic matrix.
+   * @param distCoeffs Camera distortion coefficients.
+   * @param extrinsicMatrix 4x4 extrinsic matrix transforming `position`'s
+   * coordinate space into the camera's coordinate space. If empty, `position`
+   * is assumed to already be in the camera's coordinate space.
+   * @return (x, y) pixel coordinate, or nullopt if it could not be
+   * determined.
+   */
+  static std::optional<cv::Point2i> projectPosition(
+      const cv::Vec3f& position, const cv::Mat& cameraMatrix,
+      const cv::Mat& distCoeffs, const cv::Mat& extrinsicMatrix = cv::Mat());
+
  private:
   cv::Mat colorCameraIntrinsicMatrix_;
   cv::Mat colorCameraDistortionCoeffs_;

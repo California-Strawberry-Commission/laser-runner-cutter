@@ -41,7 +41,6 @@ def launch_setup(context, *args, **kwargs):
     if not output_bag:
         output_bag = source_bag.rstrip("/") + "_detections"
     runner_model = LaunchConfiguration("runner_model").perform(context)
-    start_delay = float(LaunchConfiguration("start_delay").perform(context))
 
     qos_overrides = os.path.join(
         get_package_share_directory("runner_cutter_control"),
@@ -119,7 +118,7 @@ def launch_setup(context, *args, **kwargs):
         output="screen",
     )
     start_detection = TimerAction(
-        period=start_delay,
+        period=5.0,
         actions=[start_detection_proc],
     )
 
@@ -181,11 +180,6 @@ def generate_launch_description():
                 default_value="RunnerSegYoloV8l.engine",
                 description="TensorRT engine name under the detection package's "
                 "models directory",
-            ),
-            DeclareLaunchArgument(
-                "start_delay",
-                default_value="5.0",
-                description="Seconds to wait before starting detection",
             ),
             OpaqueFunction(function=launch_setup),
         ]
