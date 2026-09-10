@@ -36,40 +36,6 @@ cv::Vec3f transformPosition(const cv::Vec3f& position,
                    static_cast<float>(transformed[2])};
 }
 
-std::optional<cv::Point2i> projectPosition(
-    const cv::Vec3f& position, const cv::Mat& cameraMatrix,
-    const cv::Mat& distCoeffs, const cv::Mat& extrinsicMatrix = cv::Mat()) {
-  cv::Mat rvec, tvec;
-  if (!extrinsicMatrix.empty()) {
-    // Extract rotation (3x3) and translation (3x1) from extrinsic
-    cv::Mat R = extrinsicMatrix(cv::Range(0, 3), cv::Range(0, 3));
-    cv::Mat t = extrinsicMatrix(cv::Range(0, 3), cv::Range(3, 4));
-
-    // Convert rotation matrix to rotation vector
-    cv::Rodrigues(R, rvec);
-    tvec = t.clone();
-  } else {
-    rvec = cv::Mat::zeros(3, 1, CV_64F);
-    tvec = cv::Mat::zeros(3, 1, CV_64F);
-  }
-
-  std::vector<cv::Point3f> objectPoints{
-      {cv::Point3f{position[0], position[1], position[2]}}};
-  std::vector<cv::Point2f> imagePoints;
-  cv::projectPoints(objectPoints, rvec, tvec, cameraMatrix, distCoeffs,
-                    imagePoints);
-
-  // cv::projectPoints can return nan or inf values
-  if (imagePoints.empty() || std::isnan(imagePoints[0].x) ||
-      std::isinf(imagePoints[0].x) || std::isnan(imagePoints[0].y) ||
-      std::isinf(imagePoints[0].y)) {
-    return std::nullopt;
-  }
-
-  return cv::Point2i{static_cast<int>(std::round(imagePoints[0].x)),
-                     static_cast<int>(std::round(imagePoints[0].y))};
-}
-
 cv::Point2i adjustPixelToBounds(const cv::Point2i& pixel, int width,
                                 int height) {
   int x{
@@ -257,6 +223,40 @@ std::optional<cv::Point2i> RgbdAlignment::getCorrespondingDepthPixel(
   }
 
   return closestDepthPixel;
+}
+
+std::optional<cv::Point2i> RgbdAlignment::projectPosition(
+    const cv::Vec3f& position, const cv::Mat& cameraMatrix,
+    const cv::Mat& distCoeffs, const cv::Mat& extrinsicMatrix) {
+  cv::Mat rvec, tvec;
+  if (!extrinsicMatrix.empty()) {
+    // Extract rotation (3x3) and translation (3x1) from extrinsic
+    cv::Mat R = extrinsicMatrix(cv::Range(0, 3), cv::Range(0, 3));
+    cv::Mat t = extrinsicMatrix(cv::Range(0, 3), cv::Range(3, 4));
+
+    // Convert rotation matrix to rotation vector
+    cv::Rodrigues(R, rvec);
+    tvec = t.clone();
+  } else {
+    rvec = cv::Mat::zeros(3, 1, CV_64F);
+    tvec = cv::Mat::zeros(3, 1, CV_64F);
+  }
+
+  std::vector<cv::Point3f> objectPoints{
+      {cv::Point3f{position[0], position[1], position[2]}}};
+  std::vector<cv::Point2f> imagePoints;
+  cv::projectPoints(objectPoints, rvec, tvec, cameraMatrix, distCoeffs,
+                    imagePoints);
+
+  // cv::projectPoints can return nan or inf values
+  if (imagePoints.empty() || std::isnan(imagePoints[0].x) ||
+      std::isinf(imagePoints[0].x) || std::isnan(imagePoints[0].y) ||
+      std::isinf(imagePoints[0].y)) {
+    return std::nullopt;
+  }
+
+  return cv::Point2i{static_cast<int>(std::round(imagePoints[0].x)),
+                     static_cast<int>(std::round(imagePoints[0].y))};
 }
 
 std::optional<cv::Vec3f> RgbdAlignment::getPosition(
