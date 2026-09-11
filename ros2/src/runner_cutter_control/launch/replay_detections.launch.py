@@ -16,9 +16,6 @@ Requirements:
   - `output_bag` must not already exist.
 """
 
-import os
-
-from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
@@ -41,12 +38,6 @@ def launch_setup(context, *args, **kwargs):
     if not output_bag:
         output_bag = source_bag.rstrip("/") + "_detections"
     runner_model = LaunchConfiguration("runner_model").perform(context)
-
-    qos_overrides = os.path.join(
-        get_package_share_directory("runner_cutter_control"),
-        "config",
-        "rosbag_replay_qos_overrides.yaml",
-    )
 
     # DetectionNode, with its input topics remapped onto the names recorded by
     # CameraControlNode so the bag can be replayed unmodified.
@@ -130,8 +121,6 @@ def launch_setup(context, *args, **kwargs):
             "bag",
             "play",
             source_bag,
-            "--qos-profile-overrides-path",
-            qos_overrides,
         ],
         output="screen",
     )
