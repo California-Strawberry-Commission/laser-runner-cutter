@@ -7,31 +7,30 @@
 //   2. Extract the ground-truth position time series for each track.
 //   3. Replay every DetectionResult through DetectionTrackerUpdater and, each
 //      frame, ask every track's predictor where it will be X ms in the future.
-//   4. Compare each prediction against the position that track is actually
-//      detected at that future time (linear interpolation of its own
-//      detections) to calculate the error.
+//   4. For each ground truth detection, compare it against that track's
+//      lookahead prediction interpolated to the detection's own timestamp
+//      (linear interpolation between nearby predictions) to calculate the
+//      error.
 
-#include <Eigen/Geometry>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "CLI/CLI.hpp"
-#include "camera_control/utils/rgbd_alignment.hpp"
 #include "detection_interfaces/msg/detection_result.hpp"
 #include "detection_interfaces/msg/detection_type.hpp"
-#include "geometry_msgs/msg/transform.hpp"
 #include "matplotlibcpp.h"
-#include "opencv2/imgproc.hpp"
-#include "opencv2/videoio.hpp"
+#include "opencv2/opencv.hpp"
 #include "rclcpp/serialization.hpp"
 #include "rclcpp/serialized_message.hpp"
 #include "rclcpp/time.hpp"
@@ -40,9 +39,6 @@
 #include "runner_cutter_control/tasks/detection_tracker_updater.hpp"
 #include "runner_cutter_control/tracking/track.hpp"
 #include "runner_cutter_control/tracking/tracker.hpp"
-#include "sensor_msgs/msg/camera_info.hpp"
-#include "sensor_msgs/msg/image.hpp"
-#include "tf2_msgs/msg/tf_message.hpp"
 
 namespace {
 
@@ -56,10 +52,6 @@ struct Options {
   int targetAttempts{3};
   double lookaheadSecs{0.2};
   bool plot{false};
-  std::string cameraBag;
-  std::string cameraTopic{"/camera0/color/image_raw"};
-  std::string cameraInfoTopic{"/camera0/color/camera_info"};
-  std::string outputVideo{"evaluate_lookahead.avi"};
   double videoFps{10.0};
 };
 
@@ -100,7 +92,6 @@ bool validPosition(const Position& p) {
 struct TrackSeries {
   std::vector<double> timestamps;  // monotonically increasing
   std::vector<Position> positions;
-  std::vector<PixelCoord> pixelCoords;
 };
 
 // Linear interpolation of `series` at `queryTimestamp`. Returns nullopt if
@@ -129,29 +120,6 @@ std::optional<Position> interpolateAt(const TrackSeries& series,
                   static_cast<float>(p1.z + a * (p2.z - p1.z))};
 }
 
-// Finds the pixel coord in `series` whose timestamp is closest to
-// `queryTimestamp`. Returns nullopt if `series` is empty.
-std::optional<PixelCoord> nearestPixelAt(const TrackSeries& series,
-                                         double queryTimestamp) {
-  if (series.timestamps.empty()) {
-    return std::nullopt;
-  }
-  const auto next{std::lower_bound(series.timestamps.begin(),
-                                   series.timestamps.end(), queryTimestamp)};
-  if (next == series.timestamps.begin()) {
-    return series.pixelCoords.front();
-  }
-  if (next == series.timestamps.end()) {
-    return series.pixelCoords.back();
-  }
-  const size_t nextIdx{static_cast<size_t>(next - series.timestamps.begin())};
-  const size_t prevIdx{nextIdx - 1};
-  const double prevDelta{std::abs(series.timestamps[prevIdx] - queryTimestamp)};
-  const double nextDelta{std::abs(series.timestamps[nextIdx] - queryTimestamp)};
-  return (prevDelta <= nextDelta) ? series.pixelCoords[prevIdx]
-                                  : series.pixelCoords[nextIdx];
-}
-
 double distance(const Position& a, const Position& b) {
   const double dx{static_cast<double>(a.x) - b.x};
   const double dy{static_cast<double>(a.y) - b.y};
@@ -159,91 +127,170 @@ double distance(const Position& a, const Position& b) {
   return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-struct Prediction {
-  double frameTimestamp{0.0};
-  double lookaheadTimestamp{0.0};
-  Position predicted{};
-};
-
 struct EvaluatedPrediction {
-  double frameTimestamp{0.0};
-  double lookaheadTimestamp{0.0};
+  double timestamp{0.0};
   Position predicted{};
   Position actual{};
   double error{0.0};
 };
 
-// Linear interpolation of `preds`' predicted positions at `queryTimestamp`,
-// using each prediction's lookaheadTimestamp. Returns nullopt if
-// `queryTimestamp` is outside the predictions' time span or there are fewer
-// than two predictions. `preds` is assumed to be sorted ascending by
-// lookaheadTimestamp.
-std::optional<Position> interpolatePredictedAt(
-    const std::vector<Prediction>& preds, double queryTimestamp) {
-  if (preds.size() < 2 || queryTimestamp < preds.front().lookaheadTimestamp ||
-      queryTimestamp > preds.back().lookaheadTimestamp) {
-    return std::nullopt;
-  }
-  const auto hi{std::upper_bound(preds.begin(), preds.end(), queryTimestamp,
-                                 [](double timestamp, const Prediction& pred) {
-                                   return timestamp < pred.lookaheadTimestamp;
-                                 })};
-  if (hi == preds.end()) {
-    return preds.back().predicted;
-  }
-  const size_t i2{static_cast<size_t>(hi - preds.begin())};
-  const size_t i1{i2 - 1};
-  const double a{(queryTimestamp - preds[i1].lookaheadTimestamp) /
-                 (preds[i2].lookaheadTimestamp - preds[i1].lookaheadTimestamp)};
-  const Position& p1{preds[i1].predicted};
-  const Position& p2{preds[i2].predicted};
-  return Position{static_cast<float>(p1.x + a * (p2.x - p1.x)),
-                  static_cast<float>(p1.y + a * (p2.y - p1.y)),
-                  static_cast<float>(p1.z + a * (p2.z - p1.z))};
-}
+constexpr int OUTPUT_VIDEO_WIDTH{900};
+constexpr int OUTPUT_VIDEO_HEIGHT{900};
+constexpr int OUTPUT_VIDEO_MARGIN_LEFT{90};
+constexpr int OUTPUT_VIDEO_MARGIN_RIGHT{40};
+constexpr int OUTPUT_VIDEO_MARGIN_TOP{60};
+constexpr int OUTPUT_VIDEO_MARGIN_BOTTOM{70};
 
-// Converts a tf transform into a 4x4 extrinsic matrix
-cv::Mat toExtrinsicMatrix(const geometry_msgs::msg::Transform& transform) {
-  const Eigen::Quaterniond rotation{transform.rotation.w, transform.rotation.x,
-                                    transform.rotation.y, transform.rotation.z};
-  const Eigen::Matrix3d rotationMatrix{
-      rotation.normalized().toRotationMatrix()};
-
-  cv::Mat extrinsic{cv::Mat::eye(4, 4, CV_64F)};
-  for (int r = 0; r < 3; ++r) {
-    for (int c = 0; c < 3; ++c) {
-      extrinsic.at<double>(r, c) = rotationMatrix(r, c);
+// Computes the X-Y bounds (with padding) spanning every ground truth and
+// predicted position.
+cv::Rect2d computeBounds(const std::map<uint32_t, TrackSeries>& groundTruths,
+                         const std::map<uint32_t, TrackSeries>& predictions,
+                         float padFactor = 0.1f) {
+  double minX{std::numeric_limits<double>::infinity()};
+  double maxX{-std::numeric_limits<double>::infinity()};
+  double minY{std::numeric_limits<double>::infinity()};
+  double maxY{-std::numeric_limits<double>::infinity()};
+  for (const auto& kv : groundTruths) {
+    for (const auto& p : kv.second.positions) {
+      minX = std::min(minX, static_cast<double>(p.x));
+      maxX = std::max(maxX, static_cast<double>(p.x));
+      minY = std::min(minY, static_cast<double>(p.y));
+      maxY = std::max(maxY, static_cast<double>(p.y));
     }
   }
-  extrinsic.at<double>(0, 3) = transform.translation.x;
-  extrinsic.at<double>(1, 3) = transform.translation.y;
-  extrinsic.at<double>(2, 3) = transform.translation.z;
-  return extrinsic;
-}
-
-cv::Mat toIntrinsicMatrix(const sensor_msgs::msg::CameraInfo& cameraInfo) {
-  cv::Mat k(3, 3, CV_64F);
-  for (int i = 0; i < 9; ++i) {
-    k.at<double>(i / 3, i % 3) = cameraInfo.k[i];
+  for (const auto& kv : predictions) {
+    for (const auto& p : kv.second.positions) {
+      minX = std::min(minX, static_cast<double>(p.x));
+      maxX = std::max(maxX, static_cast<double>(p.x));
+      minY = std::min(minY, static_cast<double>(p.y));
+      maxY = std::max(maxY, static_cast<double>(p.y));
+    }
   }
-  return k;
-}
 
-cv::Mat toDistCoeffs(const sensor_msgs::msg::CameraInfo& cameraInfo) {
-  cv::Mat d(1, static_cast<int>(cameraInfo.d.size()), CV_64F);
-  for (size_t i = 0; i < cameraInfo.d.size(); ++i) {
-    d.at<double>(0, static_cast<int>(i)) = cameraInfo.d[i];
+  if (minX > maxX || minY > maxY) {
+    return cv::Rect2d{0.0, 0.0, 1.0, 1.0};
   }
-  return d;
+
+  double spanX{maxX - minX};
+  double spanY{maxY - minY};
+  if (spanX < 1e-6) {
+    spanX = 1.0;
+  }
+  if (spanY < 1e-6) {
+    spanY = 1.0;
+  }
+  double padX{spanX * padFactor};
+  double padY{spanY * padFactor};
+  return cv::Rect2d{minX - padX, minY - padY, spanX + 2 * padX,
+                    spanY + 2 * padY};
 }
 
-// Demosaics a raw BAYER_RGGB8 color frame into a BGR image.
-cv::Mat toBgrMat(const sensor_msgs::msg::Image& image) {
-  cv::Mat raw(static_cast<int>(image.height), static_cast<int>(image.width),
-              CV_8UC1, const_cast<uint8_t*>(image.data.data()), image.step);
-  cv::Mat bgr;
-  cv::cvtColor(raw, bgr, cv::COLOR_BayerRGGB2BGR);
-  return bgr;
+cv::Point toOutputVideoPixel(double x, double y, const cv::Rect2d& bounds) {
+  constexpr int plotWidth{OUTPUT_VIDEO_WIDTH - OUTPUT_VIDEO_MARGIN_LEFT -
+                          OUTPUT_VIDEO_MARGIN_RIGHT};
+  constexpr int plotHeight{OUTPUT_VIDEO_HEIGHT - OUTPUT_VIDEO_MARGIN_TOP -
+                           OUTPUT_VIDEO_MARGIN_BOTTOM};
+  const double px{OUTPUT_VIDEO_MARGIN_LEFT +
+                  (x - bounds.x) / bounds.width * plotWidth};
+  // Flip Y so that larger values plot higher on the frame.
+  const double py{OUTPUT_VIDEO_HEIGHT - OUTPUT_VIDEO_MARGIN_BOTTOM -
+                  (y - bounds.y) / bounds.height * plotHeight};
+  return cv::Point{static_cast<int>(std::lround(px)),
+                   static_cast<int>(std::lround(py))};
+}
+
+cv::Mat renderOutputVideoFrame(
+    double frameTimestamp, double t0,
+    const std::vector<std::pair<uint32_t, Position>>& groundTruthPoints,
+    const std::map<uint32_t, Position>& predictedPoints,
+    const cv::Rect2d& bounds) {
+  cv::Mat frame{OUTPUT_VIDEO_HEIGHT, OUTPUT_VIDEO_WIDTH, CV_8UC3,
+                cv::Scalar(255, 255, 255)};
+
+  const cv::Rect plotRect{
+      OUTPUT_VIDEO_MARGIN_LEFT, OUTPUT_VIDEO_MARGIN_TOP,
+      OUTPUT_VIDEO_WIDTH - OUTPUT_VIDEO_MARGIN_LEFT - OUTPUT_VIDEO_MARGIN_RIGHT,
+      OUTPUT_VIDEO_HEIGHT - OUTPUT_VIDEO_MARGIN_TOP -
+          OUTPUT_VIDEO_MARGIN_BOTTOM};
+  cv::rectangle(frame, plotRect, cv::Scalar(0, 0, 0), 1, cv::LINE_AA);
+
+  // Gridlines + tick labels
+  const double minX{bounds.x};
+  const double maxX{bounds.x + bounds.width};
+  const double minY{bounds.y};
+  const double maxY{bounds.y + bounds.height};
+  constexpr int numDivisions{5};
+  for (int i = 0; i <= numDivisions; ++i) {
+    const double fx{minX + (maxX - minX) * i / numDivisions};
+    const double fy{minY + (maxY - minY) * i / numDivisions};
+    cv::line(frame, toOutputVideoPixel(fx, minY, bounds),
+             toOutputVideoPixel(fx, maxY, bounds), cv::Scalar(220, 220, 220), 1,
+             cv::LINE_AA);
+    cv::line(frame, toOutputVideoPixel(minX, fy, bounds),
+             toOutputVideoPixel(maxX, fy, bounds), cv::Scalar(220, 220, 220), 1,
+             cv::LINE_AA);
+
+    std::ostringstream xLabel;
+    xLabel << std::fixed << std::setprecision(2) << fx;
+    const cv::Point xTick{toOutputVideoPixel(fx, minY, bounds)};
+    cv::putText(
+        frame, xLabel.str(),
+        {xTick.x - 18, OUTPUT_VIDEO_HEIGHT - OUTPUT_VIDEO_MARGIN_BOTTOM + 20},
+        cv::FONT_HERSHEY_SIMPLEX, 0.35, cv::Scalar(0, 0, 0), 1, cv::LINE_AA);
+
+    std::ostringstream yLabel;
+    yLabel << std::fixed << std::setprecision(2) << fy;
+    const cv::Point yTick{toOutputVideoPixel(minX, fy, bounds)};
+    cv::putText(
+        frame, yLabel.str(), {OUTPUT_VIDEO_MARGIN_LEFT - 60, yTick.y + 4},
+        cv::FONT_HERSHEY_SIMPLEX, 0.35, cv::Scalar(0, 0, 0), 1, cv::LINE_AA);
+  }
+
+  // Axis labels + title
+  cv::putText(frame, "X", {OUTPUT_VIDEO_WIDTH / 2, OUTPUT_VIDEO_HEIGHT - 15},
+              cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0), 1,
+              cv::LINE_AA);
+  cv::putText(frame, "Y", {15, OUTPUT_VIDEO_HEIGHT / 2},
+              cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0), 1,
+              cv::LINE_AA);
+  std::ostringstream title;
+  title << "t = " << std::fixed << std::setprecision(2) << (frameTimestamp - t0)
+        << "s";
+  cv::putText(frame, title.str(), {OUTPUT_VIDEO_MARGIN_LEFT, 30},
+              cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 0, 0), 1,
+              cv::LINE_AA);
+
+  // Legend
+  cv::circle(frame, {OUTPUT_VIDEO_WIDTH - 230, 20}, 5, cv::Scalar(0, 160, 0),
+             cv::FILLED, cv::LINE_AA);
+  cv::putText(frame, "ground truth", {OUTPUT_VIDEO_WIDTH - 215, 25},
+              cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0, 0, 0), 1,
+              cv::LINE_AA);
+  cv::drawMarker(frame, {OUTPUT_VIDEO_WIDTH - 230, 42}, cv::Scalar(0, 0, 220),
+                 cv::MARKER_TILTED_CROSS, 10, 2, cv::LINE_AA);
+  cv::putText(frame, "predicted", {OUTPUT_VIDEO_WIDTH - 215, 47},
+              cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0, 0, 0), 1,
+              cv::LINE_AA);
+
+  // Ground truth points (and predicted position, if available)
+  for (const auto& [trackId, position] : groundTruthPoints) {
+    const cv::Point pt{toOutputVideoPixel(position.x, position.y, bounds)};
+    cv::circle(frame, pt, 6, cv::Scalar(0, 160, 0), cv::FILLED, cv::LINE_AA);
+    cv::putText(frame, std::to_string(trackId), {pt.x + 8, pt.y - 8},
+                cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0), 1,
+                cv::LINE_AA);
+
+    const auto predIt{predictedPoints.find(trackId)};
+    if (predIt != predictedPoints.end()) {
+      const cv::Point predPt{
+          toOutputVideoPixel(predIt->second.x, predIt->second.y, bounds)};
+      cv::line(frame, pt, predPt, cv::Scalar(180, 180, 180), 1, cv::LINE_AA);
+      cv::drawMarker(frame, predPt, cv::Scalar(0, 0, 220),
+                     cv::MARKER_TILTED_CROSS, 12, 2, cv::LINE_AA);
+    }
+  }
+
+  return frame;
 }
 
 }  // namespace
@@ -269,24 +316,10 @@ int main(int argc, char** argv) {
                  "How far ahead, in seconds, to predict each track's position")
       ->capture_default_str();
   app.add_flag("--plot,!--no-plot", opt.plot,
-               "Render PNG plots of the evaluation results")
+               "Render PNG plots and an AVI video of the evaluation results")
       ->capture_default_str();
-  app.add_option(
-      "--camera-bag", opt.cameraBag,
-      "Path to a rosbag of color camera images, camera_info, and /tf_static. "
-      "If provided, for each frame, draws each track's projected predicted "
-      "position and ground-truth pixel and writes the annotated frames to "
-      "--output-video");
-  app.add_option("--camera-topic", opt.cameraTopic,
-                 "Color image topic to read from --camera-bag")
-      ->capture_default_str();
-  app.add_option("--camera-info-topic", opt.cameraInfoTopic,
-                 "Color CameraInfo topic to read from --camera-bag")
-      ->capture_default_str();
-  app.add_option("--output-video", opt.outputVideo,
-                 "Path to write the annotated camera frames to, as a video")
-      ->capture_default_str();
-  app.add_option("--video-fps", opt.videoFps, "Frame rate of the output video")
+  app.add_option("--video-fps", opt.videoFps,
+                 "Playback frame rate of the output video")
       ->capture_default_str();
   CLI11_PARSE(app, argc, argv);
 
@@ -308,12 +341,16 @@ int main(int argc, char** argv) {
                                   static_cast<float>(opt.trackMissTimeoutSecs),
                                   opt.targetAttempts};
 
-  std::map<uint32_t, TrackSeries> groundTruth;
-  std::map<uint32_t, std::vector<Prediction>> predictions;
+  // From DetectionResult messages, extract ground truth positions and calculate
+  // predicted positions
+  std::map<uint32_t, TrackSeries> groundTruths;  // track ID -> TrackSeries
+  std::map<uint32_t, TrackSeries> predictions;   // track ID -> TrackSeries
+  size_t totalPredictions{0};
   for (const auto& detection : detections) {
-    const double timestamp{rclcpp::Time(detection.timestamp).seconds()};
+    const double detectionTimestampSecs{
+        rclcpp::Time(detection.timestamp).seconds()};
 
-    // Extract ground truth for each instance
+    // Extract ground truth for each detection instance
     for (const auto& instance : detection.instances) {
       if (instance.track_id == 0) {
         continue;
@@ -326,52 +363,51 @@ int main(int argc, char** argv) {
         continue;
       }
 
-      auto& trackSeries{groundTruth[instance.track_id]};
+      auto& trackSeries{groundTruths[instance.track_id]};
       if (!trackSeries.timestamps.empty() &&
-          timestamp <= trackSeries.timestamps.back()) {
+          detectionTimestampSecs <= trackSeries.timestamps.back()) {
         continue;  // ignore out-of-order detections
       }
-      trackSeries.timestamps.push_back(timestamp);
+      trackSeries.timestamps.push_back(detectionTimestampSecs);
       trackSeries.positions.push_back(position);
-      trackSeries.pixelCoords.push_back(
-          PixelCoord{static_cast<int>(std::round(instance.point.x)),
-                     static_cast<int>(std::round(instance.point.y))});
     }
 
-    // Update the tracker, then for every pending track, predict the lookahead
+    // Update the tracker, then for every pending track, predict a lookahead
     // position
     updater.update(detection);
-    const double lookaheadTimestamp{timestamp + opt.lookaheadSecs};
+    const double lookaheadTimestampSecs{detectionTimestampSecs +
+                                        opt.lookaheadSecs};
     for (const auto& track :
          tracker->getTracksWithState(Track::State::PENDING)) {
-      predictions[track->getId()].push_back(
-          {timestamp, lookaheadTimestamp,
-           track->getPredictor().predict(lookaheadTimestamp)});
+      auto& series{predictions[track->getId()]};
+      series.timestamps.push_back(lookaheadTimestampSecs);
+      series.positions.push_back(
+          track->getPredictor().predict(lookaheadTimestampSecs));
+      ++totalPredictions;
     }
   }
 
-  // For each lookahead prediction made, find the ground truth position at the
-  // lookahead timestamp
-  std::map<uint32_t, std::vector<EvaluatedPrediction>> evaluated;
-  size_t totalPredictions{0};
+  // For each ground truth detection, interpolate that track's lookahead
+  // prediction to the detection's own timestamp and compare the two
   size_t joinedPredictions{0};
-  for (const auto& [trackId, preds] : predictions) {
-    const auto gtIt{groundTruth.find(trackId)};
-    if (gtIt == groundTruth.end()) {
+  std::map<uint32_t, std::vector<EvaluatedPrediction>> evaluated;
+  for (const auto& [trackId, gtSeries] : groundTruths) {
+    const auto predIt{predictions.find(trackId)};
+    if (predIt == predictions.end()) {
       continue;
     }
 
-    for (const auto& pred : preds) {
-      ++totalPredictions;
-      const auto actual{interpolateAt(gtIt->second, pred.lookaheadTimestamp)};
-      if (!actual) {
-        continue;  // lookahead time is beyond this track's detection span
+    for (size_t i = 0; i < gtSeries.timestamps.size(); ++i) {
+      const double timestamp{gtSeries.timestamps[i]};
+      const Position& actual{gtSeries.positions[i]};
+      const auto predicted{interpolateAt(predIt->second, timestamp)};
+      if (!predicted) {
+        continue;  // no lookahead prediction spans this detection's timestamp
       }
 
       ++joinedPredictions;
       evaluated[trackId].push_back(
-          {pred.frameTimestamp, pred.lookaheadTimestamp, pred.predicted,
-           *actual, distance(pred.predicted, *actual)});
+          {timestamp, *predicted, actual, distance(*predicted, actual)});
     }
   }
 
@@ -380,16 +416,17 @@ int main(int argc, char** argv) {
   std::cout << "evaluate_lookahead\n"
             << "  bag: " << opt.bag << " (topic " << opt.topic << ")\n"
             << "  # frames: " << detections.size() << "\n"
-            << "  # tracks: " << groundTruth.size() << "\n"
-            << "  # predictions made: " << totalPredictions << " ("
-            << joinedPredictions << " evaluated)\n";
+            << "  # tracks: " << groundTruths.size() << "\n"
+            << "  # predictions made: " << totalPredictions << "\n"
+            << "  # ground truth detections evaluated: " << joinedPredictions
+            << "\n";
   for (const auto& [trackId, evs] : evaluated) {
     double totalError{0.0};
     for (const auto& ev : evs) {
       totalError += ev.error;
     }
     std::cout << "  track " << trackId << ": " << evs.size()
-              << " predictions evaluated, mean error "
+              << " detections evaluated, mean error "
               << (evs.empty() ? 0.0
                               : totalError / static_cast<double>(evs.size()))
               << "\n";
@@ -413,7 +450,7 @@ int main(int argc, char** argv) {
       x.reserve(evs.size());
       y.reserve(evs.size());
       for (const auto& ev : evs) {
-        x.push_back(ev.frameTimestamp - t0);
+        x.push_back(ev.timestamp - t0);
         y.push_back(ev.error);
       }
       plt::named_plot("track " + std::to_string(trackId), x, y);
@@ -430,174 +467,56 @@ int main(int argc, char** argv) {
     plt::close();
     std::cout << "wrote " << errorOverTimePlotFilename << "\n";
 
-    // Predicted vs actual X-Y trajectory at the lookahead time, one plot per
-    // track
-    for (const auto& [trackId, evs] : evaluated) {
-      std::vector<double> px;
-      std::vector<double> py;
-      std::vector<double> ax;
-      std::vector<double> ay;
-      px.reserve(evs.size());
-      py.reserve(evs.size());
-      ax.reserve(evs.size());
-      ay.reserve(evs.size());
-      for (const auto& ev : evs) {
-        px.push_back(ev.predicted.x);
-        py.push_back(ev.predicted.y);
-        ax.push_back(ev.actual.x);
-        ay.push_back(ev.actual.y);
-      }
+    // Render one video frame per DetectionResult. Each frame is an X-Y plot of
+    // ground truth positions of detected tracks, plus each track's lookahead
+    // prediction (if available) interpolated to the frame's timestamp.
+    const std::string videoFilename{"evaluate_lookahead.avi"};
+    cv::VideoWriter writer{
+        videoFilename, cv::VideoWriter::fourcc('X', 'V', 'I', 'D'),
+        opt.videoFps, cv::Size(OUTPUT_VIDEO_WIDTH, OUTPUT_VIDEO_HEIGHT)};
+    if (!writer.isOpened()) {
+      std::cerr << "Failed to open " << videoFilename << " for writing\n";
+    } else {
+      const cv::Rect2d bounds{computeBounds(groundTruths, predictions)};
+      for (const auto& detection : detections) {
+        const double detectionTimestampSecs{
+            rclcpp::Time(detection.timestamp).seconds()};
 
-      plt::figure();
-      plt::named_plot("predicted", px, py, "r.-");
-      plt::named_plot("actual", ax, ay, "g.-");
-      plt::xlabel("X");
-      plt::ylabel("Y");
-      plt::title("Track " + std::to_string(trackId) +
-                 " -- predicted vs actual at +" +
-                 std::to_string(opt.lookaheadSecs) + "s");
-      plt::legend();
-      plt::grid(true);
-      plt::set_aspect_equal();
-      plt::tight_layout();
-      const std::string trackPlotFilename{"evaluate_lookahead_track_" +
-                                          std::to_string(trackId) + ".png"};
-      plt::save(trackPlotFilename);
-      plt::close();
-      std::cout << "wrote " << trackPlotFilename << "\n";
-    }
-  }
-
-  // If a camera bag was provided, stream color images one frame at a time,
-  // picking up the color camera's intrinsic matrix, distortion coefficients,
-  // and XYZ to color extrinsic transform. For each frame, for every track,
-  // linearly interpolate the predicted position at the frame's timestamp and
-  // draw it, alongside the ground-truth nearest that same timestamp.
-  if (!opt.cameraBag.empty()) {
-    try {
-      rosbag2_cpp::Reader reader;
-      reader.open(opt.cameraBag);
-
-      const std::filesystem::path outputVideoPath{opt.outputVideo};
-      if (outputVideoPath.has_parent_path()) {
-        std::filesystem::create_directories(outputVideoPath.parent_path());
-      }
-      const cv::Size outputFrameSize{1024, 768};
-      cv::VideoWriter videoWriter{opt.outputVideo,
-                                  cv::VideoWriter::fourcc('X', 'V', 'I', 'D'),
-                                  opt.videoFps, outputFrameSize};
-      if (!videoWriter.isOpened()) {
-        std::cerr << "Failed to open output video '" << opt.outputVideo
-                  << "'\n";
-        return 1;
-      }
-
-      rclcpp::Serialization<sensor_msgs::msg::Image> imageSerialization;
-      rclcpp::Serialization<sensor_msgs::msg::CameraInfo>
-          cameraInfoSerialization;
-      rclcpp::Serialization<tf2_msgs::msg::TFMessage> tfSerialization;
-
-      std::optional<cv::Mat> colorCameraIntrinsicMatrix;
-      std::optional<cv::Mat> colorCameraDistCoeffs;
-      std::optional<cv::Mat> xyzToColorCameraExtrinsicMatrix;
-
-      while (reader.has_next()) {
-        const auto bagMsg{reader.read_next()};
-        rclcpp::SerializedMessage serialized{*bagMsg->serialized_data};
-
-        // Extract the XYZ to color camera extrinsic matrix
-        if (bagMsg->topic_name == "/tf_static") {
-          if (!xyzToColorCameraExtrinsicMatrix) {
-            tf2_msgs::msg::TFMessage tfMsg;
-            tfSerialization.deserialize_message(&serialized, &tfMsg);
-            for (const auto& transform : tfMsg.transforms) {
-              if (transform.child_frame_id == "color_camera") {
-                xyzToColorCameraExtrinsicMatrix =
-                    toExtrinsicMatrix(transform.transform);
-                break;
-              }
-            }
+        std::vector<std::pair<uint32_t, Position>> groundTruthPoints;
+        for (const auto& instance : detection.instances) {
+          if (instance.track_id == 0) {
+            continue;
           }
-          continue;
-        }
-
-        // Extract camera intrinsic matrix and distortion coeffs
-        if (bagMsg->topic_name == opt.cameraInfoTopic) {
-          if (!colorCameraIntrinsicMatrix) {
-            sensor_msgs::msg::CameraInfo cameraInfo;
-            cameraInfoSerialization.deserialize_message(&serialized,
-                                                        &cameraInfo);
-            colorCameraIntrinsicMatrix = toIntrinsicMatrix(cameraInfo);
-            colorCameraDistCoeffs = toDistCoeffs(cameraInfo);
+          const Position position{static_cast<float>(instance.position.x),
+                                  static_cast<float>(instance.position.y),
+                                  static_cast<float>(instance.position.z)};
+          if (!validPosition(position)) {
+            continue;
           }
-          continue;
+          groundTruthPoints.emplace_back(instance.track_id, position);
         }
 
-        if (bagMsg->topic_name != opt.cameraTopic) {
-          continue;
-        }
-
-        sensor_msgs::msg::Image frame;
-        imageSerialization.deserialize_message(&serialized, &frame);
-
-        const double frameTimestamp{rclcpp::Time(frame.header.stamp).seconds()};
-        cv::Mat image;
-        try {
-          image = toBgrMat(frame);
-        } catch (const std::exception& e) {
-          std::cerr << "Failed to convert frame at " << frameTimestamp << ": "
-                    << e.what() << "\n";
-          continue;
-        }
-
-        if (colorCameraIntrinsicMatrix && xyzToColorCameraExtrinsicMatrix) {
-          for (const auto& [trackId, preds] : predictions) {
-            const auto predicted{interpolatePredictedAt(preds, frameTimestamp)};
-            if (!predicted) {
-              continue;
-            }
-
-            // Predicted position, projected onto the color frame
-            const cv::Vec3f predictedPosition{predicted->x, predicted->y,
-                                              predicted->z};
-            const auto predictedPixel{RgbdAlignment::projectPosition(
-                predictedPosition, *colorCameraIntrinsicMatrix,
-                *colorCameraDistCoeffs, *xyzToColorCameraExtrinsicMatrix)};
-            if (predictedPixel) {
-              const cv::Point center{predictedPixel->x, predictedPixel->y};
-              cv::circle(image, center, 8, cv::Scalar(0, 0, 255), 2);
-              cv::putText(image, "predicted " + std::to_string(trackId),
-                          center + cv::Point{10, -10}, cv::FONT_HERSHEY_SIMPLEX,
-                          0.5, cv::Scalar(0, 0, 255), 2);
-            }
-
-            // Ground-truth pixel nearest the frame's timestamp
-            const auto gtIt{groundTruth.find(trackId)};
-            if (gtIt != groundTruth.end()) {
-              const auto actualPixel{
-                  nearestPixelAt(gtIt->second, frameTimestamp)};
-              if (actualPixel) {
-                const cv::Point center{actualPixel->u, actualPixel->v};
-                cv::circle(image, center, 8, cv::Scalar(0, 255, 0), 2);
-                cv::putText(image, "actual " + std::to_string(trackId),
-                            center + cv::Point{10, 10},
-                            cv::FONT_HERSHEY_SIMPLEX, 0.5,
-                            cv::Scalar(0, 255, 0), 2);
-              }
-            }
+        std::map<uint32_t, Position> predictedPoints;
+        for (const auto& [trackId, position] : groundTruthPoints) {
+          (void)position;
+          const auto seriesIt{predictions.find(trackId)};
+          if (seriesIt == predictions.end()) {
+            continue;
+          }
+          const auto predicted{
+              interpolateAt(seriesIt->second, detectionTimestampSecs)};
+          if (predicted) {
+            predictedPoints[trackId] = *predicted;
           }
         }
 
-        cv::resize(image, image, outputFrameSize);
-        videoWriter.write(image);
+        writer.write(renderOutputVideoFrame(detectionTimestampSecs, t0,
+                                            groundTruthPoints, predictedPoints,
+                                            bounds));
       }
-      reader.close();
-      videoWriter.release();
-      std::cout << "wrote " << opt.outputVideo << "\n";
-    } catch (const std::exception& e) {
-      std::cerr << "Failed to read camera bag '" << opt.cameraBag
-                << "': " << e.what() << "\n";
-      return 1;
+      writer.release();
+      std::cout << "wrote " << videoFilename << " (" << detections.size()
+                << " frames)\n";
     }
   }
 

@@ -25,13 +25,7 @@ find_package(spdlog REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(fmt REQUIRED)
 find_package(rosbag2_cpp REQUIRED)
-find_package(sensor_msgs REQUIRED)
-find_package(geometry_msgs REQUIRED)
-find_package(tf2_msgs REQUIRED)
-# Use locally built OpenCV with CUDA support
-set(OpenCV_DIR "/usr/local/lib/cmake/opencv4")
 find_package(OpenCV REQUIRED)
-find_package(camera_control REQUIRED)
 
 ###########
 ## Build ##
@@ -153,16 +147,12 @@ target_link_libraries(visualize_predictor PRIVATE prediction matplotlib_cpp)
 add_executable(evaluate_lookahead
   src/tools/evaluate_lookahead.cpp
 )
-target_link_libraries(evaluate_lookahead PRIVATE
-  tasks tracking prediction matplotlib_cpp CLI11::CLI11 ${OpenCV_LIBS}
-  camera_control::utils)
+target_include_directories(evaluate_lookahead PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(evaluate_lookahead PRIVATE tasks tracking prediction matplotlib_cpp CLI11::CLI11 ${OpenCV_LIBS})
 ament_target_dependencies(evaluate_lookahead PUBLIC
   rclcpp
   rosbag2_cpp
   detection_interfaces
-  sensor_msgs
-  geometry_msgs
-  tf2_msgs
   common
 )
 
