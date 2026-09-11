@@ -22,6 +22,7 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_msgs REQUIRED)
 find_package(rosbag2_cpp REQUIRED)
+find_package(rosbag2_transport REQUIRED)
 find_package(common REQUIRED)
 find_package(camera_control_interfaces REQUIRED)
 find_package(spdlog REQUIRED)
@@ -123,6 +124,7 @@ ament_target_dependencies(camera_control_node_composable PUBLIC
   cv_bridge
   OpenCV
   rosbag2_cpp
+  rosbag2_transport
   tf2_msgs
 )
 rclcpp_components_register_node(

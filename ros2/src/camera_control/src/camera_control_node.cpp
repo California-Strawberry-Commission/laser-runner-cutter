@@ -26,12 +26,16 @@
 #include "rclcpp/qos.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rosbag2_cpp/writer.hpp"
+#include "rosbag2_storage/topic_metadata.hpp"
+#include "rosbag2_transport/qos.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
 #include "sensor_msgs/msg/compressed_image.hpp"
 #include "sensor_msgs/msg/image.hpp"
 #include "std_srvs/srv/trigger.hpp"
 #include "tf2_msgs/msg/tf_message.hpp"
+#include "tf2_ros/qos.hpp"
 #include "tf2_ros/static_transform_broadcaster.h"
+#include "yaml-cpp/yaml.h"
 
 namespace {
 
@@ -680,6 +684,20 @@ class CameraControlNode : public rclcpp::Node {
         storageOptions.max_bagfile_size =
             4ULL * 1024 * 1024 * 1024;  // 4GB per file
         bagWriter_->open(storageOptions);
+
+        // Explicitly create the /tf_static topic with the QoS profile that a
+        // static-TF listener requests, so that `ros2 bag play` offers it with
+        // transient_local durability. Otherwise the topic is auto-created on
+        // the first write() with no offered QoS profile.
+        std::vector<rosbag2_transport::Rosbag2QoS> tfStaticQosProfiles{
+            rosbag2_transport::Rosbag2QoS(tf2_ros::StaticListenerQoS())};
+        rosbag2_storage::TopicMetadata tfStaticTopic;
+        tfStaticTopic.name = "/tf_static";
+        tfStaticTopic.type = "tf2_msgs/msg/TFMessage";
+        tfStaticTopic.serialization_format = "cdr";
+        tfStaticTopic.offered_qos_profiles =
+            YAML::Dump(YAML::Node(tfStaticQosProfiles));
+        bagWriter_->create_topic(tfStaticTopic);
 
         tf2_msgs::msg::TFMessage tfMsg;
         tfMsg.transforms = staticTransforms_;
