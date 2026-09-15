@@ -8,6 +8,8 @@
 
 namespace {
 
+constexpr size_t POINT_HISTORY_GRACE_FRAMES{10};
+
 /**
  * Samples a float matrix at a sub-pixel position using bilinear interpolation,
  * clamping out-of-bounds coordinates to the edge.
@@ -357,6 +359,7 @@ std::vector<RunnerDetector::Runner> RunnerDetector::track(
 
 std::vector<RunnerDetector::Runner> RunnerDetector::track(
     const cv::cuda::GpuMat& imageRgb, const std::optional<cv::Rect>& bounds) {
+  ++frameCount_;
   std::vector<YoloV8::Object> predictionResult{model_->predict(imageRgb)};
 
   // Run through ByteTrack
@@ -374,8 +377,9 @@ std::vector<RunnerDetector::Runner> RunnerDetector::track(
   std::unordered_map<int, cv::Rect> trackRects;
   trackRects.reserve(tracks.size());
   for (const auto& track : tracks) {
-    trackRects[static_cast<int>(track->getTrackId())] =
-        toCvRect(track->getRect());
+    int trackId{static_cast<int>(track->getTrackId())};
+    trackRects[trackId] = toCvRect(track->getRect());
+    lastSeenFrame_[trackId] = frameCount_;
   }
 
   // Associate ByteTrack tracks to detections, and invert into detection index
@@ -440,11 +444,14 @@ std::vector<RunnerDetector::Runner> RunnerDetector::track(
     runners.push_back(runner);
   }
 
-  // Prune point history for tracks that are no longer active
-  for (auto it = previousPointNormalizedInBbox_.begin();
-       it != previousPointNormalizedInBbox_.end();) {
-    it = trackRects.count(it->first) ? std::next(it)
-                                     : previousPointNormalizedInBbox_.erase(it);
+  // Prune point history for tracks not seen within the grace period
+  for (auto it = lastSeenFrame_.begin(); it != lastSeenFrame_.end();) {
+    if (frameCount_ - it->second > POINT_HISTORY_GRACE_FRAMES) {
+      previousPointNormalizedInBbox_.erase(it->first);
+      it = lastSeenFrame_.erase(it);
+    } else {
+      ++it;
+    }
   }
 
   return runners;
@@ -453,4 +460,6 @@ std::vector<RunnerDetector::Runner> RunnerDetector::track(
 void RunnerDetector::reset() {
   tracker_ = std::make_unique<byte_track::BYTETracker>();
   previousPointNormalizedInBbox_.clear();
+  lastSeenFrame_.clear();
+  frameCount_ = 0;
 }

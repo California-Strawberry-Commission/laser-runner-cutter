@@ -57,4 +57,6 @@ class RunnerDetector {
   // a reference point each frame, to anchor ridge-point selection to reduce
   // jitter without drifting as the track moves.
   std::unordered_map<int, cv::Point2f> previousPointNormalizedInBbox_;
+  std::unordered_map<int, size_t> lastSeenFrame_;
+  size_t frameCount_{0};
 };
