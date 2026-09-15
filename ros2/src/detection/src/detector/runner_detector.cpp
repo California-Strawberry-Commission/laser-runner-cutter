@@ -86,13 +86,17 @@ void extractMedialRidge(const cv::Mat& dist, std::vector<cv::Point>& ridge,
 }
 
 /**
- * Calculates the medial-ridge point closest to the mask centroid, in image
- * coordinates.
+ * Calculates the medial-ridge point closest to a reference point, in image
+ * coordinates. If `referencePoint` is given, the reference is `referencePoint`
+ * blended with the mask centroid, weighted `centroidWeight` toward the
+ * centroid. If no `referencePoint` is given, the reference is just the mask
+ * centroid.
  */
 std::optional<cv::Point> findRepresentativePoint(
     const cv::Rect& maskRect, const cv::Mat& mask,
     const std::optional<cv::Rect>& bounds = std::nullopt,
-    float distThreshold = 0.5f) {
+    const std::optional<cv::Point2f>& referencePoint = std::nullopt,
+    float centroidWeight = 0.1f, float distThreshold = 0.5f) {
   if (mask.empty()) {
     return std::nullopt;
   }
@@ -122,7 +126,7 @@ std::optional<cv::Point> findRepresentativePoint(
     return cv::Point{maxLoc.x + maskRect.x, maxLoc.y + maskRect.y};
   }
 
-  // Compute centroid of the mask (in mask-local coordinates)
+  // Compute the centroid of the mask (in mask-local coordinates)
   cv::Moments m{cv::moments(mask, /*binaryImage=*/true)};
   if (m.m00 == 0.0) {
     // If there's no area, fall back to distance transform's max point
@@ -133,7 +137,17 @@ std::optional<cv::Point> findRepresentativePoint(
   }
   cv::Point2d centroid{m.m10 / m.m00, m.m01 / m.m00};
 
-  // Pick ridge point in the ROI that is closest to the centroid of the mask
+  // Determine the reference point, in mask-local coordinates, that ridge
+  // points are compared against
+  cv::Point2d reference{centroid};
+  if (referencePoint) {
+    cv::Point2d localPrevious{referencePoint->x - maskRect.x,
+                              referencePoint->y - maskRect.y};
+    reference =
+        (1.0 - centroidWeight) * localPrevious + centroidWeight * centroid;
+  }
+
+  // Pick the ridge point in the ROI that is closest to the reference point
   double bestD2{std::numeric_limits<double>::infinity()};
   std::optional<cv::Point> best;
   for (const auto& p : ridgePoints) {
@@ -141,8 +155,8 @@ std::optional<cv::Point> findRepresentativePoint(
       continue;
     }
 
-    double dx{p.x - centroid.x};
-    double dy{p.y - centroid.y};
+    double dx{p.x - reference.x};
+    double dy{p.y - reference.y};
     double d2{dx * dx + dy * dy};
     if (d2 < bestD2) {
       bestD2 = d2;
@@ -344,25 +358,6 @@ std::vector<RunnerDetector::Runner> RunnerDetector::track(
 std::vector<RunnerDetector::Runner> RunnerDetector::track(
     const cv::cuda::GpuMat& imageRgb, const std::optional<cv::Rect>& bounds) {
   std::vector<YoloV8::Object> predictionResult{model_->predict(imageRgb)};
-  std::vector<Runner> runners;
-  runners.reserve(predictionResult.size());
-
-  // Determine representative point for each mask
-  for (const auto& obj : predictionResult) {
-    cv::Point point{-1, -1};
-
-    auto repPointOpt{findRepresentativePoint(obj.rect, obj.boxMask, bounds)};
-    if (repPointOpt) {
-      point = std::move(*repPointOpt);
-    }
-
-    Runner runner;
-    runner.conf = obj.conf;
-    runner.rect = obj.rect;
-    runner.boxMask = obj.boxMask;
-    runner.point = point;
-    runners.push_back(runner);
-  }
 
   // Run through ByteTrack
   std::vector<byte_track::Object> btObjects;
@@ -374,12 +369,82 @@ std::vector<RunnerDetector::Runner> RunnerDetector::track(
   }
   auto tracks{tracker_->update(btObjects)};
 
-  // Associate ByteTrack tracks to detections
-  auto tracksToDetections{matchTracksToDetections(tracks, predictionResult)};
-  for (const auto& [trackId, objIdx] : tracksToDetections) {
+  // Map each active track's ID to its current ByteTrack bounding box estimate.
+  // We use this because it is Kalman filtered and provides a steady reference.
+  std::unordered_map<int, cv::Rect> trackRects;
+  trackRects.reserve(tracks.size());
+  for (const auto& track : tracks) {
+    trackRects[static_cast<int>(track->getTrackId())] =
+        toCvRect(track->getRect());
+  }
+
+  // Associate ByteTrack tracks to detections, and invert into detection index
+  // -> track ID
+  auto trackToDetectionMap{matchTracksToDetections(tracks, predictionResult)};
+  std::unordered_map<int, int> detectionToTrackMap;
+  detectionToTrackMap.reserve(trackToDetectionMap.size());
+  for (const auto& [trackId, objIdx] : trackToDetectionMap) {
     if (objIdx >= 0) {
-      runners[objIdx].trackId = trackId;
+      detectionToTrackMap[objIdx] = trackId;
     }
+  }
+
+  // Determine the representative point for each detected runner. For a tracked
+  // instance, we reconstruct a reference point based on the normalized
+  // coordinate within that track's bounding box from last frame, with the goal
+  // to reduce jitter without drifting as the track moves.
+  std::vector<Runner> runners;
+  runners.reserve(predictionResult.size());
+  for (int i = 0; i < static_cast<int>(predictionResult.size()); ++i) {
+    const auto& obj{predictionResult[i]};
+
+    // Find the current detection object's track ID, ByteTrack filtered bounding
+    // box, and reference point.
+    int trackId{-1};
+    const cv::Rect* trackRect{nullptr};
+    std::optional<cv::Point2f> referencePoint;
+    if (auto it{detectionToTrackMap.find(i)}; it != detectionToTrackMap.end()) {
+      trackId = it->second;
+      if (auto rectIt{trackRects.find(trackId)}; rectIt != trackRects.end() &&
+                                                 rectIt->second.width > 0 &&
+                                                 rectIt->second.height > 0) {
+        trackRect = &rectIt->second;
+        if (auto fracIt{previousPointNormalizedInBbox_.find(trackId)};
+            fracIt != previousPointNormalizedInBbox_.end()) {
+          referencePoint =
+              cv::Point2f{trackRect->x + fracIt->second.x * trackRect->width,
+                          trackRect->y + fracIt->second.y * trackRect->height};
+        }
+      }
+    }
+
+    // Calculate the new representative point
+    cv::Point point{-1, -1};
+    auto repPointOpt{
+        findRepresentativePoint(obj.rect, obj.boxMask, bounds, referencePoint)};
+    if (repPointOpt) {
+      point = *repPointOpt;
+      if (trackId >= 0 && trackRect != nullptr) {
+        previousPointNormalizedInBbox_[trackId] = cv::Point2f{
+            (point.x - trackRect->x) / static_cast<float>(trackRect->width),
+            (point.y - trackRect->y) / static_cast<float>(trackRect->height)};
+      }
+    }
+
+    Runner runner;
+    runner.conf = obj.conf;
+    runner.rect = obj.rect;
+    runner.boxMask = obj.boxMask;
+    runner.point = point;
+    runner.trackId = trackId;
+    runners.push_back(runner);
+  }
+
+  // Prune point history for tracks that are no longer active
+  for (auto it = previousPointNormalizedInBbox_.begin();
+       it != previousPointNormalizedInBbox_.end();) {
+    it = trackRects.count(it->first) ? std::next(it)
+                                     : previousPointNormalizedInBbox_.erase(it);
   }
 
   return runners;
@@ -387,4 +452,5 @@ std::vector<RunnerDetector::Runner> RunnerDetector::track(
 
 void RunnerDetector::reset() {
   tracker_ = std::make_unique<byte_track::BYTETracker>();
+  previousPointNormalizedInBbox_.clear();
 }

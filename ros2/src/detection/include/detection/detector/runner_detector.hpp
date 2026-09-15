@@ -6,6 +6,7 @@
 #include <opencv2/opencv.hpp>
 #include <optional>
 #include <string>
+#include <unordered_map>
 
 #include "detection/detector/yolov8.hpp"
 
@@ -50,4 +51,10 @@ class RunnerDetector {
  private:
   std::unique_ptr<YoloV8> model_;
   std::unique_ptr<byte_track::BYTETracker> tracker_;
+
+  // Each track's representative point from the prior frame, expressed as a
+  // normalized coordinate within that track's bounding box. Used to reconstruct
+  // a reference point each frame, to anchor ridge-point selection to reduce
+  // jitter without drifting as the track moves.
+  std::unordered_map<int, cv::Point2f> previousPointNormalizedInBbox_;
 };
