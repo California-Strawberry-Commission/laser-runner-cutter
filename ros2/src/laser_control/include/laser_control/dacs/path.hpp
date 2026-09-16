@@ -45,6 +45,18 @@ class Path {
    */
   std::optional<Point> getCurrentPoint();
 
+  /**
+   * @return Whether the path should be actively rendered.
+   */
+  bool isEnabled() const { return enabled_; }
+
+  /**
+   * Set whether the path should be actively rendered.
+   *
+   * @param enabled Whether the path should be actively rendered.
+   */
+  void setEnabled(bool enabled) { enabled_ = enabled; }
+
  private:
   struct Waypoint {
     std::chrono::system_clock::time_point time;
@@ -52,6 +64,7 @@ class Path {
   };
 
   uint32_t id_;
+  bool enabled_{false};
   // Most recently reached waypoint, used as the interpolation origin
   std::optional<Waypoint> last_;
   // Upcoming waypoints not yet reached, sorted by ascending time

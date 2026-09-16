@@ -13,6 +13,12 @@ export enum DeviceState {
   DISCONNECTING,
 }
 
+export enum PathStatus {
+  ACTIVE,
+  DISABLED,
+  REMOVED,
+}
+
 function convertStateMessage(message: any): State {
   return {
     deviceState: message.device_state as DeviceState,
@@ -52,33 +58,30 @@ export default function useLaserNode(nodeName: string) {
     successOutputMapper,
   );
 
-  const updatePath = node.usePublisher(
-    "~/update_path",
-    "laser_control_interfaces/PathUpdate",
+  const addPathWaypoints = node.usePublisher(
+    "~/path_updates",
+    "laser_control_interfaces/PathUpdates",
     useCallback(
       (
-        pathId: number,
-        destination: { x: number; y: number },
-        timestamp: { sec: number; nanosec: number },
+        waypoints: {
+          pathId: number;
+          destination: { x: number; y: number };
+          timestamp: { sec: number; nanosec: number };
+          enabled: boolean;
+        }[],
       ) => ({
-        path_id: pathId,
-        destination,
-        timestamp,
+        path_waypoints: waypoints.map((waypoint) => ({
+          path_id: waypoint.pathId,
+          destination: waypoint.destination,
+          timestamp: waypoint.timestamp,
+        })),
+        path_states: waypoints.map((waypoint) => ({
+          path_id: waypoint.pathId,
+          status: waypoint.enabled ? PathStatus.ACTIVE : PathStatus.DISABLED,
+        })),
       }),
       [],
     ),
-  );
-
-  const removePath = node.useService(
-    "~/remove_path",
-    "laser_control_interfaces/RemovePath",
-    useCallback(
-      (pathId: number) => ({
-        path_id: pathId,
-      }),
-      [],
-    ),
-    successOutputMapper,
   );
 
   const clearPaths = node.useService(
@@ -114,8 +117,7 @@ export default function useLaserNode(nodeName: string) {
     state,
     startDevice,
     closeDevice,
-    updatePath,
-    removePath,
+    addPathWaypoints,
     clearPaths,
     play,
     stop,

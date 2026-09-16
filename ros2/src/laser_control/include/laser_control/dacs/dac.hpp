@@ -78,7 +78,8 @@ class DAC {
   bool hasPath(uint32_t pathId);
 
   /**
-   * Queue a new waypoint for the specified path.
+   * Queue a new waypoint for the specified path. If the path does not
+   * yet exist, it is created.
    *
    * @param pathId The ID of the path to update.
    * @param destination The destination point.
@@ -87,6 +88,16 @@ class DAC {
    */
   void addWaypoint(uint32_t pathId, const Point& destination,
                    double timestampSec);
+
+  /**
+   * Enable or disable rendering of the specified path. Does nothing if the
+   * path does not exist.
+   *
+   * @param pathId The ID of the path to update.
+   * @param enabled Whether the path should be actively rendered.
+   * @return Whether the specified path exists and was updated.
+   */
+  bool setPathEnabled(uint32_t pathId, bool enabled);
 
   /**
    * Remove the specified path.

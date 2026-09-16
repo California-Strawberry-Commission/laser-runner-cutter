@@ -15,6 +15,7 @@ import useRgbColor from "@/lib/useRgbColor";
 import { useEffect, useState } from "react";
 
 type Waypoint = {
+  pathId: number;
   x: number;
   y: number;
   delayMs: number;
@@ -32,9 +33,10 @@ function delayMsToTimestamp(delayMs: number): { sec: number; nanosec: number } {
 export default function Controls({ laserNodeName }: { laserNodeName: string }) {
   const laserNode = useLaserNode(laserNodeName);
   const [color, setColor] = useRgbColor({ r: 0.0, g: 0.0, b: 0.0 });
-  // destinationX and destinationY are normalized to [0, 1]
-  const [destinationX, setDestinationX] = useState<number>(0.0);
-  const [destinationY, setDestinationY] = useState<number>(0.0);
+  const [waypointPathId, setWaypointPathId] = useState<number>(1);
+  // waypointX and waypointY are normalized to [0, 1]
+  const [waypointX, setWaypointX] = useState<number>(0.0);
+  const [waypointY, setWaypointY] = useState<number>(0.0);
   const [waypointDelayMs, setWaypointDelayMs] = useState<number>(1000.0);
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
 
@@ -105,7 +107,52 @@ export default function Controls({ laserNodeName }: { laserNodeName: string }) {
               />
               {playbackButton}
             </div>
+            {waypoints.length > 0 && (
+              <div className="flex flex-col gap-2 w-full">
+                {waypoints.map((waypoint, index) => (
+                  <div key={index} className="flex flex-row items-center gap-4">
+                    <span className="flex-1 text-sm">
+                      Path ID: {waypoint.pathId}
+                    </span>
+                    <span className="flex-1 text-sm">
+                      X: {waypoint.x.toFixed(3)}
+                    </span>
+                    <span className="flex-1 text-sm">
+                      Y: {waypoint.y.toFixed(3)}
+                    </span>
+                    <span className="flex-1 text-sm">
+                      Delay: {waypoint.delayMs}ms
+                    </span>
+                    <Button
+                      variant="destructive"
+                      onClick={() =>
+                        setWaypoints((prev) =>
+                          prev.filter((_, i) => i !== index),
+                        )
+                      }
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flex flex-row items-center gap-4">
+              <InputWithLabel
+                className="flex-none w-16"
+                type="number"
+                id="pathId"
+                name="pathId"
+                label="Path ID"
+                step={1}
+                value={waypointPathId}
+                onChange={(str) => {
+                  const value = parseFloat(str);
+                  if (!isNaN(value)) {
+                    setWaypointPathId(value);
+                  }
+                }}
+              />
               <InputWithLabel
                 className="flex-none w-16"
                 type="number"
@@ -113,11 +160,11 @@ export default function Controls({ laserNodeName }: { laserNodeName: string }) {
                 name="destinationX"
                 label="Dest X"
                 step={0.1}
-                value={destinationX}
+                value={waypointX}
                 onChange={(str) => {
                   const value = parseFloat(str);
                   if (!isNaN(value)) {
-                    setDestinationX(value);
+                    setWaypointX(value);
                   }
                 }}
               />
@@ -128,11 +175,11 @@ export default function Controls({ laserNodeName }: { laserNodeName: string }) {
                 name="destinationY"
                 label="Dest Y"
                 step={0.1}
-                value={destinationY}
+                value={waypointY}
                 onChange={(str) => {
                   const value = parseFloat(str);
                   if (!isNaN(value)) {
-                    setDestinationY(value);
+                    setWaypointY(value);
                   }
                 }}
               />
@@ -157,8 +204,9 @@ export default function Controls({ laserNodeName }: { laserNodeName: string }) {
                   setWaypoints((prev) => [
                     ...prev,
                     {
-                      x: destinationX,
-                      y: destinationY,
+                      pathId: waypointPathId,
+                      x: waypointX,
+                      y: waypointY,
                       delayMs: waypointDelayMs,
                     },
                   ])
@@ -168,45 +216,18 @@ export default function Controls({ laserNodeName }: { laserNodeName: string }) {
               </Button>
             </div>
             {waypoints.length > 0 && (
-              <div className="flex flex-col gap-2 w-full">
-                {waypoints.map((waypoint, index) => (
-                  <div key={index} className="flex flex-row items-center gap-4">
-                    <span className="w-6 text-sm">{index + 1}.</span>
-                    <span className="flex-1 text-sm">
-                      X: {waypoint.x.toFixed(3)}
-                    </span>
-                    <span className="flex-1 text-sm">
-                      Y: {waypoint.y.toFixed(3)}
-                    </span>
-                    <span className="flex-1 text-sm">
-                      Delay: {waypoint.delayMs}ms
-                    </span>
-                    <Button
-                      variant="destructive"
-                      onClick={() =>
-                        setWaypoints((prev) =>
-                          prev.filter((_, i) => i !== index),
-                        )
-                      }
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {waypoints.length > 0 && (
               <div className="flex flex-row justify-center gap-4">
                 <Button
                   disabled={disableButtons}
                   onClick={() => {
-                    waypoints.forEach((waypoint) => {
-                      laserNode.updatePath(
-                        1,
-                        { x: waypoint.x, y: waypoint.y },
-                        delayMsToTimestamp(waypoint.delayMs),
-                      );
-                    });
+                    laserNode.addPathWaypoints(
+                      waypoints.map((waypoint) => ({
+                        pathId: waypoint.pathId,
+                        destination: { x: waypoint.x, y: waypoint.y },
+                        timestamp: delayMsToTimestamp(waypoint.delayMs),
+                        enabled: true,
+                      })),
+                    );
                   }}
                 >
                   Play

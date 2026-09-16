@@ -15,6 +15,16 @@ void DAC::addWaypoint(uint32_t pathId, const Point& destination,
   it->second->addWaypoint(destination, timestampSec);
 }
 
+bool DAC::setPathEnabled(uint32_t pathId, bool enabled) {
+  std::lock_guard<std::mutex> lock(pathsMutex_);
+  auto it = paths_.find(pathId);
+  if (it == paths_.end()) {
+    return false;
+  }
+  it->second->setEnabled(enabled);
+  return true;
+}
+
 bool DAC::removePath(uint32_t pathId) {
   std::lock_guard<std::mutex> lock(pathsMutex_);
   return paths_.erase(pathId) > 0;
