@@ -131,7 +131,8 @@ const std::vector<etherdream_point>& EtherDream::getFrame(
 
   pointsToRender_.clear();
   for (const auto& [pathId, path] : paths_) {
-    if (auto point{path->getCurrentPoint()}) {
+    auto point{path->getCurrentPoint()};
+    if (point && path->isEnabled()) {
       pointsToRender_.push_back(*point);
     }
   }

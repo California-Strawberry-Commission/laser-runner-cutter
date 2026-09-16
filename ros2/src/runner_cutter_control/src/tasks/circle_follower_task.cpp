@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <thread>
+#include <vector>
 
 #include "detection_interfaces/msg/detection_type.hpp"
 #include "runner_cutter_control/tasks/detection_tracker_updater.hpp"
@@ -35,10 +36,13 @@ void CircleFollowerTask::run(float trackMissTimeoutSecs, int targetAttempts,
   // Arm laser
   laser_->play();
 
+  // The track currently being followed by this task (0 if none).
+  uint32_t activeTrackId{0};
+
   // Register to receive per-frame detection updates during the task
   detectionCallbackRegistry_->set(
-      [this, lookaheadSecs, tracker, &updater,
-       &stopSignal](detection_interfaces::msg::DetectionResult::SharedPtr msg) {
+      [this, lookaheadSecs, tracker, &updater, &stopSignal, &activeTrackId](
+          detection_interfaces::msg::DetectionResult::SharedPtr msg) {
         // Only process test circle detections
         if (stopSignal ||
             msg->detection_type !=
@@ -67,28 +71,66 @@ void CircleFollowerTask::run(float trackMissTimeoutSecs, int targetAttempts,
         // Attempt to get an active track. If there is already an active track,
         // use it. If there are no active tracks, attempt to activate the next
         // pending track.
-        std::optional<std::shared_ptr<const Track>> activeTrackOpt;
+        std::optional<std::shared_ptr<const Track>> newActiveTrackOpt;
         auto activeTracks{tracker->getTracksWithState(Track::State::ACTIVE)};
         if (!activeTracks.empty()) {
-          activeTrackOpt = activeTracks[0];
+          newActiveTrackOpt = activeTracks[0];
         } else {
-          activeTrackOpt = tracker->activateNextPendingTrack();
+          newActiveTrackOpt = tracker->activateNextPendingTrack();
+        }
+        uint32_t newActiveTrackId{
+            newActiveTrackOpt ? (*newActiveTrackOpt)->getId() : 0};
+
+        std::vector<LaserControlClient::Waypoint> waypoints;
+        std::vector<LaserControlClient::PathState> pathStates;
+
+        // If the active track changed, disable or remove the previously
+        // active track's path.
+        if (newActiveTrackId != activeTrackId) {
+          if (activeTrackId != 0) {
+            auto prevTrackOpt{tracker->getTrack(activeTrackId)};
+            bool pending{prevTrackOpt &&
+                         (*prevTrackOpt)->getState() == Track::State::PENDING};
+            pathStates.push_back(
+                {activeTrackId, pending
+                                    ? LaserControlClient::PathStatus::DISABLED
+                                    : LaserControlClient::PathStatus::REMOVED});
+          }
+          activeTrackId = newActiveTrackId;
         }
 
-        if (!activeTrackOpt) {
-          return;
-        }
-
-        // Push a new lookahead waypoint for the active track
-        auto activeTrack{std::move(*activeTrackOpt)};
         double lookaheadTimestampSecs{rclcpp::Time(msg->timestamp).seconds() +
                                       lookaheadSecs};
-        Position lookaheadPosition{
-            activeTrack->getPredictor().predict(lookaheadTimestampSecs)};
-        LaserCoord lookaheadLaserCoord{
-            calibration_->cameraPositionToLaserCoord(lookaheadPosition)};
-        laser_->addWaypoint(activeTrack->getId(), lookaheadLaserCoord,
-                            lookaheadTimestampSecs);
+        // Predicts a lookahead waypoint for the given track
+        auto predictWaypoint{[this, lookaheadTimestampSecs](
+                                 const std::shared_ptr<const Track>& track) {
+          Position lookaheadPosition{
+              track->getPredictor().predict(lookaheadTimestampSecs)};
+          LaserCoord lookaheadLaserCoord{
+              calibration_->cameraPositionToLaserCoord(lookaheadPosition)};
+          return LaserControlClient::Waypoint{
+              track->getId(), lookaheadLaserCoord, lookaheadTimestampSecs};
+        }};
+
+        if (newActiveTrackId != 0) {
+          // Push a new lookahead waypoint for the active track
+          auto activeTrack{std::move(*newActiveTrackOpt)};
+          waypoints.push_back(predictWaypoint(activeTrack));
+          pathStates.push_back(
+              {newActiveTrackId, LaserControlClient::PathStatus::ACTIVE});
+        }
+
+        // Also push lookahead waypoints for all pending tracks, so their
+        // laser paths stay up to date even though they aren't actively
+        // rendered until they become the active track.
+        for (const auto& pendingTrack :
+             tracker->getTracksWithState(Track::State::PENDING)) {
+          waypoints.push_back(predictWaypoint(pendingTrack));
+        }
+
+        if (!waypoints.empty() || !pathStates.empty()) {
+          laser_->updatePaths(waypoints, pathStates);
+        }
       });
 
   // Start circle detection

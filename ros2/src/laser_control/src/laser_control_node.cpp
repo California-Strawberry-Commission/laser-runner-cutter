@@ -7,10 +7,9 @@
 #include "laser_control/dacs/ether_dream.hpp"
 #include "laser_control/dacs/helios.hpp"
 #include "laser_control_interfaces/msg/device_state.hpp"
-#include "laser_control_interfaces/msg/path_update.hpp"
+#include "laser_control_interfaces/msg/path_updates.hpp"
 #include "laser_control_interfaces/msg/state.hpp"
 #include "laser_control_interfaces/srv/get_state.hpp"
-#include "laser_control_interfaces/srv/remove_path.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
@@ -53,10 +52,10 @@ class LaserControlNode : public rclcpp::Node {
     subscriberCallbackGroup_ =
         create_callback_group(rclcpp::CallbackGroupType::Reentrant);
     options.callback_group = subscriberCallbackGroup_;
-    updatePathSubscriber_ =
-        create_subscription<laser_control_interfaces::msg::PathUpdate>(
-            "~/update_path", 1,
-            std::bind(&LaserControlNode::onUpdatePath, this,
+    pathUpdatesSubscriber_ =
+        create_subscription<laser_control_interfaces::msg::PathUpdates>(
+            "~/path_updates", 1,
+            std::bind(&LaserControlNode::onPathUpdates, this,
                       std::placeholders::_1),
             options);
 
@@ -75,12 +74,6 @@ class LaserControlNode : public rclcpp::Node {
         std::bind(&LaserControlNode::onCloseDevice, this, std::placeholders::_1,
                   std::placeholders::_2),
         rmw_qos_profile_services_default, serviceCallbackGroup_);
-    removePathService_ =
-        create_service<laser_control_interfaces::srv::RemovePath>(
-            "~/remove_path",
-            std::bind(&LaserControlNode::onRemovePath, this,
-                      std::placeholders::_1, std::placeholders::_2),
-            rmw_qos_profile_services_default, serviceCallbackGroup_);
     clearPathsService_ = create_service<std_srvs::srv::Trigger>(
         "~/clear_paths",
         std::bind(&LaserControlNode::onClearPaths, this, std::placeholders::_1,
@@ -220,7 +213,8 @@ class LaserControlNode : public rclcpp::Node {
     std::scoped_lock lock{dacMutex_};
     const auto elapsed{std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - lastCommand_)};
-    if (elapsed < timeout || !dac_->isConnected() || !dac_->isPlaying() || !dac_->hasPaths()) {
+    if (elapsed < timeout || !dac_->isConnected() || !dac_->isPlaying() ||
+        !dac_->hasPaths()) {
       return;
     }
 
@@ -290,29 +284,30 @@ class LaserControlNode : public rclcpp::Node {
     publishState();
   }
 
-  void onUpdatePath(
-      const laser_control_interfaces::msg::PathUpdate::SharedPtr msg) {
-    if (msg->destination.x < 0.0 || msg->destination.x > 1.0 ||
-        msg->destination.y < 0.0 || msg->destination.y > 1.0) {
-      return;
+  void onPathUpdates(
+      const laser_control_interfaces::msg::PathUpdates::SharedPtr msg) {
+    std::scoped_lock lock{dacMutex_};
+    noteCommand();
+    for (const auto& waypoint : msg->path_waypoints) {
+      if (waypoint.destination.x < 0.0 || waypoint.destination.x > 1.0 ||
+          waypoint.destination.y < 0.0 || waypoint.destination.y > 1.0) {
+        continue;
+      }
+
+      Point destination{static_cast<float>(waypoint.destination.x),
+                        static_cast<float>(waypoint.destination.y)};
+      double timestampSec{rclcpp::Time(waypoint.timestamp).seconds()};
+      dac_->addWaypoint(waypoint.path_id, destination, timestampSec);
     }
-
-    Point destination{static_cast<float>(msg->destination.x),
-                      static_cast<float>(msg->destination.y)};
-    double timestampSec{rclcpp::Time(msg->timestamp).seconds()};
-    std::scoped_lock lock{dacMutex_};
-    noteCommand();
-    dac_->addWaypoint(msg->path_id, destination, timestampSec);
-  }
-
-  void onRemovePath(
-      const std::shared_ptr<laser_control_interfaces::srv::RemovePath::Request>
-          request,
-      std::shared_ptr<laser_control_interfaces::srv::RemovePath::Response>
-          response) {
-    std::scoped_lock lock{dacMutex_};
-    noteCommand();
-    response->success = dac_->removePath(request->path_id);
+    for (const auto& entry : msg->path_states) {
+      if (entry.status == laser_control_interfaces::msg::PathState::REMOVED) {
+        dac_->removePath(entry.path_id);
+      } else {
+        dac_->setPathEnabled(
+            entry.path_id,
+            entry.status == laser_control_interfaces::msg::PathState::ACTIVE);
+      }
+    }
   }
 
   void onClearPaths(
@@ -365,13 +360,11 @@ class LaserControlNode : public rclcpp::Node {
   rclcpp::Publisher<laser_control_interfaces::msg::State>::SharedPtr
       statePublisher_;
   rclcpp::CallbackGroup::SharedPtr subscriberCallbackGroup_;
-  rclcpp::Subscription<laser_control_interfaces::msg::PathUpdate>::SharedPtr
-      updatePathSubscriber_;
+  rclcpp::Subscription<laser_control_interfaces::msg::PathUpdates>::SharedPtr
+      pathUpdatesSubscriber_;
   rclcpp::CallbackGroup::SharedPtr serviceCallbackGroup_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr startDeviceService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr closeDeviceService_;
-  rclcpp::Service<laser_control_interfaces::srv::RemovePath>::SharedPtr
-      removePathService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr clearPathsService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr playService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr stopService_;

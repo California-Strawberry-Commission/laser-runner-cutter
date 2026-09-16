@@ -2,8 +2,9 @@
 
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <thread>
-#include <unordered_map>
+#include <vector>
 
 #include "detection_interfaces/msg/detection_type.hpp"
 #include "runner_cutter_control/tasks/detection_tracker_updater.hpp"
@@ -45,15 +46,15 @@ void RunnerCutterTask::run(float trackMissTimeoutSecs, int targetAttempts,
   laser_->setColor(burnLaserColor);
   laser_->play();
 
-  // Records the time the laser should stop burning each active track, so its
-  // path can be removed once it has been burned for burnTimeSecs.
-  std::unordered_map<uint32_t, std::chrono::system_clock::time_point>
-      burnEndTimes;
+  // The track currently being targeted/burned by this task (0 if none)
+  uint32_t activeTrackId{0};
+  // The time at which burn should end for the active track
+  std::optional<std::chrono::system_clock::time_point> burnEndTime;
 
   // Register to receive per-frame detection updates during the task
   detectionCallbackRegistry_->set(
       [this, lookaheadSecs, burnTimeSecs, tracker, &updater, &stopSignal,
-       &burnEndTimes](
+       &activeTrackId, &burnEndTime](
           detection_interfaces::msg::DetectionResult::SharedPtr msg) {
         // Only process runner detections
         if (stopSignal ||
@@ -65,63 +66,85 @@ void RunnerCutterTask::run(float trackMissTimeoutSecs, int targetAttempts,
         // Update the tracker
         updater.update(*msg);
 
-        // Remove laser paths for tracks we were burning that are no longer
-        // active
-        for (auto it{burnEndTimes.begin()}; it != burnEndTimes.end();) {
-          auto trackOpt{tracker->getTrack(it->first)};
-          if (trackOpt && (*trackOpt)->getState() == Track::State::ACTIVE) {
-            ++it;
-            continue;
-          }
-          laser_->removePath(it->first);
-          it = burnEndTimes.erase(it);
+        // If the active track has been burned for long enough, mark it as
+        // completed
+        if (activeTrackId != 0 && burnEndTime &&
+            std::chrono::system_clock::now() >= *burnEndTime) {
+          tracker->transitionTrackState(activeTrackId, Track::State::COMPLETED);
+          RCLCPP_INFO(logger_,
+                      "Burned track %u for %.2f secs. Marking as COMPLETED.",
+                      activeTrackId, burnTimeSecs);
         }
 
         // Attempt to get an active track. If there is already an active track,
         // use it. If there are no active tracks, attempt to activate the next
         // pending track.
-        std::optional<std::shared_ptr<const Track>> activeTrackOpt;
+        std::optional<std::shared_ptr<const Track>> newActiveTrackOpt;
         auto activeTracks{tracker->getTracksWithState(Track::State::ACTIVE)};
         if (!activeTracks.empty()) {
-          activeTrackOpt = activeTracks[0];
+          newActiveTrackOpt = activeTracks[0];
         } else {
-          activeTrackOpt = tracker->activateNextPendingTrack();
+          newActiveTrackOpt = tracker->activateNextPendingTrack();
+        }
+        uint32_t newActiveTrackId{
+            newActiveTrackOpt ? (*newActiveTrackOpt)->getId() : 0};
+
+        std::vector<LaserControlClient::Waypoint> waypoints;
+        std::vector<LaserControlClient::PathState> pathStates;
+
+        // If the active track just changed, disable or remove the previously
+        // active track's path.
+        if (newActiveTrackId != activeTrackId) {
+          if (activeTrackId != 0) {
+            auto prevTrackOpt{tracker->getTrack(activeTrackId)};
+            bool pending{prevTrackOpt &&
+                         (*prevTrackOpt)->getState() == Track::State::PENDING};
+            pathStates.push_back(
+                {activeTrackId, pending
+                                    ? LaserControlClient::PathStatus::DISABLED
+                                    : LaserControlClient::PathStatus::REMOVED});
+          }
+          activeTrackId = newActiveTrackId;
+          burnEndTime.reset();
         }
 
-        if (!activeTrackOpt) {
-          return;
-        }
-
-        auto activeTrack{std::move(*activeTrackOpt)};
-        uint32_t activeTrackId{activeTrack->getId()};
         double lookaheadTimestampSecs{rclcpp::Time(msg->timestamp).seconds() +
                                       lookaheadSecs};
+        // Predicts a lookahead waypoint for the given track
+        auto predictWaypoint{[this, lookaheadTimestampSecs](
+                                 const std::shared_ptr<const Track>& track) {
+          Position lookaheadPosition{
+              track->getPredictor().predict(lookaheadTimestampSecs)};
+          LaserCoord lookaheadLaserCoord{
+              calibration_->cameraPositionToLaserCoord(lookaheadPosition)};
+          return LaserControlClient::Waypoint{
+              track->getId(), lookaheadLaserCoord, lookaheadTimestampSecs};
+        }};
 
-        // Set the burn end time the first time this track becomes active: the
-        // laser reaches the track's path at lookaheadTimestampSecs and burns it
-        // for burnTimeSecs. Once we reach that time, mark it as completed and
-        // remove its laser path.
-        // TODO: this currently results in a lookaheadSecs delay between burns.
-        // Figure out a way to instantaneously start burning the next target.
-        auto [burnEnd, isNewBurn]{burnEndTimes.try_emplace(
-            activeTrackId, toTimePoint(lookaheadTimestampSecs + burnTimeSecs))};
-        if (!isNewBurn && std::chrono::system_clock::now() >= burnEnd->second) {
-          laser_->removePath(activeTrackId);
-          tracker->transitionTrackState(activeTrackId, Track::State::COMPLETED);
-          burnEndTimes.erase(burnEnd);
-          RCLCPP_INFO(logger_,
-                      "Burned track %u for %.2f secs. Marking as COMPLETED.",
-                      activeTrackId, burnTimeSecs);
-          return;
+        if (newActiveTrackId != 0) {
+          auto activeTrack{std::move(*newActiveTrackOpt)};
+
+          if (!burnEndTime) {
+            burnEndTime = toTimePoint(lookaheadTimestampSecs + burnTimeSecs);
+          }
+
+          // Push a new lookahead waypoint for the active track
+          waypoints.push_back(predictWaypoint(activeTrack));
+          pathStates.push_back(
+              {newActiveTrackId, LaserControlClient::PathStatus::ACTIVE});
         }
 
-        // Push a new lookahead waypoint for the active track
-        Position lookaheadPosition{
-            activeTrack->getPredictor().predict(lookaheadTimestampSecs)};
-        LaserCoord lookaheadLaserCoord{
-            calibration_->cameraPositionToLaserCoord(lookaheadPosition)};
-        laser_->addWaypoint(activeTrackId, lookaheadLaserCoord,
-                            lookaheadTimestampSecs);
+        // Also push lookahead waypoints for all pending tracks, so their
+        // laser paths stay up to date even though they aren't actively
+        // rendered until they become the active track.
+        for (const auto& pendingTrack :
+             tracker->getTracksWithState(Track::State::PENDING)) {
+          waypoints.push_back(predictWaypoint(pendingTrack));
+        }
+
+        if (!waypoints.empty() || !pathStates.empty()) {
+          laser_->updatePaths(waypoints, pathStates);
+        }
       });
 
   // Start runner detection

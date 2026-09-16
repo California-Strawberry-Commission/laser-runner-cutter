@@ -27,10 +27,11 @@ find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DeviceState.msg"
-  "msg/PathUpdate.msg"
+  "msg/PathState.msg"
+  "msg/PathUpdates.msg"
+  "msg/PathWaypoint.msg"
   "msg/State.msg"
   "srv/GetState.srv"
-  "srv/RemovePath.srv"
   DEPENDENCIES common_interfaces builtin_interfaces
 )
 

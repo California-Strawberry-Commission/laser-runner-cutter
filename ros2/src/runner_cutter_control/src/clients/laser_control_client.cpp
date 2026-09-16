@@ -12,8 +12,8 @@ LaserControlClient::LaserControlClient(rclcpp::Node& callerNode,
   parametersClient_ = std::make_shared<rclcpp::AsyncParametersClient>(
       &callerNode, clientNodeName);
   updatePathPublisher_ =
-      callerNode.create_publisher<laser_control_interfaces::msg::PathUpdate>(
-          servicePrefix + "/update_path", 1);
+      callerNode.create_publisher<laser_control_interfaces::msg::PathUpdates>(
+          servicePrefix + "/path_updates", 1);
   clientCallbackGroup_ =
       callerNode.create_callback_group(rclcpp::CallbackGroupType::Reentrant);
   startDeviceClient_ = callerNode.create_client<std_srvs::srv::Trigger>(
@@ -22,10 +22,6 @@ LaserControlClient::LaserControlClient(rclcpp::Node& callerNode,
   closeDeviceClient_ = callerNode.create_client<std_srvs::srv::Trigger>(
       servicePrefix + "/close_device", rmw_qos_profile_services_default,
       clientCallbackGroup_);
-  removePathClient_ =
-      callerNode.create_client<laser_control_interfaces::srv::RemovePath>(
-          servicePrefix + "/remove_path", rmw_qos_profile_services_default,
-          clientCallbackGroup_);
   clearPathsClient_ = callerNode.create_client<std_srvs::srv::Trigger>(
       servicePrefix + "/clear_paths", rmw_qos_profile_services_default,
       clientCallbackGroup_);
@@ -62,46 +58,46 @@ bool LaserControlClient::setColor(const LaserColor& color) {
                                      timeoutSecs_, node_.get_logger());
 }
 
-bool LaserControlClient::setPoint(uint32_t pathId, const LaserCoord& point) {
-  if (point.x < 0.0 || point.x > 1.0 || point.y < 0.0 || point.y > 1.0) {
-    return false;
-  }
-
-  auto msg{laser_control_interfaces::msg::PathUpdate()};
-  msg.path_id = pathId;
-  msg.destination.x = point.x;
-  msg.destination.y = point.y;
-  updatePathPublisher_->publish(std::move(msg));
-
-  return true;
+void LaserControlClient::setPoint(uint32_t pathId, const LaserCoord& point,
+                                  bool enabled) {
+  updatePaths(
+      {Waypoint{pathId, point, /*timestampSec=*/0.0}},
+      {PathState{pathId, enabled ? PathStatus::ACTIVE : PathStatus::DISABLED}});
 }
 
-bool LaserControlClient::addWaypoint(uint32_t pathId,
-                                     const LaserCoord& destination,
-                                     double timestampSec) {
-  if (destination.x < 0.0 || destination.x > 1.0 || destination.y < 0.0 ||
-      destination.y > 1.0) {
-    return false;
+void LaserControlClient::updatePaths(const std::vector<Waypoint>& pathWaypoints,
+                                     const std::vector<PathState>& pathStates) {
+  auto msg{laser_control_interfaces::msg::PathUpdates()};
+  for (const auto& waypoint : pathWaypoints) {
+    if (waypoint.destination.x < 0.0 || waypoint.destination.x > 1.0 ||
+        waypoint.destination.y < 0.0 || waypoint.destination.y > 1.0) {
+      continue;
+    }
+
+    auto pathWaypoint{laser_control_interfaces::msg::PathWaypoint()};
+    pathWaypoint.path_id = waypoint.pathId;
+    pathWaypoint.destination.x = waypoint.destination.x;
+    pathWaypoint.destination.y = waypoint.destination.y;
+    pathWaypoint.timestamp = common::toRosTime(waypoint.timestampSec);
+    msg.path_waypoints.push_back(std::move(pathWaypoint));
   }
-
-  auto msg{laser_control_interfaces::msg::PathUpdate()};
-  msg.path_id = pathId;
-  msg.destination.x = destination.x;
-  msg.destination.y = destination.y;
-  msg.timestamp = common::toRosTime(timestampSec);
+  for (const auto& pathState : pathStates) {
+    auto entry{laser_control_interfaces::msg::PathState()};
+    entry.path_id = pathState.pathId;
+    switch (pathState.status) {
+      case PathStatus::ACTIVE:
+        entry.status = laser_control_interfaces::msg::PathState::ACTIVE;
+        break;
+      case PathStatus::DISABLED:
+        entry.status = laser_control_interfaces::msg::PathState::DISABLED;
+        break;
+      case PathStatus::REMOVED:
+        entry.status = laser_control_interfaces::msg::PathState::REMOVED;
+        break;
+    }
+    msg.path_states.push_back(std::move(entry));
+  }
   updatePathPublisher_->publish(std::move(msg));
-
-  return true;
-}
-
-bool LaserControlClient::removePath(uint32_t pathId) {
-  auto request{
-      std::make_shared<laser_control_interfaces::srv::RemovePath::Request>()};
-  request->path_id = pathId;
-  auto result{
-      client_utils::callService<laser_control_interfaces::srv::RemovePath>(
-          removePathClient_, request, timeoutSecs_, node_.get_logger())};
-  return result && result->success;
 }
 
 bool LaserControlClient::clearPaths() {
