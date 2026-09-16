@@ -72,6 +72,29 @@ export default function Controls({
     [controlNode, manualMode],
   );
 
+  const restartTargets = useMemo(
+    () => [
+      { label: "Laser", onRestart: () => lifecycleManagerNode.restartLaser() },
+      {
+        label: "Control",
+        onRestart: () => lifecycleManagerNode.restartControl(),
+      },
+      {
+        label: "Camera + Detection",
+        onRestart: () => lifecycleManagerNode.restartCameraDetection(),
+      },
+      {
+        label: "LiveKit",
+        onRestart: () => lifecycleManagerNode.restartLivekit(),
+      },
+      {
+        label: "Rosbridge",
+        onRestart: () => lifecycleManagerNode.restartRosbridge(),
+      },
+    ],
+    [lifecycleManagerNode],
+  );
+
   const nodeInfos = useMemo(() => {
     const rosbridgeNodeInfo = {
       name: "Rosbridge",
@@ -193,6 +216,7 @@ export default function Controls({
               onRestartNodes={() => lifecycleManagerNode.restartService()}
               onRebootSystem={() => lifecycleManagerNode.rebootSystem()}
               restartDisabled={!lifecycleManagerNode.connected}
+              restartTargets={restartTargets}
             />
           </div>
         </CardHeader>

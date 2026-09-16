@@ -18,8 +18,13 @@ import {
 import { Separator } from "@/components/ui/separator";
 import type { NodeInfo } from "@/lib/NodeInfo";
 import { cn } from "@/lib/utils";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, RotateCw } from "lucide-react";
 import { useState } from "react";
+
+export type RestartTarget = {
+  label: string;
+  onRestart: () => void;
+};
 
 export default function NodeStatusBar({
   nodeInfos,
@@ -27,22 +32,25 @@ export default function NodeStatusBar({
   onRestartNodes,
   onRebootSystem,
   restartDisabled,
+  restartTargets,
 }: {
   nodeInfos: NodeInfo[];
   className?: string;
   onRestartNodes?: () => void;
   onRebootSystem?: () => void;
   restartDisabled?: boolean;
+  restartTargets?: RestartTarget[];
 }) {
   const [selectedNode, setSelectedNode] = useState<NodeInfo | null>(null);
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
+  const [popoverOpen, setPopoverOpen] = useState(false);
 
   const connectedCount = nodeInfos.filter((n) => n.connected).length;
   const allConnected = connectedCount === nodeInfos.length;
 
   return (
     <>
-      <Popover>
+      <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
         <PopoverTrigger asChild>
           <Button
             className={cn(
@@ -85,6 +93,28 @@ export default function NodeStatusBar({
                 </span>
               </button>
             ))}
+            {restartTargets && restartTargets.length > 0 && (
+              <>
+                <Separator className="my-1" />
+                <span className="px-2 py-1 text-xs text-muted-foreground">
+                  Restart node
+                </span>
+                {restartTargets.map((target) => (
+                  <button
+                    key={target.label}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted text-sm text-left w-full disabled:opacity-50"
+                    disabled={restartDisabled}
+                    onClick={() => {
+                      target.onRestart();
+                      setPopoverOpen(false);
+                    }}
+                  >
+                    <RotateCw className="h-3 w-3 flex-none" />
+                    <span className="truncate">{target.label}</span>
+                  </button>
+                ))}
+              </>
+            )}
             {(onRestartNodes || onRebootSystem) && (
               <>
                 <Separator className="mb-1" />

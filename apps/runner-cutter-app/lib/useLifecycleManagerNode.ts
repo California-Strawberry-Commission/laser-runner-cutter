@@ -25,9 +25,49 @@ export default function useLifecycleManagerNode(nodeName: string) {
     successOutputMapper,
   );
 
+  const restartLaser = node.useService(
+    "~/restart_laser",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper,
+  );
+
+  const restartControl = node.useService(
+    "~/restart_control",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper,
+  );
+
+  const restartCameraDetection = node.useService(
+    "~/restart_camera_detection",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper,
+  );
+
+  const restartLivekit = node.useService(
+    "~/restart_livekit",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper,
+  );
+
+  const restartRosbridge = node.useService(
+    "~/restart_rosbridge",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper,
+  );
+
   return {
     ...node,
     restartService,
     rebootSystem,
+    restartLaser,
+    restartControl,
+    restartCameraDetection,
+    restartLivekit,
+    restartRosbridge,
   };
 }
