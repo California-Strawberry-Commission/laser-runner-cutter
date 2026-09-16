@@ -2,8 +2,10 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
+from launch.actions import RegisterEventHandler, TimerAction
+from launch.event_handlers import OnProcessStart
 from launch_ros.actions import Node
-from launch_ros.actions import ComposableNodeContainer
+from launch_ros.actions import ComposableNodeContainer, LoadComposableNodes
 from launch_ros.descriptions import ComposableNode
 
 
@@ -23,6 +25,10 @@ def generate_launch_description():
         respawn_delay=2.0,
         output="screen",
         emulate_tty=True,
+    )
+
+    load_camera_detection = LoadComposableNodes(
+        target_container="camera_detection_container",
         composable_node_descriptions=[
             ComposableNode(
                 package="camera_control",
@@ -67,6 +73,13 @@ def generate_launch_description():
         ],
     )
 
+    load_camera_detection_on_start = RegisterEventHandler(
+        OnProcessStart(
+            target_action=camera_detection_launch_node,
+            on_start=[TimerAction(period=1.0, actions=[load_camera_detection])],
+        )
+    )
+
     laser_control_launch_node = Node(
         package="laser_control",
         executable="laser_control_node",
@@ -92,6 +105,7 @@ def generate_launch_description():
     return LaunchDescription(
         [
             laser_control_launch_node,
+            load_camera_detection_on_start,
             camera_detection_launch_node,
             runner_cutter_control_launch_node,
         ]
