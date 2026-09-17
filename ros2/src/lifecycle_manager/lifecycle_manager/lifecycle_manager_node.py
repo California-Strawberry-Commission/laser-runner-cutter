@@ -3,6 +3,7 @@ import os
 import signal
 import subprocess
 
+from lifecycle_manager_interfaces.srv import RestartNode
 from std_srvs.srv import Trigger
 
 import aioros2
@@ -42,29 +43,14 @@ def _trigger_reboot_system(node):
         node.get_logger().error(f"Failed to reboot: {e}")
 
 
-@aioros2.service("~/restart_laser", Trigger)
-async def restart_laser(node):
-    return _restart(node, "laser")
+@aioros2.service("~/restart_node", RestartNode)
+async def restart_node(node, node_name):
+    if node_name not in NODES:
+        message = f"Unknown node '{node_name}'"
+        node.get_logger().error(message)
+        return {"success": False, "message": message}
 
-
-@aioros2.service("~/restart_control", Trigger)
-async def restart_control(node):
-    return _restart(node, "control")
-
-
-@aioros2.service("~/restart_camera_detection", Trigger)
-async def restart_camera_detection(node):
-    return _restart(node, "camera_detection")
-
-
-@aioros2.service("~/restart_livekit", Trigger)
-async def restart_livekit(node):
-    return _restart(node, "livekit")
-
-
-@aioros2.service("~/restart_rosbridge", Trigger)
-async def restart_rosbridge(node):
-    return _restart(node, "rosbridge")
+    return _restart(node, node_name)
 
 
 def _restart(node, name):
