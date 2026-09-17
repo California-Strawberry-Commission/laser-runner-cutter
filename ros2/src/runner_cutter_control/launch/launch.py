@@ -27,6 +27,10 @@ def generate_launch_description():
         emulate_tty=True,
     )
 
+    # Inline descriptions are run only at startup, so a respawned container will be respawned empty.
+    # Therefore, components are loaded with OnProcessStart rather than an inline description.
+    # The event handler fires on every process start, including respawns.
+    # See: https://github.com/ros2/launch_ros/issues/361
     load_camera_detection = LoadComposableNodes(
         target_container="camera_detection_container",
         composable_node_descriptions=[
