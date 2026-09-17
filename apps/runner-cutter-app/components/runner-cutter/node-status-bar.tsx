@@ -18,11 +18,13 @@ import {
 import { Separator } from "@/components/ui/separator";
 import type { NodeInfo } from "@/lib/NodeInfo";
 import { cn } from "@/lib/utils";
-import { ChevronDown, RotateCw } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 
 export type RestartTarget = {
+  nodeName: string;
   label: string;
+  description: string;
   onRestart: () => void;
 };
 
@@ -43,14 +45,21 @@ export default function NodeStatusBar({
 }) {
   const [selectedNode, setSelectedNode] = useState<NodeInfo | null>(null);
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
-  const [popoverOpen, setPopoverOpen] = useState(false);
+  const [pendingRestart, setPendingRestart] = useState<NodeInfo | null>(null);
 
   const connectedCount = nodeInfos.filter((n) => n.connected).length;
   const allConnected = connectedCount === nodeInfos.length;
 
+  const selectedNodeTarget = selectedNode
+    ? restartTargets?.find((t) => t.nodeName === selectedNode.name)
+    : undefined;
+  const pendingRestartTarget = pendingRestart
+    ? restartTargets?.find((t) => t.nodeName === pendingRestart.name)
+    : undefined;
+
   return (
     <>
-      <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+      <Popover>
         <PopoverTrigger asChild>
           <Button
             className={cn(
@@ -93,28 +102,6 @@ export default function NodeStatusBar({
                 </span>
               </button>
             ))}
-            {restartTargets && restartTargets.length > 0 && (
-              <>
-                <Separator className="my-1" />
-                <span className="px-2 py-1 text-xs text-muted-foreground">
-                  Restart node
-                </span>
-                {restartTargets.map((target) => (
-                  <button
-                    key={target.label}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted text-sm text-left w-full disabled:opacity-50"
-                    disabled={restartDisabled}
-                    onClick={() => {
-                      target.onRestart();
-                      setPopoverOpen(false);
-                    }}
-                  >
-                    <RotateCw className="h-3 w-3 flex-none" />
-                    <span className="truncate">{target.label}</span>
-                  </button>
-                ))}
-              </>
-            )}
             {(onRestartNodes || onRebootSystem) && (
               <>
                 <Separator className="mb-1" />
@@ -146,6 +133,20 @@ export default function NodeStatusBar({
           <pre className="overflow-auto text-xs max-h-96">
             {JSON.stringify(selectedNode?.state ?? {}, undefined, 2)}
           </pre>
+          {selectedNodeTarget && (
+            <DialogFooter className="sm:justify-start">
+              <Button
+                variant="destructive"
+                disabled={restartDisabled}
+                onClick={() => {
+                  setPendingRestart(selectedNode);
+                  setSelectedNode(null);
+                }}
+              >
+                Restart
+              </Button>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
       <Dialog
@@ -176,6 +177,32 @@ export default function NodeStatusBar({
                 </Button>
               </DialogClose>
             )}
+            <DialogClose asChild>
+              <Button>Cancel</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={pendingRestart !== null}
+        onOpenChange={(open) => !open && setPendingRestart(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Restart {pendingRestartTarget?.label}?</DialogTitle>
+            <DialogDescription>
+              {pendingRestartTarget?.description}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button
+                variant="destructive"
+                onClick={() => pendingRestartTarget?.onRestart()}
+              >
+                Restart Node
+              </Button>
+            </DialogClose>
             <DialogClose asChild>
               <Button>Cancel</Button>
             </DialogClose>

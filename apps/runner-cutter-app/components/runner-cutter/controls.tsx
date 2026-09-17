@@ -18,6 +18,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import useROS from "@/lib/ros/useROS";
+import useROSNode from "@/lib/ros/useROSNode";
 import useCameraNode, {
   DeviceState as CameraDeviceState,
 } from "@/lib/useCameraNode";
@@ -37,12 +38,14 @@ export default function Controls({
   detectionNodeName,
   laserNodeName,
   controlNodeName,
+  livekitNodeName,
 }: {
   lifecycleManagerNodeName: string;
   cameraNodeName: string;
   detectionNodeName: string;
   laserNodeName: string;
   controlNodeName: string;
+  livekitNodeName: string;
 }) {
   const { connected: rosConnected } = useROS();
 
@@ -53,6 +56,7 @@ export default function Controls({
   const detectionNode = useDetectionNode(detectionNodeName);
   const laserNode = useLaserNode(laserNodeName);
   const controlNode = useControlNode(controlNodeName);
+  const livekitNode = useROSNode(livekitNodeName);
 
   const [manualMode, setManualMode] = useState<boolean>(false);
   const [showDepthPreview, setShowDepthPreview] = useState<boolean>(false);
@@ -74,25 +78,57 @@ export default function Controls({
 
   const restartTargets = useMemo(
     () => [
-      { label: "Laser", onRestart: () => lifecycleManagerNode.restartLaser() },
       {
+        nodeName: laserNodeName,
+        label: "Laser",
+        onRestart: () => lifecycleManagerNode.restartNode("laser"),
+        description:
+          "This will restart the Laser node, which should come back up within a few seconds.",
+      },
+      {
+        nodeName: controlNodeName,
         label: "Control",
-        onRestart: () => lifecycleManagerNode.restartControl(),
+        onRestart: () => lifecycleManagerNode.restartNode("control"),
+        description:
+          "This will restart the Control node, which should come back up within a few seconds.",
       },
       {
-        label: "Camera + Detection",
-        onRestart: () => lifecycleManagerNode.restartCameraDetection(),
+        nodeName: cameraNodeName,
+        label: "Camera",
+        onRestart: () => lifecycleManagerNode.restartNode("camera_detection"),
+        description:
+          "This will restart the Camera and Detection nodes. Both should come back up within a few seconds.",
       },
       {
+        nodeName: detectionNodeName,
+        label: "Detection",
+        onRestart: () => lifecycleManagerNode.restartNode("camera_detection"),
+        description:
+          "This will restart both the Camera and Detection nodes. Both should come back up within a few seconds",
+      },
+      {
+        nodeName: livekitNodeName,
         label: "LiveKit",
-        onRestart: () => lifecycleManagerNode.restartLivekit(),
+        onRestart: () => lifecycleManagerNode.restartNode("livekit"),
+        description:
+          "This will restart the LiveKit Node, which should come back up within a few seconds.",
       },
       {
+        nodeName: "Rosbridge",
         label: "Rosbridge",
-        onRestart: () => lifecycleManagerNode.restartRosbridge(),
+        onRestart: () => lifecycleManagerNode.restartNode("rosbridge"),
+        description:
+          "This will restart the Rosbridge node. The UI will lose its connection to all nodes and should reconnect within a few seconds.",
       },
     ],
-    [lifecycleManagerNode],
+    [
+      lifecycleManagerNode,
+      cameraNodeName,
+      detectionNodeName,
+      laserNodeName,
+      controlNodeName,
+      livekitNodeName,
+    ],
   );
 
   const nodeInfos = useMemo(() => {
@@ -107,6 +143,7 @@ export default function Controls({
       detectionNode,
       laserNode,
       controlNode,
+      livekitNode,
     ];
   }, [
     rosConnected,
@@ -115,6 +152,7 @@ export default function Controls({
     detectionNode,
     laserNode,
     controlNode,
+    livekitNode,
   ]);
 
   const deviceTemperatureAlert =
