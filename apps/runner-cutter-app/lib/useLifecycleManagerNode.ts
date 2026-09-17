@@ -1,4 +1,5 @@
 import useROSNode from "@/lib/ros/useROSNode";
+import { useCallback } from "react";
 
 function triggerInputMapper() {
   return {};
@@ -25,38 +26,10 @@ export default function useLifecycleManagerNode(nodeName: string) {
     successOutputMapper,
   );
 
-  const restartLaser = node.useService(
-    "~/restart_laser",
-    "std_srvs/Trigger",
-    triggerInputMapper,
-    successOutputMapper,
-  );
-
-  const restartControl = node.useService(
-    "~/restart_control",
-    "std_srvs/Trigger",
-    triggerInputMapper,
-    successOutputMapper,
-  );
-
-  const restartCameraDetection = node.useService(
-    "~/restart_camera_detection",
-    "std_srvs/Trigger",
-    triggerInputMapper,
-    successOutputMapper,
-  );
-
-  const restartLivekit = node.useService(
-    "~/restart_livekit",
-    "std_srvs/Trigger",
-    triggerInputMapper,
-    successOutputMapper,
-  );
-
-  const restartRosbridge = node.useService(
-    "~/restart_rosbridge",
-    "std_srvs/Trigger",
-    triggerInputMapper,
+  const restartNode = node.useService(
+    "~/restart_node",
+    "lifecycle_manager_interfaces/RestartNode",
+    useCallback((name: string) => ({ node_name: name }), []),
     successOutputMapper,
   );
 
@@ -64,10 +37,6 @@ export default function useLifecycleManagerNode(nodeName: string) {
     ...node,
     restartService,
     rebootSystem,
-    restartLaser,
-    restartControl,
-    restartCameraDetection,
-    restartLivekit,
-    restartRosbridge,
+    restartNode,
   };
 }
