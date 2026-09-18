@@ -99,6 +99,7 @@ RUN apt-get update && apt-get install -y \
     libsrtp2-1 \
     libgirepository1.0-dev \
     libusb-1.0-0-dev \
+    ccache \
     && rm -rf /var/lib/apt/lists/*
 
 # Python packages required by our ROS nodes
