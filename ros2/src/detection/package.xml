@@ -3,9 +3,9 @@
 <package format="3">
   <name>detection</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="kondo.genki@gmail.com">genki</maintainer>
-  <license>TODO: License declaration</license>
+  <description>Node that runs inference and publishes detection results.</description>
+  <maintainer email="genki@kogentech.com">Genki Kondo</maintainer>
+  <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

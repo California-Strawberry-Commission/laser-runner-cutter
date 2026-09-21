@@ -3,9 +3,9 @@
 <package format="3">
   <name>furrow_perceiver_interfaces</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="d@c.com">dominic</maintainer>
-  <license>TODO: License declaration</license>
+  <description>Custom interface definitions used in furrow_perceiver.</description>
+  <maintainer email="genki@kogentech.com">Genki Kondo</maintainer>
+  <license>MIT</license>
 
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>common_interfaces</exec_depend>
