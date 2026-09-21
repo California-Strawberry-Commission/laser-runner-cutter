@@ -8,14 +8,6 @@ from std_srvs.srv import Trigger
 
 import aioros2
 
-NODES = {
-    "laser": "__node:=laser0",
-    "control": "__node:=control0",
-    "camera_detection": "__node:=camera_detection_container",
-    "livekit": "__node:=livekit_whip_node",
-    "rosbridge": "__node:=rosbridge_websocket",
-}
-
 
 @aioros2.service("~/restart_service", Trigger)
 async def restart_service(node):
@@ -45,17 +37,13 @@ def _trigger_reboot_system(node):
 
 @aioros2.service("~/restart_node", RestartNode)
 async def restart_node(node, node_name):
-    if node_name not in NODES:
-        message = f"Unknown node '{node_name}'"
-        node.get_logger().error(message)
-        return {"success": False, "message": message}
-
     return _restart(node, node_name)
 
 
 def _restart(node, name):
-    match = NODES[name]
-    result = subprocess.run(["pgrep", "-f", match], capture_output=True, text=True)
+    result = subprocess.run(
+        ["pgrep", "-f", f"__node:={name}"], capture_output=True, text=True
+    )
     pid = result.stdout.split()
 
     if not pid:
