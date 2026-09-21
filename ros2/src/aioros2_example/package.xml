@@ -3,9 +3,9 @@
 <package format="3">
   <name>aioros2_example</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="kondo.genki@gmail.com">genki</maintainer>
-  <license>TODO: License declaration</license>
+  <description>Example nodes demonstrating usage of the aioros2 framework.</description>
+  <maintainer email="genki@kogentech.com">Genki Kondo</maintainer>
+  <license>MIT</license>
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>std_msgs</exec_depend>

@@ -22,9 +22,9 @@ setup(
     ],
     install_requires=["setuptools"],
     zip_safe=True,
-    maintainer="genki",
-    maintainer_email="kondo.genki@gmail.com",
-    description="TODO: Package description",
+    maintainer="Genki Kondo",
+    maintainer_email="genki@kogentech.com",
+    description="Node to manage node lifecycles.",
     license="MIT",
     tests_require=["pytest"],
     entry_points={

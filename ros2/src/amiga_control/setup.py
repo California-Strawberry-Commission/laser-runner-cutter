@@ -16,10 +16,10 @@ setup(
     ],
     install_requires=["setuptools"],
     zip_safe=True,
-    maintainer="ros",
-    maintainer_email="45153623+DominicChm@users.noreply.github.com",
-    description="TODO: Package description",
-    license="TODO: License declaration",
+    maintainer="Genki Kondo",
+    maintainer_email="genki@kogentech.com",
+    description="Node for controlling the Farm-ng Amiga.",
+    license="MIT",
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [

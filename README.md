@@ -37,3 +37,7 @@ Laser Runner Cutter is a project by the California Strawberry Commission for aut
 1.  Setup and run ROS2 nodes: see `ros2/README.md`
 
 1.  Setup and run Runner Cutter App: see `apps/runner-cutter-app/README.md`
+
+## License
+
+This repository is MIT licensed by default (see `LICENSE`). `apps/runner-cutter-app/`, `ros2/`, and `ml/` each also have their own `LICENSE` file, which governs for that subtree.

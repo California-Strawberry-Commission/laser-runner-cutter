@@ -3,9 +3,9 @@
 <package format="3">
   <name>laser_control_interfaces</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="kondo.genki@gmail.com">genki</maintainer>
-  <license>TODO: License declaration</license>
+  <description>Custom interface definitions used in laser_control.</description>
+  <maintainer email="genki@kogentech.com">Genki Kondo</maintainer>
+  <license>MIT</license>
 
   <exec_depend>common_interfaces</exec_depend>
   <exec_depend>builtin_interfaces</exec_depend>

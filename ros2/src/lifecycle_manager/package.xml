@@ -3,8 +3,8 @@
 <package format="3">
   <name>lifecycle_manager</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="kondo.genki@gmail.com">genki</maintainer>
+  <description>Node to manage node lifecycles.</description>
+  <maintainer email="genki@kogentech.com">Genki Kondo</maintainer>
   <license>MIT</license>
 
   <test_depend>ament_copyright</test_depend>

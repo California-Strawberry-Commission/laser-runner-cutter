@@ -3,9 +3,9 @@
 <package format="3">
   <name>common_interfaces</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="kondo.genki@gmail.com">genki</maintainer>
-  <license>TODO: License declaration</license>
+  <description>Shared interface definitions.</description>
+  <maintainer email="genki@kogentech.com">Genki Kondo</maintainer>
+  <license>MIT</license>
 
   <buildtool_depend>rosidl_default_generators</buildtool_depend>
   <exec_depend>rosidl_default_runtime</exec_depend>

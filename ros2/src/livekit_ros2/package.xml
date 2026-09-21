@@ -3,9 +3,9 @@
 <package format="3">
   <name>livekit_ros2</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="kondo.genki@gmail.com">genki</maintainer>
-  <license>TODO: License declaration</license>
+  <description>Node that subscribes to a ROS2 Image topic and streams it over LiveKit.</description>
+  <maintainer email="genki@kogentech.com">Genki Kondo</maintainer>
+  <license>MIT</license>
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>std_msgs</exec_depend>

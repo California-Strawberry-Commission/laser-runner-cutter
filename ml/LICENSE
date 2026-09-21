@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2024 Dominic C.
+Copyright (c) 2026 California Strawberry Commission
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,22 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+NOTE ON THIRD-PARTY AGPL-3.0 DEPENDENCY
+
+The packages in this directory that depend on `ultralytics`
+(laser_detection_model, runner_mask_instancing_model, and
+runner_segmentation_model) pull in code licensed under the GNU Affero
+General Public License v3.0 (AGPL-3.0). The MIT grant above covers only the
+code authored in this repository; it does not alter the license terms of
+that dependency.
+
+Ultralytics dual-licenses their software: using it triggers AGPL-3.0
+obligations (including source-code disclosure for network use of the
+software), unless you obtain a commercial Ultralytics Enterprise License.
+Anyone distributing these specific packages, or running them as part of a
+network-accessible service, should review Ultralytics' license terms
+independently: https://github.com/ultralytics/ultralytics/blob/main/LICENSE
+and https://www.ultralytics.com/license.

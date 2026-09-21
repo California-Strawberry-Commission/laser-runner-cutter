@@ -13,13 +13,15 @@ dependencies = [
 requires-python = ">=3.8"
 authors = [
     {name = "Dominic C", email = "dominicchm.gh@gmail.com"},
+    {name = "Genki Kondo", email = "genki@kogentech.com"},
 ]
 maintainers = [
     {name = "Dominic C", email = "dominicchm.gh@gmail.com"},
+    {name = "Genki Kondo", email = "genki@kogentech.com"},
 ]
 description = "A modern, asyncio-based, ROS2 wrapper library"
 readme = "README.rst"
-license = {file = "LICENSE.txt"}
+license = "MIT"
 keywords = ["ros2", "rclpy"]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",

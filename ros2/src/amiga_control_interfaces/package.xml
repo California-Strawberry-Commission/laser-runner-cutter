@@ -3,9 +3,9 @@
 <package format="3">
   <name>amiga_control_interfaces</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="dominicchm.gh@gmail.com">Dominic</maintainer>
-  <license>TODO: License declaration</license>
+  <description>Custom interface definitions used in amiga_control.</description>
+  <maintainer email="genki@kogentech.com">Genki Kondo</maintainer>
+  <license>MIT</license>
   
   <build_depend>action_msgs</build_depend>
 

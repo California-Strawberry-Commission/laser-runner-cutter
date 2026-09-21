@@ -3,9 +3,9 @@
 <package format="3">
   <name>guidance_brain_interfaces</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Custom interface definitions used in guidance_brain.</description>
   <maintainer email="d@c.com">dominic</maintainer>
-  <license>TODO: License declaration</license>
+  <license>MIT</license>
 
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>common_interfaces</exec_depend>

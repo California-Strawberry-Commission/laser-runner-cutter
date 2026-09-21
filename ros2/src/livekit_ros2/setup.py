@@ -44,10 +44,10 @@ setup(
     ),
     install_requires=["setuptools"],
     zip_safe=True,
-    maintainer="genki",
-    maintainer_email="kondo.genki@gmail.com",
-    description="TODO: Package description",
-    license="TODO: License declaration",
+    maintainer="Genki Kondo",
+    maintainer_email="genki@kogentech.com",
+    description="Node that subscribes to a ROS2 Image topic and streams it over LiveKit.",
+    license="MIT",
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
