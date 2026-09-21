@@ -9,7 +9,9 @@ import DeviceCard, {
   convertCameraNodeDeviceState,
   convertLaserNodeDeviceState,
 } from "@/components/runner-cutter/device-card";
-import NodeStatusBar from "@/components/runner-cutter/node-status-bar";
+import NodeStatusBar, {
+  type NodeInfo,
+} from "@/components/runner-cutter/node-status-bar";
 import RunnerCutterCard, {
   RunnerCutterMode,
   RunnerCutterState,
@@ -76,84 +78,48 @@ export default function Controls({
     [controlNode, manualMode],
   );
 
-  const restartTargets = useMemo(
+  const nodeInfos: NodeInfo[] = useMemo(
     () => [
       {
-        nodeName: laserNodeName,
-        label: "Laser",
-        onRestart: () => lifecycleManagerNode.restartNode("laser"),
-        description:
-          "This will restart the Laser node, which should come back up within a few seconds.",
+        name: "Rosbridge",
+        connected: rosConnected,
+        onRestart: () =>
+          lifecycleManagerNode.restartNode("rosbridge_websocket"),
+      },
+      lifecycleManagerNode,
+      {
+        ...cameraNode,
+        onRestart: () =>
+          lifecycleManagerNode.restartNode("camera_detection_container"),
       },
       {
-        nodeName: controlNodeName,
-        label: "Control",
-        onRestart: () => lifecycleManagerNode.restartNode("control"),
-        description:
-          "This will restart the Control node, which should come back up within a few seconds.",
+        ...detectionNode,
+        onRestart: () =>
+          lifecycleManagerNode.restartNode("camera_detection_container"),
       },
       {
-        nodeName: cameraNodeName,
-        label: "Camera",
-        onRestart: () => lifecycleManagerNode.restartNode("camera_detection"),
-        description:
-          "This will restart the Camera and Detection nodes. Both should come back up within a few seconds.",
+        ...laserNode,
+        onRestart: () => lifecycleManagerNode.restartNode("laser0"),
       },
       {
-        nodeName: detectionNodeName,
-        label: "Detection",
-        onRestart: () => lifecycleManagerNode.restartNode("camera_detection"),
-        description:
-          "This will restart both the Camera and Detection nodes. Both should come back up within a few seconds",
+        ...controlNode,
+        onRestart: () => lifecycleManagerNode.restartNode("control0"),
       },
       {
-        nodeName: livekitNodeName,
-        label: "LiveKit",
-        onRestart: () => lifecycleManagerNode.restartNode("livekit"),
-        description:
-          "This will restart the LiveKit Node, which should come back up within a few seconds.",
-      },
-      {
-        nodeName: "Rosbridge",
-        label: "Rosbridge",
-        onRestart: () => lifecycleManagerNode.restartNode("rosbridge"),
-        description:
-          "This will restart the Rosbridge node. The UI will lose its connection to all nodes and should reconnect within a few seconds.",
+        ...livekitNode,
+        onRestart: () => lifecycleManagerNode.restartNode("livekit_whip_node"),
       },
     ],
     [
-      lifecycleManagerNode,
-      cameraNodeName,
-      detectionNodeName,
-      laserNodeName,
-      controlNodeName,
-      livekitNodeName,
-    ],
-  );
-
-  const nodeInfos = useMemo(() => {
-    const rosbridgeNodeInfo = {
-      name: "Rosbridge",
-      connected: rosConnected,
-    };
-    return [
-      rosbridgeNodeInfo,
+      rosConnected,
       lifecycleManagerNode,
       cameraNode,
       detectionNode,
       laserNode,
       controlNode,
       livekitNode,
-    ];
-  }, [
-    rosConnected,
-    lifecycleManagerNode,
-    cameraNode,
-    detectionNode,
-    laserNode,
-    controlNode,
-    livekitNode,
-  ]);
+    ],
+  );
 
   const deviceTemperatureAlert =
     cameraNode.state.colorDeviceTemperature >=
@@ -254,7 +220,6 @@ export default function Controls({
               onRestartNodes={() => lifecycleManagerNode.restartService()}
               onRebootSystem={() => lifecycleManagerNode.rebootSystem()}
               restartDisabled={!lifecycleManagerNode.connected}
-              restartTargets={restartTargets}
             />
           </div>
         </CardHeader>

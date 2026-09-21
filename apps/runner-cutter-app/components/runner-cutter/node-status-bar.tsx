@@ -16,16 +16,15 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
-import type { NodeInfo } from "@/lib/NodeInfo";
 import { cn } from "@/lib/utils";
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 
-export type RestartTarget = {
-  nodeName: string;
-  label: string;
-  description: string;
-  onRestart: () => void;
+export type NodeInfo = {
+  name: string;
+  connected: boolean;
+  state?: {};
+  onRestart?: () => void;
 };
 
 export default function NodeStatusBar({
@@ -34,14 +33,12 @@ export default function NodeStatusBar({
   onRestartNodes,
   onRebootSystem,
   restartDisabled,
-  restartTargets,
 }: {
   nodeInfos: NodeInfo[];
   className?: string;
   onRestartNodes?: () => void;
   onRebootSystem?: () => void;
   restartDisabled?: boolean;
-  restartTargets?: RestartTarget[];
 }) {
   const [selectedNode, setSelectedNode] = useState<NodeInfo | null>(null);
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
@@ -49,13 +46,6 @@ export default function NodeStatusBar({
 
   const connectedCount = nodeInfos.filter((n) => n.connected).length;
   const allConnected = connectedCount === nodeInfos.length;
-
-  const selectedNodeTarget = selectedNode
-    ? restartTargets?.find((t) => t.nodeName === selectedNode.name)
-    : undefined;
-  const pendingRestartTarget = pendingRestart
-    ? restartTargets?.find((t) => t.nodeName === pendingRestart.name)
-    : undefined;
 
   return (
     <>
@@ -133,7 +123,7 @@ export default function NodeStatusBar({
           <pre className="overflow-auto text-xs max-h-96">
             {JSON.stringify(selectedNode?.state ?? {}, undefined, 2)}
           </pre>
-          {selectedNodeTarget && (
+          {selectedNode?.onRestart && (
             <DialogFooter className="sm:justify-start">
               <Button
                 variant="destructive"
@@ -189,16 +179,16 @@ export default function NodeStatusBar({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Restart {pendingRestartTarget?.label}?</DialogTitle>
+            <DialogTitle>Restart {pendingRestart?.name}?</DialogTitle>
             <DialogDescription>
-              {pendingRestartTarget?.description}
+              {`This will restart node ${pendingRestart?.name}, which should come back up within a few seconds.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DialogClose asChild>
               <Button
                 variant="destructive"
-                onClick={() => pendingRestartTarget?.onRestart()}
+                onClick={() => pendingRestart?.onRestart?.()}
               >
                 Restart Node
               </Button>
