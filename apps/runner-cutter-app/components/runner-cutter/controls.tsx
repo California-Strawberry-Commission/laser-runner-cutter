@@ -9,7 +9,9 @@ import DeviceCard, {
   convertCameraNodeDeviceState,
   convertLaserNodeDeviceState,
 } from "@/components/runner-cutter/device-card";
-import NodeStatusBar from "@/components/runner-cutter/node-status-bar";
+import NodeStatusBar, {
+  type NodeInfo,
+} from "@/components/runner-cutter/node-status-bar";
 import RunnerCutterCard, {
   RunnerCutterMode,
   RunnerCutterState,
@@ -18,6 +20,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import useROS from "@/lib/ros/useROS";
+import useROSNode from "@/lib/ros/useROSNode";
 import useCameraNode, {
   DeviceState as CameraDeviceState,
 } from "@/lib/useCameraNode";
@@ -37,12 +40,14 @@ export default function Controls({
   detectionNodeName,
   laserNodeName,
   controlNodeName,
+  livekitNodeName,
 }: {
   lifecycleManagerNodeName: string;
   cameraNodeName: string;
   detectionNodeName: string;
   laserNodeName: string;
   controlNodeName: string;
+  livekitNodeName: string;
 }) {
   const { connected: rosConnected } = useROS();
 
@@ -53,6 +58,7 @@ export default function Controls({
   const detectionNode = useDetectionNode(detectionNodeName);
   const laserNode = useLaserNode(laserNodeName);
   const controlNode = useControlNode(controlNodeName);
+  const livekitNode = useROSNode(livekitNodeName);
 
   const [manualMode, setManualMode] = useState<boolean>(false);
   const [showDepthPreview, setShowDepthPreview] = useState<boolean>(false);
@@ -72,27 +78,48 @@ export default function Controls({
     [controlNode, manualMode],
   );
 
-  const nodeInfos = useMemo(() => {
-    const rosbridgeNodeInfo = {
-      name: "Rosbridge",
-      connected: rosConnected,
-    };
-    return [
-      rosbridgeNodeInfo,
+  const nodeInfos: NodeInfo[] = useMemo(
+    () => [
+      {
+        name: "Rosbridge",
+        connected: rosConnected,
+        onRestart: () =>
+          lifecycleManagerNode.restartNode("rosbridge_websocket"),
+      },
+      lifecycleManagerNode,
+      {
+        ...cameraNode,
+        onRestart: () =>
+          lifecycleManagerNode.restartNode("camera_detection_container"),
+      },
+      {
+        ...detectionNode,
+        onRestart: () =>
+          lifecycleManagerNode.restartNode("camera_detection_container"),
+      },
+      {
+        ...laserNode,
+        onRestart: () => lifecycleManagerNode.restartNode("laser0"),
+      },
+      {
+        ...controlNode,
+        onRestart: () => lifecycleManagerNode.restartNode("control0"),
+      },
+      {
+        ...livekitNode,
+        onRestart: () => lifecycleManagerNode.restartNode("livekit_whip_node"),
+      },
+    ],
+    [
+      rosConnected,
       lifecycleManagerNode,
       cameraNode,
       detectionNode,
       laserNode,
       controlNode,
-    ];
-  }, [
-    rosConnected,
-    lifecycleManagerNode,
-    cameraNode,
-    detectionNode,
-    laserNode,
-    controlNode,
-  ]);
+      livekitNode,
+    ],
+  );
 
   const deviceTemperatureAlert =
     cameraNode.state.colorDeviceTemperature >=

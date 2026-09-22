@@ -21,6 +21,8 @@ def generate_launch_description():
                 parameters=[parameters_file],
                 output="screen",
                 emulate_tty=True,
+                respawn=True,
+                respawn_delay=2.0,
             )
         ]
     )

@@ -1,5 +1,6 @@
 // TODO: add ability to set node names
 export const LIFECYCLE_MANAGER_NODE_NAME = "/lifecycle_manager";
+export const LIVEKIT_NODE_NAME = "/livekit_whip_node";
 export const CAMERA_NODE_NAME = "/camera0";
 export const DETECTION_NODE_NAME = "/detection0";
 export const LASER_NODE_NAME = "/laser0";

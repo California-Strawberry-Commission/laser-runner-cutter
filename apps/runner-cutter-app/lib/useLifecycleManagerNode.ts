@@ -1,4 +1,5 @@
 import useROSNode from "@/lib/ros/useROSNode";
+import { useCallback } from "react";
 
 function triggerInputMapper() {
   return {};
@@ -25,9 +26,17 @@ export default function useLifecycleManagerNode(nodeName: string) {
     successOutputMapper,
   );
 
+  const restartNode = node.useService(
+    "~/restart_node",
+    "lifecycle_manager_interfaces/RestartNode",
+    useCallback((name: string) => ({ node_name: name }), []),
+    successOutputMapper,
+  );
+
   return {
     ...node,
     restartService,
     rebootSystem,
+    restartNode,
   };
 }
