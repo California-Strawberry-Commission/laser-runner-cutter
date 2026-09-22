@@ -34,7 +34,7 @@ def generate_launch_description():
     def load_camera_detection(context, *args, **kwargs):
         return [
             LoadComposableNodes(
-                target_container="camera_detection_container",
+                target_container=camera_detection_launch_node,
                 composable_node_descriptions=[
                     ComposableNode(
                         package="camera_control",
