@@ -237,6 +237,12 @@ export default function Controls({
             <div className="flex flex-row items-center gap-4">
               <Button
                 disabled={disableButtons}
+                onClick={() => cameraNode.saveCalibrationImages()}
+              >
+                Save Calibration Images
+              </Button>
+              <Button
+                disabled={disableButtons}
                 onClick={() =>
                   detectionNode.state.recordingVideo
                     ? detectionNode.stopRecordingVideo()

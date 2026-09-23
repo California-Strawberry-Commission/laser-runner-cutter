@@ -165,6 +165,8 @@ class LucidCamera {
   mutable std::mutex deviceMutex_;
   Arena::IDevice* colorDevice_ = nullptr;
   Arena::IDevice* depthDevice_ = nullptr;
+  std::mutex colorAcquisitionMutex_;
+  std::mutex depthAcquisitionMutex_;
   std::pair<int, int> colorFrameOffset_{0, 0};
   std::pair<int, int> depthFrameSize_{0, 0};
   double xyzScale_{0.0};

@@ -260,6 +260,11 @@ class CameraControlNode : public rclcpp::Node {
         std::bind(&CameraControlNode::onSaveImage, this, std::placeholders::_1,
                   std::placeholders::_2),
         rmw_qos_profile_services_default, serviceCallbackGroup_);
+    saveCalibrationImagesService_ = create_service<std_srvs::srv::Trigger>(
+        "~/save_calibration_images",
+        std::bind(&CameraControlNode::onSaveCalibrationImages, this,
+                  std::placeholders::_1, std::placeholders::_2),
+        rmw_qos_profile_services_default, serviceCallbackGroup_);
     startIntervalCaptureService_ =
         create_service<camera_control_interfaces::srv::StartIntervalCapture>(
             "~/start_interval_capture",
@@ -444,17 +449,6 @@ class CameraControlNode : public rclcpp::Node {
             return;
           }
 
-          {
-            std::lock_guard<std::mutex> lock(lastColorImageMutex_);
-            if (colorImage) {
-              // TODO: eliminate this copy. It's only used for saving an image
-              lastColorImage_ =
-                  std::make_shared<sensor_msgs::msg::Image>(*colorImage);
-            } else {
-              lastColorImage_.reset();
-            }
-          }
-
           // Copy template
           auto cameraInfo{
               std::make_unique<sensor_msgs::msg::CameraInfo>(colorCameraInfo_)};
@@ -541,10 +535,6 @@ class CameraControlNode : public rclcpp::Node {
 
     cameraStarted_ = false;
     camera_->stop();
-    {
-      std::lock_guard<std::mutex> lock(lastColorImageMutex_);
-      lastColorImage_.reset();
-    }
     stopRecordingBagInternal();
 
     response->success = true;
@@ -605,6 +595,19 @@ class CameraControlNode : public rclcpp::Node {
                    std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
     auto res{saveImage()};
     response->success = res.has_value();
+    if (!res.has_value()) {
+      response->message = "Failed to save image";
+    }
+  }
+
+  void onSaveCalibrationImages(
+      const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+      std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+    auto res{saveCalibrationImages()};
+    response->success = res.has_value();
+    if (!res.has_value()) {
+      response->message = "Failed to save calibration images";
+    }
   }
 
   void onStartIntervalCapture(
@@ -732,29 +735,28 @@ class CameraControlNode : public rclcpp::Node {
 #pragma endregion
 
   std::optional<std::string> saveImage() {
-    sensor_msgs::msg::Image::SharedPtr colorImage;
-    {
-      std::lock_guard<std::mutex> lock(lastColorImageMutex_);
-      colorImage = lastColorImage_;
-    }
-    if (!colorImage) {
+    auto frameOpt{camera_->getNextFrame()};
+    if (!frameOpt) {
+      publishNotification("Failed to acquire frame to save image",
+                          rclcpp::Logger::Level::Error);
       return std::nullopt;
     }
+    LucidCamera::Frame frame{std::move(*frameOpt)};
 
     // Create the save directory if it doesn't exist
     std::string saveDir{common::expandUser(getParamSaveDir())};
     std::filesystem::create_directories(saveDir);
 
     // Generate the image file name and path
-    std::string filepath{
-        fmt::format("{}/{}.jpg", saveDir,
-                    common::formatRosTimestamp(colorImage->header.stamp))};
+    std::string filepath{fmt::format(
+        "{}/{}.png", saveDir,
+        common::formatRosTimestamp(frame.colorImage->header.stamp))};
 
     try {
       // Demosaic color image (which is BayerRG8) and save the image
-      cv::Mat raw(colorImage->height, colorImage->width, CV_8UC1,
-                  const_cast<uint8_t*>(colorImage->data.data()),
-                  colorImage->step);
+      cv::Mat raw(frame.colorImage->height, frame.colorImage->width, CV_8UC1,
+                  const_cast<uint8_t*>(frame.colorImage->data.data()),
+                  frame.colorImage->step);
       cv::Mat bgr;
       cv::cvtColor(raw, bgr, cv::COLOR_BayerRGGB2BGR);
       if (!cv::imwrite(filepath, bgr)) {
@@ -771,6 +773,74 @@ class CameraControlNode : public rclcpp::Node {
     publishNotification("Saved image: " + filepath);
 
     return filepath;
+  }
+
+  // Captures a fresh frame and saves the color image, depth intensity image
+  // (as mono16), and depth XYZ data (as yml).
+  std::optional<std::string> saveCalibrationImages() {
+    auto frameOpt{camera_->getNextFrame()};
+    if (!frameOpt) {
+      publishNotification("Failed to acquire frame for calibration images",
+                          rclcpp::Logger::Level::Error);
+      return std::nullopt;
+    }
+    LucidCamera::Frame frame{std::move(*frameOpt)};
+
+    // Create the save directory if it doesn't exist
+    std::string saveDir{common::expandUser(getParamSaveDir())};
+    std::filesystem::create_directories(saveDir);
+
+    std::string baseName{
+        common::formatRosTimestamp(frame.colorImage->header.stamp)};
+
+    try {
+      // Demosaic color image (which is BayerRG8) and save the image
+      cv::Mat raw(frame.colorImage->height, frame.colorImage->width, CV_8UC1,
+                  const_cast<uint8_t*>(frame.colorImage->data.data()),
+                  frame.colorImage->step);
+      cv::Mat bgr;
+      cv::cvtColor(raw, bgr, cv::COLOR_BayerRGGB2BGR);
+      std::string colorFilepath{
+          fmt::format("{}/{}_color.png", saveDir, baseName)};
+      if (!cv::imwrite(colorFilepath, bgr)) {
+        publishNotification("Failed to save color image: " + colorFilepath,
+                            rclcpp::Logger::Level::Error);
+        return std::nullopt;
+      }
+
+      // Depth intensity is MONO16. Wrap image buffer as cv::Mat and save.
+      cv::Mat intensity(frame.depthIntensity->height,
+                        frame.depthIntensity->width, CV_16UC1,
+                        const_cast<uint8_t*>(frame.depthIntensity->data.data()),
+                        frame.depthIntensity->step);
+      std::string intensityFilepath{
+          fmt::format("{}/{}_intensity.png", saveDir, baseName)};
+      if (!cv::imwrite(intensityFilepath, intensity)) {
+        publishNotification(
+            "Failed to save depth intensity image: " + intensityFilepath,
+            rclcpp::Logger::Level::Error);
+        return std::nullopt;
+      }
+
+      // Wrap XYZ buffer as cv::Mat and save to a yml file.
+      cv::Mat xyz(frame.depthXyz->height, frame.depthXyz->width, CV_32FC3,
+                  const_cast<uint8_t*>(frame.depthXyz->data.data()),
+                  frame.depthXyz->step);
+      std::string xyzFilepath{fmt::format("{}/{}_xyz.yml", saveDir, baseName)};
+      cv::FileStorage fs{xyzFilepath, cv::FileStorage::WRITE};
+      fs << "xyz" << xyz;
+      fs.release();
+
+      publishNotification(
+          fmt::format("Saved calibration images: {}/{}", saveDir, baseName));
+    } catch (const cv::Exception& e) {
+      publishNotification(
+          std::string("Failed to save calibration images: ") + e.what(),
+          rclcpp::Logger::Level::Error);
+      return std::nullopt;
+    }
+
+    return baseName;
   }
 
   bool stopRecordingBagInternal() {
@@ -870,6 +940,8 @@ class CameraControlNode : public rclcpp::Node {
   rclcpp::Service<camera_control_interfaces::srv::AcquireSingleFrame>::SharedPtr
       acquireSingleFrameService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr saveImageService_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr
+      saveCalibrationImagesService_;
   rclcpp::Service<camera_control_interfaces::srv::StartIntervalCapture>::
       SharedPtr startIntervalCaptureService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr
@@ -891,8 +963,6 @@ class CameraControlNode : public rclcpp::Node {
   std::pair<int, int> colorRoiSize_{2048, 1536};
   std::mutex calibrationMutex_;
   int calibrationInitAttempts_{0};
-  std::mutex lastColorImageMutex_;
-  sensor_msgs::msg::Image::SharedPtr lastColorImage_;
   CalibrationParams calibrationParams_;
   sensor_msgs::msg::CameraInfo colorCameraInfo_;
   sensor_msgs::msg::CameraInfo depthCameraInfo_;

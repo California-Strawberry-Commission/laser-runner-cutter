@@ -713,6 +713,8 @@ void LucidCamera::acquisitionThreadFn(ColorCallback colorCallback,
 }
 
 sensor_msgs::msg::Image::UniquePtr LucidCamera::getColorFrame() {
+  std::lock_guard<std::mutex> lock(colorAcquisitionMutex_);
+
   if (!colorDevice_) {
     return nullptr;
   }
@@ -749,6 +751,8 @@ sensor_msgs::msg::Image::UniquePtr LucidCamera::getColorFrame() {
 }
 
 std::optional<LucidCamera::GetDepthFrameResult> LucidCamera::getDepthFrame() {
+  std::lock_guard<std::mutex> lock(depthAcquisitionMutex_);
+
   if (!depthDevice_) {
     return std::nullopt;
   }

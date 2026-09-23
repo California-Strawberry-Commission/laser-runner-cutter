@@ -125,6 +125,13 @@ export default function useCameraNode(nodeName: string) {
     successOutputMapper,
   );
 
+  const saveCalibrationImages = node.useService(
+    "~/save_calibration_images",
+    "std_srvs/Trigger",
+    triggerInputMapper,
+    successOutputMapper,
+  );
+
   const startRecordingBag = node.useService(
     "~/start_recording_bag",
     "std_srvs/Trigger",
@@ -165,6 +172,7 @@ export default function useCameraNode(nodeName: string) {
     startIntervalCapture,
     stopIntervalCapture,
     saveImage,
+    saveCalibrationImages,
     startRecordingBag,
     stopRecordingBag,
     getExposureUs,
