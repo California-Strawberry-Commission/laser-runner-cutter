@@ -137,7 +137,7 @@ We need to calculate the intrinsic matrix and distortion coefficients for each c
     2.  Create a new directory where this set of images should be saved
     3.  Capture a frame (change param values as needed):
 
-            ros2 run camera_control_cpp lucid_calibrate -- capture_frame --output_dir <output dir> --exposure_us 20000 --gain_db 1
+            ros2 run camera_control calibrate_lucid_rgbd -- capture_frame --output_dir <output dir> --exposure_us 20000 --gain_db 1
 
 In the end, you should have 9 sets of {Triton image (png), Helios intensity image (png), Helios xyz data (yml)}.
 
@@ -148,12 +148,12 @@ We calculate the intrinsic matrix and distortion coefficients using the method b
 1.  Create a single directory with the 9 Triton images you captured.
 2.  Run the following to calculate and save the Triton intrinsics:
 
-        ros2 run camera_control_cpp lucid_calibrate -- calculate_intrinsics --images_dir <path to the dir containing the Triton images> --output_dir <where to write the intrinsics data file>
+        ros2 run camera_control calibrate_lucid_rgbd -- calculate_intrinsics --images_dir <path to the dir containing the Triton images> --output_dir <where to write the intrinsics data file>
 
 3.  Create a single directory with the 9 Helios intensity images you captured.
 4.  Run the following to calculate and save the Helios intrinsics:
 
-        ros2 run camera_control_cpp lucid_calibrate -- calculate_intrinsics --images_dir <path to the dir containing the Helios intensity images> --output_dir <where to write the intrinsics data file>
+        ros2 run camera_control calibrate_lucid_rgbd -- calculate_intrinsics --images_dir <path to the dir containing the Helios intensity images> --output_dir <where to write the intrinsics data file>
 
 ### Step 3: Calculate extrinsics
 
@@ -161,11 +161,11 @@ We calculate the intrinsic matrix and distortion coefficients using the method b
 
 2.  Run the following to save the xyz-to-Triton extrinsics:
 
-        ros2 run camera_control_cpp lucid_calibrate -- calculate_extrinsics_xyz_to_triton --triton_intrinsics_file <path to Triton intrinsics yml file> --triton_images_dir <dir containing all Triton images> --helios_images_dir <dir containing all Helios intensity images> --helios_xyz_dir <dir containing all xyz data files> --output_dir <where to write the extrinsics data file>
+        ros2 run camera_control calibrate_lucid_rgbd -- calculate_extrinsics_xyz_to_triton --triton_intrinsics_file <path to Triton intrinsics yml file> --triton_images_dir <dir containing all Triton images> --helios_images_dir <dir containing all Helios intensity images> --helios_xyz_dir <dir containing all xyz data files> --output_dir <where to write the extrinsics data file>
 
 3.  Run the following to save the xyz-to-Helios extrinsics:
 
-        ros2 run camera_control_cpp lucid_calibrate -- calculate_extrinsics_xyz_to_helios --helios_intrinsics_file <path to Helios intrinsics yml file> --helios_images_dir <dir containing all Helios intensity images> --helios_xyz_dir <dir containing all xyz data files> --output_dir <where to write the extrinsics data file>
+        ros2 run camera_control calibrate_lucid_rgbd -- calculate_extrinsics_xyz_to_helios --helios_intrinsics_file <path to Helios intrinsics yml file> --helios_images_dir <dir containing all Helios intensity images> --helios_xyz_dir <dir containing all xyz data files> --output_dir <where to write the extrinsics data file>
 
 ## Updating the Runner Detection Model
 

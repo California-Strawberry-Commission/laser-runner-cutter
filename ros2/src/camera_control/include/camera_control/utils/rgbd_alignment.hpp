@@ -6,7 +6,7 @@
 class RgbdAlignment {
  public:
   static constexpr float DEPTH_MIN_MM{400};
-  static constexpr float DEPTH_MAX_MM{2000};
+  static constexpr float DEPTH_MAX_MM{1600};
 
   RgbdAlignment(const cv::Mat& colorCameraIntrinsicMatrix,
                 const cv::Mat& colorCameraDistortionCoeffs,
