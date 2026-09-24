@@ -13,10 +13,10 @@
 
 class LucidCamera {
  public:
-  const std::vector<std::string> COLOR_CAMERA_MODEL_PREFIXES{
+  static inline const std::vector<std::string> COLOR_CAMERA_MODEL_PREFIXES{
       "ATL", "ATX", "PHX", "TRI", "TRT"};
-  const std::vector<std::string> DEPTH_CAMERA_MODEL_PREFIXES{"HTP", "HLT",
-                                                             "HTR", "HTW"};
+  static inline const std::vector<std::string> DEPTH_CAMERA_MODEL_PREFIXES{
+      "HTP", "HLT", "HTR", "HTW"};
 
   enum class State { STREAMING, CONNECTING, DISCONNECTED };
   enum class CaptureMode { CONTINUOUS, SINGLE_FRAME, SYNCHRONIZED };

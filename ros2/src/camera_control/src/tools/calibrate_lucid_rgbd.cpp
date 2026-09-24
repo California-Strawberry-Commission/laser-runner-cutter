@@ -1,10 +1,50 @@
 #include <CLI/CLI.hpp>
+#include <cstring>
 #include <opencv2/opencv.hpp>
 
 #include "camera_control/camera/calibration.hpp"
 #include "camera_control/camera/lucid_camera.hpp"
 #include "common/utils.hpp"
 #include "spdlog/spdlog.h"
+
+// Reads an image in its native format and converts it to a scaled grayscale
+// image based on its actual channel count. We don't force IMREAD_GRAYSCALE here
+// as it would silently truncate 16-bit mono images (e.g. Helios intensity
+// images) down to 8-bit. Returns an empty cv::Mat if the image could not be
+// read or has an unsupported number of channels.
+cv::Mat readGrayscaleImage(const std::string& imagePath,
+                           double claheClipLimit = 5.0,
+                           cv::Size claheTileGridSize = cv::Size(7, 7)) {
+  cv::Mat raw{cv::imread(imagePath, cv::IMREAD_UNCHANGED)};
+  if (raw.empty()) {
+    return cv::Mat();
+  }
+
+  cv::Mat gray;
+  if (raw.channels() == 1) {
+    gray = raw;
+  } else if (raw.channels() == 3) {
+    cv::cvtColor(raw, gray, cv::COLOR_BGR2GRAY);
+  } else if (raw.channels() == 4) {
+    cv::cvtColor(raw, gray, cv::COLOR_BGRA2GRAY);
+  } else {
+    spdlog::error("Unsupported number of channels ({}): {}", raw.channels(),
+                  imagePath);
+    return cv::Mat();
+  }
+
+  cv::Mat scaled{calibration::scaleGrayscaleImage(gray)};
+
+  // Correct for uneven illumination (e.g. Helios intensity images get
+  // noticeably dimmer away from the image center) using CLAHE. CLAHE equalizes
+  // contrast within local tiles instead of globally, so dim corners get boosted
+  // independently of the bright center.
+  cv::Ptr<cv::CLAHE> clahe{cv::createCLAHE(claheClipLimit, claheTileGridSize)};
+  cv::Mat corrected;
+  clahe->apply(scaled, corrected);
+
+  return corrected;
+}
 
 void captureFrame(double exposureUs, double gainDb,
                   const std::string& outputDir) {
@@ -76,8 +116,7 @@ void calculateIntrinsics(const std::string& imagesDir,
       auto ext{entry.path().extension().string()};
       std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
       if (ext == ".png" || ext == ".jpg" || ext == ".jpeg") {
-        cv::Mat img{calibration::scaleGrayscaleImage(
-            cv::imread(entry.path().string(), cv::IMREAD_GRAYSCALE))};
+        cv::Mat img{readGrayscaleImage(entry.path().string())};
         if (!img.empty()) {
           images.push_back(img);
         }
@@ -118,6 +157,128 @@ void calculateIntrinsics(const std::string& imagesDir,
   fs << "distCoeffs" << calibrateResults.distCoeffs;
   fs.release();
   spdlog::info("Saved intrinsics data to: {}", intrinsicsPath.string());
+}
+
+std::optional<Arena::DeviceInfo> findFirstDeviceWithModelPrefix(
+    std::vector<Arena::DeviceInfo>& deviceInfos,
+    const std::vector<std::string>& modelPrefixes) {
+  auto it{std::find_if(deviceInfos.begin(), deviceInfos.end(),
+                       [&modelPrefixes](Arena::DeviceInfo& deviceInfo) {
+                         return std::any_of(
+                             modelPrefixes.begin(), modelPrefixes.end(),
+                             [&deviceInfo](const std::string& prefix) {
+                               return std::strncmp(
+                                          deviceInfo.ModelName().c_str(),
+                                          prefix.c_str(), prefix.length()) == 0;
+                             });
+                       })};
+  if (it != deviceInfos.end()) {
+    return *it;
+  }
+  return std::nullopt;
+}
+
+std::optional<Arena::DeviceInfo> findDeviceWithSerial(
+    std::vector<Arena::DeviceInfo>& deviceInfos,
+    const std::string& serialNumber) {
+  auto it{std::find_if(
+      deviceInfos.begin(), deviceInfos.end(),
+      [&serialNumber](Arena::DeviceInfo& deviceInfo) {
+        return deviceInfo.SerialNumber().length() == serialNumber.length() &&
+               std::strncmp(deviceInfo.SerialNumber().c_str(),
+                            serialNumber.c_str(), serialNumber.length()) == 0;
+      })};
+  if (it != deviceInfos.end()) {
+    return *it;
+  }
+  return std::nullopt;
+}
+
+// Reads the a camera's built-in factory intrinsic calibration from its
+// GenICam device nodes. See:
+// https://support.thinklucid.com/knowledgebase/projecting-3d-image-to-and-from-helios-to-2d-image/
+calibration::IntrinsicsResult readIntrinsicsFromDevice(
+    Arena::IDevice* device, int numDistortionCoeffs = 5) {
+  GenApi::INodeMap* nodeMap{device->GetNodeMap()};
+
+  cv::Mat intrinsicMatrix{cv::Mat::eye(3, 3, CV_64F)};
+  intrinsicMatrix.at<double>(0, 0) =
+      Arena::GetNodeValue<double>(nodeMap, "CalibFocalLengthX");
+  intrinsicMatrix.at<double>(1, 1) =
+      Arena::GetNodeValue<double>(nodeMap, "CalibFocalLengthY");
+  intrinsicMatrix.at<double>(0, 2) =
+      Arena::GetNodeValue<double>(nodeMap, "CalibOpticalCenterX");
+  intrinsicMatrix.at<double>(1, 2) =
+      Arena::GetNodeValue<double>(nodeMap, "CalibOpticalCenterY");
+
+  cv::Mat distCoeffs{cv::Mat::zeros(numDistortionCoeffs, 1, CV_64F)};
+  for (int i = 0; i < numDistortionCoeffs; ++i) {
+    Arena::SetNodeValue<GenICam::gcstring>(
+        nodeMap, "CalibLensDistortionValueSelector",
+        GenICam::gcstring(("Value" + std::to_string(i)).c_str()));
+    distCoeffs.at<double>(i, 0) =
+        Arena::GetNodeValue<double>(nodeMap, "CalibLensDistortionValue");
+  }
+
+  return calibration::IntrinsicsResult{intrinsicMatrix, distCoeffs};
+}
+
+// Pulls the Helios camera's factory intrinsic matrix and distortion
+// coefficients directly from its GenICam device nodes.
+void getHeliosDeviceIntrinsics(const std::optional<std::string>& serialNumber,
+                               const std::string& outputDir) {
+  Arena::ISystem* arena{Arena::OpenSystem()};
+
+  try {
+    arena->UpdateDevices(1000);
+    std::vector<Arena::DeviceInfo> deviceInfos{arena->GetDevices()};
+
+    std::optional<Arena::DeviceInfo> depthDeviceInfo{
+        serialNumber
+            ? findDeviceWithSerial(deviceInfos, *serialNumber)
+            : findFirstDeviceWithModelPrefix(
+                  deviceInfos, LucidCamera::DEPTH_CAMERA_MODEL_PREFIXES)};
+    if (!depthDeviceInfo) {
+      spdlog::error(
+          "Could not find a Helios (depth) camera device ({} device(s) "
+          "enumerated)",
+          deviceInfos.size());
+    } else {
+      spdlog::info("Connecting to Helios device (model={}, serial={})",
+                   depthDeviceInfo->ModelName(),
+                   depthDeviceInfo->SerialNumber());
+      Arena::IDevice* depthDevice{arena->CreateDevice(*depthDeviceInfo)};
+
+      calibration::IntrinsicsResult result{
+          readIntrinsicsFromDevice(depthDevice)};
+
+      arena->DestroyDevice(depthDevice);
+
+      std::ostringstream oss1, oss2;
+      oss1 << result.intrinsicMatrix;
+      oss2 << result.distCoeffs;
+      spdlog::info("Device intrinsic matrix: \n{}", oss1.str());
+      spdlog::info("Device distortion coeffs: \n{}", oss2.str());
+
+      std::filesystem::path outputDirExpandedPath{
+          common::expandUser(outputDir)};
+      std::filesystem::create_directories(outputDirExpandedPath);
+
+      std::filesystem::path intrinsicsPath{
+          std::filesystem::path(outputDirExpandedPath) / "intrinsics.yml"};
+      cv::FileStorage fs{intrinsicsPath, cv::FileStorage::WRITE};
+      fs << "intrinsicMatrix" << result.intrinsicMatrix;
+      fs << "distCoeffs" << result.distCoeffs;
+      fs.release();
+      spdlog::info("Saved intrinsics data to: {}", intrinsicsPath.string());
+    }
+  } catch (const GenICam::GenericException& e) {
+    spdlog::error("GenICam exception: {}", e.what());
+  } catch (const std::exception& e) {
+    spdlog::error("Exception: {}", e.what());
+  }
+
+  Arena::CloseSystem(arena);
 }
 
 void undistortImage(const std::string& intrinsicsFile,
@@ -196,6 +357,9 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
     return;
   }
 
+  std::filesystem::path outputDirExpandedPath{common::expandUser(outputDir)};
+  std::filesystem::create_directories(outputDirExpandedPath);
+
   std::vector<cv::Point2f> allCircleCoords;
   std::vector<cv::Point3f> allCircleXyzPositions;
   auto blobDetector{calibration::createBlobDetector()};
@@ -217,8 +381,10 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
       }
     }
     if (heliosImagePath.empty()) {
-      spdlog::warn("Could not find corresponding Helios intensity image for {}",
-                   cameraImagePath);
+      spdlog::warn(
+          "Could not find corresponding Helios intensity image for {}. "
+          "Skipping image.",
+          cameraImagePath);
       continue;
     }
 
@@ -232,8 +398,10 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
       }
     }
     if (heliosXyzFilePath.empty()) {
-      spdlog::warn("Could not find corresponding Helios XYZ data for {}",
-                   cameraImagePath);
+      spdlog::warn(
+          "Could not find corresponding Helios XYZ data for {}. Skipping "
+          "image.",
+          cameraImagePath);
       continue;
     }
 
@@ -243,32 +411,26 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
     spdlog::info("  Helios XYZ file: {}", heliosXyzFilePath.string());
 
     // Get circle centers in camera image
-    cv::Mat cameraImg{calibration::scaleGrayscaleImage(
-        cv::imread(cameraImagePath, cv::IMREAD_GRAYSCALE))};
-    std::vector<cv::Point2f> circleCoords;
-    bool found{cv::findCirclesGrid(cameraImg, cv::Size(5, 4), circleCoords,
-                                   cv::CALIB_CB_SYMMETRIC_GRID, blobDetector)};
-    if (!found) {
-      spdlog::warn("Could not get circle centers from camera image.");
+    cv::Mat cameraImg{readGrayscaleImage(cameraImagePath)};
+    auto circleCoordsOpt{calibration::findCircleGridCenters(
+        cameraImg, cv::Size(5, 4), cv::CALIB_CB_SYMMETRIC_GRID, blobDetector)};
+    if (!circleCoordsOpt) {
+      spdlog::warn("Could not get circle centers from {}", cameraImagePath);
       continue;
     }
+    std::vector<cv::Point2f> circleCoords{std::move(*circleCoordsOpt)};
 
     // Get circle centers in Helios image
-    cv::Mat heliosImg{calibration::scaleGrayscaleImage(
-        cv::imread(heliosImagePath, cv::IMREAD_GRAYSCALE))};
-    std::vector<cv::Point2f> heliosCircleCoords;
-    found = cv::findCirclesGrid(heliosImg, cv::Size(5, 4), heliosCircleCoords,
-                                cv::CALIB_CB_SYMMETRIC_GRID, blobDetector);
-    if (!found) {
-      spdlog::warn("Could not get circle centers from Helios intensity image.");
+    cv::Mat heliosImg{readGrayscaleImage(heliosImagePath.string())};
+    auto heliosCircleCoordsOpt{calibration::findCircleGridCenters(
+        heliosImg, cv::Size(5, 4), cv::CALIB_CB_SYMMETRIC_GRID, blobDetector)};
+    if (!heliosCircleCoordsOpt) {
+      spdlog::warn("Could not get circle centers from {}",
+                   heliosImagePath.string());
       continue;
     }
-
-    // Round to integer pixel positions
-    std::vector<cv::Point> heliosCircleCoordsInt;
-    for (const auto& pt : heliosCircleCoords) {
-      heliosCircleCoordsInt.push_back(cv::Point(cvRound(pt.x), cvRound(pt.y)));
-    }
+    std::vector<cv::Point2f> heliosCircleCoords{
+        std::move(*heliosCircleCoordsOpt)};
 
     // Parse XYZ data file
     cv::FileStorage xyzFileFs{heliosXyzFilePath, cv::FileStorage::READ};
@@ -282,9 +444,9 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
 
     // Get corresponding XYZ value from the XYZ data
     std::vector<cv::Point3f> circleXyzPositions;
-    for (auto& pt : heliosCircleCoordsInt) {
+    for (auto& pt : heliosCircleCoords) {
       // Access XYZ at [y, x]
-      cv::Vec3f xyz{heliosXyz.at<cv::Vec3f>(pt.y, pt.x)};
+      cv::Vec3f xyz{heliosXyz.at<cv::Vec3f>(cvRound(pt.y), cvRound(pt.x))};
       circleXyzPositions.emplace_back(xyz[0], xyz[1], xyz[2]);
     }
 
@@ -326,9 +488,6 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
   // Construct extrinsic matrix and write to file
   cv::Mat extrinsicMatrix{calibration::constructExtrinsicMatrix(rvec, tvec)};
 
-  std::filesystem::path outputDirExpandedPath{common::expandUser(outputDir)};
-  std::filesystem::create_directories(outputDirExpandedPath);
-
   std::filesystem::path extrinsicsPath{
       std::filesystem::path(outputDirExpandedPath) / "extrinsics.yml"};
   cv::FileStorage fs{extrinsicsPath, cv::FileStorage::WRITE};
@@ -362,12 +521,11 @@ void visualizeExtrinsics(const std::string& cameraImageFile,
   // Read image files
   std::filesystem::path cameraImageFileExpandedPath{
       common::expandUser(cameraImageFile)};
-  cv::Mat cameraImg{calibration::scaleGrayscaleImage(
-      cv::imread(cameraImageFileExpandedPath, cv::IMREAD_GRAYSCALE))};
+  cv::Mat cameraImg{readGrayscaleImage(cameraImageFileExpandedPath.string())};
   std::filesystem::path heliosIntensityimageFileExpandedPath{
       common::expandUser(heliosIntensityImageFile)};
-  cv::Mat heliosIntensityImg{calibration::scaleGrayscaleImage(
-      cv::imread(heliosIntensityimageFileExpandedPath, cv::IMREAD_GRAYSCALE))};
+  cv::Mat heliosIntensityImg{
+      readGrayscaleImage(heliosIntensityimageFileExpandedPath.string())};
 
   // Read XYZ file
   auto heliosXyzOpt{calibration::readXyzFile(heliosXyzFile)};
@@ -395,9 +553,7 @@ void visualizeExtrinsics(const std::string& cameraImageFile,
   // Render camera frame as red
   for (int r = 0; r < cameraH; ++r) {
     for (int c = 0; c < cameraW; ++c) {
-      if (cameraImg.at<uint8_t>(r, c) < 100) {
-        projectionImg.at<cv::Vec3b>(r, c) = cv::Vec3b(0, 0, 128);
-      }
+      projectionImg.at<cv::Vec3b>(r, c)[2] = 255 - cameraImg.at<uint8_t>(r, c);
     }
   }
   // Render projected XYZ points as green
@@ -408,8 +564,7 @@ void visualizeExtrinsics(const std::string& cameraImageFile,
     int row{cvRound(pt.y)};
     if (0 <= col && col < cameraW && 0 <= row && row < cameraH) {
       uint8_t intensity{heliosIntensityImg.at<uint8_t>(i)};
-      int thresh{(intensity < 30) ? 1 : 0};
-      projectionImg.at<cv::Vec3b>(row, col)[1] = thresh * 255;
+      projectionImg.at<cv::Vec3b>(row, col)[1] = intensity;
     }
   }
 
@@ -445,6 +600,22 @@ int main(int argc, char* argv[]) {
                    "calibration pattern")
       ->required();
   calculateIntrinsicsCommand
+      ->add_option("-o,--output_dir", outputDir,
+                   "Path to the directory to write intrinsic parameters to")
+      ->required();
+
+  auto getHeliosDeviceIntrinsicsCommand{app.add_subcommand(
+      "get_helios_device_intrinsics",
+      "Pull the Helios camera's factory intrinsic matrix and distortion "
+      "coefficients from the device")};
+  std::string serialNumber;
+  getHeliosDeviceIntrinsicsCommand
+      ->add_option("--serial_number", serialNumber,
+                   "Serial number of the Helios device to query. If "
+                   "omitted, the first connected Helios-model device is "
+                   "used.")
+      ->default_val("");
+  getHeliosDeviceIntrinsicsCommand
       ->add_option("-o,--output_dir", outputDir,
                    "Path to the directory to write intrinsic parameters to")
       ->required();
@@ -494,27 +665,6 @@ int main(int argc, char* argv[]) {
                    "Path to the directory to write extrinsic parameters to")
       ->required();
 
-  auto calculateExtrinsicsXyzToHeliosCommand{app.add_subcommand(
-      "calculate_extrinsics_xyz_to_helios",
-      "Calculate extrinsics that describe the orientation of Helios relative "
-      "to Helios XYZ from images of a calibration pattern")};
-  calculateExtrinsicsXyzToHeliosCommand
-      ->add_option("--helios_intrinsics_file", intrinsicsFile,
-                   "yml file containing Helios camera intrinsics")
-      ->required();
-  calculateExtrinsicsXyzToHeliosCommand
-      ->add_option("--helios_images_dir", heliosImagesDir,
-                   "Path to directory containing Helios intensity images")
-      ->required();
-  calculateExtrinsicsXyzToHeliosCommand
-      ->add_option("--helios_xyz_dir", heliosXyzDir,
-                   "Path to directory containing Helios XYZ data")
-      ->required();
-  calculateExtrinsicsXyzToHeliosCommand
-      ->add_option("-o,--output_dir", outputDir,
-                   "Path to the directory to write extrinsic parameters to")
-      ->required();
-
   auto visualizeExtrinsicsCommand{
       app.add_subcommand("visualize_extrinsics",
                          "Verify extrinsics between a camera and Helios XYZ by "
@@ -545,13 +695,14 @@ int main(int argc, char* argv[]) {
     captureFrame(exposureUs, gainDb, outputDir);
   } else if (*calculateIntrinsicsCommand) {
     calculateIntrinsics(imagesDir, outputDir);
+  } else if (*getHeliosDeviceIntrinsicsCommand) {
+    getHeliosDeviceIntrinsics(
+        serialNumber.empty() ? std::nullopt : std::make_optional(serialNumber),
+        outputDir);
   } else if (*undistortImageCommand) {
     undistortImage(intrinsicsFile, imageFile, outputFile);
   } else if (*calculateExtrinsicsXyzToTritonCommand) {
     calculateExtrinsicsXyzToCamera(intrinsicsFile, tritonImagesDir,
-                                   heliosImagesDir, heliosXyzDir, outputDir);
-  } else if (*calculateExtrinsicsXyzToHeliosCommand) {
-    calculateExtrinsicsXyzToCamera(intrinsicsFile, heliosImagesDir,
                                    heliosImagesDir, heliosXyzDir, outputDir);
   } else if (*visualizeExtrinsicsCommand) {
     visualizeExtrinsics(cameraImageFile, heliosIntensityImageFile,

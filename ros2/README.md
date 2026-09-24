@@ -131,41 +131,59 @@ We need to calculate the intrinsic matrix and distortion coefficients for each c
 
 ### Step 1: Capture frames
 
-1.  Print the [calibration grid](https://arenasdk.s3-us-west-2.amazonaws.com/LUCID_target_whiteCircles.pdf)
-2.  Imagine a 3x3 grid in the cameras' FOV. Do the following for each grid cell:
-    1.  Place the calibration grid in the grid cell
-    2.  Create a new directory where this set of images should be saved
-    3.  Capture a frame (change param values as needed):
+1.  Print the [calibration grid](https://arenasdk.s3-us-west-2.amazonaws.com/LUCID_target_whiteCircles.pdf).
+2.  Capture a frame at each of the following (Distance, Position in frame, Tilt) combinations, moving the calibration grid between captures. Tilt is the angle between the grid plane and the camera's image plane:
 
-            ros2 run camera_control calibrate_lucid_rgbd -- capture_frame --output_dir <output dir> --exposure_us 20000 --gain_db 1
+    | # | Distance | Position in frame | Tilt |
+    | --- | --- | --- | --- |
+    | 1 | Near (500mm) | Center | Flat (0°) |
+    | 2 | Mid (1000mm) | Center | Flat |
+    | 3 | Far (1500mm) | Center | Flat |
+    | 4 | Near | Top-left | Flat |
+    | 5 | Near | Top-right | Flat |
+    | 6 | Near | Bottom-left | Flat |
+    | 7 | Near | Bottom-right | Flat |
+    | 8 | Far | Top-left | Flat |
+    | 9 | Far | Top-right | Flat |
+    | 10 | Far | Bottom-left | Flat |
+    | 11 | Far | Bottom-right | Flat |
+    | 12 | Mid | Center | Yaw 30° (tilt right edge toward camera) |
+    | 13 | Mid | Center | Yaw -30° (tilt left edge toward camera) |
+    | 14 | Mid | Center | Pitch 30° (tilt top edge toward camera) |
+    | 15 | Mid | Center | Pitch -30° (tilt bottom edge toward camera) |
+    | 16 | Near | Left edge, mid-height | Yaw 30° |
+    | 17 | Near | Right edge, mid-height | Yaw -30° |
+    | 18 | Far | Center | Yaw 30° + pitch 30° |
 
-In the end, you should have 9 sets of {Triton image (png), Helios intensity image (png), Helios xyz data (yml)}.
+    Make sure the grid stays fully visible, even at the corner/edge positions.
 
-### Step 2: Calculate intrinsics
+    To capture the frames, use the runner-cutter-app UI to preview the color and depth frames live while capturing ("Show Test Pages" -> "Camera Test" -> "Save Calibration Images"). Alternatively, use the `calibrate_lucid_rgbd` script: first, create a new directory where you want the images to be saved, then capture a frame (change param values as needed) as follows:
 
-We calculate the intrinsic matrix and distortion coefficients using the method based on https://docs.opencv.org/4.x/d4/d94/tutorial_camera_calibration.html
+        ros2 run camera_control calibrate_lucid_rgbd -- capture_frame --output_dir <output dir> --exposure_us 20000 --gain_db 1
 
-1.  Create a single directory with the 9 Triton images you captured.
-2.  Run the following to calculate and save the Triton intrinsics:
+In the end, you should have 18 sets of {Triton image (png), Helios intensity image (png), Helios xyz data (yml)}.
+
+### Step 2: Organize captured files
+
+1.  Create 3 directories: one containing all of the Triton images, one containing all of the Helios intensity images, and one containing all of the Helios xyz data files. Make sure that the corresponding files in each directory share the same base name. For example, `triton_images/01.png`, `helios_intensity_images/01.png`, and `xyz_data/01.yml` should come from a single capture.
+
+### Step 3: Calculate intrinsics
+
+We calculate the intrinsic matrix and distortion coefficients of the Triton camera using the method based on https://docs.opencv.org/4.x/d4/d94/tutorial_camera_calibration.html
+
+1.  Run the following to calculate and save the Triton intrinsics:
 
         ros2 run camera_control calibrate_lucid_rgbd -- calculate_intrinsics --images_dir <path to the dir containing the Triton images> --output_dir <where to write the intrinsics data file>
 
-3.  Create a single directory with the 9 Helios intensity images you captured.
-4.  Run the following to calculate and save the Helios intrinsics:
+2.  Run the following to get the Helios factory-calibrated intrinsics:
 
-        ros2 run camera_control calibrate_lucid_rgbd -- calculate_intrinsics --images_dir <path to the dir containing the Helios intensity images> --output_dir <where to write the intrinsics data file>
+        ros2 run camera_control calibrate_lucid_rgbd -- get_helios_device_intrinsics --output_dir <where to write the intrinsics data file>
 
-### Step 3: Calculate extrinsics
+### Step 4: Calculate extrinsics
 
-1.  Create 3 directories: one containing all of the Triton images, one containing all of the Helios intensity images, and one containing all of the Helios xyz data files. Make sure that the corresponding files in each directory share the same base name. For example, `triton_images/0.png`, `helios_intensity_images/0.png`, and `xyz_data/0.yml` should come from a single capture.
-
-2.  Run the following to save the xyz-to-Triton extrinsics:
+1.  Run the following to save the xyz-to-Triton extrinsics:
 
         ros2 run camera_control calibrate_lucid_rgbd -- calculate_extrinsics_xyz_to_triton --triton_intrinsics_file <path to Triton intrinsics yml file> --triton_images_dir <dir containing all Triton images> --helios_images_dir <dir containing all Helios intensity images> --helios_xyz_dir <dir containing all xyz data files> --output_dir <where to write the extrinsics data file>
-
-3.  Run the following to save the xyz-to-Helios extrinsics:
-
-        ros2 run camera_control calibrate_lucid_rgbd -- calculate_extrinsics_xyz_to_helios --helios_intrinsics_file <path to Helios intrinsics yml file> --helios_images_dir <dir containing all Helios intensity images> --helios_xyz_dir <dir containing all xyz data files> --output_dir <where to write the extrinsics data file>
 
 ## Updating the Runner Detection Model
 

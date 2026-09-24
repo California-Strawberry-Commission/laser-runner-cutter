@@ -136,6 +136,10 @@ std::optional<cv::Point2i> RgbdAlignment::getCorrespondingDepthPixel(
   for projecting the xyz positions to the depth camera image plane.
   */
 
+  if (colorToDepthExtrinsicMatrix_.empty()) {
+    return std::nullopt;
+  }
+
   // Apply frame ROI offset. The calibration matrices and coefficients were
   // calculated based on the max camera frame size, and if there was a reduced
   // ROI set when capturing the frame, the pixel coordinate for the frame must

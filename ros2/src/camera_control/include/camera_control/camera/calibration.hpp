@@ -34,6 +34,32 @@ std::optional<calibration::IntrinsicsResult> calculateIntrinsics(
     const cv::Ptr<cv::FeatureDetector> blobDetector = NULL);
 
 /**
+ * Finds circle grid centers in an image.
+ *
+ * For symmetric grids, findCirclesGrid's point ordering is ambiguous: the
+ * pattern looks identical after a 180-degree rotation, so the detected order
+ * can start from either end depending on how the grid happens to be oriented
+ * in the image. To make it possible to reliably pair up circle centers
+ * detected independently in two different images of the same physical grid
+ * (e.g. from two different cameras), the returned centers are canonicalized
+ * to start with whichever detected circle is closest to the image origin.
+ *
+ * @param image Grayscale image containing the calibration pattern.
+ * @param gridSize Size of the calibration pattern (columns, rows).
+ * @param gridType One of:
+ *        cv::CALIB_CB_SYMMETRIC_GRID - symmetric pattern of circles,
+ *        cv::CALIB_CB_ASYMMETRIC_GRID - asymmetric pattern of circles.
+ * @param blobDetector Feature detector for blobs. If nullptr, a default
+ * implementation is used.
+ * @return Detected circle centers, or std::nullopt if the grid could not be
+ * found.
+ */
+std::optional<std::vector<cv::Point2f>> findCircleGridCenters(
+    const cv::Mat& image, const cv::Size& gridSize,
+    const int gridType = cv::CALIB_CB_SYMMETRIC_GRID,
+    const cv::Ptr<cv::FeatureDetector> blobDetector = NULL);
+
+/**
  * Constructs a 4x4 extrinsic transformation matrix from rotation
  * and translation vectors.
  *

@@ -1,5 +1,6 @@
 #include "camera_control/camera/calibration.hpp"
 
+#include <algorithm>
 #include <filesystem>
 
 #include "common/utils.hpp"
@@ -32,6 +33,55 @@ ReprojectErrors calcReprojectionError(
 }
 
 }  // namespace
+
+std::optional<std::vector<cv::Point2f>> calibration::findCircleGridCenters(
+    const cv::Mat& image, const cv::Size& gridSize, const int gridType,
+    const cv::Ptr<cv::FeatureDetector> blobDetector) {
+  cv::Ptr<cv::FeatureDetector> detector{
+      blobDetector ? blobDetector : calibration::createBlobDetector()};
+
+  // Exit early if the blob detector can't even find enough candidate circles to
+  // fill the grid.
+  std::vector<cv::KeyPoint> keypoints;
+  detector->detect(image, keypoints);
+  if (static_cast<int>(keypoints.size()) < gridSize.width * gridSize.height) {
+    spdlog::error(
+        "Blob detector found only {} keypoint(s), need at least {} to fill a "
+        "{}x{} grid.",
+        keypoints.size(), gridSize.width * gridSize.height, gridSize.width,
+        gridSize.height);
+    return std::nullopt;
+  }
+
+  std::vector<cv::Point2f> centers;
+  bool found{cv::findCirclesGrid(image, gridSize, centers, gridType, detector)};
+  if (!found) {
+    // Retry with CALIB_CB_CLUSTERING, which is more robust to perspective
+    // distortion (e.g. a tilted calibration grid) at the cost of being more
+    // sensitive to clutter.
+    found = cv::findCirclesGrid(image, gridSize, centers,
+                                gridType | cv::CALIB_CB_CLUSTERING, detector);
+  }
+  if (!found) {
+    spdlog::error("Could not find a {}x{} circle grid ({} keypoints detected).",
+                  gridSize.width, gridSize.height, keypoints.size());
+    return std::nullopt;
+  }
+
+  // findCirclesGrid's point ordering is ambiguous for symmetric grids (the
+  // pattern looks identical after a 180-degree rotation), so canonicalize to
+  // "top-left circle first".
+  if ((gridType & cv::CALIB_CB_SYMMETRIC_GRID) && !centers.empty()) {
+    auto distSqFromOrigin = [](const cv::Point2f& p) {
+      return p.x * p.x + p.y * p.y;
+    };
+    if (distSqFromOrigin(centers.back()) < distSqFromOrigin(centers.front())) {
+      std::reverse(centers.begin(), centers.end());
+    }
+  }
+
+  return centers;
+}
 
 std::optional<calibration::IntrinsicsResult> calibration::calculateIntrinsics(
     const std::vector<cv::Mat>& monoImages, const cv::Size& gridSize,
@@ -66,15 +116,14 @@ std::optional<calibration::IntrinsicsResult> calibration::calculateIntrinsics(
 
   std::vector<std::vector<cv::Point3f>> objPoints;
   std::vector<std::vector<cv::Point2f>> imgPoints;
-  bool found;
   for (const cv::Mat& image : monoImages) {
-    std::vector<cv::Point2f> centers;
-    found = findCirclesGrid(image, gridSize, centers, gridType, blobDetector);
-    if (found) {
+    auto centersOpt{calibration::findCircleGridCenters(image, gridSize,
+                                                       gridType, blobDetector)};
+    if (centersOpt) {
       objPoints.push_back(calibrationPoints);
-      imgPoints.push_back(centers);
+      imgPoints.push_back(std::move(*centersOpt));
     } else {
-      spdlog::warn("Could not get circle centers. Ignoring Image.");
+      spdlog::warn("Could not get circle centers. Ignoring image.");
     }
   }
 

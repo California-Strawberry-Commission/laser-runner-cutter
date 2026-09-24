@@ -64,6 +64,7 @@ CalibrationParams readCalibrationParams(const std::string& calibId) {
       calibParamsDir / "xyz_to_triton_extrinsics.yml"};
   std::filesystem::path xyzToHeliosIntrinsicsPath{
       calibParamsDir / "xyz_to_helios_extrinsics.yml"};
+
   auto tritonIntrinsicsOpt{
       calibration::readIntrinsicsFile(tritonIntrinsicsPath.string())};
   if (!tritonIntrinsicsOpt) {
@@ -72,6 +73,7 @@ CalibrationParams readCalibrationParams(const std::string& calibId) {
   }
   auto [tritonIntrinsicMatrix,
         tritonDistCoeffs]{std::move(*tritonIntrinsicsOpt)};
+
   auto heliosIntrinsicsOpt{
       calibration::readIntrinsicsFile(heliosIntrinsicsPath.string())};
   if (!heliosIntrinsicsOpt) {
@@ -80,6 +82,7 @@ CalibrationParams readCalibrationParams(const std::string& calibId) {
   }
   auto [heliosIntrinsicMatrix,
         heliosDistCoeffs]{std::move(*heliosIntrinsicsOpt)};
+
   auto xyzToTritonExtrinsicsOpt{
       calibration::readExtrinsicsFile(xyzToTritonIntrinsicsPath.string())};
   if (!xyzToTritonExtrinsicsOpt) {
@@ -87,13 +90,22 @@ CalibrationParams readCalibrationParams(const std::string& calibId) {
                                          xyzToTritonIntrinsicsPath.string()));
   }
   auto xyzToTritonExtrinsicMatrix{std::move(*xyzToTritonExtrinsicsOpt)};
-  auto xyzToHeliosExtrinsicsOpt{
-      calibration::readExtrinsicsFile(xyzToHeliosIntrinsicsPath.string())};
-  if (!xyzToHeliosExtrinsicsOpt) {
-    throw std::runtime_error(fmt::format("Could not read calibration file {}",
-                                         xyzToHeliosIntrinsicsPath.string()));
+
+  // xyz_to_helios_extrinsics.yml is optional. The Helios's XYZ coordinate
+  // system is expected to be centered at the optical center of the camera, in
+  // which case the extrinsic is expected to be identity.
+  cv::Mat xyzToHeliosExtrinsicMatrix;
+  if (std::filesystem::exists(xyzToHeliosIntrinsicsPath)) {
+    auto xyzToHeliosExtrinsicsOpt{
+        calibration::readExtrinsicsFile(xyzToHeliosIntrinsicsPath.string())};
+    if (!xyzToHeliosExtrinsicsOpt) {
+      throw std::runtime_error(fmt::format("Could not read calibration file {}",
+                                           xyzToHeliosIntrinsicsPath.string()));
+    }
+    xyzToHeliosExtrinsicMatrix = std::move(*xyzToHeliosExtrinsicsOpt);
+  } else {
+    xyzToHeliosExtrinsicMatrix = cv::Mat::eye(4, 4, CV_64F);
   }
-  auto xyzToHeliosExtrinsicMatrix{std::move(*xyzToHeliosExtrinsicsOpt)};
 
   CalibrationParams result;
   result.tritonIntrinsicMatrix = tritonIntrinsicMatrix;
