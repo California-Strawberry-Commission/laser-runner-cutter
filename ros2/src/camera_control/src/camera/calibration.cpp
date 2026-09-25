@@ -91,13 +91,13 @@ std::optional<calibration::IntrinsicsResult> calibration::calculateIntrinsics(
   // calibration grid is on a flat plane, we can set the Z coordinates as 0.
 
   std::vector<cv::Point3f> calibrationPoints;
-  if (gridType == cv::CALIB_CB_SYMMETRIC_GRID) {
+  if (gridType & cv::CALIB_CB_SYMMETRIC_GRID) {
     for (int i = 0; i < gridSize.height; i++) {
       for (int j = 0; j < gridSize.width; j++) {
         calibrationPoints.emplace_back(j, i, 0);
       }
     }
-  } else if (gridType == cv::CALIB_CB_ASYMMETRIC_GRID) {
+  } else if (gridType & cv::CALIB_CB_ASYMMETRIC_GRID) {
     for (int i = 0; i < gridSize.height; i++) {
       for (int j = 0; j < gridSize.width; j++) {
         calibrationPoints.emplace_back((2 * j + i % 2), i, 0);
