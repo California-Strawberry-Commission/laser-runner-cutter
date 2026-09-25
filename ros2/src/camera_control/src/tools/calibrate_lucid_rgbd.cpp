@@ -1,4 +1,6 @@
 #include <CLI/CLI.hpp>
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <opencv2/opencv.hpp>
 
@@ -99,6 +101,102 @@ void captureFrame(double exposureUs, double gainDb,
   spdlog::info("Saved xyz data to: {}", xyzPath.string());
 }
 
+// Evaluates a set of intrinsics against images of the calibration pattern and
+// writes evaluation images to outputDir.
+void validateIntrinsics(const std::vector<std::string>& imagePaths,
+                        const std::vector<cv::Mat>& images,
+                        const cv::Size& gridSize,
+                        const cv::Mat& intrinsicMatrix,
+                        const cv::Mat& distCoeffs,
+                        const std::filesystem::path& outputDir) {
+  spdlog::info("Evaluating intrinsics...");
+
+  std::filesystem::create_directories(outputDir);
+
+  // Object points use unit grid spacing. Reprojection error is independent of
+  // the grid's physical scale.
+  std::vector<cv::Point3f> objectPoints;
+  for (int i = 0; i < gridSize.height; ++i) {
+    for (int j = 0; j < gridSize.width; ++j) {
+      objectPoints.emplace_back(j, i, 0);
+    }
+  }
+
+  auto blobDetector{calibration::createBlobDetector()};
+  cv::Size imageSize{images.front().size()};
+  int markerSize{std::max(1, imageSize.width / 400)};
+  double fontScale{0.4 * markerSize};
+  int fontThickness{std::max(1, markerSize / 2)};
+  cv::Point textOrigin{10, 15 * markerSize};
+  cv::Mat coverageImg{cv::Mat::zeros(imageSize, CV_8UC3)};
+  double residualsArrowScale{20.};
+
+  for (size_t i = 0; i < images.size(); ++i) {
+    std::string name{std::filesystem::path(imagePaths[i]).stem().string()};
+    auto centersOpt{calibration::findCircleGridCenters(
+        images[i], gridSize, cv::CALIB_CB_SYMMETRIC_GRID, blobDetector)};
+    if (!centersOpt) {
+      spdlog::warn("[validateIntrinsics] Could not get circle centers from {}",
+                   imagePaths[i]);
+      continue;
+    }
+    const std::vector<cv::Point2f>& detected{*centersOpt};
+
+    cv::Mat rvec, tvec;
+    if (!cv::solvePnP(objectPoints, detected, intrinsicMatrix, distCoeffs, rvec,
+                      tvec)) {
+      spdlog::warn("[validateIntrinsics] Could not solve pose for {}",
+                   imagePaths[i]);
+      continue;
+    }
+    std::vector<cv::Point2f> reprojected;
+    cv::projectPoints(objectPoints, rvec, tvec, intrinsicMatrix, distCoeffs,
+                      reprojected);
+
+    cv::Mat residualsImg;
+    cv::cvtColor(images[i], residualsImg, cv::COLOR_GRAY2BGR);
+    double sqError{0.0};
+    double maxError{0.0};
+    for (size_t p = 0; p < detected.size(); ++p) {
+      double err{cv::norm(reprojected[p] - detected[p])};
+      sqError += err * err;
+      maxError = std::max(maxError, err);
+
+      cv::circle(residualsImg, detected[p], 4 * markerSize,
+                 cv::Scalar(0, 255, 0), markerSize, cv::LINE_AA);
+      cv::drawMarker(residualsImg, reprojected[p], cv::Scalar(0, 0, 255),
+                     cv::MARKER_CROSS, 6 * markerSize, markerSize, cv::LINE_AA);
+      cv::arrowedLine(
+          residualsImg, detected[p],
+          detected[p] + (reprojected[p] - detected[p]) * residualsArrowScale,
+          cv::Scalar(255, 0, 255), markerSize, cv::LINE_AA, 0, 0.2);
+
+      // Draw a circle on the coverage image where green is error == 0 and red
+      // is error >= 1
+      double t{std::clamp(err, 0.0, 1.0)};
+      cv::circle(coverageImg, detected[p], 3 * markerSize,
+                 cv::Scalar(0, 255 * (1.0 - t), 255 * t), cv::FILLED,
+                 cv::LINE_AA);
+    }
+    double rmsError{std::sqrt(sqError / detected.size())};
+    spdlog::info(
+        "[validateIntrinsics] {}: RMS error {:.4f}px, max error {:.4f}px", name,
+        rmsError, maxError);
+    cv::putText(residualsImg,
+                fmt::format("RMS {:.3f}px (arrows scaled x{})", rmsError,
+                            residualsArrowScale),
+                textOrigin, cv::FONT_HERSHEY_SIMPLEX, fontScale,
+                cv::Scalar(255, 0, 255), fontThickness, cv::LINE_AA);
+    cv::imwrite(outputDir / (name + "_residuals.png"), residualsImg);
+  }
+
+  cv::putText(coverageImg, "Reprojection error: green=0px, red>=1px",
+              textOrigin, cv::FONT_HERSHEY_SIMPLEX, fontScale,
+              cv::Scalar(255, 255, 255), fontThickness, cv::LINE_AA);
+  cv::imwrite(outputDir / "coverage.png", coverageImg);
+  spdlog::info("Saved intrinsics validation images to: {}", outputDir.string());
+}
+
 void calculateIntrinsics(const std::string& imagesDir,
                          const std::string& outputDir) {
   std::filesystem::path imagesDirExpandedPath{common::expandUser(imagesDir)};
@@ -109,18 +207,26 @@ void calculateIntrinsics(const std::string& imagesDir,
     return;
   }
 
-  std::vector<cv::Mat> images;
+  std::vector<std::string> candidatePaths;
   for (const auto& entry :
        std::filesystem::directory_iterator(imagesDirExpandedPath)) {
     if (entry.is_regular_file()) {
       auto ext{entry.path().extension().string()};
       std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
       if (ext == ".png" || ext == ".jpg" || ext == ".jpeg") {
-        cv::Mat img{readGrayscaleImage(entry.path().string())};
-        if (!img.empty()) {
-          images.push_back(img);
-        }
+        candidatePaths.push_back(entry.path().string());
       }
+    }
+  }
+  std::sort(candidatePaths.begin(), candidatePaths.end());
+
+  std::vector<std::string> imagePaths;
+  std::vector<cv::Mat> images;
+  for (const auto& path : candidatePaths) {
+    cv::Mat img{readGrayscaleImage(path)};
+    if (!img.empty()) {
+      imagePaths.push_back(path);
+      images.push_back(img);
     }
   }
 
@@ -157,6 +263,11 @@ void calculateIntrinsics(const std::string& imagesDir,
   fs << "distCoeffs" << calibrateResults.distCoeffs;
   fs.release();
   spdlog::info("Saved intrinsics data to: {}", intrinsicsPath.string());
+
+  validateIntrinsics(imagePaths, images, cv::Size(5, 4),
+                     calibrateResults.intrinsicMatrix,
+                     calibrateResults.distCoeffs,
+                     outputDirExpandedPath / "intrinsics_validation");
 }
 
 std::optional<Arena::DeviceInfo> findFirstDeviceWithModelPrefix(
@@ -306,18 +417,23 @@ void undistortImage(const std::string& intrinsicsFile,
   cv::imwrite(outputFileExpandedPath, undistorted);
 }
 
-void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
-                                    const std::string& cameraImagesDir,
-                                    const std::string& heliosImagesDir,
-                                    const std::string& heliosXyzDir,
-                                    const std::string& outputDir) {
-  // Parse intrinsics file
-  auto intrinsicsOpt{calibration::readIntrinsicsFile(cameraIntrinsicsFile)};
-  if (!intrinsicsOpt) {
-    return;
-  }
-  auto [intrinsicMatrix, distCoeffs]{std::move(*intrinsicsOpt)};
+struct ViewCorrespondences {
+  std::string name;
+  std::string cameraImagePath;
+  std::vector<cv::Point2f> cameraPts;
+  std::vector<cv::Point3f> xyzPts;
+};
 
+// For each camera image, finds the Helios intensity image and XYZ data with the
+// same file stem, detects the circle grid in both images, and pairs each camera
+// circle center with the XYZ position at the corresponding Helios circle
+// center. Circles whose XYZ position is invalid (non-finite or z <= 0) are
+// dropped. Returns std::nullopt if any of the directories are invalid or an
+// XYZ file could not be read.
+std::optional<std::vector<ViewCorrespondences>>
+collectXyzToCameraCorrespondences(const std::string& cameraImagesDir,
+                                  const std::string& heliosImagesDir,
+                                  const std::string& heliosXyzDir) {
   // Find camera image paths
   std::filesystem::path cameraImagesExpandedPath{
       common::expandUser(cameraImagesDir)};
@@ -325,7 +441,7 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
       !std::filesystem::is_directory(cameraImagesExpandedPath)) {
     spdlog::error("Provided path is not a valid directory: {}",
                   cameraImagesExpandedPath.string());
-    return;
+    return std::nullopt;
   }
   std::vector<std::string> cameraImagePaths;
   for (auto& entry :
@@ -347,21 +463,17 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
       !std::filesystem::is_directory(heliosImagesExpandedPath)) {
     spdlog::error("Provided path is not a valid directory: {}",
                   heliosImagesExpandedPath.string());
-    return;
+    return std::nullopt;
   }
   std::filesystem::path heliosXyzExpandedPath{common::expandUser(heliosXyzDir)};
   if (!std::filesystem::exists(heliosXyzExpandedPath) ||
       !std::filesystem::is_directory(heliosXyzExpandedPath)) {
     spdlog::error("Provided path is not a valid directory: {}",
                   heliosXyzExpandedPath.string());
-    return;
+    return std::nullopt;
   }
 
-  std::filesystem::path outputDirExpandedPath{common::expandUser(outputDir)};
-  std::filesystem::create_directories(outputDirExpandedPath);
-
-  std::vector<cv::Point2f> allCircleCoords;
-  std::vector<cv::Point3f> allCircleXyzPositions;
+  std::vector<ViewCorrespondences> views;
   auto blobDetector{calibration::createBlobDetector()};
 
   // For each camera image, find the corresponding Helios intensity image and
@@ -436,25 +548,69 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
     cv::FileStorage xyzFileFs{heliosXyzFilePath, cv::FileStorage::READ};
     if (!xyzFileFs.isOpened() || xyzFileFs["xyz"].isNone()) {
       spdlog::error("Could not read XYZ file: {}", heliosXyzFilePath.string());
-      return;
+      return std::nullopt;
     }
     cv::Mat heliosXyz;
     xyzFileFs["xyz"] >> heliosXyz;
     xyzFileFs.release();
 
-    // Get corresponding XYZ value from the XYZ data
-    std::vector<cv::Point3f> circleXyzPositions;
-    for (auto& pt : heliosCircleCoords) {
+    // Get corresponding XYZ value from the XYZ data, dropping circles without
+    // a valid depth measurement
+    ViewCorrespondences view{baseName, cameraImagePath, {}, {}};
+    for (size_t i = 0; i < heliosCircleCoords.size(); ++i) {
+      const cv::Point2f& pt{heliosCircleCoords[i]};
       // Access XYZ at [y, x]
       cv::Vec3f xyz{heliosXyz.at<cv::Vec3f>(cvRound(pt.y), cvRound(pt.x))};
-      circleXyzPositions.emplace_back(xyz[0], xyz[1], xyz[2]);
+      if (!std::isfinite(xyz[0]) || !std::isfinite(xyz[1]) ||
+          !std::isfinite(xyz[2]) || xyz[2] <= 0.0f) {
+        continue;
+      }
+      view.cameraPts.push_back(circleCoords[i]);
+      view.xyzPts.emplace_back(xyz[0], xyz[1], xyz[2]);
+    }
+    size_t numDropped{heliosCircleCoords.size() - view.cameraPts.size()};
+    if (numDropped > 0) {
+      spdlog::warn("  Dropped {} circle(s) with invalid XYZ data", numDropped);
+    }
+    if (view.cameraPts.empty()) {
+      continue;
     }
 
-    allCircleCoords.insert(allCircleCoords.end(), circleCoords.begin(),
-                           circleCoords.end());
+    views.push_back(std::move(view));
+  }
+
+  return views;
+}
+
+void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
+                                    const std::string& cameraImagesDir,
+                                    const std::string& heliosImagesDir,
+                                    const std::string& heliosXyzDir,
+                                    const std::string& outputDir) {
+  // Parse intrinsics file
+  auto intrinsicsOpt{calibration::readIntrinsicsFile(cameraIntrinsicsFile)};
+  if (!intrinsicsOpt) {
+    return;
+  }
+  auto [intrinsicMatrix, distCoeffs]{std::move(*intrinsicsOpt)};
+
+  auto viewsOpt{collectXyzToCameraCorrespondences(
+      cameraImagesDir, heliosImagesDir, heliosXyzDir)};
+  if (!viewsOpt) {
+    return;
+  }
+  std::vector<ViewCorrespondences> views{std::move(*viewsOpt)};
+
+  std::filesystem::path outputDirExpandedPath{common::expandUser(outputDir)};
+  std::filesystem::create_directories(outputDirExpandedPath);
+
+  std::vector<cv::Point2f> allCircleCoords;
+  std::vector<cv::Point3f> allCircleXyzPositions;
+  for (const auto& view : views) {
+    allCircleCoords.insert(allCircleCoords.end(), view.cameraPts.begin(),
+                           view.cameraPts.end());
     allCircleXyzPositions.insert(allCircleXyzPositions.end(),
-                                 circleXyzPositions.begin(),
-                                 circleXyzPositions.end());
+                                 view.xyzPts.begin(), view.xyzPts.end());
   }
 
   if (allCircleCoords.empty() || allCircleXyzPositions.empty()) {
@@ -474,17 +630,6 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
     return;
   }
 
-  // Calculate reprojection error
-  std::vector<cv::Point2f> reprojected;
-  cv::projectPoints(allCircleXyzPositions, rvec, tvec, intrinsicMatrix,
-                    distCoeffs, reprojected);
-  double totalError{0.0};
-  for (size_t i = 0; i < allCircleCoords.size(); ++i) {
-    totalError += cv::norm(allCircleCoords[i] - reprojected[i]);
-  }
-  double meanError{totalError / allCircleCoords.size()};
-  spdlog::info("Reprojection error (mean): {}", meanError);
-
   // Construct extrinsic matrix and write to file
   cv::Mat extrinsicMatrix{calibration::constructExtrinsicMatrix(rvec, tvec)};
 
@@ -494,6 +639,73 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
   fs << "extrinsicMatrix" << extrinsicMatrix;
   fs.release();
   spdlog::info("Saved extrinsics data to: {}", extrinsicsPath.string());
+
+  // Calculate reprojection error, overall and per view, and write a residuals
+  // image for each view
+  spdlog::info("Evaluating extrinsics...");
+  std::filesystem::path validationDir{outputDirExpandedPath /
+                                      "extrinsics_validation"};
+  std::filesystem::create_directories(validationDir);
+  double residualsArrowScale{20.};
+  double totalError{0.0};
+  std::vector<double> viewMeanErrors;
+  std::vector<double> viewMaxErrors;
+  for (const auto& view : views) {
+    std::vector<cv::Point2f> reprojected;
+    cv::projectPoints(view.xyzPts, rvec, tvec, intrinsicMatrix, distCoeffs,
+                      reprojected);
+
+    cv::Mat cameraImg{readGrayscaleImage(view.cameraImagePath)};
+    cv::Mat residualsImg;
+    cv::cvtColor(cameraImg, residualsImg, cv::COLOR_GRAY2BGR);
+    int markerSize{std::max(1, residualsImg.cols / 400)};
+    double fontScale{0.4 * markerSize};
+    int fontThickness{std::max(1, markerSize / 2)};
+    cv::Point textOrigin{10, 15 * markerSize};
+
+    double viewTotalError{0.0};
+    double viewMaxError{0.0};
+    for (size_t i = 0; i < view.cameraPts.size(); ++i) {
+      double err{cv::norm(view.cameraPts[i] - reprojected[i])};
+      viewTotalError += err;
+      viewMaxError = std::max(viewMaxError, err);
+
+      cv::circle(residualsImg, view.cameraPts[i], 4 * markerSize,
+                 cv::Scalar(0, 255, 0), markerSize, cv::LINE_AA);
+      cv::drawMarker(residualsImg, reprojected[i], cv::Scalar(0, 0, 255),
+                     cv::MARKER_CROSS, 6 * markerSize, markerSize, cv::LINE_AA);
+      cv::arrowedLine(residualsImg, view.cameraPts[i],
+                      view.cameraPts[i] + (reprojected[i] - view.cameraPts[i]) *
+                                              residualsArrowScale,
+                      cv::Scalar(255, 0, 255), markerSize, cv::LINE_AA, 0, 0.2);
+    }
+    double viewMeanError{viewTotalError / view.cameraPts.size()};
+    totalError += viewTotalError;
+    viewMeanErrors.push_back(viewMeanError);
+    viewMaxErrors.push_back(viewMaxError);
+
+    cv::putText(residualsImg,
+                fmt::format("Mean {:.3f}px, max {:.3f}px (arrows scaled x{})",
+                            viewMeanError, viewMaxError, residualsArrowScale),
+                textOrigin, cv::FONT_HERSHEY_SIMPLEX, fontScale,
+                cv::Scalar(255, 0, 255), fontThickness, cv::LINE_AA);
+    cv::imwrite(validationDir / (view.name + "_residuals.png"), residualsImg);
+  }
+  spdlog::info("Saved extrinsics validation images to: {}",
+               validationDir.string());
+  double meanError{totalError / allCircleCoords.size()};
+
+  spdlog::info("Per-view reprojection error:");
+  spdlog::info("  {:<16} {:>8} {:>10} {:>10}", "view", "points", "mean (px)",
+               "max (px)");
+  for (size_t v = 0; v < views.size(); ++v) {
+    spdlog::info("  {:<16} {:>8} {:>10.4f} {:>10.4f}", views[v].name,
+                 views[v].cameraPts.size(), viewMeanErrors[v],
+                 viewMaxErrors[v]);
+  }
+  spdlog::info("Reprojection error (mean): {}", meanError);
+  spdlog::info("Translation magnitude: {:.2f} mm", cv::norm(tvec));
+  spdlog::info("Rotation angle: {:.3f} deg", cv::norm(rvec) * 180.0 / CV_PI);
 }
 
 void visualizeExtrinsics(const std::string& cameraImageFile,
