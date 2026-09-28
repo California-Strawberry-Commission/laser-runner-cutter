@@ -746,42 +746,101 @@ void visualizeExtrinsics(const std::string& cameraImageFile,
   }
   auto heliosXyz{std::move(*heliosXyzOpt)};
 
-  // Prepare object points
+  // To visualize the quality of the extrinsics, we project the camera image
+  // onto the Helios image plane (by creating a map from Helios image coord to
+  // the camera image coord, then using cv::remap). Ideally the projected image
+  // and the Helios intensity image should line up exactly.
+
+  // Project every Helios pixel's XYZ position into the camera image
   int h{heliosXyz.rows};
   int w{heliosXyz.cols};
-  int c{heliosXyz.channels()};
-  heliosXyz = heliosXyz.reshape(c, h * w);
-
-  // Project points
+  if (heliosIntensityImg.size() != heliosXyz.size()) {
+    spdlog::error(
+        "Helios intensity image size ({}x{}) does not match XYZ data size "
+        "({}x{})",
+        heliosIntensityImg.cols, heliosIntensityImg.rows, w, h);
+    return;
+  }
+  cv::Mat xyzPoints{heliosXyz.reshape(3, h * w)};
   cv::Mat projectedPoints;
-  cv::projectPoints(heliosXyz, rvec, tvec, intrinsicMatrix, distCoeffs,
+  cv::projectPoints(xyzPoints, rvec, tvec, intrinsicMatrix, distCoeffs,
                     projectedPoints);
-  projectedPoints = projectedPoints.reshape(2, h * w);
 
-  // Generate image
-  int cameraH{cameraImg.rows};
-  int cameraW{cameraImg.cols};
-  cv::Mat projectionImg{cv::Mat::zeros(cameraH, cameraW, CV_8UC3)};
-  // Render camera frame as red
-  for (int r = 0; r < cameraH; ++r) {
-    for (int c = 0; c < cameraW; ++c) {
-      projectionImg.at<cv::Vec3b>(r, c)[2] = 255 - cameraImg.at<uint8_t>(r, c);
+  // map(row, col) gives the camera pixel coord corresponding to the Helios
+  // pixel (row, col). cv::remap further down requires a CV_32FC2 map, so just
+  // convert here.
+  cv::Mat map;
+  projectedPoints.reshape(2, h).convertTo(map, CV_32F);
+  // Convert xyz to float for consistency and ease of use further down
+  cv::Mat xyzFloat;
+  heliosXyz.convertTo(xyzFloat, CV_32F);
+  // Tracks which Helios pixels have a meaningful camera pixel to compare
+  // against, so edges can later be limited to that region
+  cv::Mat validMask{cv::Mat::zeros(h, w, CV_8UC1)};
+  for (int r = 0; r < h; ++r) {
+    for (int c = 0; c < w; ++c) {
+      cv::Vec3f xyz{xyzFloat.at<cv::Vec3f>(r, c)};
+      cv::Vec2f cameraPixelCoord{map.at<cv::Vec2f>(r, c)};
+      // Skip pixels with no usable depth (non-finite values, or z <= 0, which
+      // would be at or behind the camera), and points that project outside the
+      // camera image.
+      if (!std::isfinite(xyz[0]) || !std::isfinite(xyz[1]) ||
+          !std::isfinite(xyz[2]) || xyz[2] <= 0.0f ||
+          cameraPixelCoord[0] < 0.0f || cameraPixelCoord[1] < 0.0f ||
+          cameraPixelCoord[0] > cameraImg.cols - 1 ||
+          cameraPixelCoord[1] > cameraImg.rows - 1) {
+        // Set value to (-1, -1) so that remap fills them with black
+        map.at<cv::Vec2f>(r, c) = cv::Vec2f(-1.0f, -1.0f);
+      } else {
+        validMask.at<uint8_t>(r, c) = 255;
+      }
     }
   }
-  // Render projected XYZ points as green
-  heliosIntensityImg = heliosIntensityImg.reshape(1, h * w);  // flatten
-  for (int i = 0; i < h * w; ++i) {
-    cv::Point2f pt{projectedPoints.at<cv::Point2f>(i)};
-    int col{cvRound(pt.x)};
-    int row{cvRound(pt.y)};
-    if (0 <= col && col < cameraW && 0 <= row && row < cameraH) {
-      uint8_t intensity{heliosIntensityImg.at<uint8_t>(i)};
-      projectionImg.at<cv::Vec3b>(row, col)[1] = intensity;
-    }
+  // Shrink the valid region slightly so the boundary between valid and invalid
+  // pixels doesn't produce spurious edges
+  cv::erode(validMask, validMask,
+            cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5)));
+
+  // Warp the camera image into the Helios frame. The camera image has a much
+  // higher resolution than Helios, so blur it first to avoid aliasing, which
+  // would otherwise show up as spurious edges.
+  double downscaleFactor{static_cast<double>(cameraImg.cols) / w};
+  cv::Mat cameraImgBlurred;
+  if (downscaleFactor > 1.0) {
+    cv::GaussianBlur(cameraImg, cameraImgBlurred, cv::Size(0, 0),
+                     downscaleFactor / 2.0);
+  } else {
+    cameraImgBlurred = cameraImg;
   }
+  cv::Mat cameraInHelios;
+  cv::remap(cameraImgBlurred, cameraInHelios, map, cv::noArray(),
+            cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(0));
+
+  // Detect edges in both images. cameraInHelios is the camera image projected
+  // onto the Helios image plane. heliosBlurred is the Helios intensity image
+  // with a Gaussian blur, to prevent noise from turning into spurious edges
+  cv::Mat heliosBlurred;
+  cv::GaussianBlur(heliosIntensityImg, heliosBlurred, cv::Size(3, 3), 0);
+  cv::Mat cameraEdges, heliosEdges;
+  cv::Canny(cameraInHelios, cameraEdges, 50, 150);
+  cv::Canny(heliosBlurred, heliosEdges, 50, 150);
+  cameraEdges.setTo(0, ~validMask);
+  heliosEdges.setTo(0, ~validMask);
+
+  // Render the camera image edges in red and Helios intensity image edges in
+  // green. Where the edges coincide they appear yellow.
+  cv::Mat visualizationImg;
+  cv::cvtColor(cameraInHelios * 0.5, visualizationImg, cv::COLOR_GRAY2BGR);
+  visualizationImg.setTo(cv::Scalar(0, 0, 255), cameraEdges);
+  visualizationImg.setTo(cv::Scalar(0, 255, 0), heliosEdges);
+  cv::Mat overlapEdges;
+  cv::bitwise_and(cameraEdges, heliosEdges, overlapEdges);
+  visualizationImg.setTo(cv::Scalar(0, 255, 255), overlapEdges);
 
   std::filesystem::path outputFileExpandedPath{common::expandUser(outputFile)};
-  cv::imwrite(outputFileExpandedPath, projectionImg);
+  cv::imwrite(outputFileExpandedPath, visualizationImg);
+  spdlog::info("Saved extrinsics visualization to: {}",
+               outputFileExpandedPath.string());
 }
 
 int main(int argc, char* argv[]) {

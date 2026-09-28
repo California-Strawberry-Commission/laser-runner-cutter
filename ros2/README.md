@@ -175,15 +175,23 @@ We calculate the intrinsic matrix and distortion coefficients of the Triton came
 
         ros2 run camera_control calibrate_lucid_rgbd -- calculate_intrinsics --images_dir <path to the dir containing the Triton images> --output_dir <where to write the intrinsics data file>
 
+2.  Move or copy the Triton intrinsics data yml created above to `ros2/src/camera_control/calibration_params/<calibration_id>/triton_intrinsics.yml` where `calibration_id` is the concatenation of `<Triton MAC><Helios MAC>`.
+
 2.  Run the following to get the Helios factory-calibrated intrinsics:
 
         ros2 run camera_control calibrate_lucid_rgbd -- get_helios_device_intrinsics --output_dir <where to write the intrinsics data file>
+
+3.  Move or copy the intrinsics data yml created above to `ros2/src/camera_control/calibration_params/<calibration_id>/helios_intrinsics.yml`.
 
 ### Step 4: Calculate extrinsics
 
 1.  Run the following to save the xyz-to-Triton extrinsics:
 
         ros2 run camera_control calibrate_lucid_rgbd -- calculate_extrinsics_xyz_to_triton --triton_intrinsics_file <path to Triton intrinsics yml file> --triton_images_dir <dir containing all Triton images> --helios_images_dir <dir containing all Helios intensity images> --helios_xyz_dir <dir containing all xyz data files> --output_dir <where to write the extrinsics data file>
+
+2.  Move or copy the extrinsics data yml created above to `ros2/src/camera_control/calibration_params/<calibration_id>/xyz_to_triton_extrinsics.yml`.
+
+3.  Note that `xyz_to_helios_extrinsics.yml` is optional and not needed. It is assumed to be identity.
 
 ## Updating the Runner Detection Model
 
