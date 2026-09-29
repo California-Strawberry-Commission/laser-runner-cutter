@@ -24,7 +24,7 @@ class AddCalibrationPointsTask {
   ~AddCalibrationPointsTask() = default;
 
   void run(const std::vector<NormalizedPixelCoord>& normalizedPixelCoords,
-           bool saveImages, const LaserColor& trackingLaserColor,
+           const LaserColor& trackingLaserColor, bool saveImages,
            std::atomic<bool>& stopSignal);
 
  private:

@@ -26,13 +26,17 @@ class Calibration {
   }
 
   /**
-   * Use image correspondences to compute the transformation matrix from camera
-   * to laser. Note that calling this resets the point correspondences.
+   * Find and add point correspondences for a grid of laser coords.
    *
-   * 1. Shoot the laser at predetermined points
-   * 2. For each laser point, capture an image from the camera
-   * 3. Identify the corresponding point in the camera frame
-   * 4. Compute the transformation matrix from camera to laser
+   * 1. Shoot the laser at predetermined coords in a square grid pattern
+   * 2. For each laser point, capture an image from the camera and identify the
+   * corresponding pixel coord in the camera frame
+   * 3. Add point correspondences to PointCorrespondences
+   *
+   * Note that this will append point correspondences to PointCorrespondences.
+   * Call `reset()` before calling this to start fresh. This does not fit the
+   * model; call `updateModel()` after all point correspondences have been
+   * added.
    *
    * @param laserColor Laser color to shoot while calibrating.
    * @param gridSize Number of points in the x and y directions to use as
@@ -42,14 +46,41 @@ class Calibration {
    * @param saveImages Whether to save an image at each calibration coordinate.
    * @param stopSignal Flag to enable the calibration process to be prematurely
    * terminated when set to true.
-   * @return whether calibration was successful or not.
+   * @return Number of point correspondences successfully added.
    */
-  bool calibrate(
-      const LaserColor& laserColor, std::pair<int, int> gridSize = {5, 5},
+  std::size_t collectGridCorrespondences(
+      const LaserColor& laserColor, std::pair<int, int> gridSize = {7, 7},
       std::pair<float, float> xBounds = {0.0f, 1.0f},
       std::pair<float, float> yBounds = {0.0f, 1.0f}, bool saveImages = false,
       std::optional<std::reference_wrapper<std::atomic<bool>>> stopSignal =
           std::nullopt);
+
+  /**
+   * Find and add point correspondences by shooting the laser at each of
+   * laserCoords. Like `collectGridCorrespondences()`, this appends to the
+   * existing point correspondences and does not fit the model.
+   *
+   * @param laserCoords Laser coordinates to find point correspondences with.
+   * @param laserColor Laser color to shoot while calibrating.
+   * @param saveImages Whether to save an image at each laser coordinate.
+   * @param stopSignal Flag to enable the calibration process to be prematurely
+   * terminated when set to true.
+   * @return Number of point correspondences successfully added.
+   */
+  std::size_t collectCorrespondences(
+      const std::vector<LaserCoord>& laserCoords, const LaserColor& laserColor,
+      bool saveImages = false,
+      std::optional<std::reference_wrapper<std::atomic<bool>>> stopSignal =
+          std::nullopt);
+
+  /**
+   * Fit the camera-space position to laser coord model to all point
+   * correspondences, and update whether the calibration is usable. Fitting is
+   * computationally expensive, so call this once after adding point
+   * correspondences (e.g. after `collectGridCorrespondences()` at each depth),
+   * rather than after each one.
+   */
+  void updateModel();
 
   /**
    * Transform a 3D position in camera-space to a laser coord.
@@ -67,50 +98,6 @@ class Calibration {
    */
   LaserCoord cameraPixelDeltaToLaserCoordDelta(
       const PixelCoord& cameraPixelCoordDelta) const;
-
-  /**
-   * Find and add additional point correspondences by shooting the laser at each
-   * laserCoords and then optionally recalculate the transform.
-   *
-   * @param laserCoords Laser coordinates to find point correspondences with.
-   * @param laserColor Laser color to shoot while calibrating.
-   * @param updateTransform Whether to recalculate the camera-space position to
-   * laser coord transform.
-   * @param saveImages Whether to save an image at each laser coordinate.
-   * @param stopSignal Flag to enable the calibration process to be prematurely
-   * terminated when set to true.
-   * @return Number of point correspondences successfully added.
-   */
-  std::size_t addCalibrationPoints(
-      const std::vector<LaserCoord>& laserCoords, const LaserColor& laserColor,
-      bool updateTransform = false, bool saveImages = false,
-      std::optional<std::reference_wrapper<std::atomic<bool>>> stopSignal =
-          std::nullopt);
-
-  /**
-   * Add the point correspondence between laser coord and camera-space position
-   * and optionally update the transform.
-   *
-   * @param laserCoord Laser coordinate (x, y) of the point correspondence.
-   * @param cameraPixelCoord Camera pixel coordinate (x, y) of the point
-   * correspondence.
-   * @param cameraPosition Camera-space position (x, y, z) of the point
-   * correspondence.
-   * @param updateTransform Whether to update the transform matrix or not.
-   */
-  void addPointCorrespondence(const LaserCoord& laserCoord,
-                              const PixelCoord& cameraPixelCoord,
-                              const Position& cameraPosition,
-                              bool updateTransform = false);
-
-  /**
-   * Recalculate the camera-space position to laser coord transform. Calculation
-   * of the transform is computationally expensive, so it is recommended to call
-   * `addPointCorrespondence()` multiple times with the param `updateTransform`
-   * set to false, then call `updateTransform()` when no longer in a performance
-   * sensitive loop.
-   */
-  void updateTransform();
 
   /**
    * Save the current calibration data (specifically, point correspondences) to
@@ -132,8 +119,6 @@ class Calibration {
   bool load(const std::string& filePath);
 
  private:
-  static constexpr float EPSILON{1e-6f};
-
   struct FindPointCorrespondenceResult {
     PixelCoord cameraPixelCoord;
     Position cameraPosition;
@@ -141,6 +126,7 @@ class Calibration {
   std::optional<FindPointCorrespondenceResult> findPointCorrespondence(
       const LaserCoord& laserCoord, int numAttempts = 3,
       float attemptIntervalSecs = 0.25f);
+  void logFitStats() const;
 
   std::shared_ptr<LaserControlClient> laser_;
   std::shared_ptr<CameraControlClient> camera_;
