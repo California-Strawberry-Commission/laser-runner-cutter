@@ -38,7 +38,8 @@ std::optional<std::vector<cv::Point2f>> calibration::findCircleGridCenters(
     const cv::Mat& image, const cv::Size& gridSize, const int gridType,
     const cv::Ptr<cv::FeatureDetector> blobDetector) {
   cv::Ptr<cv::FeatureDetector> detector{
-      blobDetector ? blobDetector : calibration::createBlobDetector()};
+      blobDetector ? blobDetector
+                   : calibration::createBlobDetector(image.size())};
 
   // Exit early if the blob detector can't even find enough candidate circles to
   // fill the grid.
@@ -246,17 +247,32 @@ cv::Mat calibration::scaleGrayscaleImage(const cv::Mat& monoImage) {
   return scaled;
 }
 
-cv::Ptr<cv::Feature2D> calibration::createBlobDetector() {
+cv::Ptr<cv::Feature2D> calibration::createBlobDetector(
+    const cv::Size& imageSize) {
   cv::SimpleBlobDetector::Params params;
 
-  // Filter By Color
+  // Filter by color (white)
   params.filterByColor = true;
   params.blobColor = 255;
 
-  // Filter By Area
+  // Filter by area. Bounds are expressed as circle diameters relative to the
+  // larger image dimension so that they scale with image resolution.
+  float maxDim{static_cast<float>(std::max(imageSize.width, imageSize.height))};
+  auto circleArea{[](float diameter) {
+    return static_cast<float>(CV_PI) * diameter * diameter / 4.0f;
+  }};
   params.filterByArea = true;
-  params.minArea = 10.0;
-  params.maxArea = 10000.0;
+  params.minArea = circleArea(0.005f * maxDim);
+  params.maxArea = circleArea(0.2f * maxDim);
+
+  // Filter by shape. Thresholds are loose enough to accept circles viewed at
+  // an angle (ellipses), but reject irregular or elongated blobs.
+  params.filterByCircularity = true;
+  params.minCircularity = 0.7f;
+  params.filterByConvexity = true;
+  params.minConvexity = 0.9f;
+  params.filterByInertia = true;
+  params.minInertiaRatio = 0.3f;
 
   return cv::SimpleBlobDetector::create(params);
 }
