@@ -103,10 +103,11 @@ cv::Mat scaleGrayscaleImage(const cv::Mat& monoImage);
 /**
  * Creates and returns a pointer to a configured SimpleBlobDetector.
  *
+ * @param imageSize Size of the images the detector will be run on.
  * @return cv::Ptr<cv::SimpleBlobDetector> A smart pointer to the created
  * SimpleBlobDetector instance.
  */
-cv::Ptr<cv::Feature2D> createBlobDetector();
+cv::Ptr<cv::Feature2D> createBlobDetector(const cv::Size& imageSize);
 
 /**
  * Reads an XYZ data file.

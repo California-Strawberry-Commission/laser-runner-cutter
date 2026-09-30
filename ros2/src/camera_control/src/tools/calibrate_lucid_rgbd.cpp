@@ -101,6 +101,31 @@ void captureFrame(double exposureUs, double gainDb,
   spdlog::info("Saved xyz data to: {}", xyzPath.string());
 }
 
+// Draws the blob detector keypoints on the image to help diagnose grid
+// detection failures. Returns a BGR image.
+cv::Mat drawBlobKeypoints(const cv::Mat& image, bool gridFound,
+                          const std::string& imageSourceName = "") {
+  std::vector<cv::KeyPoint> keypoints;
+  calibration::createBlobDetector(image.size())->detect(image, keypoints);
+
+  cv::Scalar color{gridFound ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255)};
+  cv::Mat keypointsImg;
+  cv::drawKeypoints(image, keypoints, keypointsImg, color,
+                    cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+
+  std::string label{fmt::format("Grid {} ({} keypoints)",
+                                gridFound ? "found" : "not found",
+                                keypoints.size())};
+  if (!imageSourceName.empty()) {
+    label = imageSourceName + ": " + label;
+  }
+  int markerSize{std::max(1, image.cols / 400)};
+  cv::putText(keypointsImg, label, cv::Point(10, 15 * markerSize),
+              cv::FONT_HERSHEY_SIMPLEX, 0.4 * markerSize, color,
+              std::max(1, markerSize / 2), cv::LINE_AA);
+  return keypointsImg;
+}
+
 // Evaluates a set of intrinsics against images of the calibration pattern and
 // writes evaluation images to outputDir.
 void validateIntrinsics(const std::vector<std::string>& imagePaths,
@@ -122,8 +147,8 @@ void validateIntrinsics(const std::vector<std::string>& imagePaths,
     }
   }
 
-  auto blobDetector{calibration::createBlobDetector()};
   cv::Size imageSize{images.front().size()};
+  auto blobDetector{calibration::createBlobDetector(imageSize)};
   int markerSize{std::max(1, imageSize.width / 400)};
   double fontScale{0.4 * markerSize};
   int fontThickness{std::max(1, markerSize / 2)};
@@ -138,6 +163,10 @@ void validateIntrinsics(const std::vector<std::string>& imagePaths,
     if (!centersOpt) {
       spdlog::warn("[validateIntrinsics] Could not get circle centers from {}",
                    imagePaths[i]);
+
+      // Save the blob detector keypoints for debugging
+      cv::imwrite(outputDir / (name + "_failure.png"),
+                  drawBlobKeypoints(images[i], false));
       continue;
     }
     const std::vector<cv::Point2f>& detected{*centersOpt};
@@ -240,7 +269,7 @@ void calculateIntrinsics(const std::string& imagesDir,
                imagesDirExpandedPath.string());
   auto calibrateResultsOpt{calibration::calculateIntrinsics(
       images, cv::Size(5, 4), cv::CALIB_CB_SYMMETRIC_GRID,
-      calibration::createBlobDetector())};
+      calibration::createBlobDetector(images.front().size()))};
   if (!calibrateResultsOpt) {
     spdlog::error("Calibration failed");
     return;
@@ -428,12 +457,15 @@ struct ViewCorrespondences {
 // same file stem, detects the circle grid in both images, and pairs each camera
 // circle center with the XYZ position at the corresponding Helios circle
 // center. Circles whose XYZ position is invalid (non-finite or z <= 0) are
-// dropped. Returns std::nullopt if any of the directories are invalid or an
-// XYZ file could not be read.
+// dropped. If the circle grid could not be found in either image, an image
+// showing the blob detector keypoints is written to failureImagesOutputDir.
+// Returns std::nullopt if any of the directories are invalid or an XYZ file
+// could not be read.
 std::optional<std::vector<ViewCorrespondences>>
-collectXyzToCameraCorrespondences(const std::string& cameraImagesDir,
-                                  const std::string& heliosImagesDir,
-                                  const std::string& heliosXyzDir) {
+collectXyzToCameraCorrespondences(
+    const std::string& cameraImagesDir, const std::string& heliosImagesDir,
+    const std::string& heliosXyzDir,
+    const std::filesystem::path& failureImagesOutputDir) {
   // Find camera image paths
   std::filesystem::path cameraImagesExpandedPath{
       common::expandUser(cameraImagesDir)};
@@ -474,7 +506,6 @@ collectXyzToCameraCorrespondences(const std::string& cameraImagesDir,
   }
 
   std::vector<ViewCorrespondences> views;
-  auto blobDetector{calibration::createBlobDetector()};
 
   // For each camera image, find the corresponding Helios intensity image and
   // XYZ data
@@ -525,22 +556,39 @@ collectXyzToCameraCorrespondences(const std::string& cameraImagesDir,
     // Get circle centers in camera image
     cv::Mat cameraImg{readGrayscaleImage(cameraImagePath)};
     auto circleCoordsOpt{calibration::findCircleGridCenters(
-        cameraImg, cv::Size(5, 4), cv::CALIB_CB_SYMMETRIC_GRID, blobDetector)};
+        cameraImg, cv::Size(5, 4), cv::CALIB_CB_SYMMETRIC_GRID)};
     if (!circleCoordsOpt) {
       spdlog::warn("Could not get circle centers from {}", cameraImagePath);
-      continue;
     }
-    std::vector<cv::Point2f> circleCoords{std::move(*circleCoordsOpt)};
 
     // Get circle centers in Helios image
     cv::Mat heliosImg{readGrayscaleImage(heliosImagePath.string())};
     auto heliosCircleCoordsOpt{calibration::findCircleGridCenters(
-        heliosImg, cv::Size(5, 4), cv::CALIB_CB_SYMMETRIC_GRID, blobDetector)};
+        heliosImg, cv::Size(5, 4), cv::CALIB_CB_SYMMETRIC_GRID)};
     if (!heliosCircleCoordsOpt) {
       spdlog::warn("Could not get circle centers from {}",
                    heliosImagePath.string());
+    }
+
+    // If either detection failed, save the blob detector keypoints for both
+    // images side by side for debugging
+    if (!circleCoordsOpt || !heliosCircleCoordsOpt) {
+      cv::Mat cameraKeypointsImg{
+          drawBlobKeypoints(cameraImg, circleCoordsOpt.has_value(), "Camera")};
+      cv::Mat heliosKeypointsImg{drawBlobKeypoints(
+          heliosImg, heliosCircleCoordsOpt.has_value(), "Helios")};
+      double scale{static_cast<double>(cameraKeypointsImg.rows) /
+                   heliosKeypointsImg.rows};
+      cv::resize(heliosKeypointsImg, heliosKeypointsImg, cv::Size(), scale,
+                 scale, cv::INTER_LINEAR);
+      cv::Mat failureImg;
+      cv::hconcat(cameraKeypointsImg, heliosKeypointsImg, failureImg);
+      std::filesystem::create_directories(failureImagesOutputDir);
+      cv::imwrite(failureImagesOutputDir / (baseName + "_failure.png"),
+                  failureImg);
       continue;
     }
+    std::vector<cv::Point2f> circleCoords{std::move(*circleCoordsOpt)};
     std::vector<cv::Point2f> heliosCircleCoords{
         std::move(*heliosCircleCoordsOpt)};
 
@@ -594,15 +642,17 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
   }
   auto [intrinsicMatrix, distCoeffs]{std::move(*intrinsicsOpt)};
 
+  std::filesystem::path outputDirExpandedPath{common::expandUser(outputDir)};
+  std::filesystem::create_directories(outputDirExpandedPath);
+  std::filesystem::path validationDir{outputDirExpandedPath /
+                                      "extrinsics_validation"};
+
   auto viewsOpt{collectXyzToCameraCorrespondences(
-      cameraImagesDir, heliosImagesDir, heliosXyzDir)};
+      cameraImagesDir, heliosImagesDir, heliosXyzDir, validationDir)};
   if (!viewsOpt) {
     return;
   }
   std::vector<ViewCorrespondences> views{std::move(*viewsOpt)};
-
-  std::filesystem::path outputDirExpandedPath{common::expandUser(outputDir)};
-  std::filesystem::create_directories(outputDirExpandedPath);
 
   std::vector<cv::Point2f> allCircleCoords;
   std::vector<cv::Point3f> allCircleXyzPositions;
@@ -643,8 +693,6 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
   // Calculate reprojection error, overall and per view, and write a residuals
   // image for each view
   spdlog::info("Evaluating extrinsics...");
-  std::filesystem::path validationDir{outputDirExpandedPath /
-                                      "extrinsics_validation"};
   std::filesystem::create_directories(validationDir);
   double residualsArrowScale{20.};
   double totalError{0.0};
