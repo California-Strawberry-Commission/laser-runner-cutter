@@ -16,14 +16,28 @@ class Calibration {
                        std::shared_ptr<DetectionClient> detection);
   ~Calibration() = default;
 
-  FrameSize getCameraFrameSize() const;
-  PixelRect getLaserBounds() const;
+  FrameSize getCameraFrameSize() const { return cameraFrameSize_; }
+
+  PixelRect getLaserBounds() const {
+    return pointCorrespondences_.getLaserBounds();
+  }
+
   NormalizedPixelRect getNormalizedLaserBounds() const;
-  bool isCalibrated() const;
-  void reset();
+
+  bool isCalibrated() const { return pointCorrespondences_.hasModel(); }
+
   std::size_t getPointCorrespondencesCount() const {
     return pointCorrespondences_.size();
   }
+
+  PointCorrespondences::FitStats getFitStats() const {
+    return pointCorrespondences_.getFitStats();
+  }
+
+  /**
+   * Clear all point correspondences and the fitted model.
+   */
+  void clear();
 
   /**
    * Find and add point correspondences for a grid of laser coords.
@@ -34,7 +48,7 @@ class Calibration {
    * 3. Add point correspondences to PointCorrespondences
    *
    * Note that this will append point correspondences to PointCorrespondences.
-   * Call `reset()` before calling this to start fresh. This does not fit the
+   * Call `clear()` before calling this to start fresh. This does not fit the
    * model; call `updateModel()` after all point correspondences have been
    * added.
    *
@@ -147,5 +161,4 @@ class Calibration {
   std::shared_ptr<DetectionClient> detection_;
   FrameSize cameraFrameSize_{0, 0};
   PointCorrespondences pointCorrespondences_{};
-  bool isCalibrated_{false};
 };

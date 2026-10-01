@@ -20,12 +20,6 @@ Calibration::Calibration(std::shared_ptr<LaserControlClient> laser,
       detection_{std::move(detection)},
       pointCorrespondences_{} {}
 
-FrameSize Calibration::getCameraFrameSize() const { return cameraFrameSize_; }
-
-PixelRect Calibration::getLaserBounds() const {
-  return pointCorrespondences_.getLaserBounds();
-}
-
 NormalizedPixelRect Calibration::getNormalizedLaserBounds() const {
   auto [w, h]{getCameraFrameSize()};
   auto [boundsXMin, boundsYMin, boundsWidth, boundsHeight]{getLaserBounds()};
@@ -35,12 +29,7 @@ NormalizedPixelRect Calibration::getNormalizedLaserBounds() const {
           (h > 0) ? boundsHeight / static_cast<float>(h) : 0.0f};
 }
 
-bool Calibration::isCalibrated() const { return isCalibrated_; }
-
-void Calibration::reset() {
-  pointCorrespondences_.clear();
-  isCalibrated_ = false;
-}
+void Calibration::clear() { pointCorrespondences_.clear(); }
 
 std::size_t Calibration::collectGridCorrespondences(
     const LaserColor& laserColor, std::pair<int, int> gridSize,
@@ -141,7 +130,6 @@ std::size_t Calibration::collectCorrespondences(
 
 void Calibration::updateModel() {
   pointCorrespondences_.updateModel();
-  isCalibrated_ = pointCorrespondences_.hasModel();
   logFitStats();
 }
 
@@ -167,7 +155,7 @@ LaserCoord Calibration::cameraPixelDeltaToLaserCoordDelta(
 }
 
 bool Calibration::save(const std::string& filePath) {
-  if (!isCalibrated_) {
+  if (!isCalibrated()) {
     return false;
   }
 
@@ -237,9 +225,8 @@ bool Calibration::load(const std::string& filePath) {
 
   spdlog::info("Loaded calibration file {} with {} correspondences.", filePath,
                pointCorrespondences_.size());
-  isCalibrated_ = pointCorrespondences_.hasModel();
   logFitStats();
-  return isCalibrated_;
+  return isCalibrated();
 }
 
 std::optional<Calibration::FindPointCorrespondenceResult>

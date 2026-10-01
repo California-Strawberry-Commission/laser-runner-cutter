@@ -1,5 +1,6 @@
 #include <fmt/core.h>
 
+#include <filesystem>
 #include <functional>
 
 #include "camera_control_interfaces/msg/device_state.hpp"
@@ -148,6 +149,11 @@ class RunnerCutterControlNode : public rclcpp::Node {
         std::bind(&RunnerCutterControlNode::onSaveCalibration, this,
                   std::placeholders::_1, std::placeholders::_2),
         rmw_qos_profile_services_default, serviceCallbackGroup_);
+    clearCalibrationService_ = create_service<std_srvs::srv::Trigger>(
+        "~/clear_calibration",
+        std::bind(&RunnerCutterControlNode::onClearCalibration, this,
+                  std::placeholders::_1, std::placeholders::_2),
+        rmw_qos_profile_services_default, serviceCallbackGroup_);
     loadCalibrationService_ = create_service<std_srvs::srv::Trigger>(
         "~/load_calibration",
         std::bind(&RunnerCutterControlNode::onLoadCalibration, this,
@@ -198,6 +204,22 @@ class RunnerCutterControlNode : public rclcpp::Node {
         std::make_shared<DetectionClient>(*this, getParamDetectionNodeName());
 
     calibration_ = std::make_shared<Calibration>(laser_, camera_, detection_);
+
+    /////////////////
+    // Initialization
+    /////////////////
+    // Load the saved calibration file if one exists
+    std::string calibrationFilePath{getCalibrationFilePath()};
+    if (std::filesystem::exists(calibrationFilePath)) {
+      if (calibration_->load(calibrationFilePath)) {
+        RCLCPP_INFO(get_logger(), "Calibration loaded on startup: %s",
+                    calibrationFilePath.c_str());
+      } else {
+        RCLCPP_WARN(get_logger(),
+                    "Calibration file %s exists but could not be loaded",
+                    calibrationFilePath.c_str());
+      }
+    }
 
     // Publish initial state
     publishState();
@@ -276,6 +298,10 @@ class RunnerCutterControlNode : public rclcpp::Node {
     return static_cast<float>(get_parameter("lookahead_secs").as_double());
   }
 
+  std::string getCalibrationFilePath() {
+    return common::expandUser(getParamSaveDir()) + "/calibration.dat";
+  }
+
 #pragma endregion
 
 #pragma region State and notifs publishing
@@ -293,6 +319,14 @@ class RunnerCutterControlNode : public rclcpp::Node {
     normalizedLaserBoundsMsg.y = width;
     normalizedLaserBoundsMsg.z = height;
     msg->normalized_laser_bounds = normalizedLaserBoundsMsg;
+    msg->num_calibration_points =
+        static_cast<uint32_t>(calibration_->getPointCorrespondencesCount());
+    auto fitStats{calibration_->getFitStats()};
+    common_interfaces::msg::Vector2 calibrationDepthRangeMsg;
+    calibrationDepthRangeMsg.x = fitStats.minDepth;
+    calibrationDepthRangeMsg.y = fitStats.maxDepth;
+    msg->calibration_depth_range = calibrationDepthRangeMsg;
+    msg->calibration_mean_position_error = fitStats.meanPositionError;
     return msg;
   }
 
@@ -344,46 +378,93 @@ class RunnerCutterControlNode : public rclcpp::Node {
           runner_cutter_control_interfaces::srv::Calibrate::Response>
           response) {
     bool saveImages{request->save_images};
-    bool append{request->append};
-    bool res{startTask("calibration", [this, saveImages, append]() {
+    bool res{startTask("calibration", [this, saveImages]() {
       CalibrationTask task{calibration_, get_logger(), notificationsPublisher_};
       task.run(getParamTrackingLaserColor(), getParamCalibrationGridSize(),
                getParamCalibrationXBounds(), getParamCalibrationYBounds(),
-               append, saveImages, taskStopSignal_);
+               saveImages, taskStopSignal_);
     })};
     response->success = res;
+  }
+
+  void onClearCalibration(
+      const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+      std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+    {
+      // Hold the task lock so that a task (which may use the calibration)
+      // cannot start while clearing
+      std::lock_guard<std::mutex> lock(taskMutex_);
+      if (taskRunning_) {
+        response->success = false;
+        response->message = "Cannot clear calibration while a task is running";
+      } else {
+        calibration_->clear();
+        response->success = true;
+      }
+    }
+
+    if (response->success) {
+      publishNotification("Calibration cleared");
+      publishState();
+    } else {
+      publishNotification(response->message, rclcpp::Logger::Level::Warn);
+    }
   }
 
   void onSaveCalibration(
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-    std::string filePath{common::expandUser(getParamSaveDir()) +
-                         "/calibration.dat"};
-    bool res{calibration_->save(filePath)};
-    if (res) {
+    std::string filePath{getCalibrationFilePath()};
+    {
+      // Hold the task lock so that a task (which may modify the calibration)
+      // cannot start while saving
+      std::lock_guard<std::mutex> lock(taskMutex_);
+      if (taskRunning_) {
+        response->success = false;
+        response->message = "Cannot save calibration while a task is running";
+      } else if (calibration_->save(filePath)) {
+        response->success = true;
+      } else {
+        response->success = false;
+        response->message = "Calibration could not be saved";
+      }
+    }
+
+    if (response->success) {
       publishNotification(fmt::format("Calibration saved: {}", filePath));
     } else {
-      publishNotification("Calibration could not be saved",
-                          rclcpp::Logger::Level::Warn);
+      publishNotification(response->message, rclcpp::Logger::Level::Warn);
     }
-    response->success = res;
   }
 
   void onLoadCalibration(
       const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
-    std::string filePath{common::expandUser(getParamSaveDir()) +
-                         "/calibration.dat"};
-    bool res{calibration_->load(filePath)};
-    if (res) {
-      publishNotification(fmt::format("Calibration loaded: {}", filePath));
-      publishState();
-    } else {
-      publishNotification(
-          "Calibration file does not exist or could not be loaded",
-          rclcpp::Logger::Level::Warn);
+    std::string filePath{getCalibrationFilePath()};
+    {
+      // Hold the task lock so that a task (which may use the calibration)
+      // cannot start while loading
+      std::lock_guard<std::mutex> lock(taskMutex_);
+      if (taskRunning_) {
+        response->success = false;
+        response->message = "Cannot load calibration while a task is running";
+      } else if (calibration_->load(filePath)) {
+        response->success = true;
+      } else {
+        response->success = false;
+        response->message =
+            "Calibration file does not exist or could not be loaded";
+      }
     }
-    response->success = res;
+
+    if (response->success) {
+      publishNotification(fmt::format("Calibration loaded: {}", filePath));
+    } else {
+      publishNotification(response->message, rclcpp::Logger::Level::Warn);
+    }
+    // Publish state even on failure, as a failed load may still have replaced
+    // the point correspondences
+    publishState();
   }
 
   void onAddCalibrationPoints(
@@ -578,6 +659,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
   rclcpp::Service<runner_cutter_control_interfaces::srv::Calibrate>::SharedPtr
       calibrateService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr saveCalibrationService_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr clearCalibrationService_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr loadCalibrationService_;
   rclcpp::Service<runner_cutter_control_interfaces::srv::AddCalibrationPoints>::
       SharedPtr addCalibrationPointsService_;

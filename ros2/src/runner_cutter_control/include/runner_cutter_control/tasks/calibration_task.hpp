@@ -8,7 +8,9 @@
 #include "runner_cutter_control/common_types.hpp"
 
 /**
- * Runs the laser/camera calibration process.
+ * Runs the laser/camera calibration process. Collects point correspondences
+ * for a grid of laser coords and adds them to any existing ones, then refits
+ * the model.
  */
 class CalibrationTask {
  public:
@@ -20,7 +22,7 @@ class CalibrationTask {
 
   void run(const LaserColor& trackingLaserColor, std::pair<int, int> gridSize,
            std::pair<float, float> xBounds, std::pair<float, float> yBounds,
-           bool append, bool saveImages, std::atomic<bool>& stopSignal);
+           bool saveImages, std::atomic<bool>& stopSignal);
 
  private:
   std::shared_ptr<Calibration> calibration_;
