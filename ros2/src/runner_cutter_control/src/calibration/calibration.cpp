@@ -8,6 +8,7 @@
 #include <fstream>
 #include <thread>
 
+#include "builtin_interfaces/msg/time.hpp"
 #include "detection_interfaces/msg/detection_type.hpp"
 #include "runner_cutter_control/clients/laser_detection_context.hpp"
 
@@ -243,18 +244,27 @@ bool Calibration::load(const std::string& filePath) {
 
 std::optional<Calibration::FindPointCorrespondenceResult>
 Calibration::findPointCorrespondence(const LaserCoord& laserCoord,
-                                     int numAttempts,
+                                     int numFrames, int maxAttempts,
                                      float attemptIntervalSecs) {
-  for (int attempt = 0; attempt < numAttempts; ++attempt) {
-    spdlog::info("Attempt {} to detect laser and find point correspondence.",
-                 attempt);
+  // Average the detected laser across multiple camera frames to reduce noise,
+  // particularly in depth. Detection runs on the latest camera frame, so
+  // consecutive requests may return the same frame. Use the frame timestamp to
+  // only count each frame once.
+  Eigen::Vector2d pixelSum{Eigen::Vector2d::Zero()};
+  Eigen::Vector3d positionSum{Eigen::Vector3d::Zero()};
+  int numFramesFound{0};
+  std::optional<builtin_interfaces::msg::Time> lastTimestamp;
+  for (int attempt = 0; attempt < maxAttempts && numFramesFound < numFrames;
+       ++attempt) {
     auto result{detection_->getDetection(
         detection_interfaces::msg::DetectionType::LASER)};
-    if (result->instances.empty()) {
+    bool isNewFrame{!lastTimestamp || result->timestamp != *lastTimestamp};
+    if (result->instances.empty() || !isNewFrame) {
       std::this_thread::sleep_for(
           std::chrono::duration<float>(attemptIntervalSecs));
       continue;
     }
+    lastTimestamp = result->timestamp;
 
     // In case multiple lasers were detected, use the instance with the highest
     // confidence
@@ -263,23 +273,36 @@ Calibration::findPointCorrespondence(const LaserCoord& laserCoord,
                           [](const auto& a, const auto& b) {
                             return a.confidence < b.confidence;
                           })};
-    PixelCoord cameraPixelCoord{
-        static_cast<int>(std::round(bestInstance.point.x)),
-        static_cast<int>(std::round(bestInstance.point.y))};
-    Position cameraPosition{static_cast<float>(bestInstance.position.x),
-                            static_cast<float>(bestInstance.position.y),
-                            static_cast<float>(bestInstance.position.z)};
-
-    spdlog::info(
-        "Found point correspondence: laser_coord = ({}, {}), pixel = ({}, "
-        "{}), position = ({}, {}, {}).",
-        laserCoord.x, laserCoord.y, cameraPixelCoord.u, cameraPixelCoord.v,
-        cameraPosition.x, cameraPosition.y, cameraPosition.z);
-
-    return FindPointCorrespondenceResult{cameraPixelCoord, cameraPosition};
+    pixelSum += Eigen::Vector2d{bestInstance.point.x, bestInstance.point.y};
+    positionSum +=
+        Eigen::Vector3d{bestInstance.position.x, bestInstance.position.y,
+                        bestInstance.position.z};
+    ++numFramesFound;
   }
 
-  return std::nullopt;
+  if (numFramesFound < numFrames) {
+    spdlog::info(
+        "Laser detected in only {} of {} required frames for laserCoord = "
+        "({}, {}).",
+        numFramesFound, numFrames, laserCoord.x, laserCoord.y);
+    return std::nullopt;
+  }
+
+  Eigen::Vector2d pixel{pixelSum / numFramesFound};
+  Eigen::Vector3d position{positionSum / numFramesFound};
+  PixelCoord cameraPixelCoord{static_cast<int>(std::round(pixel.x())),
+                              static_cast<int>(std::round(pixel.y()))};
+  Position cameraPosition{static_cast<float>(position.x()),
+                          static_cast<float>(position.y()),
+                          static_cast<float>(position.z())};
+
+  spdlog::info(
+      "Found point correspondence averaged over {} frames: laserCoord = ({}, "
+      "{}), cameraPixelCoord = ({}, {}), cameraPosition = ({}, {}, {}).",
+      numFramesFound, laserCoord.x, laserCoord.y, cameraPixelCoord.u,
+      cameraPixelCoord.v, cameraPosition.x, cameraPosition.y, cameraPosition.z);
+
+  return FindPointCorrespondenceResult{cameraPixelCoord, cameraPosition};
 }
 
 void Calibration::logFitStats() const {

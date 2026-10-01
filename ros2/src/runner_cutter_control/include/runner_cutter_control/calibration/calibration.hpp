@@ -123,9 +123,23 @@ class Calibration {
     PixelCoord cameraPixelCoord;
     Position cameraPosition;
   };
+
+  /**
+   * Detect the laser in numFrames distinct camera frames and average the
+   * results.
+   *
+   * @param laserCoord Laser coord currently being shot (for logging).
+   * @param numFrames Number of distinct frames to average across.
+   * @param maxAttempts Max number of detection requests. Requests that return
+   * no laser or an already-used frame count as attempts.
+   * @param attemptIntervalSecs Time to wait after such a request.
+   * @return Averaged point correspondence, or nullopt if the laser was not
+   * detected in numFrames distinct frames within maxAttempts.
+   */
   std::optional<FindPointCorrespondenceResult> findPointCorrespondence(
-      const LaserCoord& laserCoord, int numAttempts = 3,
-      float attemptIntervalSecs = 0.25f);
+      const LaserCoord& laserCoord, int numFrames = 3, int maxAttempts = 10,
+      float attemptIntervalSecs = 0.1f);
+
   void logFitStats() const;
 
   std::shared_ptr<LaserControlClient> laser_;
