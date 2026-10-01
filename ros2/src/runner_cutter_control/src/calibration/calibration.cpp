@@ -96,7 +96,8 @@ std::size_t Calibration::collectCorrespondences(
     LaserDetectionContext context{laser_, camera_};
     for (const auto& laserCoord : laserCoords) {
       if (stopSignal && stopSignal->get()) {
-        return 0;
+        // Point correspondences already added are kept, so report them
+        return numPointCorrespondencesAdded;
       }
 
       laser_->setPoint(0, laserCoord);
