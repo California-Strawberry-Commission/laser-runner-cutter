@@ -193,6 +193,33 @@ We calculate the intrinsic matrix and distortion coefficients of the Triton came
 
 3.  Note that `xyz_to_helios_extrinsics.yml` is optional and not needed. It is assumed to be identity.
 
+## Camera-Laser Calibration
+
+Camera-laser calibration fits a model that maps a 3D position from the cameras to the laser coordinate that hits it. It is built from point correspondences: the laser is shot at a grid of laser coordinates, and the cameras detect where each spot lands in 3D. Complete the [LUCID Camera Calibration](#lucid-camera-calibration) first, as the 3D positions depend on it.
+
+The model is only accurate across the distances it was calibrated at, so calibrate against a surface at several distances covering the working range (500mm to 1500mm).
+
+### Setup
+
+- Use a flat, matte wall (or board) large enough to catch the whole laser grid at the farthest distance.
+- Keep the wall roughly perpendicular to the cameras.
+- Do not move the cameras or laser relative to each other during or after calibration. If they move, recalibrate from scratch.
+
+### Steps
+
+1.  Build and run the system, then in the runner-cutter-app UI, connect the camera and laser.
+2.  In the "Calibration" section, click "Clear" (if the button is enabled) to discard any existing point correspondences. This does not affect the saved calibration file.
+3.  For each of the following distances from the cameras to the wall: 500mm, 750mm, 1000mm, 1250mm, 1500mm:
+    1.  Position the wall at the distance.
+    2.  Click "Calibrate". This shoots the laser at a grid of laser coordinates, adds the detected point correspondences to those already collected, and refits the model.
+    3.  Check the notification for how many grid points were added. Grid points where the laser was not detected are skipped.
+4.  Check the fit by clicking the "Details" button:
+    - The depth range should span the distances you calibrated at (about 500mm to 1500mm).
+    - The mean position error (the distance between each detected laser spot and where the model predicts the laser beam goes) should be less than a few mm.
+5.  Click "Save" to write the point correspondences to `<save_dir>/calibration.dat` (`save_dir` defaults to `~/runner_cutter`). The calibration is loaded from this file automatically when the system starts, or manually via the "Load" button.
+
+The grid size and the laser coordinate bounds of the grid are set by the `calibration_grid_size`, `calibration_x_bounds`, and `calibration_y_bounds` parameters in [parameters.yaml](src/runner_cutter_control/config/parameters.yaml). The grid bounds should cover the laser coordinates you will target.
+
 ## Updating the Runner Detection Model
 
 1. Navigate to the model directory:
