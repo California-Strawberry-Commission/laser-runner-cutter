@@ -1,5 +1,3 @@
 bool save_images
-# Whether to add to the existing point correspondences instead of resetting them
-bool append
 ---
 bool success

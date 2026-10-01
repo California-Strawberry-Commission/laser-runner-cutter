@@ -219,6 +219,32 @@ TEST(PointCorrespondencesTest, RecoversMirrorOrder) {
   EXPECT_LT(maxTargetingError(correspondences, model), 0.1);
 }
 
+TEST(PointCorrespondencesTest, FitsRotatedScanner) {
+  // Scanner rotated (90, -90, and 180 degrees) about its optical axis
+  // relative to the camera
+  for (double rollDegrees : {90.0, -90.0, 180.0}) {
+    SCOPED_TRACE("roll = " + std::to_string(rollDegrees) + " degrees");
+    GalvoModel model{makeTestModel()};
+    Eigen::AngleAxisd roll{rollDegrees * M_PI / 180.0,
+                           Eigen::Vector3d::UnitZ()};
+    Eigen::AngleAxisd mountingError{model.rotation.norm(),
+                                    model.rotation.normalized()};
+    Eigen::AngleAxisd rotation{roll * mountingError};
+    model.rotation = rotation.angle() * rotation.axis();
+
+    PointCorrespondences correspondences;
+    addGridsAcrossDepths(correspondences, model);
+
+    correspondences.updateModel();
+
+    ASSERT_TRUE(correspondences.hasModel());
+    EXPECT_EQ(correspondences.getFitStats().numInliers, correspondences.size());
+    EXPECT_TRUE(correspondences.getModel().xMirrorFirst);
+    EXPECT_NEAR(correspondences.getModel().mirrorDistance, 12.0, 0.5);
+    EXPECT_LT(maxTargetingError(correspondences, model), 0.1);
+  }
+}
+
 TEST(PointCorrespondencesTest, FitsNoisyDataAcrossDepths) {
   GalvoModel model{makeTestModel()};
   PointCorrespondences correspondences;

@@ -10,6 +10,9 @@ export type State = {
     width: number;
     height: number;
   };
+  numCalibrationPoints: number;
+  calibrationDepthRange: [number, number];
+  calibrationMeanPositionError: number;
 };
 
 export type Track = {
@@ -35,6 +38,12 @@ function convertStateMessage(message: any): State {
       width: message.normalized_laser_bounds.y,
       height: message.normalized_laser_bounds.z,
     },
+    numCalibrationPoints: message.num_calibration_points,
+    calibrationDepthRange: [
+      message.calibration_depth_range.x,
+      message.calibration_depth_range.y,
+    ],
+    calibrationMeanPositionError: message.calibration_mean_position_error,
   };
 }
 
@@ -65,7 +74,10 @@ export default function useControlNode(nodeName: string) {
     {
       calibrated: false,
       state: "idle",
-      normalizedLaserBounds: { x: 0, y: 0, width: 0, height: 0 },
+      normalizedLaserBounds: { x: 0.0, y: 0.0, width: 0.0, height: 0.0 },
+      numCalibrationPoints: 0,
+      calibrationDepthRange: [0.0, 0.0],
+      calibrationMeanPositionError: 0.0,
     },
     convertStateMessage,
   );
@@ -86,6 +98,13 @@ export default function useControlNode(nodeName: string) {
       }),
       [],
     ),
+    successOutputMapper,
+  );
+
+  const clearCalibration = node.useService(
+    "~/clear_calibration",
+    "std_srvs/Trigger",
+    triggerInputMapper,
     successOutputMapper,
   );
 
@@ -232,6 +251,7 @@ export default function useControlNode(nodeName: string) {
     state,
     tracks,
     calibrate,
+    clearCalibration,
     saveCalibration,
     loadCalibration,
     addCalibrationPoint,

@@ -15,13 +15,10 @@ CalibrationTask::CalibrationTask(
 void CalibrationTask::run(const LaserColor& trackingLaserColor,
                           std::pair<int, int> gridSize,
                           std::pair<float, float> xBounds,
-                          std::pair<float, float> yBounds, bool append,
-                          bool saveImages, std::atomic<bool>& stopSignal) {
+                          std::pair<float, float> yBounds, bool saveImages,
+                          std::atomic<bool>& stopSignal) {
   common::publishNotification(logger_, notificationsPublisher_,
                               "Calibration started");
-  if (!append) {
-    calibration_->reset();
-  }
   std::size_t numPointsAdded{calibration_->collectGridCorrespondences(
       trackingLaserColor, gridSize, xBounds, yBounds, saveImages, stopSignal)};
   calibration_->updateModel();

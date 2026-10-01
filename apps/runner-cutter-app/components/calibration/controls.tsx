@@ -79,6 +79,11 @@ export default function Controls({
           />
           <CalibrationCard
             calibrationState={calibrationState}
+            calibrationStats={{
+              numPoints: controlNode.state.numCalibrationPoints,
+              depthRange: controlNode.state.calibrationDepthRange,
+              meanPositionError: controlNode.state.calibrationMeanPositionError,
+            }}
             disabled={
               calibrationState !== CalibrationState.CALIBRATING &&
               controlNode.state.state !== "idle"
