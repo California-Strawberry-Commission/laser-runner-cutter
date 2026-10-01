@@ -344,11 +344,12 @@ class RunnerCutterControlNode : public rclcpp::Node {
           runner_cutter_control_interfaces::srv::Calibrate::Response>
           response) {
     bool saveImages{request->save_images};
-    bool res{startTask("calibration", [this, saveImages]() {
+    bool append{request->append};
+    bool res{startTask("calibration", [this, saveImages, append]() {
       CalibrationTask task{calibration_, get_logger(), notificationsPublisher_};
-      task.run(saveImages, getParamTrackingLaserColor(),
-               getParamCalibrationGridSize(), getParamCalibrationXBounds(),
-               getParamCalibrationYBounds(), taskStopSignal_);
+      task.run(getParamTrackingLaserColor(), getParamCalibrationGridSize(),
+               getParamCalibrationXBounds(), getParamCalibrationYBounds(),
+               append, saveImages, taskStopSignal_);
     })};
     response->success = res;
   }
@@ -404,8 +405,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
          saveImages]() {
           AddCalibrationPointsTask task{detection_, calibration_, get_logger(),
                                         notificationsPublisher_};
-          task.run(normalizedPixelCoords, saveImages,
-                   getParamTrackingLaserColor(), taskStopSignal_);
+          task.run(normalizedPixelCoords, getParamTrackingLaserColor(),
+                   saveImages, taskStopSignal_);
         })};
     response->success = res;
   }

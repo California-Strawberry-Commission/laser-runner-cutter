@@ -12,17 +12,22 @@ CalibrationTask::CalibrationTask(
       logger_(std::move(logger)),
       notificationsPublisher_(std::move(notificationsPublisher)) {}
 
-void CalibrationTask::run(bool saveImages, const LaserColor& trackingLaserColor,
+void CalibrationTask::run(const LaserColor& trackingLaserColor,
                           std::pair<int, int> gridSize,
                           std::pair<float, float> xBounds,
-                          std::pair<float, float> yBounds,
-                          std::atomic<bool>& stopSignal) {
+                          std::pair<float, float> yBounds, bool append,
+                          bool saveImages, std::atomic<bool>& stopSignal) {
   common::publishNotification(logger_, notificationsPublisher_,
                               "Calibration started");
-  calibration_->calibrate(trackingLaserColor, gridSize, xBounds, yBounds,
-                          saveImages, stopSignal);
+  if (!append) {
+    calibration_->reset();
+  }
+  std::size_t numPointsAdded{calibration_->collectGridCorrespondences(
+      trackingLaserColor, gridSize, xBounds, yBounds, saveImages, stopSignal)};
+  calibration_->updateModel();
+
   common::publishNotification(
       logger_, notificationsPublisher_,
-      fmt::format("Calibration complete with {} point correspondences",
+      fmt::format("Added {} calibration point(s). Total: {}", numPointsAdded,
                   calibration_->getPointCorrespondencesCount()));
 }

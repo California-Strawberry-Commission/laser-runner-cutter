@@ -2,8 +2,11 @@
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <thread>
 
 #include "detection_interfaces/msg/detection_type.hpp"
 #include "runner_cutter_control/clients/laser_detection_context.hpp"
@@ -38,20 +41,18 @@ void Calibration::reset() {
   isCalibrated_ = false;
 }
 
-bool Calibration::calibrate(
+std::size_t Calibration::collectGridCorrespondences(
     const LaserColor& laserColor, std::pair<int, int> gridSize,
     std::pair<float, float> xBounds, std::pair<float, float> yBounds,
     bool saveImages,
     std::optional<std::reference_wrapper<std::atomic<bool>>> stopSignal) {
-  reset();
-
   // Get color frame size
   auto state{camera_->getState()};
   cameraFrameSize_ = {static_cast<int>(state->color_width),
                       static_cast<int>(state->color_height)};
   if (cameraFrameSize_.width <= 0 || cameraFrameSize_.height <= 0) {
     spdlog::warn("Invalid camera frame size.");
-    return false;
+    return 0;
   }
 
   if (gridSize.first < 2 || gridSize.second < 2) {
@@ -59,7 +60,7 @@ bool Calibration::calibrate(
         "Invalid calibration grid size ({}, {}). Each dimension must be at "
         "least 2.",
         gridSize.first, gridSize.second);
-    return false;
+    return 0;
   }
 
   // Get calibration points
@@ -80,62 +81,17 @@ bool Calibration::calibrate(
 
   // Get image correspondences
   spdlog::info("Getting image correspondences");
-  addCalibrationPoints(pendingLaserCoords, laserColor,
-                       false,  // we will update transforms later
-                       saveImages, stopSignal);
-  spdlog::info("{} out of {} point correspondences found.",
-               pointCorrespondences_.size(), pendingLaserCoords.size());
-  if (pointCorrespondences_.size() < 3) {
-    spdlog::warn(
-        "Calibration failed: insufficient point correspondences found.");
-    return false;
-  }
-
-  // Use linear least squares for an initial estimate...
-  pointCorrespondences_.updateTransformLinearLeastSquares();
-  // ...then refine using nonlinear least squares
-  updateTransform();
-
-  isCalibrated_ = true;
-  return true;
+  std::size_t numAdded{collectCorrespondences(pendingLaserCoords, laserColor,
+                                              saveImages, stopSignal)};
+  spdlog::info(
+      "{} out of {} point correspondences found. {} total correspondences.",
+      numAdded, pendingLaserCoords.size(), pointCorrespondences_.size());
+  return numAdded;
 }
 
-LaserCoord Calibration::cameraPositionToLaserCoord(
-    const Position& cameraPosition) const {
-  Eigen::Vector4d homogeneousCameraPosition{
-      static_cast<double>(cameraPosition.x),
-      static_cast<double>(cameraPosition.y),
-      static_cast<double>(cameraPosition.z), 1.0};
-  Eigen::Vector3d transformed{
-      homogeneousCameraPosition.transpose() *
-      pointCorrespondences_.getCameraToLaserTransform()};
-
-  if (std::fabs(transformed[2]) < EPSILON) {
-    return {-1.0f, -1.0f};
-  }
-
-  // Normalize by the third (homogeneous) coordinate to get (x, y)
-  // coordinates
-  Eigen::Vector3d homogeneousTransformed{transformed / transformed[2]};
-  return {static_cast<float>(homogeneousTransformed[0]),
-          static_cast<float>(homogeneousTransformed[1])};
-}
-
-LaserCoord Calibration::cameraPixelDeltaToLaserCoordDelta(
-    const PixelCoord& cameraPixelCoordDelta) const {
-  Eigen::Vector2d cameraPixelDelta{
-      static_cast<double>(cameraPixelCoordDelta.u),
-      static_cast<double>(cameraPixelCoordDelta.v)};
-  Eigen::Vector2d laserCoordDelta{
-      pointCorrespondences_.getCameraPixelToLaserCoordJacobian() *
-      cameraPixelDelta};
-  return {static_cast<float>(laserCoordDelta[0]),
-          static_cast<float>(laserCoordDelta[1])};
-}
-
-std::size_t Calibration::addCalibrationPoints(
+std::size_t Calibration::collectCorrespondences(
     const std::vector<LaserCoord>& laserCoords, const LaserColor& laserColor,
-    bool updateTransform, bool saveImages,
+    bool saveImages,
     std::optional<std::reference_wrapper<std::atomic<bool>>> stopSignal) {
   if (laserCoords.empty()) {
     return 0;
@@ -169,45 +125,44 @@ std::size_t Calibration::addCalibrationPoints(
       }
 
       auto [cameraPixelCoord, cameraPosition]{std::move(*resultOpt)};
-      addPointCorrespondence(laserCoord, cameraPixelCoord, cameraPosition);
+      pointCorrespondences_.add(laserCoord, cameraPixelCoord, cameraPosition);
+      spdlog::info("Added point correspondence. {} total correspondences.",
+                   pointCorrespondences_.size());
+
       ++numPointCorrespondencesAdded;
 
       laser_->clearPaths();
     }
   }
 
-  // This is behind a flag as updating the transform is computationally
-  // non-trivial
-  if (updateTransform && numPointCorrespondencesAdded > 0) {
-    this->updateTransform();
-  }
-
   return numPointCorrespondencesAdded;
 }
 
-void Calibration::addPointCorrespondence(const LaserCoord& laserCoord,
-                                         const PixelCoord& cameraPixelCoord,
-                                         const Position& cameraPosition,
-                                         bool updateTransform) {
-  pointCorrespondences_.add(laserCoord, cameraPixelCoord, cameraPosition);
-  spdlog::info("Added point correspondence. {} total correspondences.",
-               pointCorrespondences_.size());
-
-  // This is behind a flag as updating the transform is computationally
-  // non-trivial
-  if (updateTransform) {
-    this->updateTransform();
-  }
+void Calibration::updateModel() {
+  pointCorrespondences_.updateModel();
+  isCalibrated_ = pointCorrespondences_.hasModel();
+  logFitStats();
 }
 
-void Calibration::updateTransform() {
-  pointCorrespondences_.updateTransformNonlinearLeastSquares();
-  pointCorrespondences_.updateCameraPixelToLaserCoordJacobian();
-  spdlog::info(
-      "Updated transform. Reprojection error: {}, with {} total "
-      "correspondences.",
-      pointCorrespondences_.getReprojectionError(),
-      pointCorrespondences_.size());
+LaserCoord Calibration::cameraPositionToLaserCoord(
+    const Position& cameraPosition) const {
+  auto laserCoordOpt{pointCorrespondences_.project(cameraPosition)};
+  if (!laserCoordOpt) {
+    return {-1.0f, -1.0f};
+  }
+  return *laserCoordOpt;
+}
+
+LaserCoord Calibration::cameraPixelDeltaToLaserCoordDelta(
+    const PixelCoord& cameraPixelCoordDelta) const {
+  Eigen::Vector2d cameraPixelDelta{
+      static_cast<double>(cameraPixelCoordDelta.u),
+      static_cast<double>(cameraPixelCoordDelta.v)};
+  Eigen::Vector2d laserCoordDelta{
+      pointCorrespondences_.getCameraPixelToLaserCoordJacobian() *
+      cameraPixelDelta};
+  return {static_cast<float>(laserCoordDelta[0]),
+          static_cast<float>(laserCoordDelta[1])};
 }
 
 bool Calibration::save(const std::string& filePath) {
@@ -270,7 +225,7 @@ bool Calibration::load(const std::string& filePath) {
              sizeof(cameraFrameHeight));
     cameraFrameSize_ = {cameraFrameWidth, cameraFrameHeight};
 
-    // Load the point correspondences
+    // Load the point correspondences and fit the model
     pointCorrespondences_.deserialize(ifs);
 
     ifs.close();
@@ -279,15 +234,11 @@ bool Calibration::load(const std::string& filePath) {
     return false;
   }
 
-  isCalibrated_ = true;
-  spdlog::info(
-      "Successfully loaded calibration file {}. Reprojection error: {}, with "
-      "{} total "
-      "correspondences.",
-      filePath, pointCorrespondences_.getReprojectionError(),
-      pointCorrespondences_.size());
-
-  return true;
+  spdlog::info("Loaded calibration file {} with {} correspondences.", filePath,
+               pointCorrespondences_.size());
+  isCalibrated_ = pointCorrespondences_.hasModel();
+  logFitStats();
+  return isCalibrated_;
 }
 
 std::optional<Calibration::FindPointCorrespondenceResult>
@@ -329,4 +280,26 @@ Calibration::findPointCorrespondence(const LaserCoord& laserCoord,
   }
 
   return std::nullopt;
+}
+
+void Calibration::logFitStats() const {
+  if (!pointCorrespondences_.hasModel()) {
+    spdlog::warn("Failed to fit calibration model with {} correspondences.",
+                 pointCorrespondences_.size());
+    return;
+  }
+
+  auto stats{pointCorrespondences_.getFitStats()};
+  const auto& model{pointCorrespondences_.getModel()};
+  spdlog::info(
+      "Current model fit with {} of {} correspondences as inliers. \n"
+      "\tLaser coord error: mean {:.5f}, max {:.5f}\n"
+      "\t Position error: mean {:.2f}, max {:.2f}\n"
+      "\t Depth range: [{:.0f}, {:.0f}]\n"
+      "\t Mirror distance: {:.2f}\n"
+      "\t {} mirror first",
+      stats.numInliers, pointCorrespondences_.size(), stats.meanLaserError,
+      stats.maxLaserError, stats.meanPositionError, stats.maxPositionError,
+      stats.minDepth, stats.maxDepth, model.mirrorDistance,
+      model.xMirrorFirst ? "x" : "y");
 }

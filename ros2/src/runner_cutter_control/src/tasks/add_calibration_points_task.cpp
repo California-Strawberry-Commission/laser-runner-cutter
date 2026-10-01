@@ -18,7 +18,7 @@ AddCalibrationPointsTask::AddCalibrationPointsTask(
 
 void AddCalibrationPointsTask::run(
     const std::vector<NormalizedPixelCoord>& normalizedPixelCoords,
-    bool saveImages, const LaserColor& trackingLaserColor,
+    const LaserColor& trackingLaserColor, bool saveImages,
     std::atomic<bool>& stopSignal) {
   // For each camera pixel coord, find the 3D position wrt the camera
   auto positionsOpt{detection_->getPositions(normalizedPixelCoords)};
@@ -51,10 +51,12 @@ void AddCalibrationPointsTask::run(
                      }),
       laserCoords.end());
 
-  std::size_t numPointsAdded{calibration_->addCalibrationPoints(
-      laserCoords, trackingLaserColor, true, saveImages, stopSignal)};
+  std::size_t numPointsAdded{calibration_->collectCorrespondences(
+      laserCoords, trackingLaserColor, saveImages, stopSignal)};
+  calibration_->updateModel();
 
   common::publishNotification(
       logger_, notificationsPublisher_,
-      fmt::format("Added {} calibration point(s)", numPointsAdded));
+      fmt::format("Added {} calibration point(s). Total: {}", numPointsAdded,
+                  calibration_->getPointCorrespondencesCount()));
 }

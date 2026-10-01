@@ -82,6 +82,7 @@ ament_target_dependencies(clients PUBLIC
 # calibration
 add_library(calibration SHARED
   src/calibration/calibration.cpp
+  src/calibration/galvo_model.cpp
   src/calibration/point_correspondences.cpp
 )
 target_link_libraries(calibration PUBLIC Eigen3::Eigen clients)

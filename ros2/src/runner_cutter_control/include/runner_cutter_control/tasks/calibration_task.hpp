@@ -18,9 +18,9 @@ class CalibrationTask {
                       notificationsPublisher);
   ~CalibrationTask() = default;
 
-  void run(bool saveImages, const LaserColor& trackingLaserColor,
-           std::pair<int, int> gridSize, std::pair<float, float> xBounds,
-           std::pair<float, float> yBounds, std::atomic<bool>& stopSignal);
+  void run(const LaserColor& trackingLaserColor, std::pair<int, int> gridSize,
+           std::pair<float, float> xBounds, std::pair<float, float> yBounds,
+           bool append, bool saveImages, std::atomic<bool>& stopSignal);
 
  private:
   std::shared_ptr<Calibration> calibration_;
