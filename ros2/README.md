@@ -187,7 +187,7 @@ We calculate the intrinsic matrix and distortion coefficients of the Triton came
 
 1.  Run the following to save the xyz-to-Triton extrinsics:
 
-        ros2 run camera_control calibrate_lucid_rgbd -- calculate_extrinsics_xyz_to_triton --triton_intrinsics_file <path to Triton intrinsics yml file> --triton_images_dir <dir containing all Triton images> --helios_images_dir <dir containing all Helios intensity images> --helios_xyz_dir <dir containing all xyz data files> --output_dir <where to write the extrinsics data file>
+        ros2 run camera_control calibrate_lucid_rgbd -- calculate_extrinsics_xyz_to_triton --triton_intrinsics_file <path to Triton intrinsics yml file> --helios_intrinsics_file <path to Helios intrinsics yml file> --triton_images_dir <dir containing all Triton images> --helios_images_dir <dir containing all Helios intensity images> --grid_spacing_mm <circle center-to-center distance in mm> --output_dir <where to write the extrinsics data file>
 
 2.  Move or copy the extrinsics data yml created above to `ros2/src/camera_control/calibration_params/<calibration_id>/xyz_to_triton_extrinsics.yml`.
 

@@ -450,22 +450,20 @@ struct ViewCorrespondences {
   std::string name;
   std::string cameraImagePath;
   std::vector<cv::Point2f> cameraPts;
-  std::vector<cv::Point3f> xyzPts;
+  std::vector<cv::Point2f> heliosPts;
+  cv::Size heliosImageSize;
 };
 
-// For each camera image, finds the Helios intensity image and XYZ data with the
-// same file stem, detects the circle grid in both images, and pairs each camera
-// circle center with the XYZ position at the corresponding Helios circle
-// center. Circles whose XYZ position is invalid (non-finite or z <= 0) are
-// dropped. If the circle grid could not be found in either image, an image
-// showing the blob detector keypoints is written to failureImagesOutputDir.
-// Returns std::nullopt if any of the directories are invalid or an XYZ file
-// could not be read.
-std::optional<std::vector<ViewCorrespondences>>
-collectXyzToCameraCorrespondences(
+// For each camera image, finds the Helios intensity image with the same file
+// stem, detects the circle grid in both images, and pairs each camera circle
+// center with the corresponding Helios circle center. If the circle grid could
+// not be found in either image, an image showing the blob detector keypoints is
+// written to failureImagesOutputDir.
+std::vector<ViewCorrespondences> collectHeliosToCameraCorrespondences(
     const std::string& cameraImagesDir, const std::string& heliosImagesDir,
-    const std::string& heliosXyzDir,
     const std::filesystem::path& failureImagesOutputDir) {
+  std::vector<ViewCorrespondences> views;
+
   // Find camera image paths
   std::filesystem::path cameraImagesExpandedPath{
       common::expandUser(cameraImagesDir)};
@@ -473,7 +471,7 @@ collectXyzToCameraCorrespondences(
       !std::filesystem::is_directory(cameraImagesExpandedPath)) {
     spdlog::error("Provided path is not a valid directory: {}",
                   cameraImagesExpandedPath.string());
-    return std::nullopt;
+    return views;
   }
   std::vector<std::string> cameraImagePaths;
   for (auto& entry :
@@ -488,27 +486,17 @@ collectXyzToCameraCorrespondences(
   }
   std::sort(cameraImagePaths.begin(), cameraImagePaths.end());
 
-  // Ensure Helios intensity image and XYZ data directories are valid
+  // Ensure Helios intensity image directory is valid
   std::filesystem::path heliosImagesExpandedPath{
       common::expandUser(heliosImagesDir)};
   if (!std::filesystem::exists(heliosImagesExpandedPath) ||
       !std::filesystem::is_directory(heliosImagesExpandedPath)) {
     spdlog::error("Provided path is not a valid directory: {}",
                   heliosImagesExpandedPath.string());
-    return std::nullopt;
-  }
-  std::filesystem::path heliosXyzExpandedPath{common::expandUser(heliosXyzDir)};
-  if (!std::filesystem::exists(heliosXyzExpandedPath) ||
-      !std::filesystem::is_directory(heliosXyzExpandedPath)) {
-    spdlog::error("Provided path is not a valid directory: {}",
-                  heliosXyzExpandedPath.string());
-    return std::nullopt;
+    return views;
   }
 
-  std::vector<ViewCorrespondences> views;
-
-  // For each camera image, find the corresponding Helios intensity image and
-  // XYZ data
+  // For each camera image, find the corresponding Helios intensity image
   for (const auto& cameraImagePath : cameraImagePaths) {
     std::string baseName{
         std::filesystem::path(cameraImagePath).stem().string()};
@@ -531,27 +519,9 @@ collectXyzToCameraCorrespondences(
       continue;
     }
 
-    // Find corresponding Helios XYZ data
-    std::filesystem::path heliosXyzFilePath;
-    for (auto ext : {".yml", ".yaml"}) {
-      std::filesystem::path candidate{heliosXyzExpandedPath / (baseName + ext)};
-      if (std::filesystem::exists(candidate)) {
-        heliosXyzFilePath = candidate;
-        break;
-      }
-    }
-    if (heliosXyzFilePath.empty()) {
-      spdlog::warn(
-          "Could not find corresponding Helios XYZ data for {}. Skipping "
-          "image.",
-          cameraImagePath);
-      continue;
-    }
-
     spdlog::info("Processing {}", baseName);
     spdlog::info("  Camera image file: {}", cameraImagePath);
     spdlog::info("  Helios image file: {}", heliosImagePath.string());
-    spdlog::info("  Helios XYZ file: {}", heliosXyzFilePath.string());
 
     // Get circle centers in camera image
     cv::Mat cameraImg{readGrayscaleImage(cameraImagePath)};
@@ -588,100 +558,101 @@ collectXyzToCameraCorrespondences(
                   failureImg);
       continue;
     }
-    std::vector<cv::Point2f> circleCoords{std::move(*circleCoordsOpt)};
-    std::vector<cv::Point2f> heliosCircleCoords{
-        std::move(*heliosCircleCoordsOpt)};
 
-    // Parse XYZ data file
-    cv::FileStorage xyzFileFs{heliosXyzFilePath, cv::FileStorage::READ};
-    if (!xyzFileFs.isOpened() || xyzFileFs["xyz"].isNone()) {
-      spdlog::error("Could not read XYZ file: {}", heliosXyzFilePath.string());
-      return std::nullopt;
-    }
-    cv::Mat heliosXyz;
-    xyzFileFs["xyz"] >> heliosXyz;
-    xyzFileFs.release();
-
-    // Get corresponding XYZ value from the XYZ data, dropping circles without
-    // a valid depth measurement
-    ViewCorrespondences view{baseName, cameraImagePath, {}, {}};
-    for (size_t i = 0; i < heliosCircleCoords.size(); ++i) {
-      const cv::Point2f& pt{heliosCircleCoords[i]};
-      // Access XYZ at [y, x]
-      cv::Vec3f xyz{heliosXyz.at<cv::Vec3f>(cvRound(pt.y), cvRound(pt.x))};
-      if (!std::isfinite(xyz[0]) || !std::isfinite(xyz[1]) ||
-          !std::isfinite(xyz[2]) || xyz[2] <= 0.0f) {
-        continue;
-      }
-      view.cameraPts.push_back(circleCoords[i]);
-      view.xyzPts.emplace_back(xyz[0], xyz[1], xyz[2]);
-    }
-    size_t numDropped{heliosCircleCoords.size() - view.cameraPts.size()};
-    if (numDropped > 0) {
-      spdlog::warn("  Dropped {} circle(s) with invalid XYZ data", numDropped);
-    }
-    if (view.cameraPts.empty()) {
-      continue;
-    }
-
-    views.push_back(std::move(view));
+    views.push_back({baseName, cameraImagePath, std::move(*circleCoordsOpt),
+                     std::move(*heliosCircleCoordsOpt), heliosImg.size()});
   }
 
   return views;
 }
 
+// Calculates the extrinsics from Helios XYZ to the camera. The pose of the
+// calibration grid is solved from its known real-world geometry in both the
+// camera image and the Helios intensity image, and the transform between the
+// two cameras is jointly optimized across all views with cv::stereoCalibrate.
+// The Helios XYZ frame is the Helios camera frame (XYZ is computed from the
+// Helios factory intrinsics), so the resulting Helios-to-camera transform is
+// the XYZ-to-camera extrinsic matrix.
 void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
+                                    const std::string& heliosIntrinsicsFile,
                                     const std::string& cameraImagesDir,
                                     const std::string& heliosImagesDir,
-                                    const std::string& heliosXyzDir,
+                                    double gridSpacingMm,
                                     const std::string& outputDir) {
-  // Parse intrinsics file
-  auto intrinsicsOpt{calibration::readIntrinsicsFile(cameraIntrinsicsFile)};
-  if (!intrinsicsOpt) {
+  if (gridSpacingMm <= 0.0) {
+    spdlog::error("Grid spacing must be positive: {}", gridSpacingMm);
     return;
   }
-  auto [intrinsicMatrix, distCoeffs]{std::move(*intrinsicsOpt)};
+
+  // Parse intrinsics files
+  auto cameraIntrinsicsOpt{
+      calibration::readIntrinsicsFile(cameraIntrinsicsFile)};
+  if (!cameraIntrinsicsOpt) {
+    return;
+  }
+  auto [cameraIntrinsicMatrix,
+        cameraDistCoeffs]{std::move(*cameraIntrinsicsOpt)};
+  auto heliosIntrinsicsOpt{
+      calibration::readIntrinsicsFile(heliosIntrinsicsFile)};
+  if (!heliosIntrinsicsOpt) {
+    return;
+  }
+  auto [heliosIntrinsicMatrix,
+        heliosDistCoeffs]{std::move(*heliosIntrinsicsOpt)};
 
   std::filesystem::path outputDirExpandedPath{common::expandUser(outputDir)};
   std::filesystem::create_directories(outputDirExpandedPath);
   std::filesystem::path validationDir{outputDirExpandedPath /
                                       "extrinsics_validation"};
 
-  auto viewsOpt{collectXyzToCameraCorrespondences(
-      cameraImagesDir, heliosImagesDir, heliosXyzDir, validationDir)};
-  if (!viewsOpt) {
-    return;
-  }
-  std::vector<ViewCorrespondences> views{std::move(*viewsOpt)};
-
-  std::vector<cv::Point2f> allCircleCoords;
-  std::vector<cv::Point3f> allCircleXyzPositions;
-  for (const auto& view : views) {
-    allCircleCoords.insert(allCircleCoords.end(), view.cameraPts.begin(),
-                           view.cameraPts.end());
-    allCircleXyzPositions.insert(allCircleXyzPositions.end(),
-                                 view.xyzPts.begin(), view.xyzPts.end());
-  }
-
-  if (allCircleCoords.empty() || allCircleXyzPositions.empty()) {
+  auto views{collectHeliosToCameraCorrespondences(
+      cameraImagesDir, heliosImagesDir, validationDir)};
+  if (views.empty()) {
     spdlog::error("No suitable correspondences found.");
     return;
   }
 
-  spdlog::info("Total number of point correspondences found: {}",
-               allCircleCoords.size());
+  // Grid circle positions in the grid's own frame, in mm (the units of Helios
+  // XYZ). Ordering matches findCircleGridCenters for a symmetric grid.
+  cv::Size gridSize{5, 4};
+  std::vector<cv::Point3f> gridPoints;
+  for (int i = 0; i < gridSize.height; ++i) {
+    for (int j = 0; j < gridSize.width; ++j) {
+      gridPoints.emplace_back(j * gridSpacingMm, i * gridSpacingMm, 0.0f);
+    }
+  }
 
-  cv::Mat rvec, tvec;
-  bool ok{cv::solvePnP(allCircleXyzPositions, allCircleCoords, intrinsicMatrix,
-                       distCoeffs, rvec, tvec, false, cv::SOLVEPNP_ITERATIVE)};
-  // Note: solvePnPRansac may perform better when we have extreme outliers
-  if (!ok) {
-    spdlog::error("Could not calculate extrinsic matrix.");
+  std::vector<std::vector<cv::Point3f>> objectPoints;
+  std::vector<std::vector<cv::Point2f>> heliosImagePoints;
+  std::vector<std::vector<cv::Point2f>> cameraImagePoints;
+  for (const auto& view : views) {
+    objectPoints.push_back(gridPoints);
+    heliosImagePoints.push_back(view.heliosPts);
+    cameraImagePoints.push_back(view.cameraPts);
+  }
+  spdlog::info("Total number of views: {}", views.size());
+
+  // Helios is camera 1 and the camera is camera 2, so R and T map a position
+  // in the Helios frame to the camera frame: p_camera = R * p_helios + T.
+  // rvecs and tvecs are the grid poses in the Helios frame for each view.
+  cv::Mat R, T, E, F, perViewErrors;
+  std::vector<cv::Mat> rvecs, tvecs;
+  double rmsError;
+  try {
+    rmsError = cv::stereoCalibrate(
+        objectPoints, heliosImagePoints, cameraImagePoints,
+        heliosIntrinsicMatrix, heliosDistCoeffs, cameraIntrinsicMatrix,
+        cameraDistCoeffs, views.front().heliosImageSize, R, T, E, F, rvecs,
+        tvecs, perViewErrors, cv::CALIB_FIX_INTRINSIC);
+  } catch (const cv::Exception& e) {
+    spdlog::error("Could not calculate extrinsic matrix: {}", e.what());
     return;
   }
 
   // Construct extrinsic matrix and write to file
-  cv::Mat extrinsicMatrix{calibration::constructExtrinsicMatrix(rvec, tvec)};
+  cv::Mat rvec;
+  cv::Rodrigues(R, rvec);
+  cv::Mat extrinsicMatrix{calibration::constructExtrinsicMatrix(rvec, T)};
 
   std::filesystem::path extrinsicsPath{
       std::filesystem::path(outputDirExpandedPath) / "extrinsics.yml"};
@@ -690,18 +661,23 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
   fs.release();
   spdlog::info("Saved extrinsics data to: {}", extrinsicsPath.string());
 
-  // Calculate reprojection error, overall and per view, and write a residuals
-  // image for each view
+  // Calculate camera reprojection error per view by mapping the grid pose in
+  // the Helios frame through the extrinsics, and write a residuals image for
+  // each view
   spdlog::info("Evaluating extrinsics...");
   std::filesystem::create_directories(validationDir);
   double residualsArrowScale{20.};
   double totalError{0.0};
+  std::size_t totalPoints{0};
   std::vector<double> viewMeanErrors;
   std::vector<double> viewMaxErrors;
-  for (const auto& view : views) {
+  for (size_t v = 0; v < views.size(); ++v) {
+    const auto& view{views[v]};
+    cv::Mat cameraRvec, cameraTvec;
+    cv::composeRT(rvecs[v], tvecs[v], rvec, T, cameraRvec, cameraTvec);
     std::vector<cv::Point2f> reprojected;
-    cv::projectPoints(view.xyzPts, rvec, tvec, intrinsicMatrix, distCoeffs,
-                      reprojected);
+    cv::projectPoints(gridPoints, cameraRvec, cameraTvec, cameraIntrinsicMatrix,
+                      cameraDistCoeffs, reprojected);
 
     cv::Mat cameraImg{readGrayscaleImage(view.cameraImagePath)};
     cv::Mat residualsImg;
@@ -729,6 +705,7 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
     }
     double viewMeanError{viewTotalError / view.cameraPts.size()};
     totalError += viewTotalError;
+    totalPoints += view.cameraPts.size();
     viewMeanErrors.push_back(viewMeanError);
     viewMaxErrors.push_back(viewMaxError);
 
@@ -741,18 +718,21 @@ void calculateExtrinsicsXyzToCamera(const std::string& cameraIntrinsicsFile,
   }
   spdlog::info("Saved extrinsics validation images to: {}",
                validationDir.string());
-  double meanError{totalError / allCircleCoords.size()};
+  double meanError{totalError / totalPoints};
 
+  // perViewErrors holds the RMS reprojection error of each view in the Helios
+  // (column 0) and camera (column 1) images
   spdlog::info("Per-view reprojection error:");
-  spdlog::info("  {:<16} {:>8} {:>10} {:>10}", "view", "points", "mean (px)",
-               "max (px)");
+  spdlog::info("  {:<16} {:>8} {:>10} {:>10} {:>12}", "view", "points",
+               "mean (px)", "max (px)", "Helios RMS");
   for (size_t v = 0; v < views.size(); ++v) {
-    spdlog::info("  {:<16} {:>8} {:>10.4f} {:>10.4f}", views[v].name,
-                 views[v].cameraPts.size(), viewMeanErrors[v],
-                 viewMaxErrors[v]);
+    spdlog::info("  {:<16} {:>8} {:>10.4f} {:>10.4f} {:>12.4f}", views[v].name,
+                 views[v].cameraPts.size(), viewMeanErrors[v], viewMaxErrors[v],
+                 perViewErrors.at<double>(static_cast<int>(v), 0));
   }
-  spdlog::info("Reprojection error (mean): {}", meanError);
-  spdlog::info("Translation magnitude: {:.2f} mm", cv::norm(tvec));
+  spdlog::info("Stereo calibration RMS error (both cameras): {}", rmsError);
+  spdlog::info("Camera reprojection error (mean): {}", meanError);
+  spdlog::info("Translation magnitude: {:.2f} mm", cv::norm(T));
   spdlog::info("Rotation angle: {:.3f} deg", cv::norm(rvec) * 180.0 / CV_PI);
 }
 
@@ -960,12 +940,17 @@ int main(int argc, char* argv[]) {
       "calculate_extrinsics_xyz_to_triton",
       "Calculate extrinsics that describe the orientation of Triton relative "
       "to Helios XYZ from images of a calibration pattern")};
+  std::string heliosIntrinsicsFile;
   std::string tritonImagesDir;
   std::string heliosImagesDir;
-  std::string heliosXyzDir;
+  double gridSpacingMm{0.0};
   calculateExtrinsicsXyzToTritonCommand
       ->add_option("--triton_intrinsics_file", intrinsicsFile,
                    "yml file containing Triton camera intrinsics")
+      ->required();
+  calculateExtrinsicsXyzToTritonCommand
+      ->add_option("--helios_intrinsics_file", heliosIntrinsicsFile,
+                   "yml file containing Helios camera intrinsics")
       ->required();
   calculateExtrinsicsXyzToTritonCommand
       ->add_option("--triton_images_dir", tritonImagesDir,
@@ -976,8 +961,9 @@ int main(int argc, char* argv[]) {
                    "Path to directory containing Helios intensity images")
       ->required();
   calculateExtrinsicsXyzToTritonCommand
-      ->add_option("--helios_xyz_dir", heliosXyzDir,
-                   "Path to directory containing Helios XYZ data")
+      ->add_option("--grid_spacing_mm", gridSpacingMm,
+                   "Center-to-center distance between adjacent circles of the "
+                   "printed calibration grid, in mm")
       ->required();
   calculateExtrinsicsXyzToTritonCommand
       ->add_option("-o,--output_dir", outputDir,
@@ -1021,8 +1007,9 @@ int main(int argc, char* argv[]) {
   } else if (*undistortImageCommand) {
     undistortImage(intrinsicsFile, imageFile, outputFile);
   } else if (*calculateExtrinsicsXyzToTritonCommand) {
-    calculateExtrinsicsXyzToCamera(intrinsicsFile, tritonImagesDir,
-                                   heliosImagesDir, heliosXyzDir, outputDir);
+    calculateExtrinsicsXyzToCamera(intrinsicsFile, heliosIntrinsicsFile,
+                                   tritonImagesDir, heliosImagesDir,
+                                   gridSpacingMm, outputDir);
   } else if (*visualizeExtrinsicsCommand) {
     visualizeExtrinsics(cameraImageFile, heliosIntensityImageFile,
                         heliosXyzFile, intrinsicsFile, extrinsicsFile,
