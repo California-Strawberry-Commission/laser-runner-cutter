@@ -26,7 +26,8 @@ class FurrowTrackerAnnotator:
         tracker = self._tracker
 
         # Annotate pin
-        if pin_x := tracker.get_reg_x(tracker.pin_y):
+        pin_x = tracker.get_reg_x(tracker.pin_y)
+        if pin_x is not None:
             cv2.drawMarker(
                 img,
                 (pin_x, tracker.pin_y),
