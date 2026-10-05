@@ -21,8 +21,10 @@ class DetectionClient {
   detection_interfaces::msg::DetectionResult::SharedPtr getDetection(
       uint8_t detectionType);
   bool startDetection(uint8_t detectionType,
-                      const NormalizedPixelRect& normalizedBounds = {
-                          0.0f, 0.0f, 1.0f, 1.0f});
+                      const NormalizedPixelRect& normalizedBounds = {0.0f, 0.0f,
+                                                                     1.0f,
+                                                                     1.0f},
+                      bool keepTrackingState = false);
   bool stopDetection(uint8_t detectionType);
   bool stopAllDetections();
   bool startRecordingVideo();
