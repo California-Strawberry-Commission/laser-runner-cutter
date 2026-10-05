@@ -507,7 +507,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
     bool res{startTask("manual_target_laser", [this, normalizedPixelCoord,
                                                shouldAim, shouldBurn]() {
       ManualTargetLaserTask task{laser_, camera_, detection_, calibration_,
-                                 get_logger()};
+                                 get_logger(), notificationsPublisher_};
       task.run(normalizedPixelCoord, shouldAim, shouldBurn,
                getParamTrackingLaserColor(), getParamBurnLaserColor(),
                getParamBurnTimeSecs(), taskStopSignal_);
@@ -535,10 +535,10 @@ class RunnerCutterControlNode : public rclcpp::Node {
                                     notificationsPublisher_,
                                     tracksPublisher_};
         task.run(getParamTrackMissTimeoutSecs(), getParamTargetAttempts(),
-                 /*enableDetectionDuringBurn=*/false, /*enableAiming=*/true,
-                 getParamAutoDisarmSecs(), getParamSaveDir(),
-                 getParamTrackingLaserColor(), getParamBurnLaserColor(),
-                 getParamBurnTimeSecs(), taskStopSignal_);
+                 /*enableAiming=*/true, getParamAutoDisarmSecs(),
+                 getParamSaveDir(), getParamTrackingLaserColor(),
+                 getParamBurnLaserColor(), getParamBurnTimeSecs(),
+                 taskStopSignal_);
       }
     })};
     response->success = res;

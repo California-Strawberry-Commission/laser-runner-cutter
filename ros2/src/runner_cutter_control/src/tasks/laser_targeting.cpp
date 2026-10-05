@@ -8,6 +8,22 @@
 #include "detection_interfaces/msg/detection_type.hpp"
 #include "runner_cutter_control/clients/laser_detection_context.hpp"
 
+std::string LaserTargeting::describeAimStatus(AimStatus status) {
+  switch (status) {
+    case AimStatus::SUCCESS:
+      return "success";
+    case AimStatus::LASER_NOT_DETECTED:
+      return "tracking laser was not detected";
+    case AimStatus::LASER_COORD_OUT_OF_BOUNDS:
+      return "target out of reach of laser";
+    case AimStatus::MAX_ATTEMPTS_EXCEEDED:
+      return "laser did not converge on the target";
+    case AimStatus::STOPPED:
+      return "aiming was stopped";
+  }
+  return "unknown";
+}
+
 LaserTargeting::LaserTargeting(std::shared_ptr<LaserControlClient> laser,
                                std::shared_ptr<CameraControlClient> camera,
                                std::shared_ptr<DetectionClient> detection,
@@ -19,27 +35,43 @@ LaserTargeting::LaserTargeting(std::shared_ptr<LaserControlClient> laser,
       calibration_(std::move(calibration)),
       logger_(std::move(logger)) {}
 
-std::optional<LaserCoord> LaserTargeting::aim(
+LaserTargeting::AimResult LaserTargeting::aim(
     uint32_t targetId, const Position& targetCameraPosition,
     const PixelCoord& targetCameraPixel, const LaserColor& trackingLaserColor,
     std::atomic<bool>& stopSignal) {
-  LaserDetectionContext context{laser_, camera_};
   LaserCoord initialLaserCoord{
       calibration_->cameraPositionToLaserCoord(targetCameraPosition)};
+  if (initialLaserCoord.x < 0.0f || initialLaserCoord.x > 1.0f ||
+      initialLaserCoord.y < 0.0f || initialLaserCoord.y > 1.0f) {
+    RCLCPP_WARN(logger_,
+                "[LaserTargeting][aim] Initial laser coord is outside of "
+                "renderable area.");
+    return {AimStatus::LASER_COORD_OUT_OF_BOUNDS, {}};
+  }
+
+  LaserDetectionContext context{laser_, camera_};
   laser_->setColor(trackingLaserColor);
   return correctLaser(targetId, initialLaserCoord, targetCameraPixel,
                       stopSignal);
 }
 
-void LaserTargeting::burn(uint32_t targetTrackId, const LaserCoord& laserCoord,
+bool LaserTargeting::burn(uint32_t targetTrackId, const LaserCoord& laserCoord,
                           const LaserColor& burnLaserColor,
                           float burnTimeSecs) {
+  if (laserCoord.x < 0.0f || laserCoord.x > 1.0f || laserCoord.y < 0.0f ||
+      laserCoord.y > 1.0f) {
+    RCLCPP_WARN(
+        logger_,
+        "[LaserTargeting][burn] Laser coord is outside of renderable area.");
+    return false;
+  }
+
   LaserDetectionContext context{laser_, camera_};
   laser_->clearPaths();
   laser_->setColor(burnLaserColor);
   laser_->play();
-  RCLCPP_INFO(logger_, "Burning track %u for %f secs", targetTrackId,
-              burnTimeSecs);
+  RCLCPP_INFO(logger_, "[LaserTargeting][burn] Burning track %u for %f secs",
+              targetTrackId, burnTimeSecs);
   laser_->setPoint(targetTrackId, laserCoord);
   constexpr auto KEEPALIVE_PERIOD{std::chrono::milliseconds(100)};
   auto deadline{std::chrono::steady_clock::now() +
@@ -51,10 +83,12 @@ void LaserTargeting::burn(uint32_t targetTrackId, const LaserCoord& laserCoord,
   }
   laser_->clearPaths();
   laser_->stop();
-  RCLCPP_INFO(logger_, "Burn complete on track %u", targetTrackId);
+  RCLCPP_INFO(logger_, "[LaserTargeting][burn] Burn complete on track %u",
+              targetTrackId);
+  return true;
 }
 
-std::optional<LaserCoord> LaserTargeting::correctLaser(
+LaserTargeting::AimResult LaserTargeting::correctLaser(
     uint32_t targetId, const LaserCoord& initialLaserCoord,
     const PixelCoord& targetCameraPixel, std::atomic<bool>& stopSignal,
     float pixelDistanceThreshold, int maxAttempts) {
@@ -68,8 +102,13 @@ std::optional<LaserCoord> LaserTargeting::correctLaser(
     // Get detected camera pixel coord and camera-space position for laser
     auto detectResultOpt{detectLaser(stopSignal)};
     if (!detectResultOpt) {
-      RCLCPP_WARN(logger_, "Could not detect laser during correction");
-      return std::nullopt;
+      if (stopSignal) {
+        return {AimStatus::STOPPED, {}};
+      }
+      RCLCPP_WARN(logger_,
+                  "[LaserTargeting][correctLaser] Could not detect laser "
+                  "during correction");
+      return {AimStatus::LASER_NOT_DETECTED, {}};
     }
 
     // Calculate camera pixel distance
@@ -78,16 +117,16 @@ std::optional<LaserCoord> LaserTargeting::correctLaser(
                                 targetCameraPixel.v - laserPixel.v};
     float dist{
         static_cast<float>(std::hypot(cameraPixelDelta.u, cameraPixelDelta.v))};
-    RCLCPP_INFO(
-        logger_,
-        "Aiming laser. Target camera pixel = (%d, %d), laser detected at = "
-        "(%d, %d), dist = %f",
-        targetCameraPixel.u, targetCameraPixel.v, laserPixel.u, laserPixel.v,
-        dist);
+    RCLCPP_INFO(logger_,
+                "[LaserTargeting][correctLaser] Aiming laser. Target camera "
+                "pixel = (%d, %d), laser detected at = (%d, %d), dist = %f",
+                targetCameraPixel.u, targetCameraPixel.v, laserPixel.u,
+                laserPixel.v, dist);
 
     if (dist <= pixelDistanceThreshold) {
-      RCLCPP_INFO(logger_, "Correction successful");
-      return currentLaserCoord;
+      RCLCPP_INFO(logger_,
+                  "[LaserTargeting][correctLaser] Correction successful");
+      return {AimStatus::SUCCESS, currentLaserCoord};
     }
 
     // Calculate new laser coord
@@ -96,24 +135,28 @@ std::optional<LaserCoord> LaserTargeting::correctLaser(
     LaserCoord newLaserCoord{currentLaserCoord.x + laserCoordCorrection.x,
                              currentLaserCoord.y + laserCoordCorrection.y};
     RCLCPP_INFO(logger_,
-                "Distance too large. Correcting laser. Camera pixel delta = "
-                "(%d, %d), laser coord correction = (%f, %f). Current laser "
-                "coord = (%f, %f), corrected laser coord = (%f, %f)",
+                "[LaserTargeting][correctLaser] Distance too large. Correcting "
+                "laser. Camera pixel delta = (%d, %d), laser coord correction "
+                "= (%f, %f). Current laser coord = (%f, %f), corrected laser "
+                "coord = (%f, %f)",
                 cameraPixelDelta.u, cameraPixelDelta.v, laserCoordCorrection.x,
                 laserCoordCorrection.y, currentLaserCoord.x,
                 currentLaserCoord.y, newLaserCoord.x, newLaserCoord.y);
 
-    if (newLaserCoord.x > 1.0f || newLaserCoord.y > 1.0f ||
-        newLaserCoord.x < 0.0f || newLaserCoord.y < 0.0f) {
-      RCLCPP_INFO(logger_, "Laser coord is outside of renderable area.");
-      return std::nullopt;
+    if (newLaserCoord.x < 0.0f || newLaserCoord.x > 1.0f ||
+        newLaserCoord.y < 0.0f || newLaserCoord.y > 1.0f) {
+      RCLCPP_WARN(logger_,
+                  "[LaserTargeting][correctLaser] Corrected laser coord is "
+                  "outside of renderable area.");
+      return {AimStatus::LASER_COORD_OUT_OF_BOUNDS, {}};
     }
 
     currentLaserCoord = newLaserCoord;
     ++attempt;
   }
 
-  return std::nullopt;
+  return {stopSignal ? AimStatus::STOPPED : AimStatus::MAX_ATTEMPTS_EXCEEDED,
+          {}};
 }
 
 std::optional<LaserTargeting::DetectLaserResult> LaserTargeting::detectLaser(

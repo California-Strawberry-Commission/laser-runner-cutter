@@ -48,9 +48,6 @@ class StaticRunnerCutterTask {
    * ACTIVE track to go undetected before the Tracker marks it FAILED.
    * @param targetAttempts Max number of times a FAILED track may be requeued
    * as PENDING after being redetected. A negative value means no limit.
-   * @param enableDetectionDuringBurn When false, RUNNER detection is stopped
-   * for each target's aim/burn and restarted afterward. When true, it runs
-   * continuously.
    * @param enableAiming When true, run a closed-loop laser aim-correction pass
    * before burning. When false, map the target's camera-space position straight
    * to a laser coordinate via calibration with no visual correction.
@@ -64,8 +61,7 @@ class StaticRunnerCutterTask {
    * @param burnTimeSecs Burn duration, in seconds, per target.
    * @param stopSignal Set to true from another thread to end the task.
    */
-  void run(float trackMissTimeoutSecs, int targetAttempts,
-           bool enableDetectionDuringBurn, bool enableAiming,
+  void run(float trackMissTimeoutSecs, int targetAttempts, bool enableAiming,
            float autoDisarmSecs, const std::string& saveDir,
            const LaserColor& trackingLaserColor,
            const LaserColor& burnLaserColor, float burnTimeSecs,
