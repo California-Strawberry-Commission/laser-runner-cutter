@@ -377,9 +377,6 @@ class DetectionNode : public rclcpp::Node {
     // Timestamps of the frames currently held in gpuPrevImage/gpuCurrImage
     rclcpp::Time prevFrameTimestamp;
     rclcpp::Time currFrameTimestamp;
-    // Whether runner detection was enabled on the previous iteration
-    bool prevRunnerEnabled{false};
-
     BS::thread_pool optflowThreadPool{1};
 
     while (!threadStopSignal_) {
@@ -451,18 +448,14 @@ class DetectionNode : public rclcpp::Node {
         enabledDetections = enabledDetections_;
       }
 
-      const bool runnerEnabled{
-          enabledDetections.find(
+      if (enabledDetections.find(
               detection_interfaces::msg::DetectionType::RUNNER) !=
-          enabledDetections.end()};
-      // If runner detection was just enabled, reset the runner detector as it
-      // may have left over tracking state
-      if (runnerEnabled && !prevRunnerEnabled) {
-        runnerDetector_->reset();
-      }
-      prevRunnerEnabled = runnerEnabled;
+          enabledDetections.end()) {
+        // Reset the runner detector if needed
+        if (runnerDetectorResetPending_.exchange(false)) {
+          runnerDetector_->reset();
+        }
 
-      if (runnerEnabled) {
         // Kick off optical flow
         std::future<std::optional<cv::Point2f>> flowFuture;
         std::optional<cv::Point2f> flowCenter;
@@ -864,6 +857,12 @@ class DetectionNode : public rclcpp::Node {
         return;
       }
 
+      if (request->detection_type ==
+              detection_interfaces::msg::DetectionType::RUNNER &&
+          !request->keep_tracking_state) {
+        runnerDetectorResetPending_ = true;
+      }
+
       // If normalized bounds are all zero, set to full bounds (0, 0, 1, 1)
       if (request->normalized_bounds.w == 0.0 &&
           request->normalized_bounds.x == 0.0 &&
@@ -1243,6 +1242,8 @@ class DetectionNode : public rclcpp::Node {
   // DetectionType -> normalized [0, 1] rect bounds {min x, min y, width,
   // height}
   std::mutex enabledDetectionsMutex_;
+  // Whether the runner detector should be reset before its next use
+  std::atomic<bool> runnerDetectorResetPending_{false};
   std::unordered_map<int, cv::Rect2d> enabledDetections_;
   std::mutex depthXyzQueueMutex_;
   std::deque<sensor_msgs::msg::Image::ConstSharedPtr> depthXyzQueue_;

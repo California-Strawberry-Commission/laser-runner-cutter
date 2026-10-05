@@ -59,10 +59,12 @@ DetectionClient::getDetection(uint8_t detectionType) {
 }
 
 bool DetectionClient::startDetection(
-    uint8_t detectionType, const NormalizedPixelRect& normalizedBounds) {
+    uint8_t detectionType, const NormalizedPixelRect& normalizedBounds,
+    bool keepTrackingState) {
   auto request{
       std::make_shared<detection_interfaces::srv::StartDetection::Request>()};
   request->detection_type = detectionType;
+  request->keep_tracking_state = keepTrackingState;
   common_interfaces::msg::Vector4 normalizedBoundsMsg;
   normalizedBoundsMsg.w = normalizedBounds.u;
   normalizedBoundsMsg.x = normalizedBounds.v;

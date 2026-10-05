@@ -33,8 +33,11 @@ class RunnerDetectionPause {
   }
   ~RunnerDetectionPause() {
     try {
+      // Note that we keep tracking state so that we retain the same instance
+      // IDs as before
       detection_->startDetection(
-          detection_interfaces::msg::DetectionType::RUNNER, normalizedBounds_);
+          detection_interfaces::msg::DetectionType::RUNNER, normalizedBounds_,
+          /*keepTrackingState=*/true);
     } catch (...) {
       // Destructors must not throw
     }
