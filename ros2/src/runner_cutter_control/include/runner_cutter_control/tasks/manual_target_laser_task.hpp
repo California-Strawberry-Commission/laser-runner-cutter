@@ -2,6 +2,7 @@
 
 #include <atomic>
 
+#include "rcl_interfaces/msg/log.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "runner_cutter_control/calibration/calibration.hpp"
 #include "runner_cutter_control/clients/camera_control_client.hpp"
@@ -20,7 +21,9 @@ class ManualTargetLaserTask {
                         std::shared_ptr<CameraControlClient> camera,
                         std::shared_ptr<DetectionClient> detection,
                         std::shared_ptr<Calibration> calibration,
-                        rclcpp::Logger logger);
+                        rclcpp::Logger logger,
+                        rclcpp::Publisher<rcl_interfaces::msg::Log>::SharedPtr
+                            notificationsPublisher);
   ~ManualTargetLaserTask() = default;
 
   void run(const NormalizedPixelCoord& normalizedPixelCoord, bool shouldAim,
@@ -33,4 +36,6 @@ class ManualTargetLaserTask {
   std::shared_ptr<Calibration> calibration_;
   LaserTargeting laserTargeting_;
   rclcpp::Logger logger_;
+  rclcpp::Publisher<rcl_interfaces::msg::Log>::SharedPtr
+      notificationsPublisher_;
 };

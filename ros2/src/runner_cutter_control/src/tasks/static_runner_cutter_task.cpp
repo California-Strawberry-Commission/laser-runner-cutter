@@ -16,6 +16,39 @@
 #include "runner_cutter_control_interfaces/msg/track.hpp"
 #include "runner_cutter_control_interfaces/msg/track_state.hpp"
 
+namespace {
+
+/**
+ * Pauses runner detection for the lifetime of the instance. Detection is
+ * re-enabled when the instance is destroyed, regardless of how the enclosing
+ * scope is exited.
+ */
+class RunnerDetectionPause {
+ public:
+  RunnerDetectionPause(std::shared_ptr<DetectionClient> detection,
+                       NormalizedPixelRect normalizedBounds)
+      : detection_(std::move(detection)),
+        normalizedBounds_(std::move(normalizedBounds)) {
+    detection_->stopDetection(detection_interfaces::msg::DetectionType::RUNNER);
+  }
+  ~RunnerDetectionPause() {
+    try {
+      detection_->startDetection(
+          detection_interfaces::msg::DetectionType::RUNNER, normalizedBounds_);
+    } catch (...) {
+      // Destructors must not throw
+    }
+  }
+  RunnerDetectionPause(const RunnerDetectionPause&) = delete;
+  RunnerDetectionPause& operator=(const RunnerDetectionPause&) = delete;
+
+ private:
+  std::shared_ptr<DetectionClient> detection_;
+  NormalizedPixelRect normalizedBounds_;
+};
+
+}  // namespace
+
 StaticRunnerCutterTask::StaticRunnerCutterTask(
     std::shared_ptr<
         CallbackRegistry<detection_interfaces::msg::DetectionResult>>
@@ -40,7 +73,6 @@ StaticRunnerCutterTask::StaticRunnerCutterTask(
       tracker_(std::make_shared<Tracker>()) {}
 
 void StaticRunnerCutterTask::run(float trackMissTimeoutSecs, int targetAttempts,
-                                 bool enableDetectionDuringBurn,
                                  bool enableAiming, float autoDisarmSecs,
                                  const std::string& saveDir,
                                  const LaserColor& trackingLaserColor,
@@ -128,43 +160,53 @@ void StaticRunnerCutterTask::run(float trackMissTimeoutSecs, int targetAttempts,
       // to acquire a target again.
       continue;
     }
-
-    // Temporarily disable runner detection during aim/burn if needed
-    if (!enableDetectionDuringBurn) {
-      detection_->stopDetection(
-          detection_interfaces::msg::DetectionType::RUNNER);
-    }
-
     auto target{std::move(*targetOpt)};
+
+    // Temporarily disable runner detection during aim/burn. Detection is
+    // re-enabled when detectionPause goes out of scope at the end of this
+    // iteration.
+    RunnerDetectionPause detectionPause{detection_, normalizedLaserBounds};
 
     // Aim
     LaserCoord laserCoord;
     if (enableAiming) {
-      auto laserCoordOpt{laserTargeting_.aim(
-          target->getId(), target->getPosition(), target->getPixel(),
-          trackingLaserColor, stopSignal)};
-      if (!laserCoordOpt) {
-        RCLCPP_INFO(logger_, "Failed to aim laser at track %u.",
-                    target->getId());
+      auto aimResult{laserTargeting_.aim(target->getId(), target->getPosition(),
+                                         target->getPixel(), trackingLaserColor,
+                                         stopSignal)};
+      if (aimResult.status != LaserTargeting::AimStatus::SUCCESS) {
+        // Don't notify if aiming was interrupted by the stop signal
+        if (aimResult.status != LaserTargeting::AimStatus::STOPPED) {
+          common::publishNotification(
+              logger_, notificationsPublisher_,
+              fmt::format("Failed to aim at runner {}: {}.", target->getId(),
+                          LaserTargeting::describeAimStatus(aimResult.status)),
+              rclcpp::Logger::Level::Warn);
+        }
         tracker_->transitionTrackState(target->getId(), Track::State::FAILED);
         continue;
       }
-      laserCoord = std::move(*laserCoordOpt);
+      laserCoord = aimResult.laserCoord;
     } else {
       laserCoord =
           calibration_->cameraPositionToLaserCoord(target->getPosition());
     }
 
     // Burn
-    laserTargeting_.burn(target->getId(), laserCoord, burnLaserColor,
-                         burnTimeSecs);
-    tracker_->transitionTrackState(target->getId(), Track::State::COMPLETED);
-
-    // Re-enable runner detection after burn if needed
-    if (!enableDetectionDuringBurn) {
-      detection_->startDetection(
-          detection_interfaces::msg::DetectionType::RUNNER,
-          normalizedLaserBounds);
+    if (!laserTargeting_.burn(target->getId(), laserCoord, burnLaserColor,
+                              burnTimeSecs)) {
+      common::publishNotification(
+          logger_, notificationsPublisher_,
+          fmt::format("Failed to burn runner {}: out of reach of laser.",
+                      target->getId()),
+          rclcpp::Logger::Level::Warn);
+      tracker_->transitionTrackState(target->getId(), Track::State::FAILED);
+      continue;
+    } else {
+      common::publishNotification(
+          logger_, notificationsPublisher_,
+          fmt::format("Successfully burned runner {}.", target->getId()),
+          rclcpp::Logger::Level::Info);
+      tracker_->transitionTrackState(target->getId(), Track::State::COMPLETED);
     }
   }
 
@@ -199,8 +241,11 @@ StaticRunnerCutterTask::acquireNextTarget() {
       return track;
     }
 
-    RCLCPP_INFO(logger_, "Track %u is out of laser bounds. Marking as failed.",
-                track->getId());
+    common::publishNotification(
+        logger_, notificationsPublisher_,
+        fmt::format("Failed to aim at runner {}: out of reach of laser.",
+                    track->getId()),
+        rclcpp::Logger::Level::Warn);
     tracker_->transitionTrackState(track->getId(), Track::State::FAILED);
   }
 

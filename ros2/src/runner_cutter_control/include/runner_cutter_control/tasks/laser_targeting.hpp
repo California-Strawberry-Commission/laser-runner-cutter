@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <optional>
+#include <string>
 
 #include "rclcpp/rclcpp.hpp"
 #include "runner_cutter_control/calibration/calibration.hpp"
@@ -19,6 +20,30 @@
  */
 class LaserTargeting {
  public:
+  enum class AimStatus {
+    SUCCESS,
+    // The tracking laser could not be detected in the camera frame
+    LASER_NOT_DETECTED,
+    // The corrected laser coordinate fell outside of the renderable area
+    LASER_COORD_OUT_OF_BOUNDS,
+    // The laser did not reach the target within the max number of corrections
+    MAX_ATTEMPTS_EXCEEDED,
+    // The stop signal was set before aiming finished
+    STOPPED,
+  };
+
+  struct AimResult {
+    AimStatus status;
+    // Only valid when status is SUCCESS
+    LaserCoord laserCoord;
+  };
+
+  /**
+   * Get a human-readable description of an aim status, suitable for use as
+   * the reason in a user-facing message.
+   */
+  static std::string describeAimStatus(AimStatus status);
+
   LaserTargeting(std::shared_ptr<LaserControlClient> laser,
                  std::shared_ptr<CameraControlClient> camera,
                  std::shared_ptr<DetectionClient> detection,
@@ -38,14 +63,13 @@ class LaserTargeting {
    * @param trackingLaserColor Laser color to use while aiming.
    * @param stopSignal Flag to enable the aiming process to be prematurely
    * terminated when set to true.
-   * @return The corrected laser coordinate that projects to the target camera
-   * pixel.
+   * @return On success, the corrected laser coordinate that projects to the
+   * target camera pixel. Otherwise, the reason aiming failed.
    */
-  std::optional<LaserCoord> aim(uint32_t targetId,
-                                const Position& targetCameraPosition,
-                                const PixelCoord& targetCameraPixel,
-                                const LaserColor& trackingLaserColor,
-                                std::atomic<bool>& stopSignal);
+  AimResult aim(uint32_t targetId, const Position& targetCameraPosition,
+                const PixelCoord& targetCameraPixel,
+                const LaserColor& trackingLaserColor,
+                std::atomic<bool>& stopSignal);
 
   /**
    * Burn a laser coordinate for a fixed duration.
@@ -54,8 +78,10 @@ class LaserTargeting {
    * @param laserCoord Laser coordinate to burn.
    * @param burnLaserColor Laser color to use while burning.
    * @param burnTimeSecs Duration, in seconds, to burn for.
+   * @return Whether the burn was performed. False if laserCoord is outside of
+   * the renderable area.
    */
-  void burn(uint32_t targetTrackId, const LaserCoord& laserCoord,
+  bool burn(uint32_t targetTrackId, const LaserCoord& laserCoord,
             const LaserColor& burnLaserColor, float burnTimeSecs);
 
  private:
@@ -78,15 +104,14 @@ class LaserTargeting {
    * @param pixelDistanceThreshold Pixel distance threshold under which the
    * corrected laser coordinate is considered close enough to the target.
    * @param maxAttempts Maximum number of iterations.
-   * @return The corrected laser coordinate that projects to the target camera
-   * pixel.
+   * @return On success, the corrected laser coordinate that projects to the
+   * target camera pixel. Otherwise, the reason correction failed.
    */
-  std::optional<LaserCoord> correctLaser(uint32_t targetId,
-                                         const LaserCoord& initialLaserCoord,
-                                         const PixelCoord& targetCameraPixel,
-                                         std::atomic<bool>& stopSignal,
-                                         float pixelDistanceThreshold = 6.0f,
-                                         int maxAttempts = 10);
+  AimResult correctLaser(uint32_t targetId, const LaserCoord& initialLaserCoord,
+                         const PixelCoord& targetCameraPixel,
+                         std::atomic<bool>& stopSignal,
+                         float pixelDistanceThreshold = 6.0f,
+                         int maxAttempts = 10);
 
   std::optional<DetectLaserResult> detectLaser(std::atomic<bool>& stopSignal,
                                                int maxAttempts = 3);
