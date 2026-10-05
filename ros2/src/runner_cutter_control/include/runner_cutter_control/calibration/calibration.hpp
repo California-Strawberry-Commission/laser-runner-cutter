@@ -18,9 +18,11 @@ class Calibration {
 
   FrameSize getCameraFrameSize() const { return cameraFrameSize_; }
 
-  PixelRect getLaserBounds() const {
-    return pointCorrespondences_.getLaserBounds();
-  }
+  /**
+   * @return The rect (min x, min y, width, height) representing the reach of
+   * the laser, in terms of camera pixels, clipped to the camera frame.
+   */
+  PixelRect getLaserBounds() const;
 
   NormalizedPixelRect getNormalizedLaserBounds() const;
 

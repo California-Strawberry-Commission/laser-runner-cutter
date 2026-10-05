@@ -45,7 +45,7 @@ class RunnerCutterControlNode : public rclcpp::Node {
     declare_parameter<std::string>("laser_control_node_name", "laser0");
     declare_parameter<std::string>("camera_control_node_name", "camera0");
     declare_parameter<std::string>("detection_node_name", "detection0");
-    declare_parameter<std::vector<int>>("calibration_grid_size", {11, 11});
+    declare_parameter<std::vector<int>>("calibration_grid_size", {7, 7});
     declare_parameter<std::vector<float>>("calibration_x_bounds", {0.0f, 1.0f});
     declare_parameter<std::vector<float>>("calibration_y_bounds", {0.0f, 1.0f});
     declare_parameter<std::vector<float>>("tracking_laser_color",
@@ -506,7 +506,8 @@ class RunnerCutterControlNode : public rclcpp::Node {
     bool shouldBurn{request->burn};
     bool res{startTask("manual_target_laser", [this, normalizedPixelCoord,
                                                shouldAim, shouldBurn]() {
-      ManualTargetLaserTask task{laser_, camera_, detection_, calibration_,
+      ManualTargetLaserTask task{laser_,       camera_,
+                                 detection_,   calibration_,
                                  get_logger(), notificationsPublisher_};
       task.run(normalizedPixelCoord, shouldAim, shouldBurn,
                getParamTrackingLaserColor(), getParamBurnLaserColor(),

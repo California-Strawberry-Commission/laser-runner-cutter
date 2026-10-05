@@ -1,5 +1,7 @@
 #include "runner_cutter_control/calibration/point_correspondences.hpp"
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -19,6 +21,16 @@ constexpr double MIN_OUTLIER_THRESHOLD{2e-3};
 constexpr int MAX_OUTLIER_ITERATIONS{3};
 // Residual assigned to a position that projects behind the scanner
 constexpr double INVALID_PROJECTION_RESIDUAL{10.0};
+// Near and far ends of the working distance (camera-space z, mm). The laser
+// bounds are the region reachable by the laser at both.
+constexpr double WORKING_DISTANCE_NEAR_MM{500.0};
+constexpr double WORKING_DISTANCE_FAR_MM{1500.0};
+// Number of laser coords sampled along each edge of the laser's range when
+// calculating the laser bounds
+constexpr int LASER_BOUNDS_EDGE_SAMPLES{11};
+// Fraction by which the width and height of the laser bounds are shrunk (about
+// the center), as a buffer against model error
+constexpr double LASER_BOUNDS_BUFFER_RATIO{0.1};
 
 bool isNearlyPlanar(const Eigen::MatrixXd& positions) {
   Eigen::MatrixXd centered{positions.rowwise() - positions.colwise().mean()};
@@ -45,15 +57,13 @@ Eigen::MatrixXd normalizingTransform(const Eigen::MatrixXd& points) {
   return transform;
 }
 
-// Initial estimate from a pinhole approximation of the scanner. Solve for the
-// 3x4 projection matrix with a normalized DLT, then decompose it into
-// intrinsics (which map to scale/offset) and pose. Requires non-planar
-// positions.
-std::optional<GalvoModel> initialEstimatePinhole(
-    const Eigen::MatrixXd& positions, const Eigen::MatrixXd& laserCoords) {
+// Solve for the 3x4 pinhole projection matrix that maps 3D positions to 2D
+// points, with a normalized DLT. Requires non-planar positions.
+Eigen::Matrix<double, 3, 4> solveProjectionDlt(const Eigen::MatrixXd& positions,
+                                               const Eigen::MatrixXd& points) {
   auto numPoints{positions.rows()};
   Eigen::MatrixXd positionsTransform{normalizingTransform(positions)};
-  Eigen::MatrixXd laserTransform{normalizingTransform(laserCoords)};
+  Eigen::MatrixXd pointsTransform{normalizingTransform(points)};
 
   // Each correspondence gives two rows of A * p = 0, where p is the flattened
   // (row-major) projection matrix
@@ -61,8 +71,8 @@ std::optional<GalvoModel> initialEstimatePinhole(
   for (Eigen::Index i = 0; i < numPoints; ++i) {
     Eigen::Vector4d X{positionsTransform *
                       positions.row(i).transpose().homogeneous()};
-    Eigen::Vector3d x{laserTransform *
-                      laserCoords.row(i).transpose().homogeneous()};
+    Eigen::Vector3d x{pointsTransform *
+                      points.row(i).transpose().homogeneous()};
     A.block<1, 4>(2 * i, 0) = X.transpose();
     A.block<1, 4>(2 * i, 8) = -x[0] * X.transpose();
     A.block<1, 4>(2 * i + 1, 4) = X.transpose();
@@ -72,14 +82,24 @@ std::optional<GalvoModel> initialEstimatePinhole(
   Eigen::VectorXd p{svd.matrixV().col(11)};
   Eigen::Matrix<double, 3, 4> normalizedP{
       Eigen::Map<Eigen::Matrix<double, 3, 4, Eigen::RowMajor>>{p.data()}};
-  Eigen::Matrix<double, 3, 4> P{laserTransform.inverse() * normalizedP *
+  Eigen::Matrix<double, 3, 4> P{pointsTransform.inverse() * normalizedP *
                                 positionsTransform};
 
-  // Choose the sign of P so that the positions are in front of the scanner
+  // Choose the sign of P so that the positions have positive depth
   Eigen::MatrixXd homogeneousPositions{positions.rowwise().homogeneous()};
   if ((homogeneousPositions * P.row(2).transpose()).sum() < 0.0) {
     P = -P;
   }
+  return P;
+}
+
+// Initial estimate from a pinhole approximation of the scanner. Solve for the
+// 3x4 projection matrix with a normalized DLT, then decompose it into
+// intrinsics (which map to scale/offset) and pose. Requires non-planar
+// positions.
+std::optional<GalvoModel> initialEstimatePinhole(
+    const Eigen::MatrixXd& positions, const Eigen::MatrixXd& laserCoords) {
+  Eigen::Matrix<double, 3, 4> P{solveProjectionDlt(positions, laserCoords)};
 
   // If the laser x axis is mirrored relative to a right-handed frame, flip it
   // so that the decomposition yields a proper rotation, and flip it back in
@@ -312,20 +332,25 @@ void PointCorrespondences::clear() {
   cameraPositions_.clear();
   model_ = {};
   hasModel_ = false;
+  modelInliers_.clear();
   fitStats_ = {};
+  pixelProjection_.reset();
   cameraToLaserJacobian_.setZero();
   updateLaserBounds();
 }
 
 void PointCorrespondences::updateModel() {
-  updateLaserBounds();
   updateCameraPixelToLaserCoordJacobian();
   fitGalvoModel();
+  fitPixelProjection();
+  // The laser bounds are derived from the galvo model and pixel projection
+  updateLaserBounds();
 }
 
 void PointCorrespondences::fitGalvoModel() {
   model_ = {};
   hasModel_ = false;
+  modelInliers_.clear();
   fitStats_ = {};
   if (cameraPositions_.size() != laserCoords_.size() ||
       cameraPositions_.size() < MIN_CORRESPONDENCES) {
@@ -389,6 +414,7 @@ void PointCorrespondences::fitGalvoModel() {
 
   model_ = *model;
   hasModel_ = true;
+  modelInliers_ = modelInliers;
 
   fitStats_.numInliers = modelInliers.size();
   fitStats_.nearlyPlanar = nearlyPlanar;
@@ -418,6 +444,31 @@ void PointCorrespondences::fitGalvoModel() {
       static_cast<float>(laserErrorSum / modelInliers.size());
   fitStats_.meanPositionError =
       static_cast<float>(positionErrorSum / modelInliers.size());
+}
+
+void PointCorrespondences::fitPixelProjection() {
+  pixelProjection_.reset();
+  // The DLT is degenerate when the positions are nearly planar
+  if (!hasModel_ || fitStats_.nearlyPlanar ||
+      modelInliers_.size() < MIN_CORRESPONDENCES ||
+      cameraPixelCoords_.size() != cameraPositions_.size()) {
+    return;
+  }
+
+  auto numPoints{static_cast<Eigen::Index>(modelInliers_.size())};
+  Eigen::MatrixXd positions{numPoints, 3};
+  Eigen::MatrixXd pixels{numPoints, 2};
+  for (Eigen::Index i = 0; i < numPoints; ++i) {
+    auto [x, y, z]{cameraPositions_[modelInliers_[i]]};
+    positions.row(i) << x, y, z;
+    const auto& pixel{cameraPixelCoords_[modelInliers_[i]]};
+    pixels.row(i) << pixel.u, pixel.v;
+  }
+
+  Eigen::Matrix<double, 3, 4> projection{solveProjectionDlt(positions, pixels)};
+  if (projection.allFinite()) {
+    pixelProjection_ = projection;
+  }
 }
 
 std::optional<LaserCoord> PointCorrespondences::project(
@@ -481,14 +532,151 @@ void PointCorrespondences::updateLaserBounds() {
     return;
   };
 
+  // Default to using the extent of the camera pixels that the laser was
+  // detected at as the laser bounds. Note that this does not account for the
+  // reach of the laser shifting within the camera frame as the distance to the
+  // target changes. We will refine this afterward if possible.
   auto [minX, maxX]{std::minmax_element(
       cameraPixelCoords_.begin(), cameraPixelCoords_.end(),
       [](const auto& a, const auto& b) { return a.u < b.u; })};
   auto [minY, maxY]{std::minmax_element(
       cameraPixelCoords_.begin(), cameraPixelCoords_.end(),
       [](const auto& a, const auto& b) { return a.v < b.v; })};
-
   laserBounds_ = {minX->u, minY->v, maxX->u - minX->u, maxY->v - minY->v};
+
+  // Use the model to find the region that the laser can reach at both ends of
+  // the working distance
+  auto nearBoundsOpt{getLaserBoundsAtDepth(WORKING_DISTANCE_NEAR_MM)};
+  auto farBoundsOpt{getLaserBoundsAtDepth(WORKING_DISTANCE_FAR_MM)};
+  if (!nearBoundsOpt || !farBoundsOpt) {
+    return;
+  }
+
+  // Find the intersection rect of nearBounds and farBounds
+  const auto& nearBounds{*nearBoundsOpt};
+  const auto& farBounds{*farBoundsOpt};
+  int left{std::max(nearBounds.u, farBounds.u)};
+  int top{std::max(nearBounds.v, farBounds.v)};
+  int right{
+      std::min(nearBounds.u + nearBounds.width, farBounds.u + farBounds.width)};
+  int bottom{std::min(nearBounds.v + nearBounds.height,
+                      farBounds.v + farBounds.height)};
+  if (right <= left || bottom <= top) {
+    spdlog::warn(
+        "[PointCorrespondences][updateLaserBounds] Laser bounds at {} mm and "
+        "{} mm do not overlap. Falling back to the extent of the calibration "
+        "points.",
+        WORKING_DISTANCE_NEAR_MM, WORKING_DISTANCE_FAR_MM);
+    return;
+  }
+
+  // Shrink about the center to leave a buffer
+  int bufferX{static_cast<int>(
+      std::ceil((right - left) * LASER_BOUNDS_BUFFER_RATIO / 2.0))};
+  int bufferY{static_cast<int>(
+      std::ceil((bottom - top) * LASER_BOUNDS_BUFFER_RATIO / 2.0))};
+  left += bufferX;
+  right -= bufferX;
+  top += bufferY;
+  bottom -= bufferY;
+
+  laserBounds_ = {left, top, right - left, bottom - top};
+}
+
+std::optional<PixelRect> PointCorrespondences::getLaserBoundsAtDepth(
+    double depth) const {
+  if (!hasModel_ || !pixelProjection_) {
+    return std::nullopt;
+  }
+
+  // Extent, in camera pixels, of an edge of the laser's range
+  struct EdgeExtent {
+    double minU{std::numeric_limits<double>::max()};
+    double maxU{std::numeric_limits<double>::lowest()};
+    double minV{std::numeric_limits<double>::max()};
+    double maxV{std::numeric_limits<double>::lowest()};
+    double meanU{0.0};
+    double meanV{0.0};
+  };
+
+  // Find where the edges of the laser's range (laser x = 0, x = 1, y = 0,
+  // y = 1) land in the camera frame, for a target at the given depth
+  std::array<EdgeExtent, 4> edges;
+  for (int edgeIdx = 0; edgeIdx < 4; ++edgeIdx) {
+    auto& edge{edges[edgeIdx]};
+    for (int i = 0; i < LASER_BOUNDS_EDGE_SAMPLES; ++i) {
+      double t{static_cast<double>(i) / (LASER_BOUNDS_EDGE_SAMPLES - 1)};
+      Eigen::Vector2d laserCoord;
+      switch (edgeIdx) {
+        case 0:
+          laserCoord = {0.0, t};
+          break;
+        case 1:
+          laserCoord = {1.0, t};
+          break;
+        case 2:
+          laserCoord = {t, 0.0};
+          break;
+        default:
+          laserCoord = {t, 1.0};
+          break;
+      }
+
+      // Intersect the beam with the plane z = depth
+      GalvoModel::Ray ray{model_.backproject(laserCoord)};
+      if (ray.direction.z() <= 1e-9) {
+        return std::nullopt;
+      }
+      double distance{(depth - ray.origin.z()) / ray.direction.z()};
+      if (distance <= 0.0) {
+        return std::nullopt;
+      }
+      Eigen::Vector3d position{ray.origin + distance * ray.direction};
+
+      // Project to camera pixel
+      Eigen::Vector3d homogeneousPixel{*pixelProjection_ *
+                                       position.homogeneous()};
+      if (homogeneousPixel.z() <= 0.0) {
+        return std::nullopt;
+      }
+      double u{homogeneousPixel.x() / homogeneousPixel.z()};
+      double v{homogeneousPixel.y() / homogeneousPixel.z()};
+
+      edge.minU = std::min(edge.minU, u);
+      edge.maxU = std::max(edge.maxU, u);
+      edge.minV = std::min(edge.minV, v);
+      edge.maxV = std::max(edge.maxV, v);
+      edge.meanU += u / LASER_BOUNDS_EDGE_SAMPLES;
+      edge.meanV += v / LASER_BOUNDS_EDGE_SAMPLES;
+    }
+  }
+
+  // Each laser axis's pair of edges forms either the left/right or the
+  // top/bottom sides in the camera frame, depending on how the laser is
+  // oriented relative to the camera
+  bool xEdgesAreLeftRight{std::abs(edges[0].meanU - edges[1].meanU) >
+                          std::abs(edges[0].meanV - edges[1].meanV)};
+  std::pair<int, int> leftRight{xEdgesAreLeftRight ? std::pair{0, 1}
+                                                   : std::pair{2, 3}};
+  std::pair<int, int> topBottom{xEdgesAreLeftRight ? std::pair{2, 3}
+                                                   : std::pair{0, 1}};
+  if (edges[leftRight.first].meanU > edges[leftRight.second].meanU) {
+    std::swap(leftRight.first, leftRight.second);
+  }
+  if (edges[topBottom.first].meanV > edges[topBottom.second].meanV) {
+    std::swap(topBottom.first, topBottom.second);
+  }
+
+  // Take the rect inscribed within the edges, as they may be curved or skewed
+  int left{static_cast<int>(std::ceil(edges[leftRight.first].maxU))};
+  int right{static_cast<int>(std::floor(edges[leftRight.second].minU))};
+  int top{static_cast<int>(std::ceil(edges[topBottom.first].maxV))};
+  int bottom{static_cast<int>(std::floor(edges[topBottom.second].minV))};
+  if (right <= left || bottom <= top) {
+    return std::nullopt;
+  }
+
+  return PixelRect{left, top, right - left, bottom - top};
 }
 
 void PointCorrespondences::updateCameraPixelToLaserCoordJacobian() {

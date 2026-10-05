@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Eigen/Dense>
+#include <array>
 #include <optional>
 #include <tuple>
 #include <vector>
@@ -40,23 +41,24 @@ class PointCorrespondences {
    * Add a point correspondence: a laser coord that was shot, and where the
    * laser spot was observed by the camera.
    *
-   * Note: the laser bounds are updated immediately, but updateModel() must be
-   * called manually after all point correspondences have been added.
+   * Note: updateModel() must be called manually after all point
+   * correspondences have been added.
    *
    * @param laserCoord Laser coord (x, y) that was commanded, in the DAC's
    * normalized [0, 1] range.
    * @param cameraPixelCoord Pixel (u, v) of the detected laser spot in the
-   * color image. Used for the laser bounds and the pixel-to-laser Jacobian.
+   * color image.
    * @param cameraPosition 3D position (x, y, z) of the detected laser spot in
-   * camera-space (mm). Used to fit the model.
+   * camera-space (mm).
    */
   void add(const LaserCoord& laserCoord, const PixelCoord& cameraPixelCoord,
            const Position& cameraPosition);
   void clear();
 
   /**
-   * Update everything derived from the point correspondences: the laser
-   * bounds, the camera pixel to laser coord Jacobian, and the galvo model.
+   * Update everything derived from the point correspondences: the camera
+   * pixel to laser coord Jacobian, the galvo model, the camera-space position
+   * to pixel projection, and the laser bounds.
    */
   void updateModel();
 
@@ -86,10 +88,26 @@ class PointCorrespondences {
    * The rect (min x, min y, width, height) representing the reach of the laser,
    * in terms of camera pixels.
    *
+   * The region of the camera frame that the laser can reach shifts with the
+   * distance to the target, as the camera and laser are offset from each
+   * other. The laser bounds are the region that the laser can reach at both the
+   * near and far ends of the working distance, according to the fitted model.
+   *
    * @return Tuple representing (min x, min y, width, height) of the laser
    * bounds.
    */
   PixelRect getLaserBounds() const { return laserBounds_; }
+
+  /**
+   * The rect (min x, min y, width, height), in terms of camera pixels, that the
+   * laser can reach for targets at a given depth, according to the fitted
+   * model.
+   *
+   * @param depth Camera-space z (mm) of the target.
+   * @return The laser bounds at the depth, or nullopt if it could not be
+   * determined.
+   */
+  std::optional<PixelRect> getLaserBoundsAtDepth(double depth) const;
 
   /**
    * Get the Jacobian from camera pixels to laser coords.
@@ -117,11 +135,17 @@ class PointCorrespondences {
   std::vector<Position> cameraPositions_;
   GalvoModel model_{};
   bool hasModel_{false};
+  // Indices of the correspondences that the model was fit to
+  std::vector<Eigen::Index> modelInliers_;
   FitStats fitStats_{};
+  // Pinhole projection from camera-space positions to camera pixels, fit from
+  // the point correspondences
+  std::optional<Eigen::Matrix<double, 3, 4>> pixelProjection_;
   PixelRect laserBounds_{0, 0, 0, 0};
   Eigen::Matrix2d cameraToLaserJacobian_{Eigen::Matrix2d::Zero()};
 
   void updateLaserBounds();
   void updateCameraPixelToLaserCoordJacobian();
   void fitGalvoModel();
+  void fitPixelProjection();
 };
