@@ -20,6 +20,21 @@ Calibration::Calibration(std::shared_ptr<LaserControlClient> laser,
       detection_{std::move(detection)},
       pointCorrespondences_{} {}
 
+PixelRect Calibration::getLaserBounds() const {
+  PixelRect bounds{pointCorrespondences_.getLaserBounds()};
+  auto [w, h]{getCameraFrameSize()};
+  if (w <= 0 || h <= 0) {
+    return bounds;
+  }
+
+  // The laser may be able to reach beyond the camera frame, so clip it
+  int left{std::clamp(bounds.u, 0, w)};
+  int top{std::clamp(bounds.v, 0, h)};
+  int right{std::clamp(bounds.u + bounds.width, 0, w)};
+  int bottom{std::clamp(bounds.v + bounds.height, 0, h)};
+  return {left, top, right - left, bottom - top};
+}
+
 NormalizedPixelRect Calibration::getNormalizedLaserBounds() const {
   auto [w, h]{getCameraFrameSize()};
   auto [boundsXMin, boundsYMin, boundsWidth, boundsHeight]{getLaserBounds()};
