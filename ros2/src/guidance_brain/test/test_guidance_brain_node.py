@@ -1,4 +1,6 @@
 import asyncio
+import logging
+from types import SimpleNamespace
 
 import pytest
 
@@ -10,16 +12,39 @@ async def _noop_set_twist(twist):
     pass
 
 
+async def _noop_restart_node(node_name):
+    return SimpleNamespace(success=True, message="")
+
+
 @pytest.fixture(autouse=True)
 def reset_shared_state(monkeypatch):
     fresh_state = guidance_brain_node.SharedState()
     fresh_state.follower_pid = PID(p=50.0)
+    fresh_state.logger = logging.getLogger("test_guidance_brain_node")
     monkeypatch.setattr(guidance_brain_node, "shared_state", fresh_state)
     monkeypatch.setattr(
         guidance_brain_node.state_topic, "publish", lambda *a, **kw: None
     )
     monkeypatch.setattr(guidance_brain_node.amiga_node, "set_twist", _noop_set_twist)
+    monkeypatch.setattr(
+        guidance_brain_node.lifecycle_manager, "restart_node", _noop_restart_node
+    )
     yield fresh_state
+
+
+@pytest.fixture
+def restart_calls(monkeypatch):
+    # Record which node was requested to be restarted.
+    calls = []
+
+    async def fake_restart_node(node_name):
+        calls.append(node_name)
+        return SimpleNamespace(success=True, message="")
+
+    monkeypatch.setattr(
+        guidance_brain_node.lifecycle_manager, "restart_node", fake_restart_node
+    )
+    return calls
 
 
 async def _run_briefly(coro, duration: float = 0.05):
@@ -177,7 +202,7 @@ def test_guidance_task_zeroes_command_when_perceiver_invalid(
 
 
 def test_guidance_task_exits_after_one_second_without_valid_perceiver(
-    reset_shared_state,
+    reset_shared_state, restart_calls
 ):
     reset_shared_state.perceiver_valid = False
 
@@ -190,6 +215,7 @@ def test_guidance_task_exits_after_one_second_without_valid_perceiver(
     asyncio.run(run())  # should return before time out
 
     assert reset_shared_state.guidance_active is False
+    assert restart_calls == ["furrow_perceiver_forward"]
 
 
 def test_start_task_rejects_second_task_while_one_is_active(reset_shared_state):
