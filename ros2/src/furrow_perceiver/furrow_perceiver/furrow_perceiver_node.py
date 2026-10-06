@@ -50,6 +50,7 @@ class SharedState:
     logger: Optional[logging.Logger] = None
     tracker: Optional[FurrowTracker] = None
     annotator: Optional[FurrowTrackerAnnotator] = None
+    guidance_offset: int = 0
     # For converting numpy array to image msg
     cv_bridge = CvBridge()
 
@@ -60,6 +61,7 @@ shared_state = SharedState()
 @aioros2.start
 async def start(node):
     shared_state.logger = node.get_logger()
+    shared_state.guidance_offset = perceiver_params.guidance_offset
 
 
 @aioros2.subscribe(realsense_node.depth_image_topic)
@@ -85,7 +87,7 @@ async def on_depth_image(
         shared_state.tracker = FurrowTracker()
         shared_state.tracker.init(cv_image)
         shared_state.annotator = FurrowTrackerAnnotator(shared_state.tracker)
-        shared_state.tracker.guidance_offset_x = perceiver_params.guidance_offset
+        shared_state.tracker.guidance_offset_x = shared_state.guidance_offset
 
     # Process image for guidance
     shared_state.tracker.process(cv_image)
@@ -110,13 +112,15 @@ async def on_depth_image(
 
 @aioros2.service("~/set_guidance_offset", SetInt32)
 async def set_guidance_offset(node, data):
-    shared_state.tracker.guidance_offset_x = data
+    shared_state.guidance_offset = data
+    if shared_state.tracker:
+        shared_state.tracker.guidance_offset_x = data
     _publish_state()
     return {"success": True}
 
 
 def _publish_state():
-    state_topic.publish(guidance_offset=shared_state.tracker.guidance_offset_x)
+    state_topic.publish(guidance_offset=shared_state.guidance_offset)
 
 
 def main():
