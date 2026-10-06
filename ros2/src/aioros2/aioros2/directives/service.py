@@ -37,9 +37,34 @@ class RosService(RosDirective):
             # and call it.
             client = self._get_client()
             request = self._idl.Request(*args, **kwargs)
-            return await client.call_async(request)
+            return await self._call_async(client, request)
         else:
             return await self._fn(*args, **kwargs)
+
+    async def _call_async(self, client: Client, request: Any) -> Any:
+        # Bridges rclpy's Future onto an asyncio Future.
+        # rclpy Futures resolve on the executor thread and are not asyncio-awaitable: their
+        # __await__ yields the Future itself, which asyncio rejects with "Task got bad yield".
+        # call_async previously worked where __await__ used a bare yield.
+        # This is currently only reached via use() service calls.
+        # https://github.com/ros2/rclpy/commit/050145e#diff-e85e03231947306447b58d0673c912753a94400f92ea660b56a5e4ec56b7f078R63
+        loop = asyncio.get_running_loop()
+        bridged = loop.create_future()
+        rclpy_future = client.call_async(request)
+
+        def on_done(f):
+            def set_result():
+                if bridged.done():
+                    return
+                try:
+                    bridged.set_result(f.result())
+                except Exception as e:
+                    bridged.set_exception(e)
+
+            loop.call_soon_threadsafe(set_result)
+
+        rclpy_future.add_done_callback(on_done)
+        return await bridged
 
     def server_impl(self, node: Node, nodeinfo: NodeInfo, loop: asyncio.BaseEventLoop):
         self._node = node
