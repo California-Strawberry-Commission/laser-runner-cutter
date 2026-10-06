@@ -49,6 +49,7 @@ class SharedState:
     command = 0.0
     go_direction = GoDirection.FORWARD
     go_last_valid_time = 0.0
+    last_perceiver_msg_time = 0.0
 
 
 shared_state = SharedState()
@@ -70,6 +71,7 @@ async def on_fp_forw_result(node, linear_deviation, heading, is_valid):
     if shared_state.go_direction == GoDirection.FORWARD:
         shared_state.perceiver_valid = is_valid
         shared_state.error = linear_deviation
+        shared_state.last_perceiver_msg_time = time.time()
 
 
 @aioros2.subscribe(furrow_perceiver_backward_node.tracker_result_topic)
@@ -77,6 +79,7 @@ async def on_fp_back_result(node, linear_deviation, heading, is_valid):
     if shared_state.go_direction == GoDirection.BACKWARD:
         shared_state.perceiver_valid = is_valid
         shared_state.error = linear_deviation
+        shared_state.last_perceiver_msg_time = time.time()
 
 
 @aioros2.service("~/set_p", SetFloat32)
@@ -178,6 +181,7 @@ async def _stop_and_restart(node_name: str):
 
 async def _guidance_task(direction: GoDirection):
     shared_state.go_last_valid_time = time.time()
+    shared_state.last_perceiver_msg_time = time.time()
     shared_state.guidance_active = True
     shared_state.go_direction = direction
     perceiver_node_name = (
@@ -190,9 +194,13 @@ async def _guidance_task(direction: GoDirection):
             if shared_state.perceiver_valid:
                 shared_state.go_last_valid_time = time.time()
 
-            # If more than 1 second has passed since furrow perciever was valid,
-            # kill guidance and restart the perceiver.
-            if time.time() - shared_state.go_last_valid_time > 1.0:
+            # If > 1 second has passed since the perceiver was valid or since it last published,
+            # we kill guidance and restart the perceiver. perceiver_valid freezes at its last value
+            # if the node dies. If it freezes on True, the amiga can keep driving off a stale value.
+            if (
+                time.time() - shared_state.go_last_valid_time > 1.0
+                or time.time() - shared_state.last_perceiver_msg_time > 1.0
+            ):
                 await _stop_and_restart(perceiver_node_name)
                 break
 

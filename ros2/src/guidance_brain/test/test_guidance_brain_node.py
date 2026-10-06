@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -289,6 +290,38 @@ def test_go_backward_starts_guidance_task(reset_shared_state):
     assert result == {"success": True}
     assert direction == guidance_brain_node.GoDirection.BACKWARD
     assert active is True
+
+
+def test_on_fp_forw_result_stamps_message_time(reset_shared_state):
+    reset_shared_state.go_direction = guidance_brain_node.GoDirection.FORWARD
+    assert reset_shared_state.last_perceiver_msg_time == 0.0
+
+    asyncio.run(
+        guidance_brain_node.on_fp_forw_result(
+            None, linear_deviation=1.0, heading=0.0, is_valid=True
+        )
+    )
+
+    assert reset_shared_state.last_perceiver_msg_time > 0.0
+
+
+def test_guidance_task_restarts_perceiver_when_messages_stop(
+    reset_shared_state, restart_calls
+):
+
+    reset_shared_state.perceiver_valid = True
+    reset_shared_state.error = 0.0
+
+    async def run():
+        await asyncio.wait_for(
+            guidance_brain_node._guidance_task(guidance_brain_node.GoDirection.FORWARD),
+            timeout=2.0,
+        )
+
+    asyncio.run(run())
+
+    assert reset_shared_state.guidance_active is False
+    assert restart_calls == ["furrow_perceiver_forward"]
 
 
 def test_stop_with_no_active_task_reports_failure(reset_shared_state):
