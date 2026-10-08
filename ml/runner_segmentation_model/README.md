@@ -126,15 +126,15 @@ Labelbox is used for dataset annotation. `labelbox_api.py` provides convenience 
 
     1.  Split the images first:
 
-            $ python -m runner_segmentation.split_data images --input_dir data/raw/<dataset name>/images --output_dir data/prepared/<dataset name>/images
+            $ python -m ml_utils.split_data images --input_dir data/raw/<dataset name>/images --output_dir data/prepared/<dataset name>/images
 
     1.  Split the YOLO labels to match the image split:
 
-            $ python -m runner_segmentation.split_data yolo_labels --input_dir data/raw/<dataset name>/labels --output_dir data/prepared/<dataset name>/labels
+            $ python -m ml_utils.split_data yolo_labels --input_dir data/raw/<dataset name>/labels --split_images_dir data/prepared/<dataset name>/images --output_dir data/prepared/<dataset name>/labels
 
     1.  [Optional] Split the instanced masks (used by Mask R-CNN) to match the image split:
 
-            $ python -m runner_segmentation.split_data masks --input_dir data/raw/<dataset name>/masks --output_dir data/prepared/<dataset name>/masks
+            $ python -m ml_utils.split_data masks --input_dir data/raw/<dataset name>/masks --split_images_dir data/prepared/<dataset name>/images --output_dir data/prepared/<dataset name>/masks
 
 1.  Train and evaluate a YOLOv8 model locally:
     1.  Modify `dataset.yml` with the desired dataset path

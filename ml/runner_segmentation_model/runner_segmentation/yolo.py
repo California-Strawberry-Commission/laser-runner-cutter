@@ -4,6 +4,7 @@ import os
 from glob import glob
 from time import perf_counter
 
+import albumentations as A
 import cv2
 import numpy as np
 from natsort import natsorted
@@ -37,14 +38,41 @@ class Yolo:
         dataset_yml,
         epochs=DEFAULT_EPOCHS,
     ):
+        """
+        Train the model.
+
+        Args:
+            dataset_yml (str): path to the dataset yml file
+            epochs (int): number of epochs to train for
+        """
         train_start = perf_counter()
+        augmentations = [
+            # Brightens or darkens midtones without clipping, to account for differences in
+            # exposure and camera tone curve
+            A.RandomGamma(gamma_limit=(60, 160), p=0.3),
+            # Contrast only, since hue, saturation, and brightness are already covered
+            # by hsv_h, hsv_s, and hsv_v in train()
+            A.ColorJitter(brightness=0, contrast=0.3, saturation=0, hue=0, p=0.3),
+            # Blur kept mild as runners are only a few pixels wide
+            A.Blur(blur_limit=(3, 5), p=0.1),
+            # Local contrast enhancement, to account for differences in camera image
+            # processing (sharpening, tone mapping)
+            A.CLAHE(p=0.05),
+            # Random gain per color channel to account for color shifts from optical filters
+            # on the lens and changes in white balance or lighting
+            A.MultiplicativeNoise(
+                multiplier=(0.6, 1.4), per_channel=True, elementwise=False, p=0.5
+            ),
+        ]
         self.model.train(
             data=dataset_yml,
             imgsz=self.imgsz,
             device=0,
             batch=-1,
             epochs=epochs,
+            # flipud is 0 by default, but we want to account for possible inverted camera
             flipud=0.5,
+            augmentations=augmentations,
         )
         train_stop = perf_counter()
         print(f"Training finished in {train_stop - train_start} seconds.")
@@ -176,7 +204,7 @@ class Yolo:
             imgsz=self.imgsz,
             dynamic=False,
             batch=1,
-            half=False, # Keep as FP32 for ONNX as we will convert to FP16 when transforming to TensorRT
+            half=False,  # Keep as FP32 for ONNX as we will convert to FP16 when transforming to TensorRT
             simplify=True,
         )
 
@@ -237,7 +265,9 @@ if __name__ == "__main__":
         "--show_result", action="store_true", help="Show inference results"
     )
 
-    export_onnx_parser = subparsers.add_parser("export_onnx", help="Export ONNX model file")
+    export_onnx_parser = subparsers.add_parser(
+        "export_onnx", help="Export ONNX model file"
+    )
     export_onnx_parser.add_argument("--weights_file")
     export_onnx_parser.add_argument(
         "--input_image_size",
