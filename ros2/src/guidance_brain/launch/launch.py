@@ -72,6 +72,8 @@ def generate_launch_description():
         parameters=[parameters_file],
         output="screen",
         emulate_tty=True,
+        respawn=True,
+        respawn_delay=2.0,
     )
 
     furrow_perceiver_backward_launch_node = launch(
@@ -80,6 +82,8 @@ def generate_launch_description():
         parameters=[parameters_file],
         output="screen",
         emulate_tty=True,
+        respawn=True,
+        respawn_delay=2.0,
     )
 
     amiga_launch_node = launch(
@@ -88,6 +92,8 @@ def generate_launch_description():
         parameters=[parameters_file],
         output="screen",
         emulate_tty=True,
+        respawn=True,
+        respawn_delay=2.0,
     )
 
     guidance_brain_launch_node = launch(

@@ -112,7 +112,8 @@ class FurrowTracker:
     def get_error(self):
         guidance_x = self._width // 2 + self.guidance_offset_x
 
-        if pin_x := self.get_reg_x(self._pin_y):
+        pin_x = self.get_reg_x(self._pin_y)
+        if pin_x is not None:
             return guidance_x - pin_x
 
         return None
