@@ -37,6 +37,7 @@ class Yolo:
         self,
         dataset_yml,
         epochs=DEFAULT_EPOCHS,
+        resume=False,
     ):
         """
         Train the model.
@@ -44,6 +45,8 @@ class Yolo:
         Args:
             dataset_yml (str): path to the dataset yml file
             epochs (int): number of epochs to train for
+            resume (bool): resume an interrupted training run from the loaded weights file
+                (typically a run's last.pt).
         """
         train_start = perf_counter()
         augmentations = [
@@ -70,6 +73,7 @@ class Yolo:
             device=0,
             batch=-1,
             epochs=epochs,
+            resume=resume,
             # flipud is 0 by default, but we want to account for possible inverted camera
             flipud=0.5,
             augmentations=augmentations,
@@ -237,6 +241,11 @@ if __name__ == "__main__":
         help="(width, height) tuple",
     )
     train_parser.add_argument("--epochs", type=int, default=DEFAULT_EPOCHS)
+    train_parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume an interrupted training run from --weights_file (e.g. last.pt)",
+    )
 
     eval_parser = subparsers.add_parser("eval", help="Evaluate model performance")
     eval_parser.add_argument(
@@ -290,7 +299,7 @@ if __name__ == "__main__":
 
     model = Yolo(args.weights_file, args.input_image_size)
     if args.command == "train":
-        model.train(args.dataset_yml, args.epochs)
+        model.train(args.dataset_yml, args.epochs, args.resume)
     elif args.command == "eval":
         metrics = model.eval(args.dataset_yml)
         summary = {
