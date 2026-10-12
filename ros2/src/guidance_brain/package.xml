@@ -14,6 +14,7 @@
   <exec_depend>guidance_brain_interfaces</exec_depend>
   <exec_depend>amiga_control</exec_depend>
   <exec_depend>furrow_perceiver</exec_depend>
+  <exec_depend>lifecycle_manager</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

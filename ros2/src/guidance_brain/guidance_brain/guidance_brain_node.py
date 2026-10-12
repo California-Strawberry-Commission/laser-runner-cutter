@@ -9,6 +9,7 @@ from std_srvs.srv import Trigger
 import aioros2
 import amiga_control.amiga_control_node as amiga_control_node
 import furrow_perceiver.furrow_perceiver_node as furrow_perceiver_node
+import lifecycle_manager.lifecycle_manager_node as lifecycle_manager_node
 from common_interfaces.msg import PID, Vector2
 from common_interfaces.srv import SetFloat32
 from guidance_brain_interfaces.msg import State
@@ -32,6 +33,7 @@ class GoDirection(IntEnum):
 amiga_node = aioros2.use(amiga_control_node)
 furrow_perceiver_forward_node = aioros2.use(furrow_perceiver_node)
 furrow_perceiver_backward_node = aioros2.use(furrow_perceiver_node)
+lifecycle_manager = aioros2.use(lifecycle_manager_node)
 state_topic = aioros2.topic("~/state", State, aioros2.QOS_LATCHED)
 
 
@@ -47,6 +49,7 @@ class SharedState:
     command = 0.0
     go_direction = GoDirection.FORWARD
     go_last_valid_time = 0.0
+    last_perceiver_msg_time = 0.0
 
 
 shared_state = SharedState()
@@ -68,6 +71,7 @@ async def on_fp_forw_result(node, linear_deviation, heading, is_valid):
     if shared_state.go_direction == GoDirection.FORWARD:
         shared_state.perceiver_valid = is_valid
         shared_state.error = linear_deviation
+        shared_state.last_perceiver_msg_time = time.time()
 
 
 @aioros2.subscribe(furrow_perceiver_backward_node.tracker_result_topic)
@@ -75,6 +79,7 @@ async def on_fp_back_result(node, linear_deviation, heading, is_valid):
     if shared_state.go_direction == GoDirection.BACKWARD:
         shared_state.perceiver_valid = is_valid
         shared_state.error = linear_deviation
+        shared_state.last_perceiver_msg_time = time.time()
 
 
 @aioros2.service("~/set_p", SetFloat32)
@@ -162,6 +167,13 @@ async def _reset_to_idle():
     await amiga_node.set_twist(twist=Vector2(x=0.0, y=0.0))
 
 
+async def _stop_and_restart(node_name: str):
+    # Stop driving, then restart the node.
+    shared_state.logger.error(f"'{node_name}' is offline. Stopping and restarting it.")
+    await _reset_to_idle()
+    await lifecycle_manager.restart_node(node_name=node_name)
+
+
 # endregion
 
 # region Task definitions
@@ -169,16 +181,27 @@ async def _reset_to_idle():
 
 async def _guidance_task(direction: GoDirection):
     shared_state.go_last_valid_time = time.time()
+    shared_state.last_perceiver_msg_time = time.time()
     shared_state.guidance_active = True
     shared_state.go_direction = direction
+    perceiver_node_name = (
+        "furrow_perceiver_forward"
+        if direction == GoDirection.FORWARD
+        else "furrow_perceiver_backward"
+    )
     try:
         while True:
             if shared_state.perceiver_valid:
                 shared_state.go_last_valid_time = time.time()
 
-            # If more than 1 second has passed since furrow perciever was valid,
-            # kill guidance
-            if time.time() - shared_state.go_last_valid_time > 1.0:
+            # If > 1 second has passed since the perceiver was valid or since it last published,
+            # we kill guidance and restart the perceiver. perceiver_valid freezes at its last value
+            # if the node dies. If it freezes on True, the amiga can keep driving off a stale value.
+            if (
+                time.time() - shared_state.go_last_valid_time > 1.0
+                or time.time() - shared_state.last_perceiver_msg_time > 1.0
+            ):
+                await _stop_and_restart(perceiver_node_name)
                 break
 
             # If perceiver is valid, run PID. Otherwise, stop Amiga
