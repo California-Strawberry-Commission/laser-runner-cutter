@@ -96,16 +96,13 @@ class FurrowTracker:
 
         x, y = zip(*valid_centerpoints)
 
-        if np.all(np.asarray(x) == x[0]):
-            return
-
         regression = linregress(y, x)
 
         self._reg_slope = regression.slope
         self._reg_intercept = regression.intercept
 
     def get_reg_x(self, y: int) -> Optional[int]:
-        if self._reg_intercept is None or self._reg_intercept is None:
+        if self._reg_slope is None or self._reg_intercept is None:
             return None
         return int(y * self._reg_slope + self._reg_intercept)
 
