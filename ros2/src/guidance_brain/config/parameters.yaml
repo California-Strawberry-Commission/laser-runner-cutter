@@ -12,9 +12,4 @@ furrow_perceiver_backward:
     # properly.
     realsense_node:
       name: cam_backward
-guidance_brain:
-  ros__parameters:
-    lifecycle_manager:
-      name: lifecycle_manager
-      namespace: /
     

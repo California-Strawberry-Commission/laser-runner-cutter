@@ -9,7 +9,6 @@ from std_srvs.srv import Trigger
 import aioros2
 import amiga_control.amiga_control_node as amiga_control_node
 import furrow_perceiver.furrow_perceiver_node as furrow_perceiver_node
-import lifecycle_manager.lifecycle_manager_node as lifecycle_manager_node
 from common_interfaces.msg import PID, Vector2
 from common_interfaces.srv import SetFloat32
 from guidance_brain_interfaces.msg import State
@@ -33,7 +32,6 @@ class GoDirection(IntEnum):
 amiga_node = aioros2.use(amiga_control_node)
 furrow_perceiver_forward_node = aioros2.use(furrow_perceiver_node)
 furrow_perceiver_backward_node = aioros2.use(furrow_perceiver_node)
-lifecycle_manager = aioros2.use(lifecycle_manager_node)
 state_topic = aioros2.topic("~/state", State, aioros2.QOS_LATCHED)
 
 
@@ -167,13 +165,6 @@ async def _reset_to_idle():
     await amiga_node.set_twist(twist=Vector2(x=0.0, y=0.0))
 
 
-async def _stop_and_restart(node_name: str):
-    # Stop driving, then restart the node.
-    shared_state.logger.error(f"'{node_name}' is offline. Stopping and restarting it.")
-    await _reset_to_idle()
-    await lifecycle_manager.restart_node(node_name=node_name)
-
-
 # endregion
 
 # region Task definitions
@@ -195,13 +186,15 @@ async def _guidance_task(direction: GoDirection):
                 shared_state.go_last_valid_time = time.time()
 
             # If > 1 second has passed since the perceiver was valid or since it last published,
-            # we kill guidance and restart the perceiver. perceiver_valid freezes at its last value
+            # go idle. perceiver_valid freezes at its last value
             # if the node dies. If it freezes on True, the amiga can keep driving off a stale value.
             if (
                 time.time() - shared_state.go_last_valid_time > 1.0
                 or time.time() - shared_state.last_perceiver_msg_time > 1.0
             ):
-                await _stop_and_restart(perceiver_node_name)
+                shared_state.logger.error(
+                    f"'{perceiver_node_name}' is offline. Going idle."
+                )
                 break
 
             # If perceiver is valid, run PID. Otherwise, stop Amiga
