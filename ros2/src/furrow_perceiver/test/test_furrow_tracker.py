@@ -1,134 +1,107 @@
-from types import SimpleNamespace
-
 import numpy as np
+import pytest
 
 from furrow_perceiver.furrow_tracker import FurrowTracker
 
-
-def _make_strip(x_center, y_center, is_valid=True):
-    return SimpleNamespace(x_center=x_center, y_center=y_center, is_valid=is_valid)
+IMAGE_SIZE = 200
 
 
-def test_init_sets_dimensions_and_strips():
-    tracker = FurrowTracker(num_strips=4)
-    tracker.init(np.zeros((40, 60)))
-
-    assert tracker.width == 60
-    assert tracker.height == 40
-    assert tracker.pin_y == 20  # 2 * height // 4
-    assert len(tracker.strips) == 4
+def _furrow_image(top_center, bottom_center, half_width=20, wall=600, floor=1000):
+    image = np.full((IMAGE_SIZE, IMAGE_SIZE), wall, dtype=np.uint16)
+    for row in range(IMAGE_SIZE):
+        center = int(top_center + (bottom_center - top_center) * row / (IMAGE_SIZE - 1))
+        image[row, center - half_width : center + half_width] = floor
+    return image
 
 
-def test_init_is_noop_once_dimensions_are_set():
-    tracker = FurrowTracker(num_strips=4)
-    tracker.init(np.zeros((40, 60)))
-    tracker.init(np.zeros((80, 100)))
+def test_process_sizes_itself_from_the_first_image():
+    tracker = FurrowTracker(num_strips=10)
 
-    assert (tracker.width, tracker.height) == (60, 40)
-    assert len(tracker.strips) == 4
+    tracker.process(_furrow_image(90, 130))
+
+    assert (tracker.width, tracker.height) == (IMAGE_SIZE, IMAGE_SIZE)
+    assert tracker.pin_y == IMAGE_SIZE // 2
+    assert len(tracker.strips) == 10
 
 
-def test_regress_strips_fits_line_through_valid_centerpoints():
+def test_process_reuses_its_strips_across_frames():
+    tracker = FurrowTracker(num_strips=10)
+    image = _furrow_image(90, 130)
+
+    tracker.process(image)
+    strips = tracker.strips
+
+    tracker.process(image)
+
+    assert tracker.strips is strips
+    assert len(tracker.strips) == 10
+
+
+def test_process_tracks_a_furrow_veering_right():
     tracker = FurrowTracker()
-    tracker._width, tracker._height = 100, 100
-    # Collinear points on x = 1*y + 10
-    tracker._strips = [
-        _make_strip(x_center=10, y_center=0),
-        _make_strip(x_center=20, y_center=10),
-        _make_strip(x_center=30, y_center=20),
-    ]
 
-    tracker.regress_strips()
+    tracker.process(_furrow_image(90, 130))
 
-    assert tracker.reg_slope == 1.0
-    assert tracker.reg_intercept == 10.0
+    assert tracker.reg_slope == pytest.approx(0.2, abs=0.05)
+    assert tracker.get_error() is not None
 
 
-def test_regress_strips_ignores_invalid_strips():
+def test_process_tracks_a_furrow_veering_left():
     tracker = FurrowTracker()
-    tracker._width, tracker._height = 100, 100
-    tracker._strips = [
-        _make_strip(x_center=10, y_center=0),
-        _make_strip(x_center=20, y_center=10),
-        _make_strip(x_center=30, y_center=20),
-        _make_strip(x_center=9999, y_center=9999, is_valid=False),
-    ]
 
-    tracker.regress_strips()
+    tracker.process(_furrow_image(130, 90))
 
-    assert tracker.reg_slope == 1.0
-    assert tracker.reg_intercept == 10.0
+    assert tracker.reg_slope == pytest.approx(-0.2, abs=0.05)
+    assert tracker.get_error() is not None
 
 
-def test_regress_strips_returns_none_with_two_or_fewer_valid_strips():
+def test_error_moves_with_the_furrow():
+    centered, shifted_right = FurrowTracker(), FurrowTracker()
+
+    centered.process(_furrow_image(90, 130))
+    shifted_right.process(_furrow_image(110, 150))
+
+    assert shifted_right.get_error() < centered.get_error()
+    assert shifted_right.get_error() == pytest.approx(centered.get_error() - 20, abs=3)
+
+
+def test_guidance_offset_shifts_the_error_one_for_one():
+    image = _furrow_image(90, 130)
+    no_offset, offset = FurrowTracker(), FurrowTracker()
+    no_offset.guidance_offset_x = 0
+    offset.guidance_offset_x = -40
+
+    no_offset.process(image)
+    offset.process(image)
+
+    assert no_offset.get_error() - offset.get_error() == pytest.approx(40)
+
+
+def test_process_reports_no_error_without_a_furrow():
     tracker = FurrowTracker()
-    tracker._width, tracker._height = 100, 100
-    tracker._strips = [
-        _make_strip(x_center=10, y_center=0),
-        _make_strip(x_center=20, y_center=10),
-    ]
 
-    tracker.regress_strips()
+    tracker.process(np.full((IMAGE_SIZE, IMAGE_SIZE), 1000, dtype=np.uint16))
 
-    assert tracker.reg_slope is None
-    assert tracker.reg_intercept is None
-
-
-def test_regress_strips_returns_none_for_vertical_line():
-    tracker = FurrowTracker()
-    tracker._width, tracker._height = 100, 100
-    tracker._strips = [
-        _make_strip(x_center=10, y_center=0),
-        _make_strip(x_center=10, y_center=10),
-        _make_strip(x_center=10, y_center=20),
-    ]
-
-    tracker.regress_strips()
-
-    assert tracker.reg_slope is None
-    assert tracker.reg_intercept is None
-
-
-def test_get_reg_x_uses_fitted_line():
-    tracker = FurrowTracker()
-    tracker._reg_slope, tracker._reg_intercept = 1.0, 10.0
-
-    assert tracker.get_reg_x(5) == 15
-
-
-def test_get_reg_x_returns_none_without_a_fit():
-    tracker = FurrowTracker()
-    tracker._reg_slope, tracker._reg_intercept = None, None
-
-    assert tracker.get_reg_x(5) is None
-
-
-def test_get_error_returns_offset_from_fitted_centerline():
-    tracker = FurrowTracker()
-    tracker._width = 100
-    tracker.guidance_offset_x = -40  # default
-    tracker._reg_slope, tracker._reg_intercept = 1.0, 10.0
-    tracker._pin_y = 50
-
-    # guidance_x = 100 // 2 + (-40) = 10; pin_x = get_reg_x(50) = 60
-    assert tracker.get_error() == 10 - 60
-
-
-def test_get_error_returns_none_without_a_fit():
-    tracker = FurrowTracker()
-    tracker._width = 100
-    tracker._pin_y = 50
-    tracker._reg_slope, tracker._reg_intercept = None, None
-
+    assert not any(strip.is_valid for strip in tracker.strips)
     assert tracker.get_error() is None
 
 
-def test_get_error_handles_pin_x_equal_to_zero():
+def test_perfectly_straight_furrow_has_zero_error():
     tracker = FurrowTracker()
-    tracker._width = 100
-    tracker._pin_y = 50
-    tracker._reg_slope, tracker._reg_intercept = 1.0, -50.0
+    tracker.guidance_offset_x = 0
 
-    assert tracker.get_reg_x(tracker.pin_y) == 0
-    # guidance_x = 100 // 2 + (-40) = 10; error = guidance_x - pin_x = 10 - 0
-    assert tracker.get_error() == 10
+    tracker.process(_furrow_image(100, 100))
+
+    assert all(strip.is_valid for strip in tracker.strips)
+    assert tracker.reg_slope == pytest.approx(0, abs=0.01)
+    assert tracker.get_error() == pytest.approx(0, abs=2)
+
+
+def test_straight_furrow_off_center_reports_its_offset():
+    tracker = FurrowTracker()
+    tracker.guidance_offset_x = 0
+
+    tracker.process(_furrow_image(90, 90))
+
+    assert tracker.reg_slope == pytest.approx(0, abs=0.01)
+    assert tracker.get_error() == pytest.approx(10, abs=2)
