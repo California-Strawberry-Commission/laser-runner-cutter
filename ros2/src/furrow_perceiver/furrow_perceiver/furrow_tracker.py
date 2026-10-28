@@ -84,8 +84,8 @@ class FurrowTracker:
         if not self._width and not self._height:
             return
 
-        self._reg_slope = None
-        self._reg_intercept = None
+        self._reg_slope: Optional[float] = None
+        self._reg_intercept: Optional[float] = None
 
         valid_centerpoints = [
             (s.x_center, s.y_center) for s in self._strips if s.is_valid
@@ -96,23 +96,21 @@ class FurrowTracker:
 
         x, y = zip(*valid_centerpoints)
 
-        if np.all(np.asarray(x) == x[0]):
-            return
-
         regression = linregress(y, x)
 
         self._reg_slope = regression.slope
         self._reg_intercept = regression.intercept
 
     def get_reg_x(self, y: int) -> Optional[int]:
-        if self._reg_intercept is not None:
-            return int(y * (self._reg_slope or 1) + self._reg_intercept)
-        return None
+        if self._reg_slope is None or self._reg_intercept is None:
+            return None
+        return int(y * self._reg_slope + self._reg_intercept)
 
     def get_error(self):
         guidance_x = self._width // 2 + self.guidance_offset_x
 
-        if pin_x := self.get_reg_x(self._pin_y):
+        pin_x = self.get_reg_x(self._pin_y)
+        if pin_x is not None:
             return guidance_x - pin_x
 
         return None

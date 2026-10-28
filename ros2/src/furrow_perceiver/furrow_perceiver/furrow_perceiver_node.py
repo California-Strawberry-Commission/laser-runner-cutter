@@ -110,13 +110,15 @@ async def on_depth_image(
 
 @aioros2.service("~/set_guidance_offset", SetInt32)
 async def set_guidance_offset(node, data):
-    shared_state.tracker.guidance_offset_x = data
+    perceiver_params.guidance_offset = data
+    if shared_state.tracker:
+        shared_state.tracker.guidance_offset_x = data
     _publish_state()
     return {"success": True}
 
 
 def _publish_state():
-    state_topic.publish(guidance_offset=shared_state.tracker.guidance_offset_x)
+    state_topic.publish(guidance_offset=perceiver_params.guidance_offset)
 
 
 def main():
